@@ -52,4 +52,26 @@ export type {
   UpsertUatTaskArgs,
 } from "./persistent.js";
 export { runUat } from "./uat.js";
-export type { ApprovalGate, ApprovalGateArgs, RunUatArgs } from "./uat.js";
+export type {
+  ApprovalGate,
+  ApprovalGateArgs,
+  QuestionHandler,
+  RunUatArgs,
+  UatNotifier,
+} from "./uat.js";
+export {
+  QUESTION_AGENT_SYSTEM_PROMPT,
+  runQuestionAgent,
+} from "./question.js";
+export type { QuestionAgentInput, QuestionAgentOutput } from "./question.js";
+export {
+  captureUatRejection,
+  extractAudioUrl,
+  formatUatRejectionRemediation,
+  writeRejectionYaml,
+} from "./rejection.js";
+export type {
+  CaptureUatRejectionArgs,
+  UatRejectionRemediationArgs,
+  WriteRejectionYamlArgs,
+} from "./rejection.js";

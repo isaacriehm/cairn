@@ -17,8 +17,18 @@ import {
   loadAcceptedDecisions,
 } from "../sensors/decisions.js";
 import { tightenSpec } from "../tightener/index.js";
-import { runUat } from "../uat/index.js";
-import type { ApprovalGate, UatRunResult } from "../uat/index.js";
+import {
+  captureUatRejection,
+  formatUatRejectionRemediation,
+  runQuestionAgent,
+  runUat,
+} from "../uat/index.js";
+import type {
+  ApprovalGate,
+  QuestionHandler,
+  UatNotifier,
+  UatRunResult,
+} from "../uat/index.js";
 import {
   ensureInboxDirs,
   isTaskRow,
@@ -502,14 +512,31 @@ export class Orchestrator {
         await this.completeRun(entry, meta, "succeeded");
         return;
       }
-      // UAT failure path. Phase 11 v1: terminal fail without retry. Phase
-      // 11.x will wire rejection.yaml as remediation context for retry.
-      const reason =
-        uatResult.operator_decision === "reject"
-          ? `uat rejected by operator: ${uatResult.rejection?.operator_note ?? "(no note)"}`
-          : !uatResult.summary.all_passed
-            ? `uat probes failed: ${probeFailures} of ${uatResult.probe_results.length}`
-            : `uat decision=${uatResult.operator_decision ?? "pending"}; not approved`;
+
+      // UAT-rejection-driven retry (Phase 11.x). When operator rejects with
+      // a captured A/B/C/D rejection AND attempts remain, write the
+      // rejection back to the implementer as remediation context and let
+      // the loop re-dispatch. Probe-only failures with operator approval
+      // path through `uatResult.ok=true`; probe-only failures without
+      // operator action terminal-fail since the operator never weighed in.
+      const isOperatorReject =
+        uatResult.operator_decision === "reject" && uatResult.rejection !== undefined;
+      if (isOperatorReject && attempt < maxAttempts) {
+        remediationBody = formatUatRejectionRemediation({
+          rejection: uatResult.rejection!,
+          summary: uatResult.summary,
+          attempt: attempt + 1,
+          maxAttempts,
+        });
+        attempt += 1;
+        continue;
+      }
+
+      const reason = isOperatorReject
+        ? `uat rejected by operator after ${attempt} attempt(s) [${uatResult.rejection!.category}]: ${uatResult.rejection!.operator_note || "(no note)"}`
+        : !uatResult.summary.all_passed
+          ? `uat probes failed: ${probeFailures} of ${uatResult.probe_results.length}`
+          : `uat decision=${uatResult.operator_decision ?? "pending"}; not approved`;
       await this.completeRun(entry, meta, "failed", reason);
       return;
     }
@@ -571,9 +598,17 @@ export class Orchestrator {
     const approvalGate: ApprovalGate = async (gateArgs) => {
       const adapter = this.opts.adapters[0];
       if (!adapter) {
-        // No adapter — auto-approve when all probes passed; otherwise reject.
+        // No adapter — auto-approve when all probes passed; otherwise reject
+        // with a synthetic D-category rejection so the retry loop has a
+        // stable shape (the smoke env exercises this branch).
+        if (gateArgs.summary.all_passed) return { decision: "approve" };
         return {
-          decision: gateArgs.summary.all_passed ? "approve" : "reject",
+          decision: "reject",
+          rejection: {
+            category: "D",
+            operator_note: "no frontend adapter configured; auto-rejected on probe failure",
+            rejected_at: new Date().toISOString(),
+          },
         };
       }
       const approval = await adapter.requestApproval({
@@ -607,18 +642,64 @@ export class Orchestrator {
           : approval.decision === "reject"
             ? "reject"
             : "ask";
-      const out: { decision: "approve" | "reject" | "ask" | "abandoned"; rejection?: import("../uat/index.js").UatRejection } = {
+      const out: {
+        decision: "approve" | "reject" | "ask" | "abandoned";
+        rejection?: import("../uat/index.js").UatRejection;
+        questionText?: string;
+      } = {
         decision: approval.timedOut === true ? "abandoned" : decision,
       };
-      if (decision === "reject" && approval.reason !== undefined) {
-        out.rejection = {
-          category: "C",
-          operator_note: approval.reason,
-          rejected_at: new Date().toISOString(),
-        };
+      if (decision === "reject") {
+        // Run the post-reject A/B/C/D dialog (with optional voice URL
+        // transcription) to get a structured UatRejection.
+        out.rejection = await captureUatRejection({
+          adapter,
+          runId: gateArgs.runId,
+          taskId: gateArgs.taskId,
+          ...(approval.reason !== undefined ? { initialReason: approval.reason } : {}),
+          ...(this.opts.uatRejectDialogTimeoutMs !== undefined
+            ? { timeoutMs: this.opts.uatRejectDialogTimeoutMs }
+            : {}),
+        });
+      }
+      if (decision === "ask") {
+        // Pass the operator's question text through (Approval.reason
+        // carries it). runUat's loop will call questionHandler + notifier.
+        if (approval.reason !== undefined) out.questionText = approval.reason;
       }
       return out;
     };
+
+    // Build the question handler for the ❓ Ask loop. Reuses the same tier
+    // as the implementer (cheap; reading-only) — operator can override
+    // explicitly via opts.uatQuestionTier.
+    const questionHandler: QuestionHandler | undefined = (() => {
+      // Always offer a handler — runUat gracefully degrades if absent.
+      return async (qArgs) => {
+        return runQuestionAgent({
+          question: qArgs.question,
+          tightened_spec: args.tightenedSpec,
+          acceptance_criteria: args.acceptanceCriteria,
+          changed_files: diff.map((d) => ({ path: d.path, status: d.status })),
+          summary: qArgs.summary,
+          ...(this.opts.uatQuestionTier !== undefined
+            ? { tier: this.opts.uatQuestionTier }
+            : {}),
+        });
+      };
+    })();
+
+    const notifier: UatNotifier | undefined = (() => {
+      const adapter = this.opts.adapters[0];
+      if (!adapter) return undefined;
+      return async (level, message) => {
+        try {
+          await adapter.notify(level, message);
+        } catch (err) {
+          log.warn({ err: String(err) }, "uat notifier failed");
+        }
+      };
+    })();
 
     const hints = this.opts.uatHints ?? {};
     return runUat({
@@ -643,6 +724,11 @@ export class Orchestrator {
       approvalGate,
       ...(this.opts.uatColdStartCommand !== undefined
         ? { coldStartCommand: this.opts.uatColdStartCommand }
+        : {}),
+      ...(questionHandler !== undefined ? { questionHandler } : {}),
+      ...(notifier !== undefined ? { notifier } : {}),
+      ...(this.opts.uatMaxQuestionRounds !== undefined
+        ? { maxQuestionRounds: this.opts.uatMaxQuestionRounds }
         : {}),
     });
   }

@@ -20,6 +20,7 @@ import { logger } from "../logger.js";
 import { writeEvidenceFile, writeSummary } from "./bundle.js";
 import { upsertUatTask } from "./persistent.js";
 import { executeProbe } from "./probes/index.js";
+import { writeRejectionYaml } from "./rejection.js";
 import { generateUatChecks } from "./runner.js";
 import type {
   ProbeRunResult,
@@ -28,6 +29,7 @@ import type {
   UatRunnerInput,
   UatSummary,
 } from "./types.js";
+import type { QuestionAgentOutput } from "./question.js";
 
 const log = logger("uat");
 
@@ -40,7 +42,26 @@ export interface ApprovalGateArgs {
 /** Operator approval surface — the orchestrator passes its adapter through. */
 export type ApprovalGate = (
   args: ApprovalGateArgs,
-) => Promise<{ decision: "approve" | "reject" | "ask" | "abandoned"; rejection?: UatRejection }>;
+) => Promise<{
+  decision: "approve" | "reject" | "ask" | "abandoned";
+  rejection?: UatRejection;
+  /** Populated when decision === "ask" — the operator's question text. */
+  questionText?: string;
+}>;
+
+/**
+ * Question handler — runs the read-only Q&A agent. The orchestrator wires
+ * this to `runQuestionAgent`. Returning the answer lets the runUat loop
+ * post it via the notifier and re-prompt for approval.
+ */
+export type QuestionHandler = (args: {
+  question: string;
+  summary: UatSummary;
+  diffPaths: { path: string; status: string }[];
+}) => Promise<QuestionAgentOutput>;
+
+/** Surface for posting question-answers + status updates back to the operator. */
+export type UatNotifier = (level: "info" | "warn" | "error", message: string) => Promise<void>;
 
 export interface RunUatArgs {
   /** Repo root (mirror checkout). */
@@ -64,6 +85,17 @@ export interface RunUatArgs {
    * is true and this isn't supplied, the smoke is recorded as `skipped`.
    */
   coldStartCommand?: { command: string; args: string[]; cwd?: string };
+  /**
+   * Optional question-flow handler. When the operator picks ❓ Ask,
+   * runUat invokes this with the operator's question + bundle context
+   * and posts the structured answer back via the notifier. Cap at
+   * `maxQuestionRounds` to prevent indefinite loops.
+   */
+  questionHandler?: QuestionHandler;
+  /** Notifier used to surface question answers + status updates. */
+  notifier?: UatNotifier;
+  /** Max rounds of ❓ Ask before terminal-fail. Default 5. */
+  maxQuestionRounds?: number;
 }
 
 export async function runUat(args: RunUatArgs): Promise<UatRunResult> {
@@ -162,12 +194,68 @@ export async function runUat(args: RunUatArgs): Promise<UatRunResult> {
     status: allPassed ? "passing" : "failed",
   });
 
-  // ── Step 6: operator approval ──────────────────────────────────────
-  const decision = await args.approvalGate({
+  // ── Step 6: operator approval (with optional ❓ Ask loop) ─────────
+  let decision = await args.approvalGate({
     runId: args.runId,
     taskId: args.taskId,
     summary,
   });
+  const maxRounds = args.maxQuestionRounds ?? 5;
+  let questionRounds = 0;
+  while (decision.decision === "ask") {
+    if (!args.questionHandler) {
+      log.warn({ run_id: args.runId }, "operator asked but no questionHandler configured — abandoning");
+      decision = { decision: "abandoned" };
+      break;
+    }
+    if (questionRounds >= maxRounds) {
+      log.warn({ run_id: args.runId, rounds: questionRounds }, "max question rounds exhausted — abandoning");
+      if (args.notifier) {
+        await args.notifier(
+          "warn",
+          `❓ Question loop exhausted after ${maxRounds} rounds. Marking abandoned; please re-trigger if you want to keep asking.`,
+        );
+      }
+      decision = { decision: "abandoned" };
+      break;
+    }
+    const question = (decision.questionText ?? "").trim();
+    if (question.length === 0) {
+      log.warn({ run_id: args.runId }, "ask decision missing questionText — abandoning");
+      decision = { decision: "abandoned" };
+      break;
+    }
+    const answer = await args.questionHandler({
+      question,
+      summary,
+      diffPaths: probeResults.map((r) => ({ path: r.probe_id, status: r.passed ? "pass" : "fail" })),
+    });
+    if (args.notifier) {
+      const citations =
+        answer.citations.length > 0 ? `\n\n_citations: ${answer.citations.join(", ")}_` : "";
+      await args.notifier(
+        "info",
+        `❓ ${question}\n\n${answer.answer}${citations}\n\n_(confidence: ${answer.confidence_signal})_`,
+      );
+    }
+    questionRounds += 1;
+    decision = await args.approvalGate({
+      runId: args.runId,
+      taskId: args.taskId,
+      summary,
+    });
+  }
+
+  // ── Step 6b: rejection.yaml (when operator rejected) ──────────────
+  // Written BEFORE the evidence file so the bundle SHA includes it.
+  if (decision.decision === "reject" && decision.rejection) {
+    await writeRejectionYaml({
+      repoRoot: args.repoRoot,
+      runId: args.runId,
+      rejection: decision.rejection,
+      summary,
+    });
+  }
 
   // ── Step 7: evidence file ──────────────────────────────────────────
   const evidence = await writeEvidenceFile({
@@ -190,15 +278,23 @@ export async function runUat(args: RunUatArgs): Promise<UatRunResult> {
       status: "passed",
     });
   } else if (decision.decision === "reject") {
+    const cat = decision.rejection?.category;
+    const note = decision.rejection?.operator_note ?? "";
+    const description =
+      cat && note.length > 0
+        ? `[${cat}] ${note}`
+        : note.length > 0
+          ? note
+          : cat
+            ? `[${cat}] (no note)`
+            : "(operator rejected without note)";
     await upsertUatTask({
       repoRoot: args.repoRoot,
       taskId: args.taskId,
       runId: args.runId,
       summary,
       status: "failed",
-      ...(decision.rejection?.operator_note
-        ? { newGap: { run_id: args.runId, description: decision.rejection.operator_note } }
-        : {}),
+      newGap: { run_id: args.runId, description },
     });
   } else if (decision.decision === "abandoned") {
     await upsertUatTask({
