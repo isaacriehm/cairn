@@ -31,6 +31,7 @@
     "smoke:mirror": "tsx scripts/smoke-mirror.ts",
     "smoke:watch": "tsx scripts/smoke-watch.ts",
     "smoke:mcp": "tsx scripts/smoke-mcp.ts",
+    "smoke:discord": "tsx scripts/smoke-discord.ts",
     "setup:mirror": "tsx scripts/setup-mirror.ts"
   },
   "dependencies": {

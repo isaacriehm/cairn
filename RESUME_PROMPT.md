@@ -3,7 +3,7 @@ type: resume-prompt
 status: handoff
 audience: ai-only
 generated: 2026-05-02
-last-updated: 2026-05-02 (after Phase 0–4 landed)
+last-updated: 2026-05-02 (after Phase 0–5 landed)
 purpose: Drop into a fresh Claude Code session in /Users/user/Documents/DevPlus LLC/06 - Projects/Harness to continue this project where the previous session left off.
 ---
 
@@ -17,7 +17,7 @@ Build a **portable, generic agent harness for solo developers**. Discord-front-e
 
 Mypal (a real-estate CRM at `/Users/user/Documents/DevPlus LLC/06 - Projects/mypalcrm/`) is the proving ground. The harness package extracts cleanly to any other project via `npx @devplusllc/harness init <repo-dir>`.
 
-**Status:** Implementation in progress. Phases 0–4 landed (~5.5 founder-days). Phase 5 is next. **Documentation in `docs/` is still the source of truth for design; the code in `harness/` is the runtime that implements it.**
+**Status:** Implementation in progress. Phases 0–5 landed (~7 founder-days). Phase 6 (Whisper voice ingress) is next. **Documentation in `docs/` is still the source of truth for design; the code in `harness/` is the runtime that implements it.**
 
 ## 1A. Implementation snapshot (binding — verify against `git log` before acting)
 
@@ -27,12 +27,13 @@ The Harness repo is **NOT self-hosted**. It's the source for the published npm p
 
 | SHA (short) | Phase | What |
 |-------------|-------|------|
+| _(pending)_ | 5 | Discord ingress: frontend-adapter contract, Discord adapter (slash + categories + buttons + ACL + regex Tier-0 stub), stub adapter, `harness run --frontend <name> --project <slug>` CLI, `smoke:discord` |
 | `c665fce` | 4 | harness-mcp server (17 tools, stdio transport) |
 | `96b2fa7` | 3 | grounding daemon (chokidar + manifest + ledgers + drift + quality grades + profile registry) |
 | `ce30537` | 2 | mirror checkout runtime (clone/sync/push/dirty-overlap; `~/.local/harness/repos/<slug>/`) |
 | `d011463` | 0–1 | bootstrap pkg + design docs + canonical templates under `harness/templates/` |
 
-### Six sensors green
+### Seven sensors green
 
 ```
 pnpm -F @devplusllc/harness build          # tsc -b
@@ -41,9 +42,12 @@ pnpm -F @devplusllc/harness check:layout   # validates pkg+templates + scans for
 pnpm -F @devplusllc/harness smoke:mirror   # ephemeral bare-origin + user-tree round-trip
 pnpm -F @devplusllc/harness smoke:watch    # daemon programmatic; manifest + decisions ledger update on file events
 pnpm -F @devplusllc/harness smoke:mcp      # InMemoryTransport client/server; all 17 tools exercised
+pnpm -F @devplusllc/harness smoke:discord  # stub-adapter contract: ingest events → inbox JSON; outbound calls recorded
 ```
 
-Run all six before doing anything that mutates `harness/src/` or `harness/templates/`.
+Run all seven before doing anything that mutates `harness/src/` or `harness/templates/`.
+
+The Discord adapter is real code (`harness/src/frontend/discord/`); it is not exercised in CI/smoke because live exercise needs `DISCORD_BOT_TOKEN`. Live wiring confirmed against guild `1487133145013944443` during Phase 5 acceptance: bot connects, 13 slash commands register, the three category channels (`📋 backlog`, `🟢 active`, `📦 archive`) are ensured.
 
 ### Source tree
 
@@ -63,7 +67,10 @@ harness/
 │   │   ├── index.ts     dispatch: watch | run | init | mirror | mcp | --version
 │   │   ├── watch.ts     `harness watch --project <slug>` long-lived
 │   │   ├── mirror.ts    `harness mirror init|sync|push|status`
-│   │   └── mcp.ts       `harness mcp serve [--repo-root <path>]`
+│   │   ├── mcp.ts       `harness mcp serve [--repo-root <path>]`
+│   │   └── run.ts       `harness run --project <slug> [--frontend <name[,name...]>]`
+│   │                    Phase 5 — brings up registered frontend adapters and
+│   │                    idles. Orchestrator (Phase 8) consumes inbox rows.
 │   ├── mirror/          paths, state (zod-validated mirror.json), clone, sync,
 │   │                    push, dirty-overlap (L45 gate), types, index
 │   ├── ground/          schemas (Provenance, Manifest, DecisionFrontmatter w/ 11
@@ -80,12 +87,20 @@ harness/
 │   │                    profile extractors); chokidar daemon (debounced 500 ms,
 │   │                    coalesces in-flight regens); PID file at
 │   │                    ~/.local/harness/state/<project>/watch.pid
-│   └── mcp/             server (McpServer + StdioServerTransport, telemetry +
-│                        timing wrapper around every handler), context, errors
-│                        (McpErrorCode union + envelope), result (asMcpResult),
-│                        path-allowlist (APPEND_ALLOWLIST, ARCHIVE_DENY,
-│                        HISTORICAL_ZONE), telemetry (per-call jsonl), schemas
-│                        (zod input shapes per tool), tools/{17 handlers}/*.ts
+│   ├── mcp/             server (McpServer + StdioServerTransport, telemetry +
+│   │                    timing wrapper around every handler), context, errors
+│   │                    (McpErrorCode union + envelope), result (asMcpResult),
+│   │                    path-allowlist (APPEND_ALLOWLIST, ARCHIVE_DENY,
+│   │                    HISTORICAL_ZONE), telemetry (per-call jsonl), schemas
+│   │                    (zod input shapes per tool), tools/{17 handlers}/*.ts
+│   └── frontend/        adapter contract (types.ts: FrontendAdapter,
+│                        FrontendTask/VoiceMessage/SlashEvent/FreeTextEvent/
+│                        InteractionEvent/DialogSpec/ApprovalBundle), inbox.ts
+│                        helper (writes `.harness/inbox/<ts>-<source>-<kind>-
+│                        <slug>.json`), stub/ in-memory adapter for tests,
+│                        discord/ real adapter (acl, classifier regex stub,
+│                        slash command builders, channels lifecycle, index
+│                        DiscordFrontendAdapter)
 ├── scripts/
 │   ├── check-layout.ts  Phase 1 sensor — also scans pkg/templates for banned
 │   │                    "mypal" strings (project-agnostic check per L50, S1)
@@ -93,7 +108,9 @@ harness/
 │   │                    from package.json `name`, calls ensureMirror
 │   ├── smoke-mirror.ts  Phase 2 acceptance
 │   ├── smoke-watch.ts   Phase 3 acceptance
-│   └── smoke-mcp.ts     Phase 4 acceptance
+│   ├── smoke-mcp.ts     Phase 4 acceptance
+│   └── smoke-discord.ts Phase 5 acceptance (stub adapter; live wiring needs
+│                        DISCORD_BOT_TOKEN)
 └── templates/           seed copied into adopting projects by `harness init`
     ├── README.md
     ├── .harness/
@@ -114,16 +131,17 @@ harness/
 
 ### What's NOT yet wired
 
-Phases 5–18 from `docs/INTEGRATION_PLAN.md`. In particular:
+Phases 6–18 from `docs/INTEGRATION_PLAN.md`. In particular:
 
-- **No frontend adapter** — Discord/Notion/CLI ingress not built. The Profile interface is in place, but the Adapter interface (per `WORKFLOW_GUIDE.md` §0.1) is not.
+- **No Whisper voice transcription.** The Discord adapter detects voice attachments and drops `voice` inbox rows, but transcription is Phase 6.
+- **No real Tier-0 classifier.** Phase 5 ships a deterministic regex stub at `harness/src/frontend/discord/classifier.ts` — same return shape as the future Ollama path. Replace in Phase 6.
 - **No spec tightener (Layer F).** No model client. No Ollama integration. No Claude/Codex SDK calls.
-- **No orchestrator.** The `harness run` CLI is a stub that exits with `not implemented`.
+- **No orchestrator.** Inbox rows pile up; nothing consumes them. `harness run` brings up adapters and idles.
 - **No sensors execution.** The sensor catalog at `templates/.harness/config/sensors.yaml` is data; the runner that invokes them is Phase 9.
 - **No reviewer subagent / UAT runner / GC cron / backprop / decision capture flow.** Phases 10–14.
 - **No init script.** `harness init` is a stub; Phase 16.
 
-The `harness watch` and `harness mirror` and `harness mcp serve` CLIs work today.
+The `harness watch`, `harness mirror`, `harness mcp serve`, and `harness run` CLIs work today.
 
 ## 2. Operator profile (binding)
 
@@ -323,23 +341,22 @@ Each layer fail → run marked `failed-honesty-check` with structured findings. 
 
 ## 10. What the operator wants next (most likely)
 
-Phases 0–4 are landed. Next is **Phase 5 — Discord ingress** (`docs/INTEGRATION_PLAN.md` §5 Phase 5; ~1.5 founder-days).
+Phases 0–5 are landed. Next is **Phase 6 — Whisper voice ingress** (`docs/INTEGRATION_PLAN.md` §5 Phase 6; ~1 founder-day).
 
-Phase 5 deliverables:
+Phase 6 deliverables:
 
-1. **Frontend-adapter contract** at `harness/src/frontend/types.ts` per `docs/WORKFLOW_GUIDE.md` §0.1 — `ingestTasks`, `ingestVoice`, `postTaskUpdate`, `requestApproval`, `requestDialog`, `notify`. Adapter implementations live in `harness/src/frontend/<adapter>/` (`discord/`, future `notion/`, `cli/`).
-2. **Discord adapter** at `harness/src/frontend/discord/` — discord.js v14 bot, slash command registration, channel-per-task lifecycle (📋 backlog / 🟢 active / 📦 archive categories), Components V2 buttons (`[🟢 Approve & Push] [🔴 Reject + tell me why] [❓ Ask follow-up]`), ACL on `DISCORD_OWNER_USER_IDS`.
-3. **Slash surface** per `docs/WORKFLOW_GUIDE.md` §3 — `/status`, `/task`, `/run`, `/halt`, `/oops`, `/direction`, `/eval`, `/ship-anyway`, `/agent`, `/queue`, `/resume`, `/archive`, `/help`. Stub the dispatch — when a command lands, drop a row to `.harness/inbox/<ts>-<msg-id>.json` and let the orchestrator (Phase 8) pick it up. Don't try to build the orchestrator inside Phase 5.
-4. **Free-text ingress** routes to Tier-0 intent classifier. Tier-0 = Ollama. **Ollama integration is its own concern** — defer the actual model call to Phase 6 (alongside Whisper) and stub it with a deterministic regex classifier for Phase 5 acceptance. The smoke test should pass without an Ollama installation.
-5. **CLI**: wire `harness run --frontend discord --project <slug>` to start the adapter. The orchestrator subcommand `harness run` is currently a stub — Phase 5 turns it into "bring up registered frontend adapters and idle". The full FIFO + agent runner is Phase 8.
-6. **Smoke test** at `harness/scripts/smoke-discord.ts` — operator's plan calls for an integration test that creates a task channel via `/task` and verifies category placement. Real Discord requires creds; smoke against a STUB adapter that implements the same contract is acceptable for Phase 5 acceptance. Real-bot wiring tests gated on operator providing `DISCORD_BOT_TOKEN`.
+1. **Whisper integration** via `smart-whisper` (already in deps) + whisper.cpp via Homebrew. Model `large-v3-turbo` Q5_0 stored at `~/.local/harness/models/`. Audio NEVER written to disk — pipe Discord attachment buffer through ffmpeg → 16k mono PCM → smart-whisper.
+2. **Discord adapter wiring** — extend `harness/src/frontend/discord/index.ts` `handleMessage` voice path: instead of just dropping a `voice` inbox row, fetch the attachment buffer, transcribe, drop a `task`/`free_text` inbox row with the transcript and `avg_logprob`. Below `confidence_floor` (default 0.85, configurable in `workflow.md` `voice:` block) → reply "Heard: '...' — confirm?" with 🟢/🔴 buttons before dispatching.
+3. **Real Tier-0 classifier** — replace the regex stub in `harness/src/frontend/discord/classifier.ts` with an Ollama call (`OLLAMA_HOST` env + `llama3.2:3b` model). Same return shape (`{ intent, confidence }`). Below confidence threshold → escalate to Tier-1 Haiku.
+4. **Smoke acceptance** — record a known voice note, send via Discord, assert transcript matches within Levenshtein 5; assert avg_logprob > 0.85 on clear speech.
 
-Phase 5 prerequisites the operator may need to provide:
+Phase 6 prerequisites the operator may need to provide:
 
-- **`DISCORD_BOT_TOKEN`** — for live exercise. QUESTIONS.md `D1` already has the guild ID and `D2` has the owner user-id (locked). The bot token is missing. If not provided, Phase 5 lands as code + stub-adapter smoke; live exercise waits.
-- **Bot OAuth scopes** — `bot`, `applications.commands`. Bot permissions: `Send Messages`, `Manage Channels` (for category lifecycle), `Read Message History`, `Use Slash Commands`, `Embed Links`, `Attach Files`, `Add Reactions`, `Manage Messages` (for ACL deletes if needed).
+- Homebrew-installed `whisper.cpp` (Phase 6 init script handles it; manual fallback: `brew install whisper-cpp`).
+- Ollama installed locally (init script Phase 16 handles it; manual: `brew install ollama && ollama pull llama3.2:3b`).
+- A short test voice clip for the smoke acceptance.
 
-Do NOT start Phase 5 until the operator says "go". Confirm what's landed first; ask whether to proceed with the stub-adapter path or wait for credentials.
+Do NOT start Phase 6 until the operator says "go". Confirm what's landed first; ask whether to proceed.
 
 ## 11. How to start a fresh session
 
