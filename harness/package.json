@@ -41,7 +41,10 @@
     "smoke:uat": "tsx scripts/smoke-uat.ts",
     "smoke:uat-runner": "tsx scripts/smoke-uat-runner.ts",
     "setup:mirror": "tsx scripts/setup-mirror.ts",
-    "setup:whisper": "tsx scripts/setup-whisper.ts"
+    "setup:whisper": "tsx scripts/setup-whisper.ts",
+    "setup:uat-browsers": "tsx scripts/setup-uat-browsers.ts",
+    "setup:uat-sql": "tsx scripts/setup-uat-sql.ts",
+    "setup:uat-docker": "tsx scripts/setup-uat-docker.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
@@ -57,8 +60,11 @@
     "zod": "^4.4.2"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.6.0",
     "@types/ws": "^8.18.1",
+    "better-sqlite3": "^11.10.0",
+    "playwright-core": "^1.50.0",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3"
   }

@@ -16,6 +16,8 @@ export interface ExecuteProbeOptions {
   baseUrl?: string;
   /** Output directory under .harness/runs/active/<id>/uat/ for ui artifacts. */
   outputDir: string;
+  /** Repo root — used by sql/integration probes to load probe config. */
+  repoRoot?: string;
 }
 
 export async function executeProbe(opts: ExecuteProbeOptions): Promise<ProbeRunResult> {
@@ -30,9 +32,12 @@ export async function executeProbe(opts: ExecuteProbeOptions): Promise<ProbeRunR
     case "ui":
       return runUiProbe({ probe: opts.probe, outputDir: opts.outputDir });
     case "sql":
-      return runSqlProbe({ probe: opts.probe });
+      return runSqlProbe({ probe: opts.probe, repoRoot: opts.repoRoot ?? process.cwd() });
     case "integration":
-      return runIntegrationProbe({ probe: opts.probe });
+      return runIntegrationProbe({
+        probe: opts.probe,
+        ...(opts.repoRoot !== undefined ? { repoRoot: opts.repoRoot } : {}),
+      });
   }
 }
 

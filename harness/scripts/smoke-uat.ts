@@ -20,7 +20,7 @@
  */
 
 import { createServer, type Server } from "node:http";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -30,6 +30,7 @@ import {
   readUatTaskFile,
   runCliProbe,
   runHttpProbe,
+  runUiProbe,
   uatDirFor,
   upsertUatTask,
   verifyEvidenceFile,
@@ -83,6 +84,9 @@ async function main(): Promise<void> {
       } else if (req.url === "/forbidden") {
         res.writeHead(403, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: "forbidden" }));
+      } else if (req.url === "/page") {
+        res.writeHead(200, { "content-type": "text/html" });
+        res.end(`<!doctype html><html><head><title>UAT Smoke</title></head><body><h1>Smoke UAT Page</h1><div id="hello">hello</div></body></html>`);
       } else {
         res.writeHead(404);
         res.end();
@@ -180,32 +184,29 @@ async function main(): Promise<void> {
   );
   console.log(`  ok=false reason="${result.failure_reason?.slice(0, 80)}"`);
 
-  header("Step 6: ui/sql/integration probes return skipped_reason");
-  for (const kind of ["ui", "sql", "integration"] as const) {
+  header("Step 6: sql/integration probes skip when surface unavailable");
+  // ui live behavior is covered by step 14 below — its behavior here depends
+  // on whether playwright-core is installed in this environment, so we don't
+  // assert on it from step 6.
+  for (const kind of ["sql", "integration"] as const) {
     const probeBase = {
       kind,
       id: `AC-${kind}`,
       description: `${kind} probe placeholder`,
     };
     let probe;
-    if (kind === "ui") {
+    if (kind === "sql") {
       probe = {
         ...probeBase,
-        url: "http://localhost:0",
-        steps: [],
-        expect: {},
-      };
-    } else if (kind === "sql") {
-      probe = {
-        ...probeBase,
-        connection: "default",
+        // No sql.yaml in cwd → connection lookup fails → skipped_reason.
+        connection: "missing-by-design",
         query: "SELECT 1",
         expect: { rowcount: 1 },
       };
     } else {
       probe = {
         ...probeBase,
-        compose_file: "docker-compose.yml",
+        compose_file: "/nonexistent/docker-compose.yml",
         service: "api",
         ready_check: { kind: "http" as const, url: "http://localhost:0" },
         test: {
@@ -378,6 +379,116 @@ async function main(): Promise<void> {
   console.log(
     `  gaps_resolved=${recordC?.gaps_resolved.length} gaps_open=${recordC?.gaps_open.length}`,
   );
+
+  // ── Step 14: Live UI probe (skips if playwright-core/chromium missing) ─
+  header("Step 14: Live UI probe (skips if playwright-core/chromium missing)");
+  const pwTest = (await import("playwright-core" as string).catch(() => null)) as
+    | { chromium?: unknown }
+    | null;
+  if (!pwTest || !pwTest.chromium) {
+    console.log("  SKIP: playwright-core not installed");
+  } else {
+    const uiOutDir = mkdtempSync(join(tmpdir(), "harness-smoke-ui-"));
+    cleanups.push(uiOutDir);
+    const uiResult = await runUiProbe({
+      probe: {
+        kind: "ui",
+        id: "AC-ui-page",
+        description: "GET /page renders 'Smoke UAT Page' h1",
+        url: `http://localhost:${port}/page`,
+        steps: [{ action: "wait_for_selector", selector: "h1" }],
+        expect: { text_present: ["Smoke UAT Page"], selector_visible: ["#hello"] },
+      },
+      outputDir: uiOutDir,
+    });
+    if (uiResult.skipped_reason) {
+      console.log(`  SKIP: ${uiResult.skipped_reason}`);
+    } else {
+      assert(uiResult.passed, `UI probe failed: ${uiResult.failure_reason}`);
+      console.log(`  ok=true artifacts=${uiResult.artifacts?.length ?? 0}`);
+    }
+  }
+
+  // ── Step 15: Live SQL probe (skips if better-sqlite3 missing) ──────────
+  header("Step 15: Live SQL probe (skips if better-sqlite3 missing)");
+  const bsTest = (await import("better-sqlite3" as string).catch(() => null)) as
+    | { default?: unknown }
+    | ((file: string, opts?: { readonly?: boolean }) => unknown)
+    | null;
+  if (!bsTest) {
+    console.log("  SKIP: better-sqlite3 not installed");
+  } else {
+    type BsCtor = new (file: string) => {
+      exec(sql: string): void;
+      close(): void;
+    };
+    const Ctor: BsCtor =
+      typeof bsTest === "function"
+        ? (bsTest as unknown as BsCtor)
+        : ((bsTest as { default?: unknown }).default as BsCtor);
+    const sqlRoot = mkdtempSync(join(tmpdir(), "harness-smoke-sql-"));
+    cleanups.push(sqlRoot);
+    const dbPath = join(sqlRoot, "test.db");
+    const db = new Ctor(dbPath);
+    db.exec(
+      "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT NOT NULL);" +
+        "INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');",
+    );
+    db.close();
+
+    mkdirSync(join(sqlRoot, ".harness", "config", "probes"), { recursive: true });
+    writeFileSync(
+      join(sqlRoot, ".harness", "config", "probes", "sql.yaml"),
+      `connections:\n  test:\n    driver: sqlite\n    file: ${dbPath}\n`,
+    );
+
+    const sqlResult = await executeProbe({
+      probe: {
+        kind: "sql",
+        id: "AC-sql-rows",
+        description: "users has 2 rows; first is id=1 name=a",
+        connection: "test",
+        query: "SELECT id, name FROM users ORDER BY id",
+        expect: { rowcount: 2, first_row_includes: { id: 1, name: "a" } },
+      },
+      outputDir: "/tmp",
+      repoRoot: sqlRoot,
+    });
+    if (sqlResult.skipped_reason) {
+      console.log(`  SKIP: ${sqlResult.skipped_reason}`);
+    } else {
+      assert(sqlResult.passed, `SQL probe failed: ${sqlResult.failure_reason}`);
+      console.log(`  ok=true evidence=${sqlResult.evidence.slice(0, 80)}`);
+    }
+  }
+
+  // ── Step 16: SQL probe rejects non-SELECT (defense-in-depth) ───────────
+  header("Step 16: SQL probe rejects non-SELECT");
+  const sqlBadRoot = mkdtempSync(join(tmpdir(), "harness-smoke-sql-bad-"));
+  cleanups.push(sqlBadRoot);
+  mkdirSync(join(sqlBadRoot, ".harness", "config", "probes"), { recursive: true });
+  writeFileSync(
+    join(sqlBadRoot, ".harness", "config", "probes", "sql.yaml"),
+    `connections:\n  test:\n    driver: sqlite\n    file: ${join(sqlBadRoot, "x.db")}\n`,
+  );
+  const ddlResult = await executeProbe({
+    probe: {
+      kind: "sql",
+      id: "AC-sql-ddl",
+      description: "DELETE rejected",
+      connection: "test",
+      query: "DELETE FROM users",
+      expect: { rowcount: 0 },
+    },
+    outputDir: "/tmp",
+    repoRoot: sqlBadRoot,
+  });
+  assert(!ddlResult.passed, "DELETE should be rejected by sql probe");
+  assert(
+    (ddlResult.failure_reason ?? "").includes("non-SELECT"),
+    `expected non-SELECT rejection; got: ${ddlResult.failure_reason}`,
+  );
+  console.log(`  ok=false reason="${ddlResult.failure_reason?.slice(0, 80)}"`);
 
   cleanup();
   console.log("\nsmoke-uat: OK");
