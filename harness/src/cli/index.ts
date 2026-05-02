@@ -1,15 +1,18 @@
 #!/usr/bin/env node
 import { VERSION } from "../index.js";
 import { mirrorCli } from "./mirror.js";
+import { watchCli } from "./watch.js";
 
 const [, , subcommand, ...rest] = process.argv;
 
 switch (subcommand) {
-  case "watch":
   case "run":
   case "init":
     console.error(`harness ${subcommand}: not implemented (Phase 0 scaffold).`);
     process.exit(2);
+  case "watch":
+    await watchCli(rest);
+    break;
   case "mirror":
     await mirrorCli(rest);
     break;
@@ -21,6 +24,7 @@ switch (subcommand) {
     console.error(
       "Usage: harness <command>\n" +
         "  watch     long-lived grounding daemon\n" +
+        "            (--project <slug> [--repo-root <path>])\n" +
         "  run       orchestrator + frontend adapters\n" +
         "  init      adopt this harness into a project\n" +
         "  mirror    manage the parallel mirror checkout\n" +

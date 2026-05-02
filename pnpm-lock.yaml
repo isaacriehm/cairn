@@ -38,6 +38,9 @@ importers:
       ws:
         specifier: ^8.20.0
         version: 8.20.0
+      yaml:
+        specifier: ^2.8.4
+        version: 2.8.4
       zod:
         specifier: ^4.4.2
         version: 4.4.2
@@ -547,6 +550,11 @@ packages:
       utf-8-validate:
         optional: true
 
+  yaml@2.8.4:
+    resolution: {integrity: sha512-ml/JPOj9fOQK8RNnWojA67GbZ0ApXAUlN2UQclwv2eVgTgn7O9gg9o7paZWKMp4g0H3nTLtS9LVzhkpOFIKzog==}
+    engines: {node: '>= 14.6'}
+    hasBin: true
+
   zod@4.4.2:
     resolution: {integrity: sha512-IynmDyxsEsb9RKzO3J9+4SxXnl2FTFSzNBaKKaMV6tsSk0rw9gYw9gs+JFCq/qk2LCZ78KDwyj+Z289TijSkUw==}
 
@@ -1001,5 +1009,7 @@ snapshots:
   undici@6.24.1: {}
 
   ws@8.20.0: {}
+
+  yaml@2.8.4: {}
 
   zod@4.4.2: {}
