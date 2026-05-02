@@ -168,6 +168,9 @@ async function main(): Promise<void> {
     repoRoot: mirror,
     adapters: [stub],
     bypassTightener: true,
+    // Phase 8 smoke pre-dates the attestation contract; sensors live behind
+    // smoke-sensors.ts (Phase 9). Keep this smoke narrow so it stays cheap.
+    bypassSensors: true,
     defaultTier: "haiku",
     pollIntervalMs: 500,
     runTimeoutMs: 300_000,
