@@ -1,0 +1,18 @@
+# Canonical-map — topic → canonical-doc-path.
+#
+# Curated registry. Agents call `harness_canonical_for_topic(<topic>)` to get
+# the authoritative path for a topic — no fuzzy match, no hallucinated paths.
+#
+# Topics are added at adoption time + via /direction confirmation. Unknown
+# topics return TOPIC_NOT_REGISTERED — agents must NOT invent topics.
+
+version: 1
+topics: []
+# Example after population (placeholder for an adopted project):
+# topics:
+#   - topic: event-naming
+#     canonical_path: .claude/rules/event-naming.md
+#     audience: dual
+#   - topic: dto-conventions
+#     canonical_path: .claude/rules/typescript-law.md#dto-rules
+#     audience: dual

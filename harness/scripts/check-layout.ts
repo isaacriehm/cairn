@@ -178,6 +178,42 @@ checkFile("harness/src/watch/daemon.ts");
 checkFile("harness/src/cli/watch.ts");
 checkFile("harness/scripts/smoke-watch.ts");
 
+// ── Phase 4 — MCP server ────────────────────────────────────────────────────
+checkFile("harness/src/mcp/index.ts");
+checkFile("harness/src/mcp/server.ts");
+checkFile("harness/src/mcp/context.ts");
+checkFile("harness/src/mcp/errors.ts");
+checkFile("harness/src/mcp/result.ts");
+checkFile("harness/src/mcp/path-allowlist.ts");
+checkFile("harness/src/mcp/telemetry.ts");
+checkFile("harness/src/mcp/schemas.ts");
+checkFile("harness/src/mcp/tools/index.ts");
+checkFile("harness/src/mcp/tools/types.ts");
+for (const tool of [
+  "decision-get",
+  "decisions-in-scope",
+  "decisions-for-symbol",
+  "supersedes-chain",
+  "invariant-get",
+  "invariants-in-scope",
+  "canonical-for-topic",
+  "ground-get",
+  "get-full",
+  "search",
+  "timeline",
+  "query-history",
+  "append",
+  "record-run-event",
+  "drop-task",
+  "archive",
+  "record-decision",
+]) {
+  checkFile(`harness/src/mcp/tools/${tool}.ts`);
+}
+checkFile("harness/src/cli/mcp.ts");
+checkFile("harness/scripts/smoke-mcp.ts");
+checkFile("harness/templates/.harness/ground/canonical-map/topics.yaml", { requireYaml: true });
+
 // ── Pkg's `files` field must include templates so they ship on npm publish ─
 const pkg = JSON.parse(readFileSync(resolve(repoRoot, "harness/package.json"), "utf8")) as {
   files?: string[];

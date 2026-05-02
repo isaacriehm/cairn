@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { VERSION } from "../index.js";
+import { mcpCli } from "./mcp.js";
 import { mirrorCli } from "./mirror.js";
 import { watchCli } from "./watch.js";
 
@@ -16,6 +17,9 @@ switch (subcommand) {
   case "mirror":
     await mirrorCli(rest);
     break;
+  case "mcp":
+    await mcpCli(rest);
+    break;
   case "--version":
   case "-v":
     console.log(VERSION);
@@ -28,7 +32,9 @@ switch (subcommand) {
         "  run       orchestrator + frontend adapters\n" +
         "  init      adopt this harness into a project\n" +
         "  mirror    manage the parallel mirror checkout\n" +
-        "            (subcommands: init | sync | push | status)",
+        "            (subcommands: init | sync | push | status)\n" +
+        "  mcp       MCP server (stdio transport)\n" +
+        "            (subcommands: serve)",
     );
     process.exit(subcommand ? 2 : 1);
 }
