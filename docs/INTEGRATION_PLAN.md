@@ -461,17 +461,21 @@ Profile lives in `harness/src/profiles/<profile>/`; users can author custom prof
 
 #### 16.2 Init pipeline
 
-| Step | |
+The init script is **inquirer-driven** end-to-end (per operator instruction 2026-05-02). All operator-facing questions during `npx @devplusllc/harness init` use `inquirer` prompts with sensible defaults pre-filled from auto-detection. The squares-into-square-holes UX rule (`docs/WORKFLOW_GUIDE.md` §1) applies: every question is `list` / `confirm` / `checkbox` first, with `input` only as the typed-default fallback. `E) Other` escape on every multi-choice question.
+
+The init script lives at `harness/src/init/`. Add `inquirer` (^9 or current) to `harness/package.json` deps when Phase 16 starts. Follow the same export pattern as `harness/src/cli/run.ts` for sub-command dispatch.
+
+| Step | inquirer prompt(s) |
 |------|---|
-| Detect stack profile | Read project root; pick profile (or prompt if ambiguous) |
-| Mapper agent (Tier 2, LLM-heavy, one-time) | Walks repo using profile's canonical-path rules; inventories canonical paths; proposes pilot module; proposes sensor list (profile + project-specific); proposes off-limits paths; proposes initial `WORKFLOW.md` body. **Project-agnostic prompt — never hardcode the project's name or domain into harness pkg code; mapper proposes a `<project-name>:` extension block keyed by the project's own `package.json name` or directory name.** (per operator answer S1) |
-| Mechanical extract pass | Generate initial `.harness/ground/manifest.yaml` from current file hashes; profile-specific generators (Drizzle dump, OpenAPI dump, alembic, etc.) |
-| Scaffold | `.harness/{config,ground,tasks/active,runs,inbox,transcripts,staleness}/`, `.gitignore` updates, `.archive/` empty + README |
-| Hook installation | Per profile: Claude Code hooks if available; git pre-commit/pre-push hooks otherwise; CLI-only if user opts out |
-| Ollama check | Detect; A/B/C dialog (per operator answer M2 = yes auto-install): A) Install + pull required models, B) Skip (Tier 0 falls back to Tier 1, ~$5-10/day extra), C) Re-check (I'll install in another terminal) |
-| Frontend adapter bootstrap | Per registered adapter: Discord (prompt guild + bot token); Notion (prompt DB target via Notion MCP); CLI (no setup) |
-| `harness/` workspace | Install harness pkg as devDep (npm/pip/cargo/etc. depending on profile); copy starter scripts |
-| Readiness report | What's ready, what needs operator decision, what's deferred |
+| Detect stack profile | Auto-detect from project root; show detected profile in `confirm` prompt with `list` of all profiles as fallback. Default = detected; `E) Other` opens `input` to declare a custom profile name. |
+| Mapper agent (Tier 2, LLM-heavy, one-time) | After profile confirmed: dispatched without prompts. Walks repo using profile's canonical-path rules; inventories canonical paths; proposes pilot module; proposes sensor list (profile + project-specific); proposes off-limits paths; proposes initial `WORKFLOW.md` body. **Project-agnostic prompt — never hardcode the project's name or domain into harness pkg code; mapper proposes a `<project-name>:` extension block keyed by the project's own `package.json name` or directory name.** (per operator answer S1) Output is shown to operator as a `confirm`/`edit` prompt before write. |
+| Mechanical extract pass | No prompts. Generates initial `.harness/ground/manifest.yaml` from current file hashes; profile-specific generators (Drizzle dump, OpenAPI dump, alembic, etc.) |
+| Scaffold | No prompts. `.harness/{config,ground,tasks/active,runs,inbox,transcripts,staleness}/`, `.gitignore` updates, `.archive/` empty + README |
+| Hook installation | `list` per profile: Claude Code hooks if available; git pre-commit/pre-push hooks otherwise; CLI-only if user opts out |
+| Ollama check | Detect via `which ollama`; if missing, `list` (per operator answer M2 = yes auto-install): A) Install + pull required models, B) Skip (Tier 0 falls back to Tier 1, ~$5-10/day extra), C) Re-check (I'll install in another terminal) |
+| Frontend adapter bootstrap | `checkbox` of registered adapter slugs (`discord` / `notion` / `cli` / `web`). Per checked adapter, additional inquirer prompts: Discord (`input` guild ID + masked `password` bot token + comma-separated owner IDs); Notion (`input` DB target id via Notion MCP); CLI (no setup). All collected secrets write to the adopting project's `.env` (gitignored), not committed config. |
+| `harness/` workspace | No prompts. Install harness pkg as devDep (npm/pip/cargo/etc. depending on profile); copy starter scripts |
+| Readiness report | No prompts. What's ready, what needs operator decision, what's deferred. Final `confirm` prompt: "ready to run `harness watch` + `harness run`?" |
 
 #### 16.3 Distribution mechanism (per operator answer M1)
 
