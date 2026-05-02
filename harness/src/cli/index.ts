@@ -2,15 +2,18 @@
 import { VERSION } from "../index.js";
 import { mcpCli } from "./mcp.js";
 import { mirrorCli } from "./mirror.js";
+import { runCli } from "./run.js";
 import { watchCli } from "./watch.js";
 
 const [, , subcommand, ...rest] = process.argv;
 
 switch (subcommand) {
-  case "run":
   case "init":
-    console.error(`harness ${subcommand}: not implemented (Phase 0 scaffold).`);
+    console.error(`harness ${subcommand}: not implemented (Phase 16 scaffold).`);
     process.exit(2);
+  case "run":
+    await runCli(rest);
+    break;
   case "watch":
     await watchCli(rest);
     break;
