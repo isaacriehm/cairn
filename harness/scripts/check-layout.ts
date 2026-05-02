@@ -157,6 +157,27 @@ checkFile("harness/src/mirror/dirty-overlap.ts");
 checkFile("harness/scripts/setup-mirror.ts");
 checkFile("harness/scripts/smoke-mirror.ts");
 
+// ── Phase 3 — ground / profiles / watch ─────────────────────────────────────
+checkFile("harness/src/ground/index.ts");
+checkFile("harness/src/ground/schemas.ts");
+checkFile("harness/src/ground/paths.ts");
+checkFile("harness/src/ground/glob.ts");
+checkFile("harness/src/ground/walk.ts");
+checkFile("harness/src/ground/frontmatter.ts");
+checkFile("harness/src/ground/manifest.ts");
+checkFile("harness/src/ground/ledgers.ts");
+checkFile("harness/src/ground/drift.ts");
+checkFile("harness/src/ground/quality-grades.ts");
+checkFile("harness/src/profiles/index.ts");
+checkFile("harness/src/profiles/types.ts");
+checkFile("harness/src/profiles/registry.ts");
+checkFile("harness/src/profiles/unknown.ts");
+checkFile("harness/src/watch/index.ts");
+checkFile("harness/src/watch/regenerate.ts");
+checkFile("harness/src/watch/daemon.ts");
+checkFile("harness/src/cli/watch.ts");
+checkFile("harness/scripts/smoke-watch.ts");
+
 // ── Pkg's `files` field must include templates so they ship on npm publish ─
 const pkg = JSON.parse(readFileSync(resolve(repoRoot, "harness/package.json"), "utf8")) as {
   files?: string[];
