@@ -3,7 +3,7 @@ type: resume-prompt
 status: handoff
 audience: ai-only
 generated: 2026-05-02
-last-updated: 2026-05-02 (after Phase 0–9 landed)
+last-updated: 2026-05-02 (after Phase 0–10 landed)
 purpose: Drop into a fresh Claude Code session in /Users/user/Documents/DevPlus LLC/06 - Projects/Harness to continue this project where the previous session left off.
 ---
 
@@ -17,7 +17,7 @@ Build a **portable, generic agent harness for solo developers**. Discord-front-e
 
 Mypal (a real-estate CRM at `/Users/user/Documents/DevPlus LLC/06 - Projects/mypalcrm/`) is the proving ground. The harness package extracts cleanly to any other project via `npx @devplusllc/harness init <repo-dir>`.
 
-**Status:** Implementation in progress. Phases 0–9 landed (~12 founder-days). Phase 10 (reviewer subagent — Layer C) is next. **Documentation in `docs/` is still the source of truth for design; the code in `harness/` is the runtime that implements it.**
+**Status:** Implementation in progress. Phases 0–10 landed (~12.5 founder-days). Phase 11 (UAT-on-phone — Layer U) is next. **Documentation in `docs/` is still the source of truth for design; the code in `harness/` is the runtime that implements it.**
 
 ## 1A. Implementation snapshot (binding — verify against `git log` before acting)
 
@@ -27,7 +27,8 @@ The Harness repo is **NOT self-hosted**. It's the source for the published npm p
 
 | SHA (short) | Phase | What |
 |-------------|-------|------|
-| _(pending)_ | 9 | sensor runners + Layer A/B/D + decision-assertions: `harness/src/sensors/` (types, `getDiff` via simple-git tracked+untracked, `loadStubCatalog`/`loadSensorRegistry` with project→pkg fallback, Layer A `runStubCatalog` flagging only added lines, Layer B `runAttestationCrossCheck` extracting fenced YAML + cross-checking files_touched/todos/stubs/behavior:full lies, Layer D `runRouteHandlerNonEmpty`+`runDtoNoFakeFields` glob-scoped structural sensors, `runDecisionAssertions` evaluating all 11 assertion kinds w/ regex approximations for ast/query/event/service kinds, `formatRemediation` agent-prompt-shaped failure formatter, `runSensors` orchestrator entry); orchestrator wired w/ retry loop (max_attempts=3 per L42), `sensing` phase, `sensor_history`/`last_sensor_sweep` on RunMeta, `attempt-N.json` persisted per run; `smoke:sensors` (16 unit + integration cases, no claude burn); existing `smoke:orchestrator` set `bypassSensors: true` since Phase 8 template predates attestation contract |
+| _(pending)_ | 10 | reviewer subagent (Layer C): `harness/src/reviewer/` (types — ReviewVerdict, ReviewGapCategory w/ 10 kinds incl `deferred_but_claimed_done` + `query_scope_omission` + `decision_contradiction`, ReviewerInput/Output/Result; schema — JSON Schema for `--json-schema` gate w/ verdict/gaps/confidence_signal/summary; prompt — anti-completionist system prompt (default-fail framing, "prove the implementer wrong"), buildReviewerUserPrompt assembles tightened spec + acceptance + decisions-in-scope + soft-findings + diff content (32k cap per file) + high-stakes augmentation per Codex audit Q1; reviewer — `runReviewer` Tier-matched-to-implementer per L15, validates parsed structured_output, computes ok = verdict:pass AND zero hard gaps; remediation — `formatReviewerRemediation` agent-prompt-shaped retry context; index). Orchestrator wired w/ `reviewing` phase after sensors:ok, runs reviewer w/ `runReviewerStep` (re-computes diff + decisions + high-stakes flag from project_globs), persists `reviewer/attempt-N.json`, RunMeta gets `reviewer_history` + `last_reviewer`, on verdict:fail w/ attempts left appends remediation + retries, exhaustion → fail-honesty-check. Existing smoke-orchestrator gets `bypassReviewer:true`. New `smoke:reviewer` (clean diff → verdict:pass; deferred-but-claimed-done diff → verdict:fail w/ hard gaps citing tax/discount/deferred miss; ~2 cheap haiku calls, ~$0.05 quota) |
+| `9223ef0` | 9 | sensor runners + Layer A/B/D + decision-assertions: `harness/src/sensors/` (types, `getDiff` via simple-git tracked+untracked, `loadStubCatalog`/`loadSensorRegistry` with project→pkg fallback, Layer A `runStubCatalog` flagging only added lines, Layer B `runAttestationCrossCheck` extracting fenced YAML + cross-checking files_touched/todos/stubs/behavior:full lies, Layer D `runRouteHandlerNonEmpty`+`runDtoNoFakeFields` glob-scoped structural sensors, `runDecisionAssertions` evaluating all 11 assertion kinds w/ regex approximations for ast/query/event/service kinds, `formatRemediation` agent-prompt-shaped failure formatter, `runSensors` orchestrator entry); orchestrator wired w/ retry loop (max_attempts=3 per L42), `sensing` phase, `sensor_history`/`last_sensor_sweep` on RunMeta, `attempt-N.json` persisted per run; `smoke:sensors` (16 unit + integration cases, no claude burn); existing `smoke:orchestrator` set `bypassSensors: true` since Phase 8 template predates attestation contract |
 | `6c945fa` | 8 | orchestrator + agent runner: `harness/src/orchestrator/` (inbox tailer w/ chokidar, FIFO + persisted shadow, workspace prep w/ syncMirror + SHA pin + dirty-overlap gate per L45, prompt renderer for `workflow.md`, agent runner via `claude --print --output-format stream-json`, `Orchestrator` class), `harness run` CLI starts it by default; `smoke:orchestrator` (drop task → run → assert echo.txt + events.jsonl + no commit); default `--permission-mode bypassPermissions` per operator preference |
 | `b730bac` | 7 | spec tightener (Layer F): `harness/src/claude/` subprocess wrapper (`claude --print --model <tier> --output-format json --json-schema ...`); `harness/src/tightener/` (Tier-1 Haiku default, Sonnet auto-escalate >500 words or via `force_tier`, structured JSON output, `ship_anyway` override); `smoke:tightener`; `.env.example` cleaned of `ANTHROPIC_API_KEY` (subscription auth only) |
 | `cdd0f13` | 6 | Whisper voice ingress (smart-whisper + ffmpeg pipe, audio never on disk) + Tier-0 Ollama classifier (llama3.2:3b, regex fallback), Discord adapter wired to both, `setup:whisper` build helper for path-with-spaces node-gyp workaround, `smoke:whisper` + `smoke:tier0` |
@@ -37,7 +38,7 @@ The Harness repo is **NOT self-hosted**. It's the source for the published npm p
 | `ce30537` | 2 | mirror checkout runtime (clone/sync/push/dirty-overlap; `~/.local/harness/repos/<slug>/`) |
 | `d011463` | 0–1 | bootstrap pkg + design docs + canonical templates under `harness/templates/` |
 
-### Twelve sensors green
+### Thirteen sensors green
 
 ```
 pnpm -F @devplusllc/harness build              # tsc -b
@@ -52,9 +53,10 @@ pnpm -F @devplusllc/harness smoke:whisper      # macOS `say` clip → ffmpeg →
 pnpm -F @devplusllc/harness smoke:tightener    # vague→blocked, clear→sonnet judgment, ship_anyway→forced; SKIPS without `claude` CLI auth
 pnpm -F @devplusllc/harness smoke:orchestrator # ephemeral mirror + drop task → orchestrator picks up → claude implementer writes file in mirror → assert echo.txt + events.jsonl + no commit
 pnpm -F @devplusllc/harness smoke:sensors      # 16 cases — Layer A clean/dirty + line-add discrimination, Layer B missing/accurate/lying attestation, Layer D route-handler-non-empty + dto-no-fake-fields, decision-assertions text_must_match + file_must_not_be_modified via ephemeral git mirror; PURE MECHANICAL — no claude burn
+pnpm -F @devplusllc/harness smoke:reviewer     # 2 cases — clean diff → verdict:pass; deferred-but-claimed-done diff → verdict:fail w/ hard gaps citing the deferral. SKIPS without `claude` CLI auth
 ```
 
-Run all twelve before doing anything that mutates `harness/src/` or `harness/templates/`. The tightener and orchestrator smokes each cost ~1-3 `claude` calls; budget ~$1 of subscription quota for the full sweep, skip casually for unrelated touches.
+Run all thirteen before doing anything that mutates `harness/src/` or `harness/templates/`. The tightener, reviewer, and orchestrator smokes each cost ~1-3 `claude` calls; budget ~$1 of subscription quota for the full sweep, skip casually for unrelated touches.
 
 The Discord adapter is real code (`harness/src/frontend/discord/`); it is not exercised in CI/smoke because live exercise needs `DISCORD_BOT_TOKEN`. Live wiring confirmed against guild `1487133145013944443` during Phase 5 acceptance: bot connects, 13 slash commands register, the three category channels (`📋 backlog`, `🟢 active`, `📦 archive`) are ensured.
 
@@ -152,9 +154,10 @@ harness/
 │   │                    bodies or `force_tier`, ship_anyway override),
 │   │                    index
 │   ├── orchestrator/    Phase 8 FIFO + agent runner. types (RunPhase incl
-│   │                    `sensing`, RunMeta w/ attempts +
-│   │                    sensor_history + last_sensor_sweep, InboxTaskRow,
-│   │                    OrchestratorOptions w/ bypassSensors +
+│   │                    `sensing` + `reviewing`, RunMeta w/ attempts +
+│   │                    sensor_history + last_sensor_sweep + reviewer_history
+│   │                    + last_reviewer, InboxTaskRow,
+│   │                    OrchestratorOptions w/ bypassSensors + bypassReviewer +
 │   │                    sensorLanguages + projectGlobs + maxAttempts,
 │   │                    QueueEntry); inbox (tail .harness/inbox/<...>.json,
 │   │                    move to processed/<...>.<outcome>.json after
@@ -170,10 +173,12 @@ harness/
 │   │                    <mirror>`, line-by-line stream parse,
 │   │                    events.jsonl); orchestrator (chokidar + poll loop,
 │   │                    single-task dispatcher, retry loop max_attempts
-│   │                    per L42 with remediation-prompt feedback, persists
-│   │                    `sensors/attempt-N.json`, surfaces phase
+│   │                    per L42 with remediation-prompt feedback —
+│   │                    sensor remediation OR reviewer remediation —
+│   │                    persists `sensors/attempt-N.json` +
+│   │                    `reviewer/attempt-N.json`, surfaces phase
 │   │                    transitions to adapters via postTaskUpdate)
-│   └── sensors/         Phase 9 honest-agent invariants stack (Layer A/B/D
+│   ├── sensors/         Phase 9 honest-agent invariants stack (Layer A/B/D
 │                        + decision-assertions). types (DiffEntry,
 │                        Attestation, SensorFinding, SensorResult,
 │                        SensorSweepResult, ProjectGlobs, StubCatalog);
@@ -205,8 +210,24 @@ harness/
 │                        failure body w/ concrete path:line + matched_text +
 │                        retry-attempt-of-N header); runner (`runSensors`
 │                        composes Layer A + B + D + decisions, returns
-│                        SensorSweepResult w/ ok + remediation_prompt);
-│                        index
+│   │                    SensorSweepResult w/ ok + remediation_prompt);
+│   │                    index
+│   └── reviewer/        Phase 10 Layer C — fresh-context reviewer
+│                        subagent. types (ReviewVerdict, ReviewGapCategory
+│                        w/ 10 kinds, ReviewerInput/Output/Result); schema
+│                        (JSON Schema for `--json-schema` gate); prompt
+│                        (anti-completionist system: default-fail, "prove
+│                        the implementer wrong"; buildReviewerUserPrompt
+│                        — tightened spec + acceptance + decisions-in-scope
+│                        w/ assertion summary + soft sensor findings + diff
+│                        content per file (32k char cap) + high-stakes
+│                        query-scope completeness augmentation per Codex
+│                        audit Q1); reviewer (`runReviewer` Tier-matched-
+│                        to-implementer per L15, validates structured_output,
+│                        ok = verdict:pass AND zero hard gaps); remediation
+│                        (`formatReviewerRemediation` agent-prompt-shaped
+│                        retry context naming each hard gap by category +
+│                        path + symbol); index
 ├── scripts/
 │   ├── check-layout.ts  Phase 1 sensor — also scans pkg/templates for banned
 │   │                    "mypal" strings (project-agnostic check per L50, S1)
@@ -244,6 +265,13 @@ harness/
 │   │                    violation via ephemeral git mirror,
 │   │                    parseStubCatalog malformed-entry skip. PURE
 │   │                    MECHANICAL — no claude burn.
+│   ├── smoke-reviewer.ts Phase 10 acceptance: clean implementation of a
+│   │                    `sum` function → reviewer verdict:pass, zero hard
+│   │                    gaps; deferred-but-claimed-done `calculateTotal`
+│   │                    (TODO comment + skipped tax/discount logic) →
+│   │                    verdict:fail w/ hard gaps citing the
+│   │                    deferred_but_claimed_done category. ~2 cheap
+│   │                    haiku calls (~$0.05). SKIPS without `claude`.
 │   └── setup-whisper.ts one-time native binding build helper (works around
 │                        node-gyp + path-with-spaces failure)
 └── templates/           seed copied into adopting projects by `harness init`
@@ -266,15 +294,22 @@ harness/
 
 ### What's NOT yet wired
 
-Phases 10–18 from `docs/INTEGRATION_PLAN.md`. In particular:
+Phases 11–18 from `docs/INTEGRATION_PLAN.md`. In particular:
 
-- **No reviewer subagent (Layer C).** Phase 10. Same model as implementer, fresh context, anti-completionist framing. Soft findings emitted by Phase 9 sensors are surfaced for the reviewer to consume.
-- **No UAT runner / evidence-file gate.** Phase 11.
+- **No UAT runner / evidence-file gate.** Phase 11. Headless Chrome via Playwright (or `mcp__claude-in-chrome`); GIF + screenshots + console + network; `.uat-passed` SHA256 evidence file blocks bare-`touch` fakes.
 - **No GC cron / backprop / decision capture flow.** Phases 12–14.
 - **No init script.** `harness init` is a stub; Phase 16 (inquirer-driven per operator note 2026-05-02).
-- **No git commit + push from a successful run.** The orchestrator stops after sensors pass; commits are gated on Phase 10 reviewer + Phase 11 UAT per the L16/L17/L18 trust posture.
+- **No git commit + push from a successful run.** The orchestrator stops after the reviewer verdict:pass; commits are gated on Phase 11 UAT per the L16/L17/L18 trust posture.
 
-The `harness watch`, `harness mirror`, `harness mcp serve`, and `harness run` CLIs work today. End-to-end ingest → tightener → mirror → agent → sensors (Layer A/B/D + decision-assertions) → retry-with-remediation runs cleanly. The next missing piece is the reviewer subagent (Layer C) between sensor-pass and UAT.
+The `harness watch`, `harness mirror`, `harness mcp serve`, and `harness run` CLIs work today. End-to-end ingest → tightener → mirror → agent → sensors (Layer A/B/D + decision-assertions) → reviewer subagent (Layer C, fresh context) → retry-with-remediation runs cleanly. The next missing piece is UAT-on-phone (Layer U) between reviewer-pass and git-commit-to-main.
+
+### Phase 10 design notes (binding)
+
+- **Reviewer tier matches implementer.** Per L15, what catches blindspots is context isolation, not weight diversity. The orchestrator passes `defaultTier` to both. Operator can override per-run via `runReviewer({ tier })` if a riskier run wants Sonnet review of a Haiku implementation, but that is not the default — both burn the same plan quota.
+- **Reviewer sees the diff content, not the implementer's reasoning.** `runReviewer` reads diff via `getDiff(mirrorPath, shaPin)` — same source as sensors. Each changed file's post-change content is included in the user prompt up to 32k characters per file (cap exists for large generated artifacts; trim with care if you raise it).
+- **High-stakes augmentation is glob-driven.** When `projectGlobs.high_stakes_globs` overlaps the diff, the prompt appends an explicit query-scope completeness paragraph per Codex audit Q1.
+- **Verdict gating.** `result.ok = verdict === "pass" && hard_gaps === 0`. A reviewer that returns verdict:fail OR any hard gap blocks the run. Soft gaps are advisory; they show up in `last_reviewer.soft_gaps` and are intended for the eventual UAT bundle (Phase 11) to surface to the operator.
+- **Retry loop is unified.** Phases 9 + 10 share the same `attempt` counter and the same `maxAttempts` cap (default 3 per L42). The remediation body that's appended on retry is whichever rejected the run — sensor remediation OR reviewer remediation, not both. Operator wants attempts to be a real budget, not "3 sensor + 3 reviewer = 6".
 
 ### Phase 9 design caveats (binding)
 
@@ -481,20 +516,21 @@ Each layer fail → run marked `failed-honesty-check` with structured findings. 
 
 ## 10. What the operator wants next (most likely)
 
-Phases 0–9 are landed. Next is **Phase 10 — reviewer subagent (Layer C)** (`docs/INTEGRATION_PLAN.md` §5 Phase 10; ~0.5 founder-days).
+Phases 0–10 are landed. Next is **Phase 11 — UAT-on-phone (Layer U)** (`docs/INTEGRATION_PLAN.md` §5 Phase 11 + `docs/UAT_PIPELINE.md`; ~1.5 founder-days).
 
-Phase 10 deliverables:
+Phase 11 deliverables:
 
-1. **Reviewer subagent** dispatched after sensors pass — fresh `claude` subprocess with no session persistence (same flag as implementer). Same tier/model as the implementer (per L15 — context isolation does the work, not weight diversity).
-2. **Context surface** — reads ONLY: `task.spec.tightened.md` (or rendered tightened spec body), the diff (filtered to changed-file content), decisions ledger, in-scope assertions, and Phase 9's soft findings. Does NOT see the implementer's reasoning or tool-use trace.
-3. **Anti-completionist prompt** — default-fail framing: "prove the implementer wrong." For high-stakes runs (per L43), explicit query-scope completeness check.
-4. **Structured output** — `{ verdict: "pass" | "fail", gaps: [...], confidence_signal: ... }` via `--json-schema` gate.
-5. **Wire into orchestrator** — after sensor sweep returns `ok`, run reviewer; on `verdict: fail` either retry (if attempts left + soft) or fail-honesty-check (hard).
-6. **Smoke** at `harness/scripts/smoke-reviewer.ts` — synthetic diff with deferred-but-claimed-done function produces `verdict: fail` with `gaps` enumerating the deferral. Burns ~1-2 claude calls.
+1. **UAT-runner agent (Tier 2)** — reads tightened spec, generates Playwright script targeting the change, runs headless Chrome.
+2. **Capture bundle** — GIF (`gif_creator` MCP if available, else local Playwright), N screenshots, console log, network log. For backend-only diffs: curl/SQL transcript or sensor-output table.
+3. **Evidence-file gate** — `.harness/runs/active/<run_id>/uat/.uat-passed` contains SHA256 of the actual artifact bundle. The orchestrator's pre-push gate refuses commit unless evidence file exists AND its SHA256 matches the recomputed bundle hash. Bare `touch` rejected.
+4. **Discord post** in run-channel — embed the GIF; pass criteria checklist; `[🟢 Approve & Push]`, `[🔴 Reject + tell me why]`, `[❓ Ask follow-up]` buttons.
+5. **Persistent UAT.md** — `.harness/tasks/<id>/uat.md` carries `status: in-progress | passed | failed | blocked` + per-step state. Survives context resets per GSD pattern.
+6. **Wire into orchestrator** — after reviewer:ok, run UAT; on 🟢 from operator, push to main. On 🔴, A/B/C/D dialog for reason, re-spawn implementer with rejection context. On ❓, open thread.
+7. **Smoke** at `harness/scripts/smoke-uat.ts` — synthetic UAT failure produces 🔴-able artifact set; bare `touch` of `.uat-passed` rejected (SHA mismatch).
 
-Phase 10 prerequisites: nothing new beyond Phase 9.
+Phase 11 prerequisites: nothing new beyond Phase 10. Discord button-handling is the new surface; existing `frontend.discord/` adapter exposes `requestApproval` and the smoke can mock it via the stub adapter.
 
-Do NOT start Phase 10 until the operator says "go". Confirm what's landed first.
+Do NOT start Phase 11 until the operator says "go". Confirm what's landed first.
 
 ## 11. How to start a fresh session
 
@@ -510,10 +546,10 @@ Do NOT start Phase 10 until the operator says "go". Confirm what's landed first.
                                        smoke:discord smoke:tier0 smoke:sensors
    All nine cheap ones should print OK without burning claude quota.
 5. Confirm to operator in 2-3 lines, e.g.:
-     "Resumed Harness project. Phases 0–9 landed. 9 cheap sensors green.
-      Ready for Phase 10 (reviewer subagent — Layer C). Proceed?"
+     "Resumed Harness project. Phases 0–10 landed. 9 cheap sensors green.
+      Ready for Phase 11 (UAT-on-phone — Layer U). Proceed?"
 6. Wait for direction. Don't propose anything beyond what's in INTEGRATION_PLAN.md
-   §5 Phase 10.
+   §5 Phase 11.
 7. Caveman ultra mode active for chat replies. Documents/commits/PRs in normal
    English. Match operator's terse-direct style.
 ```

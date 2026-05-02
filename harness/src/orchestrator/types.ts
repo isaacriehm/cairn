@@ -1,5 +1,6 @@
 import type { ClaudeTier } from "../claude/index.js";
 import type { FrontendAdapter } from "../frontend/index.js";
+import type { ReviewVerdict } from "../reviewer/types.js";
 import type { ProjectGlobs, SensorLanguage, SensorSweepResult } from "../sensors/types.js";
 
 /**
@@ -25,6 +26,7 @@ export type RunPhase =
   | "prepping"
   | "running"
   | "sensing"
+  | "reviewing"
   | "succeeded"
   | "failed";
 
@@ -69,6 +71,22 @@ export interface RunMeta {
     SensorSweepResult,
     "ok" | "hard_failures" | "soft_findings"
   >;
+  /** Per-attempt reviewer subagent (Layer C) summary. */
+  reviewer_history?: {
+    attempt: number;
+    ok: boolean;
+    verdict: ReviewVerdict;
+    hard_gaps: number;
+    soft_gaps: number;
+    confidence_signal: "high" | "medium" | "low";
+  }[];
+  last_reviewer?: {
+    ok: boolean;
+    verdict: ReviewVerdict;
+    hard_gaps: number;
+    soft_gaps: number;
+    confidence_signal: "high" | "medium" | "low";
+  };
 }
 
 /**
@@ -114,6 +132,8 @@ export interface OrchestratorOptions {
   bypassTightener?: boolean;
   /** Skip the sensor sweep (Phase 9). Smoke convenience. Default false. */
   bypassSensors?: boolean;
+  /** Skip the reviewer subagent (Phase 10). Smoke convenience. Default false. */
+  bypassReviewer?: boolean;
   /**
    * Force this tier for the implementer. Default: haiku (cheap; raise to
    * sonnet for code-class tasks once Phase 9+ adds trust-class detection).

@@ -3,9 +3,19 @@ import { randomBytes } from "node:crypto";
 import chokidar, { type FSWatcher } from "chokidar";
 import { join } from "node:path";
 import { logger } from "../logger.js";
+import { matchAnyGlob } from "../ground/glob.js";
 import { requireMirrorRecord } from "../mirror/index.js";
-import { runSensors } from "../sensors/index.js";
+import {
+  formatReviewerRemediation,
+  runReviewer,
+  type ReviewerResult,
+} from "../reviewer/index.js";
+import { getDiff, runSensors } from "../sensors/index.js";
 import type { SensorSweepResult } from "../sensors/index.js";
+import {
+  decisionsInScope,
+  loadAcceptedDecisions,
+} from "../sensors/decisions.js";
 import { tightenSpec } from "../tightener/index.js";
 import {
   ensureInboxDirs,
@@ -207,6 +217,7 @@ export class Orchestrator {
     await this.writeMeta(meta);
 
     // ── Tightener (Phase 7) ────────────────────────────────────────────
+    let tightenedSpec: string | undefined;
     if (this.opts.bypassTightener !== true) {
       await this.surfacePhase(entry, meta, "tightening");
       try {
@@ -217,6 +228,7 @@ export class Orchestrator {
         });
         meta.tightener_score = tightened.output.spec_quality_score;
         meta.tightener_ready = tightened.ready;
+        tightenedSpec = tightened.output.tightened_spec_proposal;
         if (!tightened.ready) {
           await this.surfacePhase(entry, meta, "blocked");
           await this.completeRun(entry, meta, "failed", "tightener returned ready=false");
@@ -275,8 +287,10 @@ export class Orchestrator {
     let remediationBody = "";
     meta.attempts = 0;
     meta.sensor_history = [];
+    meta.reviewer_history = [];
 
     let lastSweep: SensorSweepResult | undefined;
+    let lastReviewer: ReviewerResult | undefined;
     let attempt = 1;
     while (attempt <= maxAttempts) {
       meta.attempts = attempt;
@@ -361,22 +375,87 @@ export class Orchestrator {
       };
       await this.writeMeta(meta);
 
-      if (lastSweep.ok) {
+      if (!lastSweep.ok) {
+        // Sensor hard fail. If attempts left, append remediation + loop.
+        if (attempt >= maxAttempts) {
+          await this.completeRun(
+            entry,
+            meta,
+            "failed",
+            `sensors failed-honesty-check after ${attempt} attempt(s); ${lastSweep.hard_failures} hard failure(s)`,
+          );
+          return;
+        }
+        remediationBody = lastSweep.remediation_prompt;
+        attempt += 1;
+        continue;
+      }
+
+      // ── Reviewer subagent (Layer C, Phase 10) ────────────────────────
+      if (this.opts.bypassReviewer === true) {
+        await this.completeRun(entry, meta, "succeeded");
+        return;
+      }
+      await this.surfacePhase(entry, meta, "reviewing");
+      try {
+        lastReviewer = await this.runReviewerStep({
+          mirrorPath: meta.mirror_path,
+          shaPin: prep.sha_pin,
+          tightenedSpec: tightenedSpec ?? taskBody,
+          acceptanceCriteria: entry.row.acceptance_criteria ?? [],
+          tier,
+          softFindings: lastSweep.results.flatMap((r) =>
+            r.findings.filter((f) => f.severity === "soft"),
+          ),
+          highStakesGlobs: this.opts.projectGlobs?.high_stakes_globs ?? [],
+        });
+      } catch (err) {
+        await this.completeRun(entry, meta, "failed", `reviewer: ${String(err)}`);
+        return;
+      }
+      await this.persistReviewerAttempt(entry.run_id, attempt, lastReviewer);
+      const hardGapCount = lastReviewer.output.gaps.filter(
+        (g) => g.severity === "hard",
+      ).length;
+      const softGapCount = lastReviewer.output.gaps.filter(
+        (g) => g.severity === "soft",
+      ).length;
+      meta.reviewer_history.push({
+        attempt,
+        ok: lastReviewer.ok,
+        verdict: lastReviewer.output.verdict,
+        hard_gaps: hardGapCount,
+        soft_gaps: softGapCount,
+        confidence_signal: lastReviewer.output.confidence_signal,
+      });
+      meta.last_reviewer = {
+        ok: lastReviewer.ok,
+        verdict: lastReviewer.output.verdict,
+        hard_gaps: hardGapCount,
+        soft_gaps: softGapCount,
+        confidence_signal: lastReviewer.output.confidence_signal,
+      };
+      await this.writeMeta(meta);
+
+      if (lastReviewer.ok) {
         await this.completeRun(entry, meta, "succeeded");
         return;
       }
 
-      // Hard fail. If attempts left, append remediation + loop.
+      // Reviewer rejected. Retry if attempts left, else fail.
       if (attempt >= maxAttempts) {
         await this.completeRun(
           entry,
           meta,
           "failed",
-          `sensors failed-honesty-check after ${attempt} attempt(s); ${lastSweep.hard_failures} hard failure(s)`,
+          `reviewer failed-honesty-check after ${attempt} attempt(s); ${hardGapCount} hard gap(s); verdict=${lastReviewer.output.verdict}`,
         );
         return;
       }
-      remediationBody = lastSweep.remediation_prompt;
+      remediationBody = formatReviewerRemediation(lastReviewer.output, {
+        attempt,
+        maxAttempts,
+      });
       attempt += 1;
     }
   }
@@ -393,6 +472,49 @@ export class Orchestrator {
       JSON.stringify(sweep, null, 2),
       "utf8",
     );
+  }
+
+  private async persistReviewerAttempt(
+    runId: string,
+    attempt: number,
+    result: ReviewerResult,
+  ): Promise<void> {
+    const dir = join(this.opts.repoRoot, RUNS_ACTIVE_REL, runId, "reviewer");
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      join(dir, `attempt-${attempt}.json`),
+      JSON.stringify(result, null, 2),
+      "utf8",
+    );
+  }
+
+  private async runReviewerStep(args: {
+    mirrorPath: string;
+    shaPin: string;
+    tightenedSpec: string;
+    acceptanceCriteria: string[];
+    tier: "haiku" | "sonnet" | "opus";
+    softFindings: import("../sensors/index.js").SensorFinding[];
+    highStakesGlobs: string[];
+  }): Promise<ReviewerResult> {
+    const diff = await getDiff({
+      mirrorPath: args.mirrorPath,
+      shaPin: args.shaPin,
+    });
+    const accepted = loadAcceptedDecisions(args.mirrorPath);
+    const inScope = decisionsInScope(accepted, diff);
+    const isHighStakes =
+      args.highStakesGlobs.length > 0 &&
+      diff.some((d) => matchAnyGlob(d.path, args.highStakesGlobs));
+    return runReviewer({
+      tightened_spec: args.tightenedSpec,
+      acceptance_criteria: args.acceptanceCriteria,
+      diff,
+      decisions_in_scope: inScope,
+      soft_findings: args.softFindings,
+      is_high_stakes: isHighStakes,
+      tier: args.tier,
+    });
   }
 
   private async renderPrompt(args: {
