@@ -3,7 +3,7 @@ type: resume-prompt
 status: handoff
 audience: ai-only
 generated: 2026-05-02
-last-updated: 2026-05-02 (after Phase 0–11.5 landed)
+last-updated: 2026-05-02 (after Phase 11 fully complete — 11.x + 11.y + 11.5b)
 purpose: Drop into a fresh Claude Code session in /Users/user/Documents/DevPlus LLC/06 - Projects/Harness to continue this project where the previous session left off.
 ---
 
@@ -17,7 +17,7 @@ Build a **portable, generic agent harness for solo developers**. Discord-front-e
 
 Mypal (a real-estate CRM at `/Users/user/Documents/DevPlus LLC/06 - Projects/mypalcrm/`) is the proving ground. The harness package extracts cleanly to any other project via `npx @devplusllc/harness init <repo-dir>`.
 
-**Status:** Implementation in progress. Phases 0–11.5 landed (~15 founder-days). Phase 12 (GC cadence) is next. **Documentation in `docs/` is still the source of truth for design; the code in `harness/` is the runtime that implements it.**
+**Status:** Implementation in progress. Phase 11 fully complete — Phases 0–11 + 11.5 + 11.x (rejection retry) + 11.y (question flow) + 11.5b (pg/mysql drivers) all landed (~16.5 founder-days). Phase 12 (GC cadence) is next. **Documentation in `docs/` is still the source of truth for design; the code in `harness/` is the runtime that implements it.**
 
 ## 1A. Implementation snapshot (binding — verify against `git log` before acting)
 
@@ -27,7 +27,8 @@ The Harness repo is **NOT self-hosted**. It's the source for the published npm p
 
 | SHA (short) | Phase | What |
 |-------------|-------|------|
-| _(pending)_ | 11.5 | Heavy probes + setup helpers: live Playwright UI probe in `harness/src/uat/probes/ui.ts` (lazy-loaded `playwright-core`, launches chromium headless, runs UiStep[] script — goto/click/fill/screenshot/wait_for_selector/wait_for_text — captures per-step screenshots, video.webm, console.log, network.json under `runs/active/<id>/uat/probes/<probe_id>/`); live SQL probe split into `harness/src/uat/probes/sql/{types,config,sqlite,pg,mysql,index}.ts` (sqlite via lazy-loaded `better-sqlite3` is fully functional + READ-ONLY enforced + non-SELECT rejected; pg/mysql return Phase 11.5b placeholder errors; connection config from `.harness/config/probes/sql.yaml` with credentials only via env vars per operator preference); live integration probe in `harness/src/uat/probes/integration.ts` (docker-compose orchestration: `docker compose up -d <service>` → ready_check polling (http or cli, 60s deadline) → nested test probe (http or cli) → unconditional `docker compose down` teardown; SKIPS gracefully when docker compose not on PATH or compose file missing). Setup helpers: `setup:uat-browsers` wraps `npx playwright install chromium`; `setup:uat-sql --build-binding` writes `.harness/config/probes/sql.yaml` template + builds better-sqlite3 native binding using same path-with-spaces /tmp-staging trick as setup-whisper; `setup:uat-docker` sanity-checks docker compose + writes default compose template. devDependencies updated with `playwright-core@1.50.0` + `better-sqlite3@11.10.0` + `@types/better-sqlite3@7.6.13` (all heavy deps stay devDep so adopters install lean and opt in via setup helpers). smoke-uat updated: removed step 6 ui placeholder check (was env-fragile once playwright-core landed), added live UI probe step (visits in-process http page, captures 4 artifacts incl. video), added live SQL probe step (creates ephemeral sqlite db with 2 rows, asserts rowcount + first_row_includes), added SQL non-SELECT rejection step. |
+| _(pending)_ | 11 complete | Phase 11 finishing pieces (11.x + 11.y + 11.5b): UAT-rejection-driven retry — `harness/src/uat/rejection.ts` (captureUatRejection runs A/B/C/D dialog via adapter.requestDialog after 🔴, optional voice URL detection + Whisper transcription via existing voice/transcribeUrl, writeRejectionYaml lands manifest under uat/, formatUatRejectionRemediation produces category-specific agent prompt); orchestrator dispatch loop now retries on operator-reject when attempts remain (cap = maxAttempts per L42), terminal-fails on probe-only fail or exhausted reject. Question flow — `harness/src/uat/question.ts` (read-only Tier-1 Haiku Q&A agent w/ structured output {answer, confidence_signal, citations}, NO file write tools); runUat extends ApprovalGate with optional questionText + cycles ❓ Ask up to maxQuestionRounds (default 5) calling questionHandler + notifier per round. Live pg + mysql drivers — `harness/src/uat/probes/sql/{pg,mysql}.ts` (lazy-loaded clients; READ-ONLY enforced by upstream regex gate AND defense-in-depth `BEGIN READ ONLY ... ROLLBACK` for pg / `SET SESSION TRANSACTION READ ONLY` for mysql; credentials only via env vars). setup-uat-sql gains `--install` (auto pnpm-add the matching driver pkg). Three new smokes: `smoke:uat-rejection` (6 mechanical cases — extractAudioUrl detection, captureUatRejection category=B w/ free text, invalid-choice fallback to D, writeRejectionYaml round-trip + parsed YAML check, formatUatRejectionRemediation includes operator note + failed AC + correct guidance, all 4 categories produce distinct guidance); `smoke:uat-question` (1 claude haiku call — agent answers concrete bundle question about AC failure, asserts answer references casing miss + at least one citation); both pure mechanical for rejection / 1 cheap haiku for question. |
+| `f8f6121` | 11.5 | Heavy probes + setup helpers: live Playwright UI probe in `harness/src/uat/probes/ui.ts` (lazy-loaded `playwright-core`, launches chromium headless, runs UiStep[] script — goto/click/fill/screenshot/wait_for_selector/wait_for_text — captures per-step screenshots, video.webm, console.log, network.json under `runs/active/<id>/uat/probes/<probe_id>/`); live SQL probe split into `harness/src/uat/probes/sql/{types,config,sqlite,pg,mysql,index}.ts` (sqlite via lazy-loaded `better-sqlite3` is fully functional + READ-ONLY enforced + non-SELECT rejected; pg/mysql return Phase 11.5b placeholder errors; connection config from `.harness/config/probes/sql.yaml` with credentials only via env vars per operator preference); live integration probe in `harness/src/uat/probes/integration.ts` (docker-compose orchestration: `docker compose up -d <service>` → ready_check polling (http or cli, 60s deadline) → nested test probe (http or cli) → unconditional `docker compose down` teardown; SKIPS gracefully when docker compose not on PATH or compose file missing). Setup helpers: `setup:uat-browsers` wraps `npx playwright install chromium`; `setup:uat-sql --build-binding` writes `.harness/config/probes/sql.yaml` template + builds better-sqlite3 native binding using same path-with-spaces /tmp-staging trick as setup-whisper; `setup:uat-docker` sanity-checks docker compose + writes default compose template. devDependencies updated with `playwright-core@1.50.0` + `better-sqlite3@11.10.0` + `@types/better-sqlite3@7.6.13` (all heavy deps stay devDep so adopters install lean and opt in via setup helpers). smoke-uat updated: removed step 6 ui placeholder check (was env-fragile once playwright-core landed), added live UI probe step (visits in-process http page, captures 4 artifacts incl. video), added live SQL probe step (creates ephemeral sqlite db with 2 rows, asserts rowcount + first_row_includes), added SQL non-SELECT rejection step. |
 | `bb8dd3f` | 11 | UAT-on-phone (Layer U) as multi-probe E2E framework: `harness/src/uat/` (types — discriminated union UatProbe over http/cli/ui/sql/integration, UatAcceptanceCheck routes ONE probe per AC, UatSummary canonical bundle, UatRunResult, UatRejection w/ A/B/C/D categories, EvidenceFile manifest; schema — JSON Schema for `--json-schema` gate; prompt — anti-hallucination "pick the cheapest probe that fits" ladder, http > cli > sql > ui > integration; runner — `generateUatChecks` Tier 2 default w/ defense-in-depth filter rejecting unavailable surfaces; probes/{http,cli}.ts — fetch + child_process w/ status/body/exit/stdout assertions, header_present, json_path_equals, body_matches_regex; probes/{ui,sql,integration}.ts — placeholder skipped_reason returns until Phase 11.5/11.6; probes/index.ts dispatches by `kind`; bundle — writeSummary, writeEvidenceFile (per-file SHA256 + bundle SHA256 manifest), verifyEvidenceFile rejecting bare-touch + post-hoc artifact mod + extra-file-after-evidence + non-approve decision; persistent — upsertUatTask under .harness/tasks/<task_id>/uat.md w/ status (pending|passing|passed|failed|blocked|abandoned), AC checklist, blocked_by NEVER folded into Gaps, gaps_resolved/gaps_open lists, attempt counter; uat — `runUat` full pipeline orchestrator: runner → cold-start smoke → probes → summary → UAT.md → adapter approval → evidence file). Orchestrator wired w/ `uat` phase after reviewer:ok, computes is_high_stakes from project_globs, approval gate maps adapter.requestApproval(ApprovalBundle) → UAT decision, RunMeta gets uat_history + last_uat. Phase 11 v1 fails-terminal on UAT failure (no retry); Phase 11.x adds rejection.yaml-driven retry. Existing smoke-orchestrator gets `bypassUat:true`. Two new smokes: `smoke:uat` 13 mechanical cases (http happy/fail, cross-tenant 403, cli pass/fail, ui/sql/integration → skipped, bundle write+verify, bare-touch reject, post-hoc-mod reject, extra-file reject, requireDecision reject, persistent UAT.md round-trip w/ gap resolution); `smoke:uat-runner` 3 claude scenarios (API spec → all http probes + backend_only=true; CLI spec → all cli probes; high-stakes spec → cross-tenant fixture flagged is_high_stakes_required=true). |
 | `d29ccb3` | 10 | reviewer subagent (Layer C): `harness/src/reviewer/` (types — ReviewVerdict, ReviewGapCategory w/ 10 kinds incl `deferred_but_claimed_done` + `query_scope_omission` + `decision_contradiction`, ReviewerInput/Output/Result; schema — JSON Schema for `--json-schema` gate w/ verdict/gaps/confidence_signal/summary; prompt — anti-completionist system prompt (default-fail framing, "prove the implementer wrong"), buildReviewerUserPrompt assembles tightened spec + acceptance + decisions-in-scope + soft-findings + diff content (32k cap per file) + high-stakes augmentation per Codex audit Q1; reviewer — `runReviewer` Tier-matched-to-implementer per L15, validates parsed structured_output, computes ok = verdict:pass AND zero hard gaps; remediation — `formatReviewerRemediation` agent-prompt-shaped retry context; index). Orchestrator wired w/ `reviewing` phase after sensors:ok, runs reviewer w/ `runReviewerStep` (re-computes diff + decisions + high-stakes flag from project_globs), persists `reviewer/attempt-N.json`, RunMeta gets `reviewer_history` + `last_reviewer`, on verdict:fail w/ attempts left appends remediation + retries, exhaustion → fail-honesty-check. Existing smoke-orchestrator gets `bypassReviewer:true`. New `smoke:reviewer` (clean diff → verdict:pass; deferred-but-claimed-done diff → verdict:fail w/ hard gaps citing tax/discount/deferred miss; ~2 cheap haiku calls, ~$0.05 quota) |
 | `9223ef0` | 9 | sensor runners + Layer A/B/D + decision-assertions: `harness/src/sensors/` (types, `getDiff` via simple-git tracked+untracked, `loadStubCatalog`/`loadSensorRegistry` with project→pkg fallback, Layer A `runStubCatalog` flagging only added lines, Layer B `runAttestationCrossCheck` extracting fenced YAML + cross-checking files_touched/todos/stubs/behavior:full lies, Layer D `runRouteHandlerNonEmpty`+`runDtoNoFakeFields` glob-scoped structural sensors, `runDecisionAssertions` evaluating all 11 assertion kinds w/ regex approximations for ast/query/event/service kinds, `formatRemediation` agent-prompt-shaped failure formatter, `runSensors` orchestrator entry); orchestrator wired w/ retry loop (max_attempts=3 per L42), `sensing` phase, `sensor_history`/`last_sensor_sweep` on RunMeta, `attempt-N.json` persisted per run; `smoke:sensors` (16 unit + integration cases, no claude burn); existing `smoke:orchestrator` set `bypassSensors: true` since Phase 8 template predates attestation contract |
@@ -40,7 +41,7 @@ The Harness repo is **NOT self-hosted**. It's the source for the published npm p
 | `ce30537` | 2 | mirror checkout runtime (clone/sync/push/dirty-overlap; `~/.local/harness/repos/<slug>/`) |
 | `d011463` | 0–1 | bootstrap pkg + design docs + canonical templates under `harness/templates/` |
 
-### Fifteen sensors green (smoke:uat now exercises live UI + SQL probes when devDeps installed)
+### Seventeen sensors green (smoke:uat now exercises live UI + SQL probes when devDeps installed; rejection + question smokes added)
 
 ```
 pnpm -F @devplusllc/harness build              # tsc -b
@@ -58,6 +59,8 @@ pnpm -F @devplusllc/harness smoke:sensors      # 16 cases — Layer A clean/dirt
 pnpm -F @devplusllc/harness smoke:reviewer     # 2 cases — clean diff → verdict:pass; deferred-but-claimed-done diff → verdict:fail w/ hard gaps citing the deferral. SKIPS without `claude` CLI auth
 pnpm -F @devplusllc/harness smoke:uat          # 16 cases — http/cli probes pass/fail, sql/integration → skipped when surface missing, bundle write+verify, bare-touch reject, post-hoc-mod reject, extra-file-after-evidence reject, requireDecision reject, persistent UAT.md round-trip + gap resolution, LIVE UI probe (skips if playwright-core/chromium missing), LIVE SQL probe (skips if better-sqlite3 missing), SQL probe rejects non-SELECT. No claude burn; live probes need devDeps installed (`pnpm install` + `pnpm -F @devplusllc/harness setup:uat-browsers && setup:uat-sql --build-binding`)
 pnpm -F @devplusllc/harness smoke:uat-runner   # 3 cases — API spec → http; CLI spec → cli; high-stakes spec → cross-tenant fixture flagged. SKIPS without `claude`
+pnpm -F @devplusllc/harness smoke:uat-rejection # 6 cases — extractAudioUrl detection, captureUatRejection w/ stub adapter A/B/C/D, invalid-choice fallback, writeRejectionYaml round-trip, remediation formatter shape, category-specific guidance differs. PURE MECHANICAL — no claude burn
+pnpm -F @devplusllc/harness smoke:uat-question  # 1 case — question agent answers concrete bundle question, asserts citations + casing-miss reference. ~1 cheap haiku call. SKIPS without `claude`
 ```
 
 Run all fifteen before doing anything that mutates `harness/src/` or `harness/templates/`. The tightener, reviewer, uat-runner, and orchestrator smokes each cost ~1-3 `claude` calls; budget ~$1 of subscription quota for the full sweep, skip casually for unrelated touches.
@@ -360,10 +363,8 @@ harness/
 
 ### What's NOT yet wired
 
-Phases 11.5b + 12–18 from `docs/INTEGRATION_PLAN.md`. In particular:
+Phases 12–18 from `docs/INTEGRATION_PLAN.md`. In particular:
 
-- **No postgres / mysql SQL probe drivers.** Phase 11.5b. The connection-config + dispatcher are wired; Phase 11.5b adds the live `pg` / `mysql2` clients. v1 sqlite is fully functional.
-- **No UAT-rejection-driven retry.** Phase 11.x adds `rejection.yaml` as remediation context for the implementer when the operator rejects (UAT_PIPELINE.md §6). v1 fails-terminal on UAT failure.
 - **No GC cron / backprop / decision capture flow.** Phases 12–14.
 - **No init script.** `harness init` is a stub; Phase 16 (inquirer-driven per operator note 2026-05-02). Phase 16's E2E-setup question (per operator pivot 2026-05-02): "Set up E2E now / Defer / Skip" — branches into running setup:uat-browsers + setup:uat-sql + setup:uat-docker per stack profile.
 - **No git commit + push from a successful run.** The orchestrator stops after UAT verdict; commits are gated on the pre-push evidence-file recompute per L16/L17/L18 trust posture.
@@ -602,35 +603,28 @@ Each layer fail → run marked `failed-honesty-check` with structured findings. 
 
 ## 10. What the operator wants next (most likely)
 
-Phases 0–11.5 are landed. Three natural follow-ups, depending on what the operator wants first:
+Phase 11 is fully complete. Next is **Phase 12 — garbage collection cadence** (`docs/INTEGRATION_PLAN.md` §5 Phase 12; ~1 founder-day).
 
-### Option A — Phase 11.5b — postgres/mysql SQL drivers (~0.5 founder-day)
+Phase 12 deliverables:
 
-1. Wire `pg` client in `harness/src/uat/probes/sql/pg.ts` (lazy-load, connection from config + env-var credentials, READ-ONLY enforced).
-2. Wire `mysql2` client in `harness/src/uat/probes/sql/mysql.ts` (same shape).
-3. Update `setup:uat-sql --driver postgres` (or `mysql`) to install the matching client.
-4. Live test in smoke-uat against an in-process pg/mysql isn't trivial — defer to live exercise via operator's project DB, or use docker-compose'd test DB if integration setup is configured.
-
-### Option B — Phase 11.x — UAT-rejection-driven retry (~0.5 founder-day)
-
-1. When operator chooses 🔴 Reject, write `rejection.yaml` per UAT_PIPELINE §6 (category A/B/C/D + operator_note + voice_transcript optional).
-2. Append rejection.yaml as remediation context for the implementer's next attempt within the existing retry loop.
-3. Smoke: stub adapter pre-set to reject → expect retry attempt with rejection-derived prompt; second attempt set to approve → expect succeeded.
-
-### Option C — Phase 12 — garbage collection cadence (~1 founder-day)
-
-1. Nightly cron / `/loop` for: frontmatter freshness, generator drift, stub-catalog hits, doc-gardening, quality-grade update.
-2. **Batch canary** per Codex audit must-fix — multi-commit GC batches re-render WORKFLOW.md against synthetic-task fixture + re-run all sensors against post-batch `main`; abort + surface on either failure.
-3. Auto-merge classes per L16/L17/L18 wired here.
+1. **Nightly drift sweep** via `/loop` skill or harness service cron. Passes (per PRIMER §12.1):
+   - Frontmatter freshness (>30d → warn, >60d → block)
+   - Generator drift (re-run profile.generators commands; commit `chore(gc): regenerate <artifact>` if no source change)
+   - Stub catalog hits (open targeted refactor commits for safe-class)
+   - Doc gardening (broken links, orphan paths)
+   - Quality-grade update (per-module score → `.harness/ground/quality-grades.yaml`)
+2. **Batch canary** (per Codex audit must-fix): multi-commit GC batches re-render workflow.md against a synthetic-task fixture AND re-run all sensors against the post-batch `main` snapshot before pushing. Abort + surface on either failure — catches "individually safe, collectively broken."
+3. **Auto-merge classes** wired per L16/L17/L18: safe-class auto-merges, code-class needs sensors + reviewer + UAT 🟢, high-stakes adds Layer E.
+4. **Smoke** at `harness/scripts/smoke-gc.ts` — synthetic stale frontmatter case; GC pass surfaces it; safe-class auto-merge produces clean commit on main visible in user's working-tree pull.
 
 ### Phase 16 init script E2E setup (referenced from operator pivot 2026-05-02)
 
 Per operator pivot, the init script must ask "Set up E2E now / Defer / Skip" and branch:
-- `now` → `setup:uat-browsers` + `setup:uat-sql` + `setup:uat-docker` per stack profile
+- `now` → `setup:uat-browsers` + `setup:uat-sql --install [--driver sqlite|postgres|mysql]` + `setup:uat-docker` per stack profile
 - `defer` → `e2e_setup: deferred` in `.harness/config.yaml`; orchestrator prompts again on first UAT need
 - `skip` → `e2e_setup: skipped`; code-class UAT becomes review-only; high-stakes refuses dispatch
 
-Do NOT start any phase until the operator says "go". Confirm what's landed first.
+Do NOT start Phase 12 until the operator says "go". Confirm what's landed first.
 
 ## 11. How to start a fresh session
 

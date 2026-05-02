@@ -167,6 +167,16 @@ export interface OrchestratorOptions {
    */
   uatColdStartCommand?: { command: string; args: string[]; cwd?: string };
   /**
+   * Override the post-reject A/B/C/D dialog timeout. Default 24h per
+   * UAT_PIPELINE.md §9 (`uat_decision_seconds`). Smokes pass a short
+   * value so stub adapters resolve quickly.
+   */
+  uatRejectDialogTimeoutMs?: number;
+  /** Override the question agent's tier. Default: same tier as implementer. */
+  uatQuestionTier?: ClaudeTier;
+  /** Cap on ❓ Ask iterations per run. Default 5 in runUat. */
+  uatMaxQuestionRounds?: number;
+  /**
    * Force this tier for the implementer. Default: haiku (cheap; raise to
    * sonnet for code-class tasks once Phase 9+ adds trust-class detection).
    */

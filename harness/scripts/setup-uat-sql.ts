@@ -27,12 +27,14 @@ function args(): {
   force: boolean;
   driver: "sqlite" | "postgres" | "mysql";
   buildBinding: boolean;
+  install: boolean;
 } {
   const argv = process.argv.slice(2);
   let repoRoot = process.cwd();
   let force = false;
   let driver: "sqlite" | "postgres" | "mysql" = "sqlite";
   let buildBinding = false;
+  let install = false;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i] ?? "";
     if (a === "--repo-root" && argv[i + 1]) {
@@ -49,9 +51,11 @@ function args(): {
       i += 1;
     } else if (a === "--build-binding") {
       buildBinding = true;
+    } else if (a === "--install") {
+      install = true;
     }
   }
-  return { repoRoot, force, driver, buildBinding };
+  return { repoRoot, force, driver, buildBinding, install };
 }
 
 const DEFAULT_CONFIG: Record<"sqlite" | "postgres" | "mysql", string> = {
@@ -170,8 +174,27 @@ function buildBetterSqlite3Binding(repoRoot: string): boolean {
   }
 }
 
+function installDriverPackage(repoRoot: string, driver: "sqlite" | "postgres" | "mysql"): boolean {
+  const pkgs: Record<typeof driver, string[]> = {
+    sqlite: ["better-sqlite3", "@types/better-sqlite3"],
+    postgres: ["pg", "@types/pg"],
+    mysql: ["mysql2"],
+  };
+  const target = pkgs[driver];
+  console.log(`installing ${target.join(" + ")} as devDeps in ${repoRoot}…`);
+  const result = spawnSync("pnpm", ["add", "-D", ...target], {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
+  if (result.status !== 0) {
+    console.error(`  pnpm add exited ${result.status}`);
+    return false;
+  }
+  return true;
+}
+
 function main(): number {
-  const { repoRoot, force, driver, buildBinding } = args();
+  const { repoRoot, force, driver, buildBinding, install } = args();
   const path = join(repoRoot, ".harness", "config", "probes", "sql.yaml");
   if (existsSync(path) && !force) {
     console.log(`sql config already at ${path} (use --force to overwrite)`);
@@ -179,6 +202,15 @@ function main(): number {
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, DEFAULT_CONFIG[driver], "utf8");
     console.log(`wrote ${path} (driver=${driver})`);
+  }
+
+  if (install) {
+    console.log("");
+    const ok = installDriverPackage(repoRoot, driver);
+    if (!ok) {
+      console.log("\nsetup-uat-sql: pnpm add failed — install the driver manually");
+      return 1;
+    }
   }
 
   if (buildBinding && driver === "sqlite") {
@@ -193,13 +225,19 @@ function main(): number {
   console.log("");
   console.log("next steps:");
   if (driver === "sqlite") {
+    if (!install) console.log("  pnpm add -D better-sqlite3       # or re-run with --install");
     if (!buildBinding) {
-      console.log("  pnpm add -D better-sqlite3");
       console.log("  pnpm -F @devplusllc/harness setup:uat-sql --build-binding");
     }
     console.log("  pnpm -F @devplusllc/harness smoke:uat   # exercises sqlite when binding is built");
-  } else {
-    console.log(`  ${driver} driver lands in Phase 11.5b — config is ready, runtime is pending`);
+  } else if (driver === "postgres") {
+    if (!install) console.log("  pnpm add -D pg @types/pg         # or re-run with --install");
+    console.log("  set PGUSER + PGPASSWORD env vars to match your sql.yaml connection");
+    console.log("  the pg driver opens BEGIN TRANSACTION READ ONLY and ROLLBACKs every probe");
+  } else if (driver === "mysql") {
+    if (!install) console.log("  pnpm add -D mysql2               # or re-run with --install");
+    console.log("  set MYSQL_USER + MYSQL_PASSWORD env vars to match your sql.yaml connection");
+    console.log("  the mysql driver issues SET SESSION TRANSACTION READ ONLY before each probe");
   }
   console.log("\nsetup-uat-sql: OK");
   return 0;
