@@ -17,6 +17,8 @@ import {
   loadAcceptedDecisions,
 } from "../sensors/decisions.js";
 import { tightenSpec } from "../tightener/index.js";
+import { runUat } from "../uat/index.js";
+import type { ApprovalGate, UatRunResult } from "../uat/index.js";
 import {
   ensureInboxDirs,
   isTaskRow,
@@ -291,6 +293,7 @@ export class Orchestrator {
 
     let lastSweep: SensorSweepResult | undefined;
     let lastReviewer: ReviewerResult | undefined;
+    meta.uat_history = [];
     let attempt = 1;
     while (attempt <= maxAttempts) {
       meta.attempts = attempt;
@@ -437,26 +440,78 @@ export class Orchestrator {
       };
       await this.writeMeta(meta);
 
-      if (lastReviewer.ok) {
+      if (!lastReviewer.ok) {
+        // Reviewer rejected. Retry if attempts left, else fail.
+        if (attempt >= maxAttempts) {
+          await this.completeRun(
+            entry,
+            meta,
+            "failed",
+            `reviewer failed-honesty-check after ${attempt} attempt(s); ${hardGapCount} hard gap(s); verdict=${lastReviewer.output.verdict}`,
+          );
+          return;
+        }
+        remediationBody = formatReviewerRemediation(lastReviewer.output, {
+          attempt,
+          maxAttempts,
+        });
+        attempt += 1;
+        continue;
+      }
+
+      // ── UAT pipeline (Layer U, Phase 11) ───────────────────────────────
+      if (this.opts.bypassUat === true) {
         await this.completeRun(entry, meta, "succeeded");
         return;
       }
-
-      // Reviewer rejected. Retry if attempts left, else fail.
-      if (attempt >= maxAttempts) {
-        await this.completeRun(
-          entry,
-          meta,
-          "failed",
-          `reviewer failed-honesty-check after ${attempt} attempt(s); ${hardGapCount} hard gap(s); verdict=${lastReviewer.output.verdict}`,
-        );
+      await this.surfacePhase(entry, meta, "uat");
+      let uatResult: UatRunResult;
+      try {
+        uatResult = await this.runUatStep({
+          mirrorPath: meta.mirror_path,
+          shaPin: prep.sha_pin,
+          tightenedSpec: tightenedSpec ?? taskBody,
+          acceptanceCriteria: entry.row.acceptance_criteria ?? [],
+          taskId: entry.task_id,
+          runId: entry.run_id,
+          tier,
+          sensorIdsPassed: lastSweep.results.filter((r) => r.ok).map((r) => r.sensor_id),
+          highStakesGlobs: this.opts.projectGlobs?.high_stakes_globs ?? [],
+        });
+      } catch (err) {
+        await this.completeRun(entry, meta, "failed", `uat: ${String(err)}`);
         return;
       }
-      remediationBody = formatReviewerRemediation(lastReviewer.output, {
+      const probeFailures = uatResult.probe_results.filter((r) => !r.passed && !r.skipped_reason).length;
+      meta.uat_history.push({
         attempt,
-        maxAttempts,
+        ok: uatResult.ok,
+        all_passed: uatResult.summary.all_passed,
+        probe_failures: probeFailures,
+        operator_decision: uatResult.operator_decision ?? "pending",
       });
-      attempt += 1;
+      meta.last_uat = {
+        ok: uatResult.ok,
+        all_passed: uatResult.summary.all_passed,
+        probe_failures: probeFailures,
+        operator_decision: uatResult.operator_decision ?? "pending",
+      };
+      await this.writeMeta(meta);
+
+      if (uatResult.ok) {
+        await this.completeRun(entry, meta, "succeeded");
+        return;
+      }
+      // UAT failure path. Phase 11 v1: terminal fail without retry. Phase
+      // 11.x will wire rejection.yaml as remediation context for retry.
+      const reason =
+        uatResult.operator_decision === "reject"
+          ? `uat rejected by operator: ${uatResult.rejection?.operator_note ?? "(no note)"}`
+          : !uatResult.summary.all_passed
+            ? `uat probes failed: ${probeFailures} of ${uatResult.probe_results.length}`
+            : `uat decision=${uatResult.operator_decision ?? "pending"}; not approved`;
+      await this.completeRun(entry, meta, "failed", reason);
+      return;
     }
   }
 
@@ -486,6 +541,110 @@ export class Orchestrator {
       JSON.stringify(result, null, 2),
       "utf8",
     );
+  }
+
+  private async runUatStep(args: {
+    mirrorPath: string;
+    shaPin: string;
+    tightenedSpec: string;
+    acceptanceCriteria: string[];
+    taskId: string;
+    runId: string;
+    tier: "haiku" | "sonnet" | "opus";
+    sensorIdsPassed: string[];
+    highStakesGlobs: string[];
+  }): Promise<UatRunResult> {
+    const diff = await getDiff({ mirrorPath: args.mirrorPath, shaPin: args.shaPin });
+    const isHighStakes =
+      args.highStakesGlobs.length > 0 &&
+      diff.some((d) => matchAnyGlob(d.path, args.highStakesGlobs));
+
+    const linesAdded = diff.reduce(
+      (n, e) => n + countAddedLines(e.beforeContent, e.afterContent),
+      0,
+    );
+    const linesRemoved = diff.reduce(
+      (n, e) => n + countAddedLines(e.afterContent, e.beforeContent),
+      0,
+    );
+
+    const approvalGate: ApprovalGate = async (gateArgs) => {
+      const adapter = this.opts.adapters[0];
+      if (!adapter) {
+        // No adapter — auto-approve when all probes passed; otherwise reject.
+        return {
+          decision: gateArgs.summary.all_passed ? "approve" : "reject",
+        };
+      }
+      const approval = await adapter.requestApproval({
+        bundleId: `uat-${gateArgs.runId}`,
+        runId: gateArgs.runId,
+        taskId: gateArgs.taskId,
+        goal: gateArgs.summary.goal_one_liner,
+        diffSummary: `${gateArgs.summary.diff_stats.files_changed} files / +${gateArgs.summary.diff_stats.lines_added} -${gateArgs.summary.diff_stats.lines_removed}`,
+        acceptance: gateArgs.summary.acceptance_results.map((r) => ({
+          id: r.id,
+          status: r.status === "skipped" ? "pending" : r.status,
+          ...(r.failure_reason !== undefined ? { note: r.failure_reason } : {}),
+        })),
+        artifacts: gateArgs.summary.artifacts.map((a) => ({
+          kind: a.kind === "screenshot"
+            ? "screenshot"
+            : a.kind === "video"
+              ? "gif"
+              : a.kind === "transcript"
+                ? "log"
+                : a.kind === "log"
+                  ? "log"
+                  : "text" as const,
+          path: a.path,
+          ...(a.caption !== undefined ? { label: a.caption } : {}),
+        })),
+      });
+      const decision: "approve" | "reject" | "ask" =
+        approval.decision === "approve"
+          ? "approve"
+          : approval.decision === "reject"
+            ? "reject"
+            : "ask";
+      const out: { decision: "approve" | "reject" | "ask" | "abandoned"; rejection?: import("../uat/index.js").UatRejection } = {
+        decision: approval.timedOut === true ? "abandoned" : decision,
+      };
+      if (decision === "reject" && approval.reason !== undefined) {
+        out.rejection = {
+          category: "C",
+          operator_note: approval.reason,
+          rejected_at: new Date().toISOString(),
+        };
+      }
+      return out;
+    };
+
+    const hints = this.opts.uatHints ?? {};
+    return runUat({
+      repoRoot: args.mirrorPath,
+      runId: args.runId,
+      taskId: args.taskId,
+      runnerInput: {
+        tightened_spec: args.tightenedSpec,
+        acceptance_criteria: args.acceptanceCriteria,
+        changed_files: diff.map((d) => ({ path: d.path, status: d.status })),
+        hints,
+        is_high_stakes: isHighStakes,
+        tier: args.tier,
+      },
+      diffStats: {
+        files_changed: diff.length,
+        lines_added: linesAdded,
+        lines_removed: linesRemoved,
+      },
+      sensorsPassed: args.sensorIdsPassed,
+      reviewerVerdict: this.opts.bypassReviewer === true ? "skipped" : "pass",
+      approvalGate,
+      ...(this.opts.uatColdStartCommand !== undefined
+        ? { coldStartCommand: this.opts.uatColdStartCommand }
+        : {}),
+    });
   }
 
   private async runReviewerStep(args: {
@@ -620,3 +779,15 @@ export class Orchestrator {
 
 // Suppress the TS6133 unused-import error if InboxTaskRow ends up unused.
 export type { InboxTaskRow };
+
+/** Count lines present in `after` but not in `before`. */
+function countAddedLines(before: string | undefined, after: string | undefined): number {
+  if (after === undefined) return 0;
+  if (before === undefined) return after.split(/\r?\n/).length;
+  const beforeLines = new Set(before.split(/\r?\n/));
+  let added = 0;
+  for (const line of after.split(/\r?\n/)) {
+    if (!beforeLines.has(line)) added += 1;
+  }
+  return added;
+}

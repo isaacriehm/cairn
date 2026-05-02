@@ -3,7 +3,7 @@ type: resume-prompt
 status: handoff
 audience: ai-only
 generated: 2026-05-02
-last-updated: 2026-05-02 (after Phase 0–10 landed)
+last-updated: 2026-05-02 (after Phase 0–11 landed)
 purpose: Drop into a fresh Claude Code session in <operator-home>/Cairn to continue this project where the previous session left off.
 ---
 
@@ -17,7 +17,7 @@ Build a **portable, generic agent harness for solo developers**. Discord-front-e
 
 Sample project (a real-estate CRM at `<operator-home>/sample-project/`) is the proving ground. The harness package extracts cleanly to any other project via `npx @isaacriehm/harness init <repo-dir>`.
 
-**Status:** Implementation in progress. Phases 0–10 landed (~12.5 founder-days). Phase 11 (UAT-on-phone — Layer U) is next. **Documentation in `docs/` is still the source of truth for design; the code in `harness/` is the runtime that implements it.**
+**Status:** Implementation in progress. Phases 0–11 landed (~14 founder-days). Phase 11.5 (UI probe via Playwright) + Phase 12 (GC cadence) are next. **Documentation in `docs/` is still the source of truth for design; the code in `harness/` is the runtime that implements it.**
 
 ## 1A. Implementation snapshot (binding — verify against `git log` before acting)
 
@@ -27,7 +27,8 @@ The Cairn repo is **NOT self-hosted**. It's the source for the published npm pac
 
 | SHA (short) | Phase | What |
 |-------------|-------|------|
-| _(pending)_ | 10 | reviewer subagent (Layer C): `harness/src/reviewer/` (types — ReviewVerdict, ReviewGapCategory w/ 10 kinds incl `deferred_but_claimed_done` + `query_scope_omission` + `decision_contradiction`, ReviewerInput/Output/Result; schema — JSON Schema for `--json-schema` gate w/ verdict/gaps/confidence_signal/summary; prompt — anti-completionist system prompt (default-fail framing, "prove the implementer wrong"), buildReviewerUserPrompt assembles tightened spec + acceptance + decisions-in-scope + soft-findings + diff content (32k cap per file) + high-stakes augmentation per Codex audit Q1; reviewer — `runReviewer` Tier-matched-to-implementer per L15, validates parsed structured_output, computes ok = verdict:pass AND zero hard gaps; remediation — `formatReviewerRemediation` agent-prompt-shaped retry context; index). Orchestrator wired w/ `reviewing` phase after sensors:ok, runs reviewer w/ `runReviewerStep` (re-computes diff + decisions + high-stakes flag from project_globs), persists `reviewer/attempt-N.json`, RunMeta gets `reviewer_history` + `last_reviewer`, on verdict:fail w/ attempts left appends remediation + retries, exhaustion → fail-honesty-check. Existing smoke-orchestrator gets `bypassReviewer:true`. New `smoke:reviewer` (clean diff → verdict:pass; deferred-but-claimed-done diff → verdict:fail w/ hard gaps citing tax/discount/deferred miss; ~2 cheap haiku calls, ~$0.05 quota) |
+| _(pending)_ | 11 | UAT-on-phone (Layer U) as multi-probe E2E framework: `harness/src/uat/` (types — discriminated union UatProbe over http/cli/ui/sql/integration, UatAcceptanceCheck routes ONE probe per AC, UatSummary canonical bundle, UatRunResult, UatRejection w/ A/B/C/D categories, EvidenceFile manifest; schema — JSON Schema for `--json-schema` gate; prompt — anti-hallucination "pick the cheapest probe that fits" ladder, http > cli > sql > ui > integration; runner — `generateUatChecks` Tier 2 default w/ defense-in-depth filter rejecting unavailable surfaces; probes/{http,cli}.ts — fetch + child_process w/ status/body/exit/stdout assertions, header_present, json_path_equals, body_matches_regex; probes/{ui,sql,integration}.ts — placeholder skipped_reason returns until Phase 11.5/11.6; probes/index.ts dispatches by `kind`; bundle — writeSummary, writeEvidenceFile (per-file SHA256 + bundle SHA256 manifest), verifyEvidenceFile rejecting bare-touch + post-hoc artifact mod + extra-file-after-evidence + non-approve decision; persistent — upsertUatTask under .harness/tasks/<task_id>/uat.md w/ status (pending|passing|passed|failed|blocked|abandoned), AC checklist, blocked_by NEVER folded into Gaps, gaps_resolved/gaps_open lists, attempt counter; uat — `runUat` full pipeline orchestrator: runner → cold-start smoke → probes → summary → UAT.md → adapter approval → evidence file). Orchestrator wired w/ `uat` phase after reviewer:ok, computes is_high_stakes from project_globs, approval gate maps adapter.requestApproval(ApprovalBundle) → UAT decision, RunMeta gets uat_history + last_uat. Phase 11 v1 fails-terminal on UAT failure (no retry); Phase 11.x adds rejection.yaml-driven retry. Existing smoke-orchestrator gets `bypassUat:true`. Two new smokes: `smoke:uat` 13 mechanical cases (http happy/fail, cross-tenant 403, cli pass/fail, ui/sql/integration → skipped, bundle write+verify, bare-touch reject, post-hoc-mod reject, extra-file reject, requireDecision reject, persistent UAT.md round-trip w/ gap resolution); `smoke:uat-runner` 3 claude scenarios (API spec → all http probes + backend_only=true; CLI spec → all cli probes; high-stakes spec → cross-tenant fixture flagged is_high_stakes_required=true). |
+| `d29ccb3` | 10 | reviewer subagent (Layer C): `harness/src/reviewer/` (types — ReviewVerdict, ReviewGapCategory w/ 10 kinds incl `deferred_but_claimed_done` + `query_scope_omission` + `decision_contradiction`, ReviewerInput/Output/Result; schema — JSON Schema for `--json-schema` gate w/ verdict/gaps/confidence_signal/summary; prompt — anti-completionist system prompt (default-fail framing, "prove the implementer wrong"), buildReviewerUserPrompt assembles tightened spec + acceptance + decisions-in-scope + soft-findings + diff content (32k cap per file) + high-stakes augmentation per Codex audit Q1; reviewer — `runReviewer` Tier-matched-to-implementer per L15, validates parsed structured_output, computes ok = verdict:pass AND zero hard gaps; remediation — `formatReviewerRemediation` agent-prompt-shaped retry context; index). Orchestrator wired w/ `reviewing` phase after sensors:ok, runs reviewer w/ `runReviewerStep` (re-computes diff + decisions + high-stakes flag from project_globs), persists `reviewer/attempt-N.json`, RunMeta gets `reviewer_history` + `last_reviewer`, on verdict:fail w/ attempts left appends remediation + retries, exhaustion → fail-honesty-check. Existing smoke-orchestrator gets `bypassReviewer:true`. New `smoke:reviewer` (clean diff → verdict:pass; deferred-but-claimed-done diff → verdict:fail w/ hard gaps citing tax/discount/deferred miss; ~2 cheap haiku calls, ~$0.05 quota) |
 | `9223ef0` | 9 | sensor runners + Layer A/B/D + decision-assertions: `harness/src/sensors/` (types, `getDiff` via simple-git tracked+untracked, `loadStubCatalog`/`loadSensorRegistry` with project→pkg fallback, Layer A `runStubCatalog` flagging only added lines, Layer B `runAttestationCrossCheck` extracting fenced YAML + cross-checking files_touched/todos/stubs/behavior:full lies, Layer D `runRouteHandlerNonEmpty`+`runDtoNoFakeFields` glob-scoped structural sensors, `runDecisionAssertions` evaluating all 11 assertion kinds w/ regex approximations for ast/query/event/service kinds, `formatRemediation` agent-prompt-shaped failure formatter, `runSensors` orchestrator entry); orchestrator wired w/ retry loop (max_attempts=3 per L42), `sensing` phase, `sensor_history`/`last_sensor_sweep` on RunMeta, `attempt-N.json` persisted per run; `smoke:sensors` (16 unit + integration cases, no claude burn); existing `smoke:orchestrator` set `bypassSensors: true` since Phase 8 template predates attestation contract |
 | `6c945fa` | 8 | orchestrator + agent runner: `harness/src/orchestrator/` (inbox tailer w/ chokidar, FIFO + persisted shadow, workspace prep w/ syncMirror + SHA pin + dirty-overlap gate per L45, prompt renderer for `workflow.md`, agent runner via `claude --print --output-format stream-json`, `Orchestrator` class), `harness run` CLI starts it by default; `smoke:orchestrator` (drop task → run → assert echo.txt + events.jsonl + no commit); default `--permission-mode bypassPermissions` per operator preference |
 | `b730bac` | 7 | spec tightener (Layer F): `harness/src/claude/` subprocess wrapper (`claude --print --model <tier> --output-format json --json-schema ...`); `harness/src/tightener/` (Tier-1 Haiku default, Sonnet auto-escalate >500 words or via `force_tier`, structured JSON output, `ship_anyway` override); `smoke:tightener`; `.env.example` cleaned of `ANTHROPIC_API_KEY` (subscription auth only) |
@@ -38,7 +39,7 @@ The Cairn repo is **NOT self-hosted**. It's the source for the published npm pac
 | `ce30537` | 2 | mirror checkout runtime (clone/sync/push/dirty-overlap; `~/.local/harness/repos/<slug>/`) |
 | `d011463` | 0–1 | bootstrap pkg + design docs + canonical templates under `harness/templates/` |
 
-### Thirteen sensors green
+### Fifteen sensors green
 
 ```
 pnpm -F @isaacriehm/harness build              # tsc -b
@@ -54,9 +55,11 @@ pnpm -F @isaacriehm/harness smoke:tightener    # vague→blocked, clear→sonnet
 pnpm -F @isaacriehm/harness smoke:orchestrator # ephemeral mirror + drop task → orchestrator picks up → claude implementer writes file in mirror → assert echo.txt + events.jsonl + no commit
 pnpm -F @isaacriehm/harness smoke:sensors      # 16 cases — Layer A clean/dirty + line-add discrimination, Layer B missing/accurate/lying attestation, Layer D route-handler-non-empty + dto-no-fake-fields, decision-assertions text_must_match + file_must_not_be_modified via ephemeral git mirror; PURE MECHANICAL — no claude burn
 pnpm -F @isaacriehm/harness smoke:reviewer     # 2 cases — clean diff → verdict:pass; deferred-but-claimed-done diff → verdict:fail w/ hard gaps citing the deferral. SKIPS without `claude` CLI auth
+pnpm -F @isaacriehm/harness smoke:uat          # 13 cases — http/cli probes pass/fail, ui/sql/integration → skipped, bundle write+verify, bare-touch reject, post-hoc-mod reject, extra-file-after-evidence reject, requireDecision reject, persistent UAT.md round-trip + gap resolution. PURE MECHANICAL — no claude burn
+pnpm -F @isaacriehm/harness smoke:uat-runner   # 3 cases — API spec → http; CLI spec → cli; high-stakes spec → cross-tenant fixture flagged. SKIPS without `claude`
 ```
 
-Run all thirteen before doing anything that mutates `harness/src/` or `harness/templates/`. The tightener, reviewer, and orchestrator smokes each cost ~1-3 `claude` calls; budget ~$1 of subscription quota for the full sweep, skip casually for unrelated touches.
+Run all fifteen before doing anything that mutates `harness/src/` or `harness/templates/`. The tightener, reviewer, uat-runner, and orchestrator smokes each cost ~1-3 `claude` calls; budget ~$1 of subscription quota for the full sweep, skip casually for unrelated touches.
 
 The Discord adapter is real code (`harness/src/frontend/discord/`); it is not exercised in CI/smoke because live exercise needs `DISCORD_BOT_TOKEN`. Live wiring confirmed against guild `1487133145013944443` during Phase 5 acceptance: bot connects, 13 slash commands register, the three category channels (`📋 backlog`, `🟢 active`, `📦 archive`) are ensured.
 
@@ -154,10 +157,11 @@ harness/
 │   │                    bodies or `force_tier`, ship_anyway override),
 │   │                    index
 │   ├── orchestrator/    Phase 8 FIFO + agent runner. types (RunPhase incl
-│   │                    `sensing` + `reviewing`, RunMeta w/ attempts +
+│   │                    `sensing` + `reviewing` + `uat`, RunMeta w/ attempts +
 │   │                    sensor_history + last_sensor_sweep + reviewer_history
-│   │                    + last_reviewer, InboxTaskRow,
+│   │                    + last_reviewer + uat_history + last_uat, InboxTaskRow,
 │   │                    OrchestratorOptions w/ bypassSensors + bypassReviewer +
+│   │                    bypassUat + uatHints + uatColdStartCommand +
 │   │                    sensorLanguages + projectGlobs + maxAttempts,
 │   │                    QueueEntry); inbox (tail .harness/inbox/<...>.json,
 │   │                    move to processed/<...>.<outcome>.json after
@@ -212,22 +216,51 @@ harness/
 │                        composes Layer A + B + D + decisions, returns
 │   │                    SensorSweepResult w/ ok + remediation_prompt);
 │   │                    index
-│   └── reviewer/        Phase 10 Layer C — fresh-context reviewer
-│                        subagent. types (ReviewVerdict, ReviewGapCategory
-│                        w/ 10 kinds, ReviewerInput/Output/Result); schema
-│                        (JSON Schema for `--json-schema` gate); prompt
-│                        (anti-completionist system: default-fail, "prove
-│                        the implementer wrong"; buildReviewerUserPrompt
-│                        — tightened spec + acceptance + decisions-in-scope
-│                        w/ assertion summary + soft sensor findings + diff
-│                        content per file (32k char cap) + high-stakes
-│                        query-scope completeness augmentation per Codex
-│                        audit Q1); reviewer (`runReviewer` Tier-matched-
-│                        to-implementer per L15, validates structured_output,
-│                        ok = verdict:pass AND zero hard gaps); remediation
-│                        (`formatReviewerRemediation` agent-prompt-shaped
-│                        retry context naming each hard gap by category +
-│                        path + symbol); index
+│   ├── reviewer/        Phase 10 Layer C — fresh-context reviewer
+│   │                    subagent. types (ReviewVerdict, ReviewGapCategory
+│   │                    w/ 10 kinds, ReviewerInput/Output/Result); schema
+│   │                    (JSON Schema for `--json-schema` gate); prompt
+│   │                    (anti-completionist system: default-fail, "prove
+│   │                    the implementer wrong"; buildReviewerUserPrompt
+│   │                    — tightened spec + acceptance + decisions-in-scope
+│   │                    w/ assertion summary + soft sensor findings + diff
+│   │                    content per file (32k char cap) + high-stakes
+│   │                    query-scope completeness augmentation per Codex
+│   │                    audit Q1); reviewer (`runReviewer` Tier-matched-
+│   │                    to-implementer per L15, validates structured_output,
+│   │                    ok = verdict:pass AND zero hard gaps); remediation
+│   │                    (`formatReviewerRemediation` agent-prompt-shaped
+│   │                    retry context naming each hard gap by category +
+│   │                    path + symbol); index
+│   └── uat/             Phase 11 Layer U — multi-probe E2E framework.
+│                        types (discriminated union UatProbe over
+│                        http/cli/ui/sql/integration, UatAcceptanceCheck
+│                        routes ONE probe per AC, UatSummary, UatRunResult,
+│                        UatRejection w/ A/B/C/D categories, EvidenceFile
+│                        manifest); schema; prompt (anti-hallucination
+│                        "pick the cheapest probe that fits" ladder
+│                        http > cli > sql > ui > integration — never open
+│                        a browser to test an API call; high-stakes
+│                        cross-tenant fixture mandate); runner
+│                        (`generateUatChecks` Tier 2 default; defense-
+│                        in-depth filter rejects probes for unavailable
+│                        surfaces); probes/{http,cli,ui,sql,integration,
+│                        index}.ts (http: fetch w/ status/body/json-path/
+│                        header assertions; cli: child_process w/ exit/
+│                        stdout/stderr; ui: lazy-loaded playwright stub
+│                        returning skipped_reason until Phase 11.5; sql/
+│                        integration: skipped_reason placeholders for
+│                        Phase 11.6); bundle (writeSummary canonical YAML,
+│                        writeEvidenceFile per-file SHA256 + bundle
+│                        SHA256 manifest at .uat-passed, verifyEvidenceFile
+│                        rejecting bare-touch / post-hoc-mod / extra-file
+│                        / non-approve); persistent (upsertUatTask under
+│                        .harness/tasks/<task_id>/uat.md per GSD pattern,
+│                        status pending|passing|passed|failed|blocked|
+│                        abandoned, blocked_by NEVER folded into Gaps);
+│                        uat (`runUat` full pipeline: runner → cold-start
+│                        smoke → probes → summary → UAT.md → adapter
+│                        approval → evidence file). Index
 ├── scripts/
 │   ├── check-layout.ts  Phase 1 sensor — also scans pkg/templates for banned
 │   │                    "sample-project" strings (project-agnostic check per L50, S1)
@@ -272,6 +305,23 @@ harness/
 │   │                    verdict:fail w/ hard gaps citing the
 │   │                    deferred_but_claimed_done category. ~2 cheap
 │   │                    haiku calls (~$0.05). SKIPS without `claude`.
+│   ├── smoke-uat.ts     Phase 11 mechanical acceptance: in-process http
+│   │                    server hit by http probe (200/403/json-path);
+│   │                    cli probe via `node --version` + exit-code
+│   │                    mismatch; ui/sql/integration return structured
+│   │                    skipped_reason; bundle write + evidence-file
+│   │                    SHA256 round-trip; bare-touch detection;
+│   │                    post-hoc artifact mod detection; extra-file-
+│   │                    after-evidence detection; requireDecision
+│   │                    rejection on pending; persistent UAT.md round-
+│   │                    trip incl. gap-add + gap-resolve flow. PURE
+│   │                    MECHANICAL — no claude burn.
+│   ├── smoke-uat-runner.ts Phase 11 UAT-runner agent acceptance:
+│   │                    API spec → all probes are http + backend_only=
+│   │                    true; CLI spec → all probes are cli; high-stakes
+│   │                    spec → at least one is_high_stakes_required=true
+│   │                    cross-tenant fixture (http probe). ~3 cheap
+│   │                    haiku calls. SKIPS without `claude`.
 │   └── setup-whisper.ts one-time native binding build helper (works around
 │                        node-gyp + path-with-spaces failure)
 └── templates/           seed copied into adopting projects by `harness init`
@@ -294,14 +344,24 @@ harness/
 
 ### What's NOT yet wired
 
-Phases 11–18 from `docs/INTEGRATION_PLAN.md`. In particular:
+Phases 11.5 + 12–18 from `docs/INTEGRATION_PLAN.md`. In particular:
 
-- **No UAT runner / evidence-file gate.** Phase 11. Headless Chrome via Playwright (or `mcp__claude-in-chrome`); GIF + screenshots + console + network; `.uat-passed` SHA256 evidence file blocks bare-`touch` fakes.
+- **No UI / SQL / Integration probes.** Phase 11.5 wires Playwright (UI), pg/mysql client (SQL), and docker-compose (integration) probes via `harness setup:uat-{browsers,sql,docker}`. Until then those probe kinds return `skipped_reason` from the runtime.
+- **No UAT-rejection-driven retry.** Phase 11.x adds `rejection.yaml` as remediation context for the implementer when the operator rejects (UAT_PIPELINE.md §6). v1 fails-terminal on UAT failure.
 - **No GC cron / backprop / decision capture flow.** Phases 12–14.
-- **No init script.** `harness init` is a stub; Phase 16 (inquirer-driven per operator note 2026-05-02).
-- **No git commit + push from a successful run.** The orchestrator stops after the reviewer verdict:pass; commits are gated on Phase 11 UAT per the L16/L17/L18 trust posture.
+- **No init script.** `harness init` is a stub; Phase 16 (inquirer-driven per operator note 2026-05-02). Phase 16's E2E-setup question (per operator pivot 2026-05-02): "Set up E2E now / Defer / Skip" — branches into provisioning playwright browsers / sql client / docker compose template.
+- **No git commit + push from a successful run.** The orchestrator stops after UAT verdict; commits are gated on the pre-push evidence-file recompute per L16/L17/L18 trust posture.
 
-The `harness watch`, `harness mirror`, `harness mcp serve`, and `harness run` CLIs work today. End-to-end ingest → tightener → mirror → agent → sensors (Layer A/B/D + decision-assertions) → reviewer subagent (Layer C, fresh context) → retry-with-remediation runs cleanly. The next missing piece is UAT-on-phone (Layer U) between reviewer-pass and git-commit-to-main.
+The `harness watch`, `harness mirror`, `harness mcp serve`, and `harness run` CLIs work today. End-to-end ingest → tightener → mirror → agent → sensors (Layer A/B/D + decision-assertions) → reviewer subagent (Layer C, fresh context) → UAT pipeline (multi-probe http/cli routing, evidence-file gate) → adapter approval runs cleanly. Next missing pieces: heavy probes (ui/sql/integration), UAT-rejection-driven retry, and the eventual git-commit-to-main step gated on the recomputed evidence hash.
+
+### Phase 11 design notes (binding)
+
+- **UAT is multi-probe, not Playwright-only** (per operator pivot 2026-05-02). The UAT-runner agent picks the cheapest probe per AC: `http > cli > sql > ui > integration`. Opening a browser to test an API call is a defect; the prompt enforces this and the runner has defense-in-depth filtering.
+- **Probe surface availability is hint-driven**, not detected. The orchestrator passes `OrchestratorOptions.uatHints` (base_url / cli_prefix / cli_cwd / ui_available / sql_available / integration_available) through to the UAT-runner, populated from the project's `<project>:` extension block at adoption. The runner refuses to emit ui/sql/integration probes when their flags are false, even if the model produced one.
+- **Evidence-file gate is probe-agnostic.** `.uat-passed` carries a per-file SHA256 list + a bundle-level SHA256 over the sorted `path<tab>sha256` manifest. Pre-push gate must (1) parse the file (rejects bare-touch), (2) recompute every per-file hash (rejects post-hoc artifact mods), (3) recompute bundle hash, (4) reject extra files not in the manifest (catches "agent dropped a backdoor file after evidence written"), (5) verify `operator_decision === "approve"` (default; configurable via `verifyEvidenceFile({ requireDecision })`).
+- **Phase 11 v1 fails-terminal on UAT failure.** UAT_PIPELINE §6 specifies a rejection.yaml-driven retry; that lands in Phase 11.x. v1 marks the run failed with the operator's rejection reason or the probe failure summary so the operator knows what to fix manually.
+- **Persistent UAT.md per task** (`.harness/tasks/<task_id>/uat.md`) per GSD pattern. `blocked_by` (env issues — server down, third-party rate-limit) is NEVER folded into Gaps. Crossing the boundary triggers unnecessary fix-plan cycles per UAT_PIPELINE §8.
+- **Adapter approval gate uses existing `requestApproval(ApprovalBundle)`.** No new adapter contract. The orchestrator maps `Approval` → UAT decision; the stub adapter's default-approve makes the smoke pure-mechanical.
 
 ### Phase 10 design notes (binding)
 
@@ -516,21 +576,30 @@ Each layer fail → run marked `failed-honesty-check` with structured findings. 
 
 ## 10. What the operator wants next (most likely)
 
-Phases 0–10 are landed. Next is **Phase 11 — UAT-on-phone (Layer U)** (`docs/INTEGRATION_PLAN.md` §5 Phase 11 + `docs/UAT_PIPELINE.md`; ~1.5 founder-days).
+Phases 0–11 are landed. Two natural follow-ups, depending on what the operator wants first:
 
-Phase 11 deliverables:
+### Option A — Phase 11.5 — heavy probes + setup helpers (~1 founder-day)
 
-1. **UAT-runner agent (Tier 2)** — reads tightened spec, generates Playwright script targeting the change, runs headless Chrome.
-2. **Capture bundle** — GIF (`gif_creator` MCP if available, else local Playwright), N screenshots, console log, network log. For backend-only diffs: curl/SQL transcript or sensor-output table.
-3. **Evidence-file gate** — `.harness/runs/active/<run_id>/uat/.uat-passed` contains SHA256 of the actual artifact bundle. The orchestrator's pre-push gate refuses commit unless evidence file exists AND its SHA256 matches the recomputed bundle hash. Bare `touch` rejected.
-4. **Discord post** in run-channel — embed the GIF; pass criteria checklist; `[🟢 Approve & Push]`, `[🔴 Reject + tell me why]`, `[❓ Ask follow-up]` buttons.
-5. **Persistent UAT.md** — `.harness/tasks/<id>/uat.md` carries `status: in-progress | passed | failed | blocked` + per-step state. Survives context resets per GSD pattern.
-6. **Wire into orchestrator** — after reviewer:ok, run UAT; on 🟢 from operator, push to main. On 🔴, A/B/C/D dialog for reason, re-spawn implementer with rejection context. On ❓, open thread.
-7. **Smoke** at `harness/scripts/smoke-uat.ts` — synthetic UAT failure produces 🔴-able artifact set; bare `touch` of `.uat-passed` rejected (SHA mismatch).
+1. **UI probe** (Playwright) — wire `harness/src/uat/probes/ui.ts` to actually launch chromium, run a `UiStep[]` script, capture screenshot per assertion checkpoint, write video.webm + console.log + network.json under the run's UAT dir.
+2. **`setup:uat-browsers`** script — wraps `npx playwright install chromium`. Idempotent; `--force` reinstalls.
+3. **SQL probe** — pg / mysql / sqlite client selection from project profile; connection config in `.harness/config/probes/sql.yaml`.
+4. **Integration probe** — docker-compose orchestration; `setup:uat-docker` sanity-checks `docker compose --version`.
+5. **Update `smoke-uat.ts`** to live-exercise the ui probe when chromium is installed (still SKIPS gracefully).
 
-Phase 11 prerequisites: nothing new beyond Phase 10. Discord button-handling is the new surface; existing `frontend.discord/` adapter exposes `requestApproval` and the smoke can mock it via the stub adapter.
+### Option B — Phase 12 — garbage collection cadence (~1 founder-day)
 
-Do NOT start Phase 11 until the operator says "go". Confirm what's landed first.
+1. Nightly cron / `/loop` for: frontmatter freshness, generator drift, stub-catalog hits, doc-gardening, quality-grade update.
+2. **Batch canary** per Codex audit must-fix — multi-commit GC batches re-render WORKFLOW.md against synthetic-task fixture + re-run all sensors against post-batch `main`; abort + surface on either failure.
+3. Auto-merge classes per L16/L17/L18 wired here.
+
+### Phase 16 init script E2E setup (referenced from operator pivot 2026-05-02)
+
+Per operator pivot, the init script must ask "Set up E2E now / Defer / Skip" and branch:
+- `now` → `setup:uat-browsers` + `setup:uat-sql` + `setup:uat-docker` per stack profile
+- `defer` → `e2e_setup: deferred` in `.harness/config.yaml`; orchestrator prompts again on first UAT need
+- `skip` → `e2e_setup: skipped`; code-class UAT becomes review-only; high-stakes refuses dispatch
+
+Do NOT start either phase until the operator says "go". Confirm what's landed first.
 
 ## 11. How to start a fresh session
 
@@ -546,10 +615,10 @@ Do NOT start Phase 11 until the operator says "go". Confirm what's landed first.
                                        smoke:discord smoke:tier0 smoke:sensors
    All nine cheap ones should print OK without burning claude quota.
 5. Confirm to operator in 2-3 lines, e.g.:
-     "Resumed Cairn project. Phases 0–10 landed. 9 cheap sensors green.
-      Ready for Phase 11 (UAT-on-phone — Layer U). Proceed?"
+     "Resumed Cairn project. Phases 0–11 landed. Cheap sensors green.
+      Ready for Phase 11.5 (heavy probes) OR Phase 12 (GC cadence). Proceed?"
 6. Wait for direction. Don't propose anything beyond what's in INTEGRATION_PLAN.md
-   §5 Phase 11.
+   §5 Phase 11.5 or §5 Phase 12.
 7. Caveman ultra mode active for chat replies. Documents/commits/PRs in normal
    English. Match operator's terse-direct style.
 ```

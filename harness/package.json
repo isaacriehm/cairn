@@ -38,6 +38,8 @@
     "smoke:orchestrator": "tsx scripts/smoke-orchestrator.ts",
     "smoke:sensors": "tsx scripts/smoke-sensors.ts",
     "smoke:reviewer": "tsx scripts/smoke-reviewer.ts",
+    "smoke:uat": "tsx scripts/smoke-uat.ts",
+    "smoke:uat-runner": "tsx scripts/smoke-uat-runner.ts",
     "setup:mirror": "tsx scripts/setup-mirror.ts",
     "setup:whisper": "tsx scripts/setup-whisper.ts"
   },

@@ -2,6 +2,7 @@ import type { ClaudeTier } from "../claude/index.js";
 import type { FrontendAdapter } from "../frontend/index.js";
 import type { ReviewVerdict } from "../reviewer/types.js";
 import type { ProjectGlobs, SensorLanguage, SensorSweepResult } from "../sensors/types.js";
+import type { UatDecision, UatRunnerInput } from "../uat/types.js";
 
 /**
  * Phases a code-class run can be in. The lifecycle is linear; no skipping.
@@ -27,6 +28,7 @@ export type RunPhase =
   | "running"
   | "sensing"
   | "reviewing"
+  | "uat"
   | "succeeded"
   | "failed";
 
@@ -87,6 +89,20 @@ export interface RunMeta {
     soft_gaps: number;
     confidence_signal: "high" | "medium" | "low";
   };
+  /** Per-attempt UAT (Layer U) summary. */
+  uat_history?: {
+    attempt: number;
+    ok: boolean;
+    all_passed: boolean;
+    probe_failures: number;
+    operator_decision: UatDecision;
+  }[];
+  last_uat?: {
+    ok: boolean;
+    all_passed: boolean;
+    probe_failures: number;
+    operator_decision: UatDecision;
+  };
 }
 
 /**
@@ -134,6 +150,22 @@ export interface OrchestratorOptions {
   bypassSensors?: boolean;
   /** Skip the reviewer subagent (Phase 10). Smoke convenience. Default false. */
   bypassReviewer?: boolean;
+  /** Skip the UAT pipeline (Phase 11). Smoke convenience. Default false. */
+  bypassUat?: boolean;
+  /**
+   * UAT-runner hints surfaced to the agent — base URL for http probes,
+   * cli prefix/cwd, and which heavier probe surfaces are available
+   * (ui/sql/integration). Adopted from `<project>:` extension block at
+   * init. Defaults exclude the heavy surfaces; ui/sql/integration must be
+   * explicitly enabled via setup:uat-* helpers per Phase 11.5/11.6.
+   */
+  uatHints?: UatRunnerInput["hints"];
+  /**
+   * Cold-start smoke command (e.g. `pnpm db:reset && pnpm db:migrate &&
+   * pnpm start:dev`). Recorded as a single command + args; orchestrator
+   * spawns it before probes when the UAT-runner sets `cold_start_smoke=true`.
+   */
+  uatColdStartCommand?: { command: string; args: string[]; cwd?: string };
   /**
    * Force this tier for the implementer. Default: haiku (cheap; raise to
    * sonnet for code-class tasks once Phase 9+ adds trust-class detection).

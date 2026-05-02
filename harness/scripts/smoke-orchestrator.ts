@@ -169,10 +169,12 @@ async function main(): Promise<void> {
     adapters: [stub],
     bypassTightener: true,
     // Phase 8 smoke pre-dates the attestation contract; sensors live behind
-    // smoke-sensors.ts (Phase 9), reviewer behind smoke-reviewer.ts (Phase 10).
-    // Keep this smoke narrow so it stays cheap.
+    // smoke-sensors.ts (Phase 9), reviewer behind smoke-reviewer.ts (Phase 10),
+    // UAT behind smoke-uat.ts (Phase 11). Keep this smoke narrow so it stays
+    // cheap.
     bypassSensors: true,
     bypassReviewer: true,
+    bypassUat: true,
     defaultTier: "haiku",
     pollIntervalMs: 500,
     runTimeoutMs: 300_000,
