@@ -27,7 +27,9 @@
     "typecheck": "tsc -b --noEmit",
     "clean": "rm -rf dist *.tsbuildinfo",
     "dev": "tsx src/cli/index.ts",
-    "check:layout": "tsx scripts/check-layout.ts"
+    "check:layout": "tsx scripts/check-layout.ts",
+    "smoke:mirror": "tsx scripts/smoke-mirror.ts",
+    "setup:mirror": "tsx scripts/setup-mirror.ts"
   },
   "dependencies": {
     "chokidar": "^4.0.1",

@@ -141,7 +141,21 @@ checkFile("harness/tsconfig.json");
 checkFile("harness/.env.example");
 checkFile("harness/README.md");
 checkFile("harness/src/index.ts");
+checkFile("harness/src/logger.ts");
 checkFile("harness/src/cli/index.ts");
+checkFile("harness/src/cli/mirror.ts");
+
+// ── Phase 2 — mirror module ─────────────────────────────────────────────────
+checkFile("harness/src/mirror/index.ts");
+checkFile("harness/src/mirror/types.ts");
+checkFile("harness/src/mirror/paths.ts");
+checkFile("harness/src/mirror/state.ts");
+checkFile("harness/src/mirror/clone.ts");
+checkFile("harness/src/mirror/sync.ts");
+checkFile("harness/src/mirror/push.ts");
+checkFile("harness/src/mirror/dirty-overlap.ts");
+checkFile("harness/scripts/setup-mirror.ts");
+checkFile("harness/scripts/smoke-mirror.ts");
 
 // ── Pkg's `files` field must include templates so they ship on npm publish ─
 const pkg = JSON.parse(readFileSync(resolve(repoRoot, "harness/package.json"), "utf8")) as {
