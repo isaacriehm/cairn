@@ -380,14 +380,15 @@ Phases 0–6 are landed. Next is **Phase 7 — spec tightener (Layer F)** (`docs
 
 Phase 7 deliverables:
 
-1. **Anthropic SDK integration** — `@anthropic-ai/sdk` dep + a thin client wrapper at `harness/src/llm/`. Hardcoded model IDs per operator profile (no env vars beyond `ANTHROPIC_API_KEY`). Tier 1 = `claude-haiku-4-5-20251001`. Tier 2 = `claude-sonnet-4-6`. Tier 3 = `claude-opus-4-7`. Use prompt caching on system + decisions ledger + invariants.
+1. **Claude Code subprocess wrapper** at `harness/src/claude/` — spawns `claude --print --model <tier> --output-format json` with the rendered prompt on stdin and parses the JSON event stream. **No Anthropic SDK direct API calls** — every Tier-1/2/3 LLM call goes through the operator's Claude Code coding-plan subscription per L42 + operator answer T1 ("the only metric that matters is the claude code usage"). Tier→model mapping (hardcoded, no env vars): Tier 1 = `--model haiku`, Tier 2 = `--model sonnet`, Tier 3 = `--model opus`. The wrapper is the only place that knows about `claude` CLI; everything else calls `runClaude({ tier, prompt, system, format })`. Streaming is parsed event-by-event so we can surface progress to Discord.
 2. **Spec tightener** at `harness/src/tightener/` — single Tier-1 call (Haiku) for short specs, auto-escalate to Tier-2 (Sonnet) for >500-word bodies. Inputs: task title + body + decisions ledger (from MCP) + ground extracts in scope + existing stubs/TODOs. Output: structured JSON `{ ambiguities[], conflicts[], missing_acceptance[], scope_concerns[], existing_stub_overlap[], spec_quality_score, ready_to_execute, tightened_spec_proposal }`. Threshold: `quality_score >= 7 AND ready_to_execute` → proceed. Below → adapter.requestDialog with A/B/C/D options per ambiguity (cap 2 questions per turn per L44).
 3. **`/ship-anyway` override** — persists tightener output as advisory; proceeds without resolving. Already a registered slash command in Phase 5 — Phase 7 handles dispatch.
 4. **Smoke acceptance** at `harness/scripts/smoke-tightener.ts` — synthetic vague task (`"fix the integration thing"`) produces ≥3 ambiguities + low quality score; synthetic clear task (`"add unique partial index on integration_oauth_tokens(provider, user_id) WHERE archived_at IS NULL"`) produces 0 ambiguities + score ≥9.
 
-Phase 7 prerequisites the operator may need to provide:
+Phase 7 prerequisites:
 
-- **`ANTHROPIC_API_KEY`** — already present in `.env.example`. Operator's `harness/.env` currently has it blank.
+- `claude` CLI on PATH and authenticated against the operator's coding-plan subscription. Already true on the operator's machine (Claude Code is the primary tool). The harness verifies via `claude --version` at startup and pages the operator if missing/unauthenticated.
+- **No `ANTHROPIC_API_KEY` required.** The key in `.env.example` is leftover from the design phase and will be removed in Phase 7 unless a future use case (e.g., fallback for friends without Claude Code) brings it back.
 
 Do NOT start Phase 7 until the operator says "go". Confirm what's landed first; ask whether to proceed.
 
