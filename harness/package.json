@@ -37,6 +37,7 @@
     "smoke:tightener": "tsx scripts/smoke-tightener.ts",
     "smoke:orchestrator": "tsx scripts/smoke-orchestrator.ts",
     "smoke:sensors": "tsx scripts/smoke-sensors.ts",
+    "smoke:reviewer": "tsx scripts/smoke-reviewer.ts",
     "setup:mirror": "tsx scripts/setup-mirror.ts",
     "setup:whisper": "tsx scripts/setup-whisper.ts"
   },
