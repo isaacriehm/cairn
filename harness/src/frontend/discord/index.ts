@@ -32,6 +32,13 @@ import type {
   SlashEvent,
   VoiceMessage,
 } from "../types.js";
+import { classifyTier0 } from "../../tier0/index.js";
+import type {
+  ClassificationResult,
+  Tier0ClassifyOptions,
+} from "../../tier0/index.js";
+import { transcribeUrl, whisperModelExists } from "../../voice/index.js";
+import type { TranscriptionResult } from "../../voice/index.js";
 import { isOwner, parseOwnerIds } from "./acl.js";
 import {
   CATEGORY_NAMES,
@@ -41,7 +48,6 @@ import {
   slugifyForChannel,
   type CategoryKey,
 } from "./channels.js";
-import { classifyFreeText } from "./classifier.js";
 import { registerSlashCommands, SLASH_COMMAND_NAMES } from "./slash.js";
 
 const log = logger("frontend.discord");
@@ -67,6 +73,14 @@ export interface DiscordFrontendAdapterOptions {
    * always registers on every start to keep guild commands fresh.
    */
   skipSlashRegistration?: boolean;
+  /**
+   * Confidence floor for voice transcription. Below this, the bot posts a
+   * "Heard: '...' — confirm?" prompt with 🟢/🔴 buttons before treating the
+   * transcript as a real ingest. Default per L11/voice config: 0.85.
+   */
+  confidenceFloor?: number;
+  /** Tier-0 classifier overrides (host, model, fallback). */
+  tier0?: Tier0ClassifyOptions;
 }
 
 interface PendingApproval {
@@ -99,6 +113,8 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
   private readonly opts: DiscordFrontendAdapterOptions;
   private readonly ownerIds: Set<string>;
   private readonly client: Client;
+  private readonly confidenceFloor: number;
+  private readonly tier0Opts: Tier0ClassifyOptions;
 
   private taskHandler: IngestHandler<FrontendTask> | undefined;
   private voiceHandler: IngestHandler<VoiceMessage> | undefined;
@@ -113,6 +129,8 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
 
   constructor(opts: DiscordFrontendAdapterOptions) {
     this.opts = opts;
+    this.confidenceFloor = opts.confidenceFloor ?? 0.85;
+    this.tier0Opts = opts.tier0 ?? {};
     this.ownerIds = parseOwnerIds(opts.ownerUserIdsEnv);
     if (this.ownerIds.size === 0) {
       log.warn(
@@ -514,6 +532,33 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
       return;
     }
 
+    if (kind === "voice-confirm") {
+      const transcriptId = parts[2] ?? "";
+      const choiceId = parts[3] ?? "";
+      const interactionEvent: InteractionEvent = {
+        source: this.name,
+        bundleId: transcriptId,
+        choiceId,
+        authorId: userId,
+        receivedAt: new Date().toISOString(),
+        ...(interaction.channelId ? { channelId: interaction.channelId } : {}),
+        ...(interaction.guildId ? { guildId: interaction.guildId } : {}),
+        messageId: interaction.id,
+      };
+      await writeInboxRow({
+        repoRoot: this.opts.repoRoot,
+        source: this.name,
+        kind: "interaction",
+        payload: { interaction: interactionEvent, voice_transcript_id: transcriptId },
+      });
+      if (this.interactionHandler) await this.interactionHandler(interactionEvent);
+      await interaction.reply({
+        content: choiceId === "yes" ? "Confirmed." : "Will re-record.",
+        ephemeral: true,
+      });
+      return;
+    }
+
     if (kind === "dialog") {
       const bundleId = parts[2] ?? "";
       const choiceId = parts.slice(3).join(":");
@@ -552,35 +597,14 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
     const userId = message.author.id;
     if (!isOwner(this.ownerIds, userId)) return;
 
-    // Voice attachments take precedence — bypass classification.
+    // Voice attachments take precedence — bypass text classification path.
     const voiceAttachments = message.attachments.filter((a) => {
       const mime = a.contentType ?? "";
       return VOICE_MIME_PREFIXES.some((p) => mime.startsWith(p));
     });
     if (voiceAttachments.size > 0) {
       for (const attachment of voiceAttachments.values()) {
-        const voice: VoiceMessage = {
-          source: this.name,
-          attachmentUrl: attachment.url,
-          authorId: userId,
-          channelId: message.channelId,
-          messageId: message.id,
-          receivedAt: new Date().toISOString(),
-          ...(attachment.contentType ? { mime: attachment.contentType } : {}),
-          ...(message.guildId ? { guildId: message.guildId } : {}),
-        };
-        await writeInboxRow({
-          repoRoot: this.opts.repoRoot,
-          source: this.name,
-          kind: "voice",
-          payload: { voice },
-        });
-        if (this.voiceHandler) await this.voiceHandler(voice);
-      }
-      try {
-        await message.react("👂");
-      } catch {
-        // permission optional
+        await this.handleVoiceAttachment(message, userId, attachment);
       }
       return;
     }
@@ -588,10 +612,10 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
     const text = message.content?.trim() ?? "";
     if (text.length === 0) return;
 
-    const { intent } = classifyFreeText(text);
+    const classification = await classifyTier0(text, this.tier0Opts);
     const event: FreeTextEvent = {
       source: this.name,
-      intent,
+      intent: classification.intent,
       rawText: text,
       authorId: userId,
       receivedAt: new Date().toISOString(),
@@ -600,7 +624,7 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
       ...(message.guildId ? { guildId: message.guildId } : {}),
     };
 
-    if (intent === "code_task") {
+    if (classification.intent === "code_task") {
       const taskId = newTaskId();
       const task: FrontendTask = {
         source: this.name,
@@ -616,13 +640,13 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
         repoRoot: this.opts.repoRoot,
         source: this.name,
         kind: "task",
-        payload: { task, free_text: event, task_id: taskId },
+        payload: { task, free_text: event, task_id: taskId, classification },
       });
       if (this.taskHandler) await this.taskHandler(task);
       try {
         await message.react("📋");
       } catch {
-        // optional
+        // permission optional
       }
       return;
     }
@@ -631,11 +655,130 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
       repoRoot: this.opts.repoRoot,
       source: this.name,
       kind: "free_text",
-      payload: { free_text: event },
+      payload: { free_text: event, classification },
     });
     if (this.freeTextHandler) await this.freeTextHandler(event);
     try {
-      await message.react(intent === "unknown" ? "❓" : "✅");
+      await message.react(classification.intent === "unknown" ? "❓" : "✅");
+    } catch {
+      // optional
+    }
+  }
+
+  private async handleVoiceAttachment(
+    message: Message,
+    userId: string,
+    attachment: { url: string; contentType: string | null },
+  ): Promise<void> {
+    const transcriptId = `VTX-${Date.now().toString(36)}-${randomBytes(2).toString("hex")}`;
+    let transcript: TranscriptionResult | null = null;
+    let transcribeError: string | null = null;
+
+    if (!whisperModelExists()) {
+      transcribeError = "whisper model not installed (Phase 16 init or manual download)";
+    } else {
+      try {
+        transcript = await transcribeUrl(attachment.url, { language: "en" });
+      } catch (err) {
+        transcribeError = err instanceof Error ? err.message : String(err);
+      }
+    }
+
+    let classification: ClassificationResult | null = null;
+    if (transcript && transcript.text.length > 0) {
+      try {
+        classification = await classifyTier0(transcript.text, this.tier0Opts);
+      } catch (err) {
+        log.warn({ err: String(err) }, "tier0 classify on transcript failed");
+      }
+    }
+
+    const voice: VoiceMessage = {
+      source: this.name,
+      attachmentUrl: attachment.url,
+      authorId: userId,
+      channelId: message.channelId,
+      messageId: message.id,
+      receivedAt: new Date().toISOString(),
+      ...(attachment.contentType ? { mime: attachment.contentType } : {}),
+      ...(message.guildId ? { guildId: message.guildId } : {}),
+    };
+
+    const belowFloor =
+      transcript !== null && transcript.avgLogprob < this.confidenceFloor;
+    const transcriptPayload = transcript
+      ? {
+          id: transcriptId,
+          text: transcript.text,
+          avg_logprob: transcript.avgLogprob,
+          language: transcript.language,
+          duration_ms: transcript.durationMs,
+          segments: transcript.segments.length,
+          confidence_floor: this.confidenceFloor,
+          below_floor: belowFloor,
+        }
+      : null;
+
+    await writeInboxRow({
+      repoRoot: this.opts.repoRoot,
+      source: this.name,
+      kind: "voice",
+      payload: {
+        voice,
+        transcript: transcriptPayload,
+        transcribe_error: transcribeError,
+        classification,
+      },
+    });
+    if (this.voiceHandler) await this.voiceHandler(voice);
+
+    if (transcribeError !== null) {
+      try {
+        await message.react("⚠️");
+      } catch {
+        // optional
+      }
+      try {
+        await message.reply(
+          `Transcription failed: \`${transcribeError.slice(0, 200)}\`. Inbox row dropped without transcript.`,
+        );
+      } catch {
+        // optional
+      }
+      return;
+    }
+
+    if (transcript && belowFloor) {
+      try {
+        const row = new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`harness:voice-confirm:${transcriptId}:yes`)
+            .setStyle(ButtonStyle.Success)
+            .setLabel("Confirm")
+            .setEmoji("🟢"),
+          new ButtonBuilder()
+            .setCustomId(`harness:voice-confirm:${transcriptId}:no`)
+            .setStyle(ButtonStyle.Danger)
+            .setLabel("Re-record")
+            .setEmoji("🔴"),
+        );
+        const pct = (transcript.avgLogprob * 100).toFixed(0);
+        const summary =
+          transcript.text.length > 220
+            ? `${transcript.text.slice(0, 217)}...`
+            : transcript.text;
+        await message.reply({
+          content: `Heard: "${summary}" (confidence ${pct}%) — confirm?`,
+          components: [row],
+        });
+      } catch (err) {
+        log.warn({ err: String(err) }, "voice confirm prompt failed");
+      }
+      return;
+    }
+
+    try {
+      await message.react("👂");
     } catch {
       // optional
     }

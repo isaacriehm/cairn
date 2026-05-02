@@ -32,7 +32,10 @@
     "smoke:watch": "tsx scripts/smoke-watch.ts",
     "smoke:mcp": "tsx scripts/smoke-mcp.ts",
     "smoke:discord": "tsx scripts/smoke-discord.ts",
-    "setup:mirror": "tsx scripts/setup-mirror.ts"
+    "smoke:whisper": "tsx scripts/smoke-whisper.ts",
+    "smoke:tier0": "tsx scripts/smoke-tier0.ts",
+    "setup:mirror": "tsx scripts/setup-mirror.ts",
+    "setup:whisper": "tsx scripts/setup-whisper.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

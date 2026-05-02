@@ -3,7 +3,7 @@ type: resume-prompt
 status: handoff
 audience: ai-only
 generated: 2026-05-02
-last-updated: 2026-05-02 (after Phase 0–5 landed)
+last-updated: 2026-05-02 (after Phase 0–6 landed)
 purpose: Drop into a fresh Claude Code session in <operator-home>/Cairn to continue this project where the previous session left off.
 ---
 
@@ -17,7 +17,7 @@ Build a **portable, generic agent harness for solo developers**. Discord-front-e
 
 Sample project (a real-estate CRM at `<operator-home>/sample-project/`) is the proving ground. The harness package extracts cleanly to any other project via `npx @isaacriehm/harness init <repo-dir>`.
 
-**Status:** Implementation in progress. Phases 0–5 landed (~7 founder-days). Phase 6 (Whisper voice ingress) is next. **Documentation in `docs/` is still the source of truth for design; the code in `harness/` is the runtime that implements it.**
+**Status:** Implementation in progress. Phases 0–6 landed (~8 founder-days). Phase 7 (spec tightener — Layer F) is next. **Documentation in `docs/` is still the source of truth for design; the code in `harness/` is the runtime that implements it.**
 
 ## 1A. Implementation snapshot (binding — verify against `git log` before acting)
 
@@ -27,13 +27,14 @@ The Cairn repo is **NOT self-hosted**. It's the source for the published npm pac
 
 | SHA (short) | Phase | What |
 |-------------|-------|------|
-| _(pending)_ | 5 | Discord ingress: frontend-adapter contract, Discord adapter (slash + categories + buttons + ACL + regex Tier-0 stub), stub adapter, `harness run --frontend <name> --project <slug>` CLI, `smoke:discord` |
+| _(pending)_ | 6 | Whisper voice ingress (smart-whisper + ffmpeg pipe, audio never on disk) + Tier-0 Ollama classifier (llama3.2:3b, regex fallback), Discord adapter wired to both, `setup:whisper` build helper for path-with-spaces node-gyp workaround, `smoke:whisper` + `smoke:tier0` |
+| `b5c7420` | 5 | Discord ingress: frontend-adapter contract, Discord adapter (slash + categories + buttons + ACL + regex Tier-0 stub), stub adapter, `harness run --frontend <name> --project <slug>` CLI, `smoke:discord` |
 | `c665fce` | 4 | harness-mcp server (17 tools, stdio transport) |
 | `96b2fa7` | 3 | grounding daemon (chokidar + manifest + ledgers + drift + quality grades + profile registry) |
 | `ce30537` | 2 | mirror checkout runtime (clone/sync/push/dirty-overlap; `~/.local/harness/repos/<slug>/`) |
 | `d011463` | 0–1 | bootstrap pkg + design docs + canonical templates under `harness/templates/` |
 
-### Seven sensors green
+### Nine sensors green
 
 ```
 pnpm -F @isaacriehm/harness build          # tsc -b
@@ -43,11 +44,32 @@ pnpm -F @isaacriehm/harness smoke:mirror   # ephemeral bare-origin + user-tree r
 pnpm -F @isaacriehm/harness smoke:watch    # daemon programmatic; manifest + decisions ledger update on file events
 pnpm -F @isaacriehm/harness smoke:mcp      # InMemoryTransport client/server; all 17 tools exercised
 pnpm -F @isaacriehm/harness smoke:discord  # stub-adapter contract: ingest events → inbox JSON; outbound calls recorded
+pnpm -F @isaacriehm/harness smoke:tier0    # regex fallback always; Ollama path runs when available, otherwise SKIPS
+pnpm -F @isaacriehm/harness smoke:whisper  # macOS `say` clip → ffmpeg → smart-whisper; SKIPS on non-darwin/missing model/missing binding
 ```
 
-Run all seven before doing anything that mutates `harness/src/` or `harness/templates/`.
+Run all nine before doing anything that mutates `harness/src/` or `harness/templates/`.
 
 The Discord adapter is real code (`harness/src/frontend/discord/`); it is not exercised in CI/smoke because live exercise needs `DISCORD_BOT_TOKEN`. Live wiring confirmed against guild `1487133145013944443` during Phase 5 acceptance: bot connects, 13 slash commands register, the three category channels (`📋 backlog`, `🟢 active`, `📦 archive`) are ensured.
+
+### One-time setup steps (operator)
+
+`smart-whisper` ships a node-gyp-built native binding. node-gyp's generated Makefile does not properly quote `module_root_dir`, so on macOS where the project commonly lives at a path with spaces, the build fails. After `pnpm install`, run:
+
+```
+pnpm -F @isaacriehm/harness setup:whisper
+```
+
+This stages the package in `/tmp/harness-sw-*`, builds there, and copies `build/Release/smart-whisper.node` back into the resolved `node_modules` location. Idempotent (no-op when binding exists; `--force` rebuilds). Phase 16 init script will run this automatically on adoption.
+
+`ffmpeg`, `whisper-cpp` (brew), and Ollama (with `llama3.2:3b` pulled) are also required for Phase 6 features:
+
+```
+brew install ffmpeg whisper-cpp ollama
+ollama pull llama3.2:3b
+mkdir -p ~/.local/harness/models && curl -L -o ~/.local/harness/models/ggml-large-v3-turbo-q5_0.bin \
+  "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin?download=true"
+```
 
 ### Source tree
 
@@ -93,14 +115,22 @@ harness/
 │   │                    path-allowlist (APPEND_ALLOWLIST, ARCHIVE_DENY,
 │   │                    HISTORICAL_ZONE), telemetry (per-call jsonl), schemas
 │   │                    (zod input shapes per tool), tools/{17 handlers}/*.ts
-│   └── frontend/        adapter contract (types.ts: FrontendAdapter,
-│                        FrontendTask/VoiceMessage/SlashEvent/FreeTextEvent/
-│                        InteractionEvent/DialogSpec/ApprovalBundle), inbox.ts
-│                        helper (writes `.harness/inbox/<ts>-<source>-<kind>-
-│                        <slug>.json`), stub/ in-memory adapter for tests,
-│                        discord/ real adapter (acl, classifier regex stub,
-│                        slash command builders, channels lifecycle, index
-│                        DiscordFrontendAdapter)
+│   ├── frontend/        adapter contract (types.ts: FrontendAdapter,
+│   │                    FrontendTask/VoiceMessage/SlashEvent/FreeTextEvent/
+│   │                    InteractionEvent/DialogSpec/ApprovalBundle), inbox.ts
+│   │                    helper (writes `.harness/inbox/<ts>-<source>-<kind>-
+│   │                    <slug>.json`), stub/ in-memory adapter for tests,
+│   │                    discord/ real adapter (acl, slash command builders,
+│   │                    channels lifecycle, index DiscordFrontendAdapter
+│   │                    wired to voice + tier0)
+│   ├── voice/           types, model (singleton Whisper, lazy load), pipe
+│   │                    (ffmpeg subprocess: arbitrary audio Buffer → 16k
+│   │                    mono Float32 PCM, never disk), transcribe (entry
+│   │                    points: transcribeBuffer + transcribeUrl), index
+│   └── tier0/           types (Tier0Intent, ClassificationResult), ollama
+│                        (minimal HTTP client + isAvailable + hasModel),
+│                        classify (Ollama-first with llama3.2:3b, regex
+│                        fallback when unreachable), index
 ├── scripts/
 │   ├── check-layout.ts  Phase 1 sensor — also scans pkg/templates for banned
 │   │                    "sample-project" strings (project-agnostic check per L50, S1)
@@ -109,8 +139,15 @@ harness/
 │   ├── smoke-mirror.ts  Phase 2 acceptance
 │   ├── smoke-watch.ts   Phase 3 acceptance
 │   ├── smoke-mcp.ts     Phase 4 acceptance
-│   └── smoke-discord.ts Phase 5 acceptance (stub adapter; live wiring needs
-│                        DISCORD_BOT_TOKEN)
+│   ├── smoke-discord.ts Phase 5 acceptance (stub adapter; live wiring needs
+│   │                    DISCORD_BOT_TOKEN)
+│   ├── smoke-whisper.ts Phase 6 acceptance (macOS `say`-synthesized clip →
+│   │                    transcribe; SKIPS on non-darwin/missing binding/
+│   │                    missing model)
+│   ├── smoke-tier0.ts   Phase 6 acceptance (regex fallback always; Ollama
+│   │                    path SKIPS when daemon unreachable)
+│   └── setup-whisper.ts one-time native binding build helper (works around
+│                        node-gyp + path-with-spaces failure)
 └── templates/           seed copied into adopting projects by `harness init`
     ├── README.md
     ├── .harness/
@@ -131,17 +168,15 @@ harness/
 
 ### What's NOT yet wired
 
-Phases 6–18 from `docs/INTEGRATION_PLAN.md`. In particular:
+Phases 7–18 from `docs/INTEGRATION_PLAN.md`. In particular:
 
-- **No Whisper voice transcription.** The Discord adapter detects voice attachments and drops `voice` inbox rows, but transcription is Phase 6.
-- **No real Tier-0 classifier.** Phase 5 ships a deterministic regex stub at `harness/src/frontend/discord/classifier.ts` — same return shape as the future Ollama path. Replace in Phase 6.
-- **No spec tightener (Layer F).** No model client. No Ollama integration. No Claude/Codex SDK calls.
-- **No orchestrator.** Inbox rows pile up; nothing consumes them. `harness run` brings up adapters and idles.
+- **No spec tightener (Layer F).** Phase 7. Tier-1 (Haiku) call before any code is written; structured output (`ambiguities`, `quality_score`, `tightened_spec_proposal`).
+- **No orchestrator.** Inbox rows pile up; nothing consumes them. `harness run` brings up adapters and idles. Phase 8 = FIFO + agent runner.
 - **No sensors execution.** The sensor catalog at `templates/.harness/config/sensors.yaml` is data; the runner that invokes them is Phase 9.
 - **No reviewer subagent / UAT runner / GC cron / backprop / decision capture flow.** Phases 10–14.
-- **No init script.** `harness init` is a stub; Phase 16.
+- **No init script.** `harness init` is a stub; Phase 16 (inquirer-driven per operator note 2026-05-02).
 
-The `harness watch`, `harness mirror`, `harness mcp serve`, and `harness run` CLIs work today.
+The `harness watch`, `harness mirror`, `harness mcp serve`, and `harness run` CLIs work today. Voice transcription + Tier-0 classification are wired into the Discord adapter.
 
 ## 2. Operator profile (binding)
 
@@ -341,22 +376,20 @@ Each layer fail → run marked `failed-honesty-check` with structured findings. 
 
 ## 10. What the operator wants next (most likely)
 
-Phases 0–5 are landed. Next is **Phase 6 — Whisper voice ingress** (`docs/INTEGRATION_PLAN.md` §5 Phase 6; ~1 founder-day).
+Phases 0–6 are landed. Next is **Phase 7 — spec tightener (Layer F)** (`docs/INTEGRATION_PLAN.md` §5 Phase 7; ~0.5 founder-day).
 
-Phase 6 deliverables:
+Phase 7 deliverables:
 
-1. **Whisper integration** via `smart-whisper` (already in deps) + whisper.cpp via Homebrew. Model `large-v3-turbo` Q5_0 stored at `~/.local/harness/models/`. Audio NEVER written to disk — pipe Discord attachment buffer through ffmpeg → 16k mono PCM → smart-whisper.
-2. **Discord adapter wiring** — extend `harness/src/frontend/discord/index.ts` `handleMessage` voice path: instead of just dropping a `voice` inbox row, fetch the attachment buffer, transcribe, drop a `task`/`free_text` inbox row with the transcript and `avg_logprob`. Below `confidence_floor` (default 0.85, configurable in `workflow.md` `voice:` block) → reply "Heard: '...' — confirm?" with 🟢/🔴 buttons before dispatching.
-3. **Real Tier-0 classifier** — replace the regex stub in `harness/src/frontend/discord/classifier.ts` with an Ollama call (`OLLAMA_HOST` env + `llama3.2:3b` model). Same return shape (`{ intent, confidence }`). Below confidence threshold → escalate to Tier-1 Haiku.
-4. **Smoke acceptance** — record a known voice note, send via Discord, assert transcript matches within Levenshtein 5; assert avg_logprob > 0.85 on clear speech.
+1. **Anthropic SDK integration** — `@anthropic-ai/sdk` dep + a thin client wrapper at `harness/src/llm/`. Hardcoded model IDs per operator profile (no env vars beyond `ANTHROPIC_API_KEY`). Tier 1 = `claude-haiku-4-5-20251001`. Tier 2 = `claude-sonnet-4-6`. Tier 3 = `claude-opus-4-7`. Use prompt caching on system + decisions ledger + invariants.
+2. **Spec tightener** at `harness/src/tightener/` — single Tier-1 call (Haiku) for short specs, auto-escalate to Tier-2 (Sonnet) for >500-word bodies. Inputs: task title + body + decisions ledger (from MCP) + ground extracts in scope + existing stubs/TODOs. Output: structured JSON `{ ambiguities[], conflicts[], missing_acceptance[], scope_concerns[], existing_stub_overlap[], spec_quality_score, ready_to_execute, tightened_spec_proposal }`. Threshold: `quality_score >= 7 AND ready_to_execute` → proceed. Below → adapter.requestDialog with A/B/C/D options per ambiguity (cap 2 questions per turn per L44).
+3. **`/ship-anyway` override** — persists tightener output as advisory; proceeds without resolving. Already a registered slash command in Phase 5 — Phase 7 handles dispatch.
+4. **Smoke acceptance** at `harness/scripts/smoke-tightener.ts` — synthetic vague task (`"fix the integration thing"`) produces ≥3 ambiguities + low quality score; synthetic clear task (`"add unique partial index on integration_oauth_tokens(provider, user_id) WHERE archived_at IS NULL"`) produces 0 ambiguities + score ≥9.
 
-Phase 6 prerequisites the operator may need to provide:
+Phase 7 prerequisites the operator may need to provide:
 
-- Homebrew-installed `whisper.cpp` (Phase 6 init script handles it; manual fallback: `brew install whisper-cpp`).
-- Ollama installed locally (init script Phase 16 handles it; manual: `brew install ollama && ollama pull llama3.2:3b`).
-- A short test voice clip for the smoke acceptance.
+- **`ANTHROPIC_API_KEY`** — already present in `.env.example`. Operator's `harness/.env` currently has it blank.
 
-Do NOT start Phase 6 until the operator says "go". Confirm what's landed first; ask whether to proceed.
+Do NOT start Phase 7 until the operator says "go". Confirm what's landed first; ask whether to proceed.
 
 ## 11. How to start a fresh session
 
