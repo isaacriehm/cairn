@@ -1,0 +1,5 @@
+packages:
+  - "harness"
+allowBuilds:
+  esbuild: true
+  smart-whisper: true

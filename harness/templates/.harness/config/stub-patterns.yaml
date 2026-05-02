@@ -1,0 +1,231 @@
+# Layer A — mechanical stub-pattern catalog.
+#
+# Initial seed (~30 patterns). Grows additively via the /oops dialog
+# (PRIMER §10 Layer A; L25). Patterns NEVER added by typed CLI command.
+#
+# Each pattern is language-tagged. The orchestrator filters patterns by the
+# stack profile's language list before running. False-positive cases are not
+# silenced by editing this file — they're handled per-failure via the /oops
+# dialog (PRIMER §11 anti-pattern: do NOT disable sensors to make diffs pass).
+#
+# Format:
+#   - id: <stable identifier; cited in failure messages>
+#     languages: [<typescript|javascript|python|ruby|go|rust|sql>]
+#     description: <one-liner shown in remediation prompt>
+#     regex: <ECMAScript regex; multiline-mode>
+#     severity: hard | soft
+#
+# Severity:
+#   - hard: any match fails the run unconditionally
+#   - soft: match contributes to attestation cross-check (a `stubs_introduced: 0`
+#     claim becomes a lie if any soft pattern matches)
+
+version: 1
+
+patterns:
+
+  # ── TODO / FIXME / XXX / HACK markers ───────────────────────────────────
+  - id: todo-marker
+    languages: [typescript, javascript, python, ruby, go, rust]
+    description: "TODO/FIXME/XXX/HACK comment — flag as introduced-debt."
+    regex: '(?://|#|/\*)\s*(TODO|FIXME|XXX|HACK)\b'
+    severity: soft
+
+  # ── "not implemented" throws ─────────────────────────────────────────────
+  - id: throw-not-implemented
+    languages: [typescript, javascript]
+    description: "throw new Error('not implemented') — empty stub disguised as code."
+    regex: 'throw\s+new\s+Error\s*\(\s*[''"`][^''"`]*not[\s_]?implemented[^''"`]*[''"`]\s*\)'
+    severity: hard
+
+  - id: throw-todo
+    languages: [typescript, javascript]
+    description: "throw new Error('TODO ...') — same as not-implemented."
+    regex: 'throw\s+new\s+Error\s*\(\s*[''"`]\s*TODO\b'
+    severity: hard
+
+  - id: python-not-implemented
+    languages: [python]
+    description: "raise NotImplementedError — Python equivalent of the above."
+    regex: 'raise\s+NotImplementedError\b'
+    severity: hard
+
+  - id: rust-todo-macro
+    languages: [rust]
+    description: "todo!() / unimplemented!() macro — Rust placeholder."
+    regex: '\b(todo|unimplemented)!\s*\('
+    severity: hard
+
+  - id: rust-panic-todo
+    languages: [rust]
+    description: "panic!(\"todo\" / \"not implemented\") — disguised stub."
+    regex: 'panic!\s*\(\s*"(todo|not\s+implemented)\b'
+    severity: hard
+
+  - id: go-todo-panic
+    languages: [go]
+    description: "panic(\"TODO\" / \"unimplemented\") — Go placeholder."
+    regex: 'panic\s*\(\s*"(TODO|unimplemented|not\s+implemented)'
+    severity: hard
+
+  # ── Empty function bodies pretending to be implementations ──────────────
+  - id: empty-async-body
+    languages: [typescript, javascript]
+    description: "async function with empty body — async fn () => {} masquerades as work."
+    regex: 'async\s+(function\s+\w+\s*\([^)]*\)|\([^)]*\)\s*=>)\s*\{\s*\}'
+    severity: hard
+
+  - id: arrow-returning-undefined
+    languages: [typescript, javascript]
+    description: "() => {} or () => undefined — placeholder lambda."
+    regex: '=>\s*(\{\s*\}|undefined)\s*[,;)]'
+    severity: soft
+
+  - id: python-pass-only
+    languages: [python]
+    description: "Function whose only body is `pass` — Python empty stub."
+    regex: 'def\s+\w+\s*\([^)]*\)\s*(->[^:]+)?:\s*\n\s*pass\s*\n'
+    severity: hard
+
+  # ── "as any" / type escape hatches ──────────────────────────────────────
+  - id: ts-as-any
+    languages: [typescript]
+    description: "`as any` — type escape hatch; almost always indicates undone work."
+    regex: '\bas\s+any\b'
+    severity: soft
+
+  - id: ts-any-cast-bang
+    languages: [typescript]
+    description: "Non-null assertion + any cast pattern: `(x as any)!` — double evasion."
+    regex: '\(\s*[\w.]+\s+as\s+any\s*\)!'
+    severity: hard
+
+  # ── Type-checker / linter suppressions without justification ────────────
+  - id: ts-ignore-bare
+    languages: [typescript, javascript]
+    description: "`// @ts-ignore` without a reason comment on the same/next line."
+    regex: '//\s*@ts-ignore\s*$'
+    severity: hard
+
+  - id: ts-expect-error-bare
+    languages: [typescript, javascript]
+    description: "`// @ts-expect-error` without a reason."
+    regex: '//\s*@ts-expect-error\s*$'
+    severity: hard
+
+  - id: eslint-disable-bare
+    languages: [typescript, javascript]
+    description: "eslint-disable-next-line without rule name + reason."
+    regex: '//\s*eslint-disable(-next-line)?\s*$'
+    severity: hard
+
+  # ── Returning empty/null/zero collections as fake results ───────────────
+  - id: only-return-null
+    languages: [typescript, javascript]
+    description: "Function whose entire body is `return null;` (one-line stub)."
+    regex: '\{\s*return\s+null\s*;?\s*\}'
+    severity: soft
+
+  - id: only-return-undefined
+    languages: [typescript, javascript]
+    description: "Function whose entire body is `return;` or `return undefined;`."
+    regex: '\{\s*return\s*(undefined)?\s*;?\s*\}'
+    severity: soft
+
+  - id: only-return-empty-array
+    languages: [typescript, javascript]
+    description: "Function whose entire body is `return [];` (suspicious for query funcs)."
+    regex: '\{\s*return\s*\[\s*\]\s*;?\s*\}'
+    severity: soft
+
+  - id: only-return-empty-object
+    languages: [typescript, javascript]
+    description: "Function whose entire body is `return {};`."
+    regex: '\{\s*return\s*\{\s*\}\s*;?\s*\}'
+    severity: soft
+
+  - id: only-resolve-void
+    languages: [typescript, javascript]
+    description: "Function whose entire body is `return Promise.resolve();`."
+    regex: '\{\s*return\s+Promise\.resolve\s*\(\s*\)\s*;?\s*\}'
+    severity: hard
+
+  # ── Console-log-as-implementation ───────────────────────────────────────
+  - id: console-log-stub
+    languages: [typescript, javascript]
+    description: "console.log('not implemented') / console.warn('TODO ...') as the only body."
+    regex: 'console\.(log|warn|error)\s*\(\s*[''"`][^''"`]*(not\s+implemented|TODO|stub|placeholder)'
+    severity: hard
+
+  # ── Decorator + always-undefined fields (NestJS / class-validator) ──────
+  - id: optional-always-undefined
+    languages: [typescript]
+    description: "@IsOptional() field with no other validators or assignment — fake-thoroughness DTO field."
+    regex: '@IsOptional\s*\(\s*\)\s*\n\s*\w+\??:\s*\w+\s*;\s*$'
+    severity: soft
+
+  # ── Dead/commented-out code blocks ──────────────────────────────────────
+  - id: commented-block-3-plus-lines
+    languages: [typescript, javascript, python, ruby, go, rust]
+    description: "Block of 3+ consecutive commented-out code lines (not doc comments)."
+    regex: '(?:^[\t ]*//[^\n]*\n){3,}'
+    severity: soft
+
+  - id: commented-out-import
+    languages: [typescript, javascript]
+    description: "Commented-out import statement — usually leftover from undone work."
+    regex: '^\s*//\s*import\s+'
+    severity: soft
+
+  # ── Test placeholders ───────────────────────────────────────────────────
+  - id: it-skip-no-reason
+    languages: [typescript, javascript]
+    description: "it.skip / describe.skip / test.skip without a // reason — silent skip is a stub."
+    regex: '\b(it|describe|test|specify)\.skip\s*\([^)]*\)\s*[^/]*$'
+    severity: soft
+
+  - id: xit-bare
+    languages: [typescript, javascript]
+    description: "xit / xdescribe — Jasmine-era skip macro."
+    regex: '\b(xit|xdescribe|xtest)\s*\('
+    severity: hard
+
+  # ── Suppress-unused tricks ──────────────────────────────────────────────
+  - id: void-suppress-unused
+    languages: [typescript, javascript]
+    description: "`void unused;` to suppress tsc-unused — usually means feature half-implemented."
+    regex: '^\s*void\s+\w+\s*;\s*$'
+    severity: soft
+
+  - id: underscore-prefixed-arg
+    languages: [typescript]
+    description: "Function arg renamed `_unused` to escape the linter without using it. (Soft — may be legitimate.)"
+    regex: '\(\s*_\w+\s*:'
+    severity: soft
+
+  # ── Hard-coded "fake" values ────────────────────────────────────────────
+  - id: foo-bar-baz
+    languages: [typescript, javascript, python, ruby, go, rust]
+    description: "String literal foo / bar / baz / lorem in production-path code."
+    regex: '[''"`](foo|bar|baz|qux|lorem)[''"`]'
+    severity: soft
+
+  - id: dummy-placeholder
+    languages: [typescript, javascript, python, ruby, go, rust]
+    description: "String literal containing 'dummy', 'placeholder', or 'TODO' as the value itself."
+    regex: '[''"`](dummy|placeholder|TODO|stub)[''"`]'
+    severity: soft
+
+  # ── Ad-hoc time hacks ───────────────────────────────────────────────────
+  - id: setTimeout-await
+    languages: [typescript, javascript]
+    description: "setTimeout used as `await new Promise(r => setTimeout(r, N))` — pause-as-fix is almost always a stub."
+    regex: 'await\s+new\s+Promise\s*\(\s*\w+\s*=>\s*setTimeout\s*\(\s*\w+\s*,\s*\d+'
+    severity: soft
+
+  # ── SQL stubs ───────────────────────────────────────────────────────────
+  - id: sql-select-1
+    languages: [sql]
+    description: "Migration/query containing only `SELECT 1` — placeholder."
+    regex: '^\s*SELECT\s+1\s*;?\s*$'
+    severity: soft

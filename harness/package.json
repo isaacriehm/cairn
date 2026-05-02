@@ -1,0 +1,49 @@
+{
+  "name": "@devplusllc/harness",
+  "version": "0.0.0",
+  "description": "Portable agent harness — Discord-front-ended, filesystem-state, honest-agent invariants stack.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "bin": {
+    "harness": "./dist/cli/index.js"
+  },
+  "files": [
+    "dist",
+    "templates",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --noEmit",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "dev": "tsx src/cli/index.ts",
+    "check:layout": "tsx scripts/check-layout.ts"
+  },
+  "dependencies": {
+    "chokidar": "^4.0.1",
+    "discord.js": "^14.26.4",
+    "dotenv": "^17.4.2",
+    "fastify": "^5.8.5",
+    "pino": "^9.5.0",
+    "simple-git": "^3.36.0",
+    "smart-whisper": "^0.8.1",
+    "ws": "^8.20.0",
+    "zod": "^4.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
+  }
+}
