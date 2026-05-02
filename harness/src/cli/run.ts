@@ -9,6 +9,7 @@ import {
   type FrontendAdapter,
 } from "../frontend/index.js";
 import { normalizeProjectName, readMirrorRecord } from "../mirror/index.js";
+import { Orchestrator } from "../orchestrator/index.js";
 
 const log = logger("cli.run");
 
@@ -41,13 +42,17 @@ function parseArgs(argv: string[]): ParsedFlags {
 
 function usage(): never {
   console.error(
-    "Usage: harness run --project <slug> [--frontend <name[,name...]>] [--repo-root <path>]\n" +
-      "  --project    project slug (matches `harness mirror init --project ...`)\n" +
-      "  --frontend   adapter name(s): discord | stub (default: discord)\n" +
-      "  --repo-root  override repo root (default: mirror path from state, then cwd)\n" +
+    "Usage: harness run --project <slug> [--frontend <name[,name...]>] [--repo-root <path>] [--no-orchestrator] [--bypass-tightener] [--default-tier <haiku|sonnet|opus>]\n" +
+      "  --project            project slug (matches `harness mirror init --project ...`)\n" +
+      "  --frontend           adapter name(s): discord | stub (default: discord)\n" +
+      "  --repo-root          override repo root (default: mirror path from state, then cwd)\n" +
+      "  --no-orchestrator    bring up adapters only; skip the FIFO + agent runner\n" +
+      "  --bypass-tightener   skip the spec tightener (Phase 7) — smoke convenience\n" +
+      "  --default-tier       implementer model tier (default: haiku)\n" +
       "\n" +
-      "Phase 5: brings up registered adapters and idles. Orchestrator (Phase 8)\n" +
-      "is not yet wired — adapter events drop to .harness/inbox/<...>.json.",
+      "Brings up registered frontend adapters and (unless --no-orchestrator)\n" +
+      "the Phase 8 orchestrator, which tails .harness/inbox/<...>.json and\n" +
+      "dispatches one task at a time against the mirror checkout.",
   );
   process.exit(1);
 }
@@ -136,8 +141,26 @@ export async function runCli(argv: string[]): Promise<void> {
     log.info({ name: adapter.name }, "frontend adapter started");
   }
 
+  const orchestratorEnabled = flags["no-orchestrator"] !== true;
+  const tierFlag = typeof flags["default-tier"] === "string" ? flags["default-tier"] : undefined;
+  const defaultTier =
+    tierFlag === "haiku" || tierFlag === "sonnet" || tierFlag === "opus" ? tierFlag : "haiku";
+
+  let orchestrator: Orchestrator | undefined;
+  if (orchestratorEnabled) {
+    orchestrator = new Orchestrator({
+      projectName,
+      repoRoot,
+      adapters,
+      defaultTier,
+      ...(flags["bypass-tightener"] === true ? { bypassTightener: true } : {}),
+    });
+    await orchestrator.start();
+    log.info({ defaultTier }, "orchestrator started");
+  }
+
   console.log(
-    `harness run: project=${projectName} repoRoot=${repoRoot} adapters=${adapterNames.join(",")} (Ctrl-C to stop)`,
+    `harness run: project=${projectName} repoRoot=${repoRoot} adapters=${adapterNames.join(",")} orchestrator=${orchestratorEnabled ? defaultTier : "off"} (Ctrl-C to stop)`,
   );
 
   let shuttingDown = false;
@@ -145,6 +168,13 @@ export async function runCli(argv: string[]): Promise<void> {
     if (shuttingDown) return;
     shuttingDown = true;
     log.info({ signal }, "shutdown signal received");
+    if (orchestrator) {
+      try {
+        await orchestrator.stop();
+      } catch (err) {
+        log.error({ err: String(err) }, "orchestrator stop threw");
+      }
+    }
     for (const adapter of adapters) {
       try {
         await adapter.stop();

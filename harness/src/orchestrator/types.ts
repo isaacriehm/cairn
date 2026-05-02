@@ -1,0 +1,118 @@
+import type { ClaudeTier } from "../claude/index.js";
+import type { FrontendAdapter } from "../frontend/index.js";
+
+/**
+ * Phases a code-class run can be in. The lifecycle is linear; no skipping.
+ *
+ *   queued       — accepted from the inbox; waiting for the FIFO to drain
+ *   tightening   — Layer F spec tightener (Phase 7) is running
+ *   blocked      — tightener returned ready=false; awaiting operator answers
+ *   prepping     — workspace prep: mirror sync + SHA pin + dirty-overlap gate
+ *   running      — agent subprocess executing inside the mirror
+ *   succeeded    — agent finished; sensors / reviewer / UAT gates are later phases
+ *   failed       — terminal: tightener errored, workspace gate refused, agent timed
+ *                  out, or stream parse failed
+ *
+ * Phase 8 minimum exercises queued → prepping → running → succeeded | failed.
+ * `tightening` and `blocked` are wired but Phase 8 lets the smoke bypass via
+ * `bypass_tightener` to avoid spending Sonnet quota on every run.
+ */
+export type RunPhase =
+  | "queued"
+  | "tightening"
+  | "blocked"
+  | "prepping"
+  | "running"
+  | "succeeded"
+  | "failed";
+
+/**
+ * Persisted at `.harness/runs/active/<run_id>/meta.json`. The orchestrator
+ * writes this on every phase transition. The grounding daemon's drift
+ * detector reads it for module-health quality grades.
+ */
+export interface RunMeta {
+  run_id: string;
+  task_id: string;
+  agent_role: "implementer";
+  phase: RunPhase;
+  started_at: string;
+  finished_at?: string;
+  tier: ClaudeTier;
+  model: string;
+  mirror_path: string;
+  /** SHA captured at workspace prep (origin/main pin). */
+  sha_pin?: string;
+  events_count: number;
+  duration_ms?: number;
+  /** Populated when phase = "failed". */
+  error?: string;
+  /** Populated when tightener ran. */
+  tightener_score?: number;
+  tightener_ready?: boolean;
+  /** Source channel id when ingested via Discord — used for postTaskUpdate. */
+  channel_id?: string;
+}
+
+/**
+ * Shape of a `task` row dropped to `.harness/inbox/<...>.json` by adapters.
+ * The orchestrator is tolerant — fields beyond `task_id` and `task` are
+ * optional and just plumb through to the run.
+ */
+export interface InboxTaskRow {
+  kind: "task";
+  source: string;
+  received_at: string;
+  task_id?: string;
+  task: {
+    rawText: string;
+    intent: string;
+    authorId: string;
+    channelId?: string;
+    guildId?: string;
+    messageId?: string;
+    receivedAt?: string;
+  };
+  classification?: { intent: string; confidence: number; source: string };
+  free_text?: unknown;
+  slash?: unknown;
+  /** Optional override per L24 / WORKFLOW_GUIDE §4.5. */
+  ship_anyway?: boolean;
+  /** Globs the run is expected to touch — used for dirty-overlap. */
+  target_path_globs?: string[];
+  /** Optional title override (otherwise derived from rawText[0..80]). */
+  title?: string;
+  /** Optional acceptance criteria pre-supplied. */
+  acceptance_criteria?: string[];
+}
+
+export interface OrchestratorOptions {
+  /** Project name as registered with mirror (slug, not display). */
+  projectName: string;
+  /** Repo root for inbox + runs + tasks dirs (typically the mirror path). */
+  repoRoot: string;
+  /** Adapters used for surfacing run progress + dialogs. */
+  adapters: FrontendAdapter[];
+  /** Skip the spec tightener (Phase 7). Smoke convenience. Default false. */
+  bypassTightener?: boolean;
+  /**
+   * Force this tier for the implementer. Default: haiku (cheap; raise to
+   * sonnet for code-class tasks once Phase 9+ adds trust-class detection).
+   */
+  defaultTier?: ClaudeTier;
+  /** Inbox poll interval — chokidar fires events but we also poll for safety. */
+  pollIntervalMs?: number;
+  /** Per-run hard timeout. Default 600_000 ms (10 min). */
+  runTimeoutMs?: number;
+  /** Allowed tools list passed to `claude --allowed-tools`. */
+  allowedTools?: string[];
+}
+
+export interface QueueEntry {
+  run_id: string;
+  task_id: string;
+  enqueued_at: string;
+  row: InboxTaskRow;
+  /** Where the inbox row file lives — moved to processed/ on completion. */
+  inbox_file: string;
+}

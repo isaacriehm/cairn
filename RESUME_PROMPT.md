@@ -3,7 +3,7 @@ type: resume-prompt
 status: handoff
 audience: ai-only
 generated: 2026-05-02
-last-updated: 2026-05-02 (after Phase 0–7 landed)
+last-updated: 2026-05-02 (after Phase 0–8 landed)
 purpose: Drop into a fresh Claude Code session in /Users/user/Documents/DevPlus LLC/06 - Projects/Harness to continue this project where the previous session left off.
 ---
 
@@ -17,7 +17,7 @@ Build a **portable, generic agent harness for solo developers**. Discord-front-e
 
 Mypal (a real-estate CRM at `/Users/user/Documents/DevPlus LLC/06 - Projects/mypalcrm/`) is the proving ground. The harness package extracts cleanly to any other project via `npx @devplusllc/harness init <repo-dir>`.
 
-**Status:** Implementation in progress. Phases 0–7 landed (~8.5 founder-days). Phase 8 (orchestrator + agent runner) is next. **Documentation in `docs/` is still the source of truth for design; the code in `harness/` is the runtime that implements it.**
+**Status:** Implementation in progress. Phases 0–8 landed (~10.5 founder-days). Phase 9 (sensor runners + Layer A/B/D + decision-assertions) is next. **Documentation in `docs/` is still the source of truth for design; the code in `harness/` is the runtime that implements it.**
 
 ## 1A. Implementation snapshot (binding — verify against `git log` before acting)
 
@@ -27,7 +27,8 @@ The Harness repo is **NOT self-hosted**. It's the source for the published npm p
 
 | SHA (short) | Phase | What |
 |-------------|-------|------|
-| _(pending)_ | 7 | spec tightener (Layer F): `harness/src/claude/` subprocess wrapper (`claude --print --model <tier> --output-format json --json-schema ...`); `harness/src/tightener/` (Tier-1 Haiku default, Sonnet auto-escalate >500 words or via `force_tier`, structured JSON output, `ship_anyway` override); `smoke:tightener`; `.env.example` cleaned of `ANTHROPIC_API_KEY` (subscription auth only) |
+| _(pending)_ | 8 | orchestrator + agent runner: `harness/src/orchestrator/` (inbox tailer w/ chokidar, FIFO + persisted shadow, workspace prep w/ syncMirror + SHA pin + dirty-overlap gate per L45, prompt renderer for `workflow.md`, agent runner via `claude --print --output-format stream-json`, `Orchestrator` class), `harness run` CLI starts it by default; `smoke:orchestrator` (drop task → run → assert echo.txt + events.jsonl + no commit); default `--permission-mode bypassPermissions` per operator preference |
+| `b730bac` | 7 | spec tightener (Layer F): `harness/src/claude/` subprocess wrapper (`claude --print --model <tier> --output-format json --json-schema ...`); `harness/src/tightener/` (Tier-1 Haiku default, Sonnet auto-escalate >500 words or via `force_tier`, structured JSON output, `ship_anyway` override); `smoke:tightener`; `.env.example` cleaned of `ANTHROPIC_API_KEY` (subscription auth only) |
 | `cdd0f13` | 6 | Whisper voice ingress (smart-whisper + ffmpeg pipe, audio never on disk) + Tier-0 Ollama classifier (llama3.2:3b, regex fallback), Discord adapter wired to both, `setup:whisper` build helper for path-with-spaces node-gyp workaround, `smoke:whisper` + `smoke:tier0` |
 | `b5c7420` | 5 | Discord ingress: frontend-adapter contract, Discord adapter (slash + categories + buttons + ACL + regex Tier-0 stub), stub adapter, `harness run --frontend <name> --project <slug>` CLI, `smoke:discord` |
 | `c665fce` | 4 | harness-mcp server (17 tools, stdio transport) |
@@ -35,22 +36,23 @@ The Harness repo is **NOT self-hosted**. It's the source for the published npm p
 | `ce30537` | 2 | mirror checkout runtime (clone/sync/push/dirty-overlap; `~/.local/harness/repos/<slug>/`) |
 | `d011463` | 0–1 | bootstrap pkg + design docs + canonical templates under `harness/templates/` |
 
-### Ten sensors green
+### Eleven sensors green
 
 ```
-pnpm -F @devplusllc/harness build           # tsc -b
-pnpm -F @devplusllc/harness typecheck       # tsc -b --noEmit
-pnpm -F @devplusllc/harness check:layout    # validates pkg+templates + scans for banned project names
-pnpm -F @devplusllc/harness smoke:mirror    # ephemeral bare-origin + user-tree round-trip
-pnpm -F @devplusllc/harness smoke:watch     # daemon programmatic; manifest + decisions ledger update on file events
-pnpm -F @devplusllc/harness smoke:mcp       # InMemoryTransport client/server; all 17 tools exercised
-pnpm -F @devplusllc/harness smoke:discord   # stub-adapter contract: ingest events → inbox JSON; outbound calls recorded
-pnpm -F @devplusllc/harness smoke:tier0     # regex fallback always; Ollama path runs when available, otherwise SKIPS
-pnpm -F @devplusllc/harness smoke:whisper   # macOS `say` clip → ffmpeg → smart-whisper; SKIPS on non-darwin/missing model/missing binding
-pnpm -F @devplusllc/harness smoke:tightener # vague→blocked, clear→sonnet judgment, ship_anyway→forced; SKIPS without `claude` CLI auth
+pnpm -F @devplusllc/harness build              # tsc -b
+pnpm -F @devplusllc/harness typecheck          # tsc -b --noEmit
+pnpm -F @devplusllc/harness check:layout       # validates pkg+templates + scans for banned project names
+pnpm -F @devplusllc/harness smoke:mirror       # ephemeral bare-origin + user-tree round-trip
+pnpm -F @devplusllc/harness smoke:watch        # daemon programmatic; manifest + decisions ledger update on file events
+pnpm -F @devplusllc/harness smoke:mcp          # InMemoryTransport client/server; all 17 tools exercised
+pnpm -F @devplusllc/harness smoke:discord      # stub-adapter contract: ingest events → inbox JSON; outbound calls recorded
+pnpm -F @devplusllc/harness smoke:tier0        # regex fallback always; Ollama path runs when available, otherwise SKIPS
+pnpm -F @devplusllc/harness smoke:whisper      # macOS `say` clip → ffmpeg → smart-whisper; SKIPS on non-darwin/missing model/missing binding
+pnpm -F @devplusllc/harness smoke:tightener    # vague→blocked, clear→sonnet judgment, ship_anyway→forced; SKIPS without `claude` CLI auth
+pnpm -F @devplusllc/harness smoke:orchestrator # ephemeral mirror + drop task → orchestrator picks up → claude implementer writes file in mirror → assert echo.txt + events.jsonl + no commit
 ```
 
-Run all ten before doing anything that mutates `harness/src/` or `harness/templates/`. The tightener smoke costs ~3 `claude` calls (~3 minutes wall-clock, ~$0.50 worth of subscription quota); skip it casually for unrelated touches.
+Run all eleven before doing anything that mutates `harness/src/` or `harness/templates/`. The tightener and orchestrator smokes each cost ~1-3 `claude` calls; budget ~$1 of subscription quota for the full sweep, skip casually for unrelated touches.
 
 The Discord adapter is real code (`harness/src/frontend/discord/`); it is not exercised in CI/smoke because live exercise needs `DISCORD_BOT_TOKEN`. Live wiring confirmed against guild `1487133145013944443` during Phase 5 acceptance: bot connects, 13 slash commands register, the three category channels (`📋 backlog`, `🟢 active`, `📦 archive`) are ensured.
 
@@ -140,13 +142,30 @@ harness/
 │   │                    structured_output from envelope), index. The
 │   │                    only place that knows about the CLI; everything
 │   │                    else calls `runClaude`.
-│   └── tightener/       Layer F spec tightener: types (TightenerInput/
-│                        Output/Result), schema (JSON Schema for the
-│                        --json-schema gate), prompt (system + user prompt
-│                        builders), tighten (`tightenSpec(input)` — Tier-1
-│                        Haiku default, Sonnet auto-escalate on >500 word
-│                        bodies or `force_tier`, ship_anyway override),
-│                        index
+│   ├── tightener/       Layer F spec tightener: types (TightenerInput/
+│   │                    Output/Result), schema (JSON Schema for the
+│   │                    --json-schema gate), prompt (system + user prompt
+│   │                    builders), tighten (`tightenSpec(input)` — Tier-1
+│   │                    Haiku default, Sonnet auto-escalate on >500 word
+│   │                    bodies or `force_tier`, ship_anyway override),
+│   │                    index
+│   └── orchestrator/    Phase 8 FIFO + agent runner. types (RunPhase,
+│                        RunMeta, InboxTaskRow, OrchestratorOptions,
+│                        QueueEntry); inbox (tail .harness/inbox/<...>.json,
+│                        move to processed/<...>.<outcome>.json after
+│                        completion); queue (in-memory FIFO + YAML shadow
+│                        at .harness/tasks/active/_queue.yaml; cap = 1);
+│                        workspace (syncMirror → SHA pin → dirty-overlap
+│                        gate per L45); prompt (minimal Liquid-style
+│                        templater for `workflow.md` placeholders); runner
+│                        (`runImplementer` spawns `claude --print
+│                        --output-format stream-json
+│                        --include-partial-messages
+│                        --permission-mode bypassPermissions --add-dir
+│                        <mirror>`, line-by-line stream parse,
+│                        events.jsonl); orchestrator (chokidar + poll loop,
+│                        single-task dispatcher, surfaces phase
+│                        transitions to adapters via postTaskUpdate)
 ├── scripts/
 │   ├── check-layout.ts  Phase 1 sensor — also scans pkg/templates for banned
 │   │                    "mypal" strings (project-agnostic check per L50, S1)
@@ -165,6 +184,10 @@ harness/
 │   ├── smoke-tightener.ts Phase 7 acceptance: vague→blocked, clear→Sonnet
 │   │                    judgment (ambiguities differentiate), ship_anyway
 │   │                    forces release. Burns ~3 claude calls.
+│   ├── smoke-orchestrator.ts Phase 8 acceptance: ephemeral mirror, drop
+│   │                    task, agent writes echo.txt, assert events.jsonl
+│   │                    populated + no commit landed. Burns ~1 claude
+│   │                    haiku call.
 │   └── setup-whisper.ts one-time native binding build helper (works around
 │                        node-gyp + path-with-spaces failure)
 └── templates/           seed copied into adopting projects by `harness init`
@@ -187,14 +210,16 @@ harness/
 
 ### What's NOT yet wired
 
-Phases 8–18 from `docs/INTEGRATION_PLAN.md`. In particular:
+Phases 9–18 from `docs/INTEGRATION_PLAN.md`. In particular:
 
-- **No orchestrator.** Inbox rows pile up; nothing consumes them. `harness run` brings up adapters and idles. Phase 8 = FIFO + agent runner. Phase 7's tightener and Phase 6's voice/tier0 are wired but unused until the orchestrator dispatches them.
-- **No sensors execution.** The sensor catalog at `templates/.harness/config/sensors.yaml` is data; the runner that invokes them is Phase 9.
-- **No reviewer subagent / UAT runner / GC cron / backprop / decision capture flow.** Phases 10–14.
+- **No sensors execution.** The sensor catalog at `templates/.harness/config/sensors.yaml` is data; the runner that invokes them post-agent is Phase 9. Until then a `succeeded` run can ship code with stubs the sensors would have caught.
+- **No reviewer subagent (Layer C).** Phase 10. Same model as implementer, fresh context, anti-completionist framing.
+- **No UAT runner / evidence-file gate.** Phase 11.
+- **No GC cron / backprop / decision capture flow.** Phases 12–14.
 - **No init script.** `harness init` is a stub; Phase 16 (inquirer-driven per operator note 2026-05-02).
+- **No git commit + push from a successful run.** The orchestrator stops after the agent finishes; commits are gated on Phase 9 sensors + Phase 10 reviewer + Phase 11 UAT per the L16/L17/L18 trust posture.
 
-The `harness watch`, `harness mirror`, `harness mcp serve`, and `harness run` CLIs work today. Voice transcription, Tier-0 classification, and the spec tightener are all available as library calls inside the harness runtime; they will be plumbed end-to-end in Phase 8.
+The `harness watch`, `harness mirror`, `harness mcp serve`, and `harness run` CLIs work today. End-to-end ingest → tightener → mirror → agent → file artifact in mirror runs cleanly. The next missing piece is the gate stack between agent-finish and git-commit-to-main.
 
 ## 2. Operator profile (binding)
 
@@ -394,19 +419,21 @@ Each layer fail → run marked `failed-honesty-check` with structured findings. 
 
 ## 10. What the operator wants next (most likely)
 
-Phases 0–7 are landed. Next is **Phase 8 — orchestrator + agent runner** (`docs/INTEGRATION_PLAN.md` §5 Phase 8; ~2 founder-days).
+Phases 0–8 are landed. Next is **Phase 9 — sensor runners + Layer A/B/D + decision-assertions** (`docs/INTEGRATION_PLAN.md` §5 Phase 9; ~1.5 founder-days).
 
-Phase 8 deliverables:
+Phase 9 deliverables:
 
-1. **Inbox consumer** — tail `.harness/inbox/<...>.json` rows the adapters drop, dispatch by `kind`. `task` rows kick off the run lifecycle: spec tightener (Phase 7) → workspace prep (mirror reset to `origin/main`) → `local_dirty_overlap` gate (per L45) → agent run.
-2. **FIFO scheduler** — in-memory queue; persisted shadow at `.harness/tasks/active/_queue.yaml`. Hard cap = 1 concurrent code-class run.
-3. **Agent runner** — `runClaude` already exists; Phase 8 wraps it for implementer dispatch. Spawn `claude --print --output-format stream-json` with `cwd: mirrorPath` and the rendered prompt template from `templates/.harness/config/workflow.md`. Parse the streaming events; write per-event rows to `.harness/runs/active/<id>/events.jsonl`. Surface phase transitions to Discord via the adapter's `postTaskUpdate`.
-4. **Reconciliation** — per-tick stall detection (no event in 5 min → kill + retry). Tracker state refresh (task still in `tasks/active/`?). Retry policy per Symphony §8.4: continuation 1s, failure `min(10s * 2^(attempt-1), 5m)`.
-5. **Smoke acceptance** at `harness/scripts/smoke-orchestrator.ts` — drop a hard-coded task ("create file harness/scratch/echo.txt with HELLO") into the inbox; verify the orchestrator picks it up, runs the agent against the mirror, file appears in mirror; `runs/active/<id>/meta.json` reflects `succeeded`; no commit yet (waiting on UAT or auto-merge gate which is later phases).
+1. **Sensor runner** at `harness/src/sensors/` — invokes the sensor catalog (`templates/.harness/config/sensors.yaml`) against a finished run's diff. Sensor failure messages are remediation prompts (per OpenAI's pattern); failure feeds back to the agent for retry. Generic, project-agnostic; project-specific sensors are configured by the adopting project's `.harness/config/sensors.yaml`.
+2. **Layer A — stub-pattern catalog** — mechanical regex match of agent diff against `.harness/config/stub-patterns.yaml`. ~30 seed patterns; grows via `/oops` dialog (Phase 14).
+3. **Layer B — attestation cross-check** — agent emits a YAML `attestation:` block in its final response; sensor cross-checks `delivered`/`deferred`/`stubs_introduced`/`files_touched` against the actual diff. Mismatch fails the run.
+4. **Layer D — generic project-agnostic sensors** — `route-handler-non-empty`, `dto-no-fake-fields`, `pii-fixture` (when applicable). The first cut is profile-driven from `harness/src/profiles/`.
+5. **Decision-assertions sensor** — for every accepted decision in scope, evaluate its machine-readable assertions (the 11 kinds from L26+L41) against the diff. Quote the failing assertion in the failure message.
+6. **Wire into orchestrator** — after a successful agent run, the orchestrator runs sensors against the diff; on failure, feeds the remediation prompt back to the agent (one retry by default per L42 max_attempts_per_task=3, attempt 2 here = first sensor-feedback retry); on success, run is marked sensor-clean and ready for Phase 10 reviewer.
+7. **Smoke** at `harness/scripts/smoke-sensors.ts` — synthetic failing diff per sensor; clean diff passes; failed sensor's output is the prompt the agent sees on retry.
 
-Phase 8 prerequisites: nothing new beyond Phase 7. `claude` CLI is already authenticated; the mirror runtime exists; the inbox shape is established.
+Phase 9 prerequisites: nothing new beyond Phase 8.
 
-Do NOT start Phase 8 until the operator says "go". Confirm what's landed first.
+Do NOT start Phase 9 until the operator says "go". Confirm what's landed first.
 
 Do NOT start Phase 7 until the operator says "go". Confirm what's landed first; ask whether to proceed.
 
