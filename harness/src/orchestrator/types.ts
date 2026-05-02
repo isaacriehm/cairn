@@ -1,5 +1,6 @@
 import type { ClaudeTier } from "../claude/index.js";
 import type { FrontendAdapter } from "../frontend/index.js";
+import type { ProjectGlobs, SensorLanguage, SensorSweepResult } from "../sensors/types.js";
 
 /**
  * Phases a code-class run can be in. The lifecycle is linear; no skipping.
@@ -23,6 +24,7 @@ export type RunPhase =
   | "blocked"
   | "prepping"
   | "running"
+  | "sensing"
   | "succeeded"
   | "failed";
 
@@ -52,6 +54,21 @@ export interface RunMeta {
   tightener_ready?: boolean;
   /** Source channel id when ingested via Discord — used for postTaskUpdate. */
   channel_id?: string;
+  /** Number of agent attempts dispatched (1 = no retries). */
+  attempts?: number;
+  /** Per-attempt sensor sweep summary; persisted in events log too. */
+  sensor_history?: {
+    attempt: number;
+    ok: boolean;
+    hard_failures: number;
+    soft_findings: number;
+    sensor_ids_failed: string[];
+  }[];
+  /** Final sweep result reference for downstream layers. */
+  last_sensor_sweep?: Pick<
+    SensorSweepResult,
+    "ok" | "hard_failures" | "soft_findings"
+  >;
 }
 
 /**
@@ -95,6 +112,8 @@ export interface OrchestratorOptions {
   adapters: FrontendAdapter[];
   /** Skip the spec tightener (Phase 7). Smoke convenience. Default false. */
   bypassTightener?: boolean;
+  /** Skip the sensor sweep (Phase 9). Smoke convenience. Default false. */
+  bypassSensors?: boolean;
   /**
    * Force this tier for the implementer. Default: haiku (cheap; raise to
    * sonnet for code-class tasks once Phase 9+ adds trust-class detection).
@@ -106,6 +125,15 @@ export interface OrchestratorOptions {
   runTimeoutMs?: number;
   /** Allowed tools list passed to `claude --allowed-tools`. */
   allowedTools?: string[];
+  /** Stack-profile language list — filters Layer A patterns. Default ["typescript"]. */
+  sensorLanguages?: SensorLanguage[];
+  /** Resolved <project>: extension globs from workflow.md. Default {}. */
+  projectGlobs?: ProjectGlobs;
+  /**
+   * Max agent attempts before the run is failed-honesty-checked. Default 3
+   * per L42 (max_attempts_per_task=3, attempt 2 = first sensor-feedback retry).
+   */
+  maxAttempts?: number;
 }
 
 export interface QueueEntry {

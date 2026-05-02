@@ -4,6 +4,8 @@ import chokidar, { type FSWatcher } from "chokidar";
 import { join } from "node:path";
 import { logger } from "../logger.js";
 import { requireMirrorRecord } from "../mirror/index.js";
+import { runSensors } from "../sensors/index.js";
+import type { SensorSweepResult } from "../sensors/index.js";
 import { tightenSpec } from "../tightener/index.js";
 import {
   ensureInboxDirs,
@@ -254,16 +256,14 @@ export class Orchestrator {
       return;
     }
 
-    // ── Agent run ─────────────────────────────────────────────────────
-    await this.surfacePhase(entry, meta, "running");
+    // ── Agent run + sensor retry loop ─────────────────────────────────
     const eventsLogPath = join(
       this.opts.repoRoot,
       RUNS_ACTIVE_REL,
       entry.run_id,
       "events.jsonl",
     );
-
-    const promptBody = await this.renderPrompt({
+    const basePrompt = await this.renderPrompt({
       runId: entry.run_id,
       mirrorPath: meta.mirror_path,
       shaPin: prep.sha_pin,
@@ -271,39 +271,127 @@ export class Orchestrator {
       acceptance: entry.row.acceptance_criteria ?? [],
     });
 
-    let runResult;
-    try {
-      runResult = await runImplementer({
-        tier,
-        prompt: promptBody,
-        cwd: meta.mirror_path,
-        eventsLogPath,
-        addDirs: [meta.mirror_path],
-        ...(this.opts.allowedTools !== undefined
-          ? { allowedTools: this.opts.allowedTools }
-          : {}),
-        ...(this.opts.runTimeoutMs !== undefined
-          ? { timeoutMs: this.opts.runTimeoutMs }
-          : {}),
-        onEvent: (e) => {
-          meta.events_count += 1;
-          if (e["type"] === "assistant" || e["type"] === "result") {
-            void this.writeMeta(meta);
-          }
-        },
-      });
-    } catch (err) {
-      await this.completeRun(entry, meta, "failed", `agent: ${String(err)}`);
-      return;
-    }
+    const maxAttempts = this.opts.maxAttempts ?? 3;
+    let remediationBody = "";
+    meta.attempts = 0;
+    meta.sensor_history = [];
 
-    meta.events_count = runResult.events;
-    meta.duration_ms = runResult.durationMs;
-    await this.completeRun(
-      entry,
-      meta,
-      runResult.ok ? "succeeded" : "failed",
-      runResult.ok ? undefined : "agent reported is_error=true",
+    let lastSweep: SensorSweepResult | undefined;
+    let attempt = 1;
+    while (attempt <= maxAttempts) {
+      meta.attempts = attempt;
+      await this.surfacePhase(entry, meta, "running");
+
+      const promptBody = remediationBody.length > 0
+        ? `${basePrompt}\n\n${remediationBody}`
+        : basePrompt;
+
+      let runResult;
+      try {
+        runResult = await runImplementer({
+          tier,
+          prompt: promptBody,
+          cwd: meta.mirror_path,
+          eventsLogPath,
+          addDirs: [meta.mirror_path],
+          ...(this.opts.allowedTools !== undefined
+            ? { allowedTools: this.opts.allowedTools }
+            : {}),
+          ...(this.opts.runTimeoutMs !== undefined
+            ? { timeoutMs: this.opts.runTimeoutMs }
+            : {}),
+          onEvent: (e) => {
+            meta.events_count += 1;
+            if (e["type"] === "assistant" || e["type"] === "result") {
+              void this.writeMeta(meta);
+            }
+          },
+        });
+      } catch (err) {
+        await this.completeRun(entry, meta, "failed", `agent: ${String(err)}`);
+        return;
+      }
+      meta.events_count = runResult.events;
+      meta.duration_ms = runResult.durationMs;
+
+      if (!runResult.ok) {
+        await this.completeRun(entry, meta, "failed", "agent reported is_error=true");
+        return;
+      }
+
+      // ── Sensor sweep ────────────────────────────────────────────────
+      if (this.opts.bypassSensors === true) {
+        await this.completeRun(entry, meta, "succeeded");
+        return;
+      }
+      await this.surfacePhase(entry, meta, "sensing");
+      const finalText =
+        typeof runResult.result["result"] === "string"
+          ? (runResult.result["result"] as string)
+          : "";
+      try {
+        lastSweep = await runSensors({
+          mirrorPath: meta.mirror_path,
+          shaPin: prep.sha_pin,
+          finalAssistantText: finalText,
+          languages: this.opts.sensorLanguages ?? ["typescript"],
+          projectGlobs: this.opts.projectGlobs ?? {},
+          runId: entry.run_id,
+          attempt,
+          maxAttempts,
+        });
+      } catch (err) {
+        await this.completeRun(entry, meta, "failed", `sensors: ${String(err)}`);
+        return;
+      }
+      await this.persistSensorAttempt(entry.run_id, attempt, lastSweep);
+      meta.sensor_history.push({
+        attempt,
+        ok: lastSweep.ok,
+        hard_failures: lastSweep.hard_failures,
+        soft_findings: lastSweep.soft_findings,
+        sensor_ids_failed: lastSweep.results
+          .filter((r) => !r.ok)
+          .map((r) => r.sensor_id),
+      });
+      meta.last_sensor_sweep = {
+        ok: lastSweep.ok,
+        hard_failures: lastSweep.hard_failures,
+        soft_findings: lastSweep.soft_findings,
+      };
+      await this.writeMeta(meta);
+
+      if (lastSweep.ok) {
+        await this.completeRun(entry, meta, "succeeded");
+        return;
+      }
+
+      // Hard fail. If attempts left, append remediation + loop.
+      if (attempt >= maxAttempts) {
+        await this.completeRun(
+          entry,
+          meta,
+          "failed",
+          `sensors failed-honesty-check after ${attempt} attempt(s); ${lastSweep.hard_failures} hard failure(s)`,
+        );
+        return;
+      }
+      remediationBody = lastSweep.remediation_prompt;
+      attempt += 1;
+    }
+  }
+
+  private async persistSensorAttempt(
+    runId: string,
+    attempt: number,
+    sweep: SensorSweepResult,
+  ): Promise<void> {
+    const dir = join(this.opts.repoRoot, RUNS_ACTIVE_REL, runId, "sensors");
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      join(dir, `attempt-${attempt}.json`),
+      JSON.stringify(sweep, null, 2),
+      "utf8",
     );
   }
 
