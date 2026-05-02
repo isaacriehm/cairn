@@ -3,6 +3,7 @@ type: resume-prompt
 status: handoff
 audience: ai-only
 generated: 2026-05-02
+last-updated: 2026-05-02 (after Phase 0–4 landed)
 purpose: Drop into a fresh Claude Code session in /Users/user/Documents/DevPlus LLC/06 - Projects/Harness to continue this project where the previous session left off.
 ---
 
@@ -16,7 +17,113 @@ Build a **portable, generic agent harness for solo developers**. Discord-front-e
 
 Mypal (a real-estate CRM at `/Users/user/Documents/DevPlus LLC/06 - Projects/mypalcrm/`) is the proving ground. The harness package extracts cleanly to any other project via `npx @devplusllc/harness init <repo-dir>`.
 
-**Status:** design phase. No code yet. Documentation in `docs/` is the source of truth.
+**Status:** Implementation in progress. Phases 0–4 landed (~5.5 founder-days). Phase 5 is next. **Documentation in `docs/` is still the source of truth for design; the code in `harness/` is the runtime that implements it.**
+
+## 1A. Implementation snapshot (binding — verify against `git log` before acting)
+
+The Harness repo is **NOT self-hosted**. It's the source for the published npm package `@devplusllc/harness`. The `.harness/` shape lives in `harness/templates/`; the init script copies it into adopting projects. Do not create `.harness/` or `.archive/` at the repo root.
+
+### Commits landed (most recent first)
+
+| SHA (short) | Phase | What |
+|-------------|-------|------|
+| `c665fce` | 4 | harness-mcp server (17 tools, stdio transport) |
+| `96b2fa7` | 3 | grounding daemon (chokidar + manifest + ledgers + drift + quality grades + profile registry) |
+| `ce30537` | 2 | mirror checkout runtime (clone/sync/push/dirty-overlap; `~/.local/harness/repos/<slug>/`) |
+| `d011463` | 0–1 | bootstrap pkg + design docs + canonical templates under `harness/templates/` |
+
+### Six sensors green
+
+```
+pnpm -F @devplusllc/harness build          # tsc -b
+pnpm -F @devplusllc/harness typecheck      # tsc -b --noEmit
+pnpm -F @devplusllc/harness check:layout   # validates pkg+templates + scans for banned project names
+pnpm -F @devplusllc/harness smoke:mirror   # ephemeral bare-origin + user-tree round-trip
+pnpm -F @devplusllc/harness smoke:watch    # daemon programmatic; manifest + decisions ledger update on file events
+pnpm -F @devplusllc/harness smoke:mcp      # InMemoryTransport client/server; all 17 tools exercised
+```
+
+Run all six before doing anything that mutates `harness/src/` or `harness/templates/`.
+
+### Source tree
+
+```
+harness/
+├── package.json         @devplusllc/harness@0.0.0; deps: discord.js v14, smart-whisper,
+│                        chokidar, simple-git, fastify, pino, dotenv, zod, ws, yaml,
+│                        @modelcontextprotocol/sdk
+├── tsconfig.json        extends ../tsconfig.base.json (strict, NodeNext ESM, composite)
+├── .env.example         secrets only (DISCORD_BOT_TOKEN, ANTHROPIC_API_KEY, OPENAI_API_KEY,
+│                        OLLAMA_HOST=http://localhost:11434)
+├── README.md
+├── src/
+│   ├── index.ts         export const VERSION = "0.0.0"
+│   ├── logger.ts        pino with secret-redaction; `logger(module)` factory
+│   ├── cli/
+│   │   ├── index.ts     dispatch: watch | run | init | mirror | mcp | --version
+│   │   ├── watch.ts     `harness watch --project <slug>` long-lived
+│   │   ├── mirror.ts    `harness mirror init|sync|push|status`
+│   │   └── mcp.ts       `harness mcp serve [--repo-root <path>]`
+│   ├── mirror/          paths, state (zod-validated mirror.json), clone, sync,
+│   │                    push, dirty-overlap (L45 gate), types, index
+│   ├── ground/          schemas (Provenance, Manifest, DecisionFrontmatter w/ 11
+│   │                    assertion kinds, InvariantFrontmatter, ledger entries,
+│   │                    QualityGrade, DriftEvent), paths, glob (native ** / *
+│   │                    matcher), walk, frontmatter parser + freshness, manifest
+│   │                    builder, ledgers, drift, quality-grades, index
+│   ├── profiles/        Profile interface + extractors as extension points;
+│   │                    unknown.ts is the fallback profile (always detects, no
+│   │                    extractors); registry; index. Future profiles
+│   │                    (typescript-next-nest, python-fastapi, rails, go, rust)
+│   │                    register before unknown.
+│   ├── watch/           regenerateAll (idempotent; manifest + ledgers + quality +
+│   │                    profile extractors); chokidar daemon (debounced 500 ms,
+│   │                    coalesces in-flight regens); PID file at
+│   │                    ~/.local/harness/state/<project>/watch.pid
+│   └── mcp/             server (McpServer + StdioServerTransport, telemetry +
+│                        timing wrapper around every handler), context, errors
+│                        (McpErrorCode union + envelope), result (asMcpResult),
+│                        path-allowlist (APPEND_ALLOWLIST, ARCHIVE_DENY,
+│                        HISTORICAL_ZONE), telemetry (per-call jsonl), schemas
+│                        (zod input shapes per tool), tools/{17 handlers}/*.ts
+├── scripts/
+│   ├── check-layout.ts  Phase 1 sensor — also scans pkg/templates for banned
+│   │                    "mypal" strings (project-agnostic check per L50, S1)
+│   ├── setup-mirror.ts  adoption helper: detects origin from cwd, derives slug
+│   │                    from package.json `name`, calls ensureMirror
+│   ├── smoke-mirror.ts  Phase 2 acceptance
+│   ├── smoke-watch.ts   Phase 3 acceptance
+│   └── smoke-mcp.ts     Phase 4 acceptance
+└── templates/           seed copied into adopting projects by `harness init`
+    ├── README.md
+    ├── .harness/
+    │   ├── config/{workflow.md, sensors.yaml, stub-patterns.yaml,
+    │   │           trust-policy.yaml}
+    │   └── ground/{manifest.yaml stub, canonical-map/topics.yaml stub}
+    └── .archive/README.md
+```
+
+### Implementation invariants (binding)
+
+- **Project-agnostic pkg code.** No `mypal` / `Mypal` / `MYPAL` strings anywhere under `harness/src/`, `harness/scripts/`, or `harness/templates/`. The `check-layout` sensor enforces this. The `<project_name>:` placeholder in `templates/.harness/config/workflow.md` is replaced by the init script with the adopting project's name.
+- **`.harness/` lives in adopted projects, not in this repo.** Do not create `.harness/` or `.archive/` at the Harness repo root. Templates ship under `harness/templates/`.
+- **Mirror is harness's only writable git state.** Reads against the user's working tree are allowed (dirty-overlap check); writes are not.
+- **MCP tools never throw.** They return either a success payload or `{ error: { code, message, details? } }`. The smoke test asserts both shapes.
+- **`harness_query_history` returns `NOT_IMPLEMENTED`.** Real impl awaits Tier-1 LLM integration (Phase 5+); the error envelope is the safe default.
+- **No tests.** Operator's stance: sensors and E2E real-DB only. Smoke scripts under `scripts/smoke-*.ts` are the acceptance gates per phase.
+
+### What's NOT yet wired
+
+Phases 5–18 from `docs/INTEGRATION_PLAN.md`. In particular:
+
+- **No frontend adapter** — Discord/Notion/CLI ingress not built. The Profile interface is in place, but the Adapter interface (per `WORKFLOW_GUIDE.md` §0.1) is not.
+- **No spec tightener (Layer F).** No model client. No Ollama integration. No Claude/Codex SDK calls.
+- **No orchestrator.** The `harness run` CLI is a stub that exits with `not implemented`.
+- **No sensors execution.** The sensor catalog at `templates/.harness/config/sensors.yaml` is data; the runner that invokes them is Phase 9.
+- **No reviewer subagent / UAT runner / GC cron / backprop / decision capture flow.** Phases 10–14.
+- **No init script.** `harness init` is a stub; Phase 16.
+
+The `harness watch` and `harness mirror` and `harness mcp serve` CLIs work today.
 
 ## 2. Operator profile (binding)
 
@@ -216,27 +323,44 @@ Each layer fail → run marked `failed-honesty-check` with structured findings. 
 
 ## 10. What the operator wants next (most likely)
 
-Based on the conversation trajectory:
+Phases 0–4 are landed. Next is **Phase 5 — Discord ingress** (`docs/INTEGRATION_PLAN.md` §5 Phase 5; ~1.5 founder-days).
 
-1. **Read the docs.** Operator has not yet read v2. Likely first action when they pick up: skim `PRIMER.md`, `INTEGRATION_PLAN.md`, the new `WORKFLOW_GUIDE.md`. Probably leaves `MCP_SURFACE.md` and `FILESYSTEM_LAYOUT.md` for later (reference docs).
-2. **Codex peer review pass.** Operator plans to feed `docs/CODEX_REVIEW_BRIEF.md` to a Codex session for an independent design audit. Treat Codex's findings as authoritative for the items it flags; fold into the docs (no defensive responses). Disagreements get preserved as `disagreement` blocks. Loop until both feel build-ready.
-3. **Confirm or adjust the locked decisions.** Operator may have second thoughts on a handful. Treat any disagreement as a single change to the doc set, not a rewrite.
-4. **Resolve open items in `QUESTIONS.md`.** Most defaults are now locked; only a few residuals remain (Discord guild + owner ID; optionally Notion DB ID + owner if Notion adapter wanted at v0).
-5. **Start Phase 0** of `INTEGRATION_PLAN.md` (workspace bootstrap) once the operator gives the go.
+Phase 5 deliverables:
 
-Do NOT start coding until the operator says "go" or explicitly directs you to begin a phase. The current phase is **review-the-design**.
+1. **Frontend-adapter contract** at `harness/src/frontend/types.ts` per `docs/WORKFLOW_GUIDE.md` §0.1 — `ingestTasks`, `ingestVoice`, `postTaskUpdate`, `requestApproval`, `requestDialog`, `notify`. Adapter implementations live in `harness/src/frontend/<adapter>/` (`discord/`, future `notion/`, `cli/`).
+2. **Discord adapter** at `harness/src/frontend/discord/` — discord.js v14 bot, slash command registration, channel-per-task lifecycle (📋 backlog / 🟢 active / 📦 archive categories), Components V2 buttons (`[🟢 Approve & Push] [🔴 Reject + tell me why] [❓ Ask follow-up]`), ACL on `DISCORD_OWNER_USER_IDS`.
+3. **Slash surface** per `docs/WORKFLOW_GUIDE.md` §3 — `/status`, `/task`, `/run`, `/halt`, `/oops`, `/direction`, `/eval`, `/ship-anyway`, `/agent`, `/queue`, `/resume`, `/archive`, `/help`. Stub the dispatch — when a command lands, drop a row to `.harness/inbox/<ts>-<msg-id>.json` and let the orchestrator (Phase 8) pick it up. Don't try to build the orchestrator inside Phase 5.
+4. **Free-text ingress** routes to Tier-0 intent classifier. Tier-0 = Ollama. **Ollama integration is its own concern** — defer the actual model call to Phase 6 (alongside Whisper) and stub it with a deterministic regex classifier for Phase 5 acceptance. The smoke test should pass without an Ollama installation.
+5. **CLI**: wire `harness run --frontend discord --project <slug>` to start the adapter. The orchestrator subcommand `harness run` is currently a stub — Phase 5 turns it into "bring up registered frontend adapters and idle". The full FIFO + agent runner is Phase 8.
+6. **Smoke test** at `harness/scripts/smoke-discord.ts` — operator's plan calls for an integration test that creates a task channel via `/task` and verifies category placement. Real Discord requires creds; smoke against a STUB adapter that implements the same contract is acceptable for Phase 5 acceptance. Real-bot wiring tests gated on operator providing `DISCORD_BOT_TOKEN`.
+
+Phase 5 prerequisites the operator may need to provide:
+
+- **`DISCORD_BOT_TOKEN`** — for live exercise. QUESTIONS.md `D1` already has the guild ID and `D2` has the owner user-id (locked). The bot token is missing. If not provided, Phase 5 lands as code + stub-adapter smoke; live exercise waits.
+- **Bot OAuth scopes** — `bot`, `applications.commands`. Bot permissions: `Send Messages`, `Manage Channels` (for category lifecycle), `Read Message History`, `Use Slash Commands`, `Embed Links`, `Attach Files`, `Add Reactions`, `Manage Messages` (for ACL deletes if needed).
+
+Do NOT start Phase 5 until the operator says "go". Confirm what's landed first; ask whether to proceed with the stub-adapter path or wait for credentials.
 
 ## 11. How to start a fresh session
 
 ```
-1. Read this RESUME_PROMPT.md fully.
+1. Read this RESUME_PROMPT.md fully (esp. §1A — implementation snapshot).
 2. Read docs/PRIMER.md fully.
-3. Skim docs/INTEGRATION_PLAN.md, docs/WORKFLOW_GUIDE.md, docs/QUESTIONS.md.
-4. Confirm to operator in 2-3 lines:
-     "Resumed Harness project. Design phase. PRIMER + 6 supporting docs ready.
-      [N] decisions locked. [N] residual questions in QUESTIONS.md. What next?"
-5. Wait for direction. Don't propose a next step beyond what's already in INTEGRATION_PLAN.md.
-6. Caveman ultra mode active throughout. Match operator's terse-direct style.
+3. Skim docs/WORKFLOW_GUIDE.md §0 (adapter contract) + §3 (slash surface) +
+   docs/INTEGRATION_PLAN.md §5 Phase 5 (Discord ingress) — that's what's next.
+4. Run the six sensors to confirm nothing has broken:
+     pnpm -F @devplusllc/harness build typecheck check:layout
+                                       smoke:mirror smoke:watch smoke:mcp
+   All six should print OK.
+5. Confirm to operator in 2-3 lines, e.g.:
+     "Resumed Harness project. Phases 0–4 landed (commits d011463, ce30537,
+      96b2fa7, c665fce). All six sensors green. Ready for Phase 5 (Discord
+      ingress). Need DISCORD_BOT_TOKEN for live exercise; otherwise will land
+      stub-adapter smoke. Proceed?"
+6. Wait for direction. Don't propose anything beyond what's in INTEGRATION_PLAN.md
+   §5 Phase 5.
+7. Caveman ultra mode active for chat replies. Documents/commits/PRs in normal
+   English. Match operator's terse-direct style.
 ```
 
 ## 12. Tooling notes
