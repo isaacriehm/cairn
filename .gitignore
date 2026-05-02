@@ -20,3 +20,6 @@ dist/
 *.log
 pnpm-debug.log*
 npm-debug.log*
+
+# Claude Code local session state (locks, settings cache)
+.claude/

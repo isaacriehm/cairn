@@ -96,6 +96,7 @@ export async function runUat(args: RunUatArgs): Promise<UatRunResult> {
         ? { baseUrl: args.runnerInput.hints.base_url }
         : {}),
       outputDir: uatOutputDir,
+      repoRoot: args.repoRoot,
     });
     probeResults.push(result);
   }
