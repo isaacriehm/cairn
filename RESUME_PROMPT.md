@@ -3,7 +3,7 @@ type: resume-prompt
 status: handoff
 audience: ai-only
 generated: 2026-05-02
-last-updated: 2026-05-02 (after Phase 0–6 landed)
+last-updated: 2026-05-02 (after Phase 0–7 landed)
 purpose: Drop into a fresh Claude Code session in /Users/user/Documents/DevPlus LLC/06 - Projects/Harness to continue this project where the previous session left off.
 ---
 
@@ -17,7 +17,7 @@ Build a **portable, generic agent harness for solo developers**. Discord-front-e
 
 Mypal (a real-estate CRM at `/Users/user/Documents/DevPlus LLC/06 - Projects/mypalcrm/`) is the proving ground. The harness package extracts cleanly to any other project via `npx @devplusllc/harness init <repo-dir>`.
 
-**Status:** Implementation in progress. Phases 0–6 landed (~8 founder-days). Phase 7 (spec tightener — Layer F) is next. **Documentation in `docs/` is still the source of truth for design; the code in `harness/` is the runtime that implements it.**
+**Status:** Implementation in progress. Phases 0–7 landed (~8.5 founder-days). Phase 8 (orchestrator + agent runner) is next. **Documentation in `docs/` is still the source of truth for design; the code in `harness/` is the runtime that implements it.**
 
 ## 1A. Implementation snapshot (binding — verify against `git log` before acting)
 
@@ -27,28 +27,30 @@ The Harness repo is **NOT self-hosted**. It's the source for the published npm p
 
 | SHA (short) | Phase | What |
 |-------------|-------|------|
-| _(pending)_ | 6 | Whisper voice ingress (smart-whisper + ffmpeg pipe, audio never on disk) + Tier-0 Ollama classifier (llama3.2:3b, regex fallback), Discord adapter wired to both, `setup:whisper` build helper for path-with-spaces node-gyp workaround, `smoke:whisper` + `smoke:tier0` |
+| _(pending)_ | 7 | spec tightener (Layer F): `harness/src/claude/` subprocess wrapper (`claude --print --model <tier> --output-format json --json-schema ...`); `harness/src/tightener/` (Tier-1 Haiku default, Sonnet auto-escalate >500 words or via `force_tier`, structured JSON output, `ship_anyway` override); `smoke:tightener`; `.env.example` cleaned of `ANTHROPIC_API_KEY` (subscription auth only) |
+| `cdd0f13` | 6 | Whisper voice ingress (smart-whisper + ffmpeg pipe, audio never on disk) + Tier-0 Ollama classifier (llama3.2:3b, regex fallback), Discord adapter wired to both, `setup:whisper` build helper for path-with-spaces node-gyp workaround, `smoke:whisper` + `smoke:tier0` |
 | `b5c7420` | 5 | Discord ingress: frontend-adapter contract, Discord adapter (slash + categories + buttons + ACL + regex Tier-0 stub), stub adapter, `harness run --frontend <name> --project <slug>` CLI, `smoke:discord` |
 | `c665fce` | 4 | harness-mcp server (17 tools, stdio transport) |
 | `96b2fa7` | 3 | grounding daemon (chokidar + manifest + ledgers + drift + quality grades + profile registry) |
 | `ce30537` | 2 | mirror checkout runtime (clone/sync/push/dirty-overlap; `~/.local/harness/repos/<slug>/`) |
 | `d011463` | 0–1 | bootstrap pkg + design docs + canonical templates under `harness/templates/` |
 
-### Nine sensors green
+### Ten sensors green
 
 ```
-pnpm -F @devplusllc/harness build          # tsc -b
-pnpm -F @devplusllc/harness typecheck      # tsc -b --noEmit
-pnpm -F @devplusllc/harness check:layout   # validates pkg+templates + scans for banned project names
-pnpm -F @devplusllc/harness smoke:mirror   # ephemeral bare-origin + user-tree round-trip
-pnpm -F @devplusllc/harness smoke:watch    # daemon programmatic; manifest + decisions ledger update on file events
-pnpm -F @devplusllc/harness smoke:mcp      # InMemoryTransport client/server; all 17 tools exercised
-pnpm -F @devplusllc/harness smoke:discord  # stub-adapter contract: ingest events → inbox JSON; outbound calls recorded
-pnpm -F @devplusllc/harness smoke:tier0    # regex fallback always; Ollama path runs when available, otherwise SKIPS
-pnpm -F @devplusllc/harness smoke:whisper  # macOS `say` clip → ffmpeg → smart-whisper; SKIPS on non-darwin/missing model/missing binding
+pnpm -F @devplusllc/harness build           # tsc -b
+pnpm -F @devplusllc/harness typecheck       # tsc -b --noEmit
+pnpm -F @devplusllc/harness check:layout    # validates pkg+templates + scans for banned project names
+pnpm -F @devplusllc/harness smoke:mirror    # ephemeral bare-origin + user-tree round-trip
+pnpm -F @devplusllc/harness smoke:watch     # daemon programmatic; manifest + decisions ledger update on file events
+pnpm -F @devplusllc/harness smoke:mcp       # InMemoryTransport client/server; all 17 tools exercised
+pnpm -F @devplusllc/harness smoke:discord   # stub-adapter contract: ingest events → inbox JSON; outbound calls recorded
+pnpm -F @devplusllc/harness smoke:tier0     # regex fallback always; Ollama path runs when available, otherwise SKIPS
+pnpm -F @devplusllc/harness smoke:whisper   # macOS `say` clip → ffmpeg → smart-whisper; SKIPS on non-darwin/missing model/missing binding
+pnpm -F @devplusllc/harness smoke:tightener # vague→blocked, clear→sonnet judgment, ship_anyway→forced; SKIPS without `claude` CLI auth
 ```
 
-Run all nine before doing anything that mutates `harness/src/` or `harness/templates/`.
+Run all ten before doing anything that mutates `harness/src/` or `harness/templates/`. The tightener smoke costs ~3 `claude` calls (~3 minutes wall-clock, ~$0.50 worth of subscription quota); skip it casually for unrelated touches.
 
 The Discord adapter is real code (`harness/src/frontend/discord/`); it is not exercised in CI/smoke because live exercise needs `DISCORD_BOT_TOKEN`. Live wiring confirmed against guild `1487133145013944443` during Phase 5 acceptance: bot connects, 13 slash commands register, the three category channels (`📋 backlog`, `🟢 active`, `📦 archive`) are ensured.
 
@@ -127,10 +129,24 @@ harness/
 │   │                    (ffmpeg subprocess: arbitrary audio Buffer → 16k
 │   │                    mono Float32 PCM, never disk), transcribe (entry
 │   │                    points: transcribeBuffer + transcribeUrl), index
-│   └── tier0/           types (Tier0Intent, ClassificationResult), ollama
-│                        (minimal HTTP client + isAvailable + hasModel),
-│                        classify (Ollama-first with llama3.2:3b, regex
-│                        fallback when unreachable), index
+│   ├── tier0/           types (Tier0Intent, ClassificationResult), ollama
+│   │                    (minimal HTTP client + isAvailable + hasModel),
+│   │                    classify (Ollama-first with llama3.2:3b, regex
+│   │                    fallback when unreachable), index
+│   ├── claude/          subprocess wrapper for the `claude` CLI: types
+│   │                    (ClaudeTier, RunClaudeOptions/Result), runner
+│   │                    (`claude --print --model <tier> --output-format
+│   │                    json --json-schema ...` over stdin; reads
+│   │                    structured_output from envelope), index. The
+│   │                    only place that knows about the CLI; everything
+│   │                    else calls `runClaude`.
+│   └── tightener/       Layer F spec tightener: types (TightenerInput/
+│                        Output/Result), schema (JSON Schema for the
+│                        --json-schema gate), prompt (system + user prompt
+│                        builders), tighten (`tightenSpec(input)` — Tier-1
+│                        Haiku default, Sonnet auto-escalate on >500 word
+│                        bodies or `force_tier`, ship_anyway override),
+│                        index
 ├── scripts/
 │   ├── check-layout.ts  Phase 1 sensor — also scans pkg/templates for banned
 │   │                    "mypal" strings (project-agnostic check per L50, S1)
@@ -146,6 +162,9 @@ harness/
 │   │                    missing model)
 │   ├── smoke-tier0.ts   Phase 6 acceptance (regex fallback always; Ollama
 │   │                    path SKIPS when daemon unreachable)
+│   ├── smoke-tightener.ts Phase 7 acceptance: vague→blocked, clear→Sonnet
+│   │                    judgment (ambiguities differentiate), ship_anyway
+│   │                    forces release. Burns ~3 claude calls.
 │   └── setup-whisper.ts one-time native binding build helper (works around
 │                        node-gyp + path-with-spaces failure)
 └── templates/           seed copied into adopting projects by `harness init`
@@ -168,15 +187,14 @@ harness/
 
 ### What's NOT yet wired
 
-Phases 7–18 from `docs/INTEGRATION_PLAN.md`. In particular:
+Phases 8–18 from `docs/INTEGRATION_PLAN.md`. In particular:
 
-- **No spec tightener (Layer F).** Phase 7. Tier-1 (Haiku) call before any code is written; structured output (`ambiguities`, `quality_score`, `tightened_spec_proposal`).
-- **No orchestrator.** Inbox rows pile up; nothing consumes them. `harness run` brings up adapters and idles. Phase 8 = FIFO + agent runner.
+- **No orchestrator.** Inbox rows pile up; nothing consumes them. `harness run` brings up adapters and idles. Phase 8 = FIFO + agent runner. Phase 7's tightener and Phase 6's voice/tier0 are wired but unused until the orchestrator dispatches them.
 - **No sensors execution.** The sensor catalog at `templates/.harness/config/sensors.yaml` is data; the runner that invokes them is Phase 9.
 - **No reviewer subagent / UAT runner / GC cron / backprop / decision capture flow.** Phases 10–14.
 - **No init script.** `harness init` is a stub; Phase 16 (inquirer-driven per operator note 2026-05-02).
 
-The `harness watch`, `harness mirror`, `harness mcp serve`, and `harness run` CLIs work today. Voice transcription + Tier-0 classification are wired into the Discord adapter.
+The `harness watch`, `harness mirror`, `harness mcp serve`, and `harness run` CLIs work today. Voice transcription, Tier-0 classification, and the spec tightener are all available as library calls inside the harness runtime; they will be plumbed end-to-end in Phase 8.
 
 ## 2. Operator profile (binding)
 
@@ -376,19 +394,19 @@ Each layer fail → run marked `failed-honesty-check` with structured findings. 
 
 ## 10. What the operator wants next (most likely)
 
-Phases 0–6 are landed. Next is **Phase 7 — spec tightener (Layer F)** (`docs/INTEGRATION_PLAN.md` §5 Phase 7; ~0.5 founder-day).
+Phases 0–7 are landed. Next is **Phase 8 — orchestrator + agent runner** (`docs/INTEGRATION_PLAN.md` §5 Phase 8; ~2 founder-days).
 
-Phase 7 deliverables:
+Phase 8 deliverables:
 
-1. **Claude Code subprocess wrapper** at `harness/src/claude/` — spawns `claude --print --model <tier> --output-format json` with the rendered prompt on stdin and parses the JSON event stream. **No Anthropic SDK direct API calls** — every Tier-1/2/3 LLM call goes through the operator's Claude Code coding-plan subscription per L42 + operator answer T1 ("the only metric that matters is the claude code usage"). Tier→model mapping (hardcoded, no env vars): Tier 1 = `--model haiku`, Tier 2 = `--model sonnet`, Tier 3 = `--model opus`. The wrapper is the only place that knows about `claude` CLI; everything else calls `runClaude({ tier, prompt, system, format })`. Streaming is parsed event-by-event so we can surface progress to Discord.
-2. **Spec tightener** at `harness/src/tightener/` — single Tier-1 call (Haiku) for short specs, auto-escalate to Tier-2 (Sonnet) for >500-word bodies. Inputs: task title + body + decisions ledger (from MCP) + ground extracts in scope + existing stubs/TODOs. Output: structured JSON `{ ambiguities[], conflicts[], missing_acceptance[], scope_concerns[], existing_stub_overlap[], spec_quality_score, ready_to_execute, tightened_spec_proposal }`. Threshold: `quality_score >= 7 AND ready_to_execute` → proceed. Below → adapter.requestDialog with A/B/C/D options per ambiguity (cap 2 questions per turn per L44).
-3. **`/ship-anyway` override** — persists tightener output as advisory; proceeds without resolving. Already a registered slash command in Phase 5 — Phase 7 handles dispatch.
-4. **Smoke acceptance** at `harness/scripts/smoke-tightener.ts` — synthetic vague task (`"fix the integration thing"`) produces ≥3 ambiguities + low quality score; synthetic clear task (`"add unique partial index on integration_oauth_tokens(provider, user_id) WHERE archived_at IS NULL"`) produces 0 ambiguities + score ≥9.
+1. **Inbox consumer** — tail `.harness/inbox/<...>.json` rows the adapters drop, dispatch by `kind`. `task` rows kick off the run lifecycle: spec tightener (Phase 7) → workspace prep (mirror reset to `origin/main`) → `local_dirty_overlap` gate (per L45) → agent run.
+2. **FIFO scheduler** — in-memory queue; persisted shadow at `.harness/tasks/active/_queue.yaml`. Hard cap = 1 concurrent code-class run.
+3. **Agent runner** — `runClaude` already exists; Phase 8 wraps it for implementer dispatch. Spawn `claude --print --output-format stream-json` with `cwd: mirrorPath` and the rendered prompt template from `templates/.harness/config/workflow.md`. Parse the streaming events; write per-event rows to `.harness/runs/active/<id>/events.jsonl`. Surface phase transitions to Discord via the adapter's `postTaskUpdate`.
+4. **Reconciliation** — per-tick stall detection (no event in 5 min → kill + retry). Tracker state refresh (task still in `tasks/active/`?). Retry policy per Symphony §8.4: continuation 1s, failure `min(10s * 2^(attempt-1), 5m)`.
+5. **Smoke acceptance** at `harness/scripts/smoke-orchestrator.ts` — drop a hard-coded task ("create file harness/scratch/echo.txt with HELLO") into the inbox; verify the orchestrator picks it up, runs the agent against the mirror, file appears in mirror; `runs/active/<id>/meta.json` reflects `succeeded`; no commit yet (waiting on UAT or auto-merge gate which is later phases).
 
-Phase 7 prerequisites:
+Phase 8 prerequisites: nothing new beyond Phase 7. `claude` CLI is already authenticated; the mirror runtime exists; the inbox shape is established.
 
-- `claude` CLI on PATH and authenticated against the operator's coding-plan subscription. Already true on the operator's machine (Claude Code is the primary tool). The harness verifies via `claude --version` at startup and pages the operator if missing/unauthenticated.
-- **No `ANTHROPIC_API_KEY` required.** The key in `.env.example` is leftover from the design phase and will be removed in Phase 7 unless a future use case (e.g., fallback for friends without Claude Code) brings it back.
+Do NOT start Phase 8 until the operator says "go". Confirm what's landed first.
 
 Do NOT start Phase 7 until the operator says "go". Confirm what's landed first; ask whether to proceed.
 

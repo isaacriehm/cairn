@@ -34,6 +34,7 @@
     "smoke:discord": "tsx scripts/smoke-discord.ts",
     "smoke:whisper": "tsx scripts/smoke-whisper.ts",
     "smoke:tier0": "tsx scripts/smoke-tier0.ts",
+    "smoke:tightener": "tsx scripts/smoke-tightener.ts",
     "setup:mirror": "tsx scripts/setup-mirror.ts",
     "setup:whisper": "tsx scripts/setup-whisper.ts"
   },
