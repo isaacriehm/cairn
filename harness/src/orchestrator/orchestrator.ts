@@ -70,6 +70,8 @@ export class Orchestrator {
   private readonly queue: TaskQueue;
   private readonly seenInboxFiles = new Set<string>();
   private watcher: FSWatcher | undefined;
+  private questionsWatcher: FSWatcher | undefined;
+  private answeredQuestions = new Set<string>();
   private pollTimer: NodeJS.Timeout | undefined;
   private running = false;
   private dispatching = false;
@@ -97,6 +99,21 @@ export class Orchestrator {
     });
     this.watcher.on("add", (path) => {
       if (path.endsWith(".json")) void this.absorbInboxFile(path);
+    });
+
+    // Phase 16.x — agent-initiated operator questions land under
+    // .harness/runs/active/<run_id>/questions/<id>.q.json (written by
+    // the harness_ask_operator MCP tool). Watch the runs/active root
+    // so any new question file fires the dialog flow.
+    const runsActiveDir = join(this.opts.repoRoot, ".harness", "runs", "active");
+    await mkdir(runsActiveDir, { recursive: true });
+    this.questionsWatcher = chokidar.watch(runsActiveDir, {
+      persistent: true,
+      ignoreInitial: false,
+      depth: 3,
+    });
+    this.questionsWatcher.on("add", (path) => {
+      if (path.endsWith(".q.json")) void this.absorbQuestionFile(path);
     });
 
     // Subscribe to adapter task callbacks so live ingests still drive the
@@ -134,6 +151,10 @@ export class Orchestrator {
     if (this.watcher) {
       await this.watcher.close();
       this.watcher = undefined;
+    }
+    if (this.questionsWatcher) {
+      await this.questionsWatcher.close();
+      this.questionsWatcher = undefined;
     }
     for (const fn of this.adapterUnsubs) fn();
     this.adapterUnsubs = [];
@@ -694,6 +715,143 @@ export class Orchestrator {
    * Independent of the task FIFO. Failures are logged and the inbox row
    * is moved to processed/ regardless so we never replay.
    */
+  /**
+   * Phase 16.x — agent-initiated operator question (`harness_ask_operator`
+   * MCP tool). The implementer agent writes a `<id>.q.json` under
+   * `.harness/runs/active/<run_id>/questions/`; chokidar fires this
+   * handler. We:
+   *   1. Find the active run's task channel.
+   *   2. Build a pinging dialog spec (alerts the operator on mobile).
+   *   3. requestDialog → operator answers (or times out).
+   *   4. Write `<id>.a.json` with the answer; the MCP tool's poller
+   *      picks it up and returns to the agent.
+   */
+  private async absorbQuestionFile(file: string): Promise<void> {
+    if (this.answeredQuestions.has(file)) return;
+    this.answeredQuestions.add(file);
+
+    const { readFile, writeFile: writeFileAsync } = await import("node:fs/promises");
+    let payload: {
+      id: string;
+      run_id: string;
+      question: string;
+      options?: string[];
+      category?: string;
+      timeout_ms?: number;
+    };
+    try {
+      const raw = await readFile(file, "utf8");
+      payload = JSON.parse(raw);
+    } catch (err) {
+      log.warn({ err: String(err), file }, "failed to parse question file");
+      return;
+    }
+    const adapter = this.opts.adapters[0];
+    const aPath = file.replace(/\.q\.json$/, ".a.json");
+    if (adapter === undefined) {
+      log.warn({ file }, "no adapter — answering question with timed_out");
+      try {
+        await writeFileAsync(
+          aPath,
+          JSON.stringify({
+            answered_at: new Date().toISOString(),
+            answer: "",
+            timed_out: true,
+          }),
+          "utf8",
+        );
+      } catch (err) {
+        log.warn({ err: String(err), aPath }, "failed to write answer");
+      }
+      return;
+    }
+
+    // Look up the channelId from active runs/<run_id>/meta.json.
+    let channelId: string | undefined;
+    try {
+      const metaPath = join(
+        this.opts.repoRoot,
+        ".harness",
+        "runs",
+        "active",
+        payload.run_id,
+        "meta.json",
+      );
+      const raw = await readFile(metaPath, "utf8");
+      const meta = JSON.parse(raw) as { channel_id?: string };
+      if (typeof meta.channel_id === "string") channelId = meta.channel_id;
+    } catch {
+      // best-effort
+    }
+
+    const options = payload.options ?? [];
+    const choices =
+      options.length > 0
+        ? options.slice(0, 4).map((label, idx) => ({
+            id: String.fromCharCode(0x61 + idx),
+            label: String.fromCharCode(0x41 + idx),
+          }))
+        : [{ id: "ack", label: "👍 noted (free-form reply not yet supported)" }];
+    const optionsBlock =
+      options.length > 0
+        ? options
+            .slice(0, 4)
+            .map(
+              (label, idx) => `**${String.fromCharCode(0x41 + idx)}.** ${label}`,
+            )
+            .join("\n\n")
+        : "_(agent did not provide options — replying with 👍 records `ack`; future versions support free-form replies)_";
+    const categoryBadge = payload.category
+      ? `**[${payload.category.toUpperCase()}]** `
+      : "";
+    const dialogSpec: import("../frontend/index.js").DialogSpec = {
+      bundleId: `ask:${payload.run_id}:${payload.id}`,
+      prompt: `🛑 **Agent paused — ${payload.run_id}**\n\n${categoryBadge}${payload.question}\n\n${optionsBlock}`,
+      choices,
+      timeoutMs: payload.timeout_ms ?? 10 * 60_000,
+      pingOperators: true,
+    };
+    if (channelId !== undefined) dialogSpec.channelId = channelId;
+
+    let answer: { answered_at: string; answer: string; choice_id?: string; timed_out?: boolean } = {
+      answered_at: new Date().toISOString(),
+      answer: "",
+      timed_out: true,
+    };
+    try {
+      const response = await adapter.requestDialog(dialogSpec);
+      if (response.timedOut) {
+        answer = {
+          answered_at: new Date().toISOString(),
+          answer: "",
+          timed_out: true,
+        };
+      } else if (options.length > 0) {
+        const idx = response.choiceId.charCodeAt(0) - 0x61;
+        const chosen = options[idx];
+        answer = {
+          answered_at: new Date().toISOString(),
+          answer: chosen ?? response.choiceId,
+          choice_id: response.choiceId,
+        };
+      } else {
+        answer = {
+          answered_at: new Date().toISOString(),
+          answer: response.freeText ?? "ack",
+          choice_id: response.choiceId,
+        };
+      }
+    } catch (err) {
+      log.warn({ err: String(err), file }, "ask-operator dialog threw");
+    }
+
+    try {
+      await writeFileAsync(aPath, JSON.stringify(answer, null, 2), "utf8");
+    } catch (err) {
+      log.warn({ err: String(err), aPath }, "failed to write answer");
+    }
+  }
+
   private async handleDirectionRow(
     row: import("./inbox.js").InboxDirectionRow,
     file: string,

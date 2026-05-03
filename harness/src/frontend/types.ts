@@ -99,6 +99,14 @@ export interface DialogSpec {
   choices: DialogChoice[];
   channelId?: string;
   timeoutMs?: number;
+  /**
+   * When true, ping the channel's authorized operators (Discord
+   * `<@id>` mentions for `DISCORD_OWNER_USER_IDS`) so they get a
+   * mobile push. Used for agent-initiated `harness_ask_operator` so
+   * the operator notices the run is paused. Routine confirmations
+   * (per-question walks, e2e setup) leave this false to avoid noise.
+   */
+  pingOperators?: boolean;
 }
 
 export interface DialogResponse {

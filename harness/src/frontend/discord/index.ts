@@ -433,15 +433,28 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
     // Discord embeds get 4096 chars in the description, so longer
     // prompts go there. Short prompts stay as content for the
     // visually-cleaner default rendering.
-    const sendOpts: { content?: string; embeds?: EmbedBuilder[]; components: ActionRowBuilder<MessageActionRowComponentBuilder>[] } = { components: [row] };
+    const pingPrefix =
+      spec.pingOperators === true && this.ownerIds.size > 0
+        ? Array.from(this.ownerIds)
+            .map((id) => `<@${id}>`)
+            .join(" ") + " "
+        : "";
+    const sendOpts: {
+      content?: string;
+      embeds?: EmbedBuilder[];
+      components: ActionRowBuilder<MessageActionRowComponentBuilder>[];
+    } = { components: [row] };
     if (spec.prompt.length > 1800) {
       sendOpts.embeds = [
         new EmbedBuilder()
           .setDescription(spec.prompt.slice(0, 4096))
           .setColor(0x3498db),
       ];
+      // Pings only render in `content`, not embed description, so
+      // when we use an embed for body, ping prefix lives on content.
+      if (pingPrefix.length > 0) sendOpts.content = pingPrefix.trim();
     } else {
-      sendOpts.content = spec.prompt;
+      sendOpts.content = pingPrefix + spec.prompt;
     }
     const sentMessage = await (channel as TextChannel).send(sendOpts);
     // Bot signals "we're waiting on you" with 👀 reaction.

@@ -129,3 +129,29 @@ export const archiveInput = {
   reason: z.string().min(1),
   archive_dir: z.string().optional(),
 };
+
+export const askOperatorInput = {
+  /** The agent's run id — files land under runs/active/<run_id>/questions/. */
+  run_id: z.string().min(1),
+  /** The question text shown to the operator. */
+  question: z.string().min(1),
+  /**
+   * Optional A/B/C/D candidate resolutions. When present the operator
+   * dialog uses buttons; when empty the operator must reply free-form
+   * (the orchestrator falls back to a follow-up message handler).
+   */
+  options: z.array(z.string().min(1)).max(4).optional(),
+  /**
+   * Why the agent needs the operator's input. One of:
+   *   "ambiguity"   — spec is genuinely vague / multiple valid paths
+   *   "permission"  — about to take a non-recoverable action (delete,
+   *                   force-push, etc.)
+   *   "stuck"       — couldn't make progress without external info
+   *   "verify"      — operator should confirm the agent's interpretation
+   */
+  category: z
+    .enum(["ambiguity", "permission", "stuck", "verify"])
+    .optional(),
+  /** Per-call timeout. Default 10 minutes. */
+  timeout_ms: z.number().int().min(1000).max(86_400_000).optional(),
+};

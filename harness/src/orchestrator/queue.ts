@@ -29,13 +29,26 @@ export class TaskQueue {
       const text = await readFile(this.shadowPath, "utf8");
       const parsed = parseYaml(text) as { entries?: QueueEntry[] } | undefined;
       if (parsed && Array.isArray(parsed.entries)) {
+        let dropped = 0;
         for (const entry of parsed.entries) {
+          // Drop restored entries whose inbox file is gone — those are
+          // tasks the orchestrator already abandoned (e.g. dead Discord
+          // channel) but the dequeue+persist didn't atomically follow
+          // the moveToProcessed. Re-queueing them produces the
+          // ENOENT-rename loop the operator hits in the wild.
+          if (entry.inbox_file && !existsSync(entry.inbox_file)) {
+            dropped++;
+            continue;
+          }
           if (!this.seenRunIds.has(entry.run_id)) {
             this.entries.push(entry);
             this.seenRunIds.add(entry.run_id);
           }
         }
-        log.info({ restored: this.entries.length }, "queue restored from shadow");
+        log.info(
+          { restored: this.entries.length, dropped },
+          "queue restored from shadow",
+        );
       }
     } catch (err) {
       log.warn({ err: String(err) }, "queue shadow corrupt — starting empty");
