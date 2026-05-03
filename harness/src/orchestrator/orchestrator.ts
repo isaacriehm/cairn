@@ -17,6 +17,7 @@ import {
   loadAcceptedDecisions,
 } from "../sensors/decisions.js";
 import { tightenSpec } from "../tightener/index.js";
+import type { TightenerOutput } from "../tightener/index.js";
 import {
   captureUatRejection,
   formatUatRejectionRemediation,
@@ -254,8 +255,14 @@ export class Orchestrator {
         meta.tightener_ready = tightened.ready;
         tightenedSpec = tightened.output.tightened_spec_proposal;
         if (!tightened.ready) {
-          await this.surfacePhase(entry, meta, "blocked");
-          await this.completeRun(entry, meta, "failed", "tightener returned ready=false");
+          const feedback = renderTightenerFeedback(tightened.output, tightened.quality_floor);
+          await this.surfacePhaseWithBody(entry, meta, "blocked", feedback);
+          await this.completeRun(
+            entry,
+            meta,
+            "failed",
+            `tightener: spec quality ${tightened.output.spec_quality_score}/10 below floor ${tightened.quality_floor}`,
+          );
           return;
         }
       } catch (err) {
@@ -993,6 +1000,15 @@ export class Orchestrator {
     meta: RunMeta,
     phase: RunPhase,
   ): Promise<void> {
+    return this.surfacePhaseWithBody(entry, meta, phase);
+  }
+
+  private async surfacePhaseWithBody(
+    entry: QueueEntry,
+    meta: RunMeta,
+    phase: RunPhase,
+    body?: string,
+  ): Promise<void> {
     meta.phase = phase;
     await this.writeMeta(meta);
     const channelId = entry.row.task.channelId;
@@ -1002,6 +1018,7 @@ export class Orchestrator {
           taskId: entry.task_id,
           runId: entry.run_id,
           status: phase,
+          ...(body !== undefined ? { body } : {}),
           ...(channelId !== undefined ? { channelId } : {}),
         });
       } catch (err) {
@@ -1061,4 +1078,62 @@ function countAddedLines(before: string | undefined, after: string | undefined):
     if (!beforeLines.has(line)) added += 1;
   }
   return added;
+}
+
+/**
+ * Format the tightener's gap analysis as a per-task channel post body.
+ * The operator's actionable output: ambiguities + missing acceptance +
+ * scope concerns + the proposed tightened spec they can copy/paste/edit
+ * + a `/ship-anyway` override hint.
+ */
+function renderTightenerFeedback(
+  output: TightenerOutput,
+  qualityFloor: number,
+): string {
+  const lines: string[] = [];
+  lines.push(
+    `**spec quality: ${output.spec_quality_score}/10** (floor ${qualityFloor}) — needs sharpening before dispatch`,
+  );
+
+  if (output.ambiguities.length > 0) {
+    lines.push("");
+    lines.push("**Ambiguities:**");
+    for (const a of output.ambiguities.slice(0, 5)) lines.push(`- ${a}`);
+  }
+  if (output.missing_acceptance.length > 0) {
+    lines.push("");
+    lines.push("**Missing acceptance criteria:**");
+    for (const a of output.missing_acceptance.slice(0, 5)) lines.push(`- ${a}`);
+  }
+  if (output.scope_concerns.length > 0) {
+    lines.push("");
+    lines.push("**Scope concerns:**");
+    for (const a of output.scope_concerns.slice(0, 5)) lines.push(`- ${a}`);
+  }
+  if (output.conflicts.length > 0) {
+    lines.push("");
+    lines.push("**Conflicts:**");
+    for (const a of output.conflicts.slice(0, 5)) lines.push(`- ${a}`);
+  }
+  if (output.existing_stub_overlap.length > 0) {
+    lines.push("");
+    lines.push("**Stub overlap:**");
+    for (const a of output.existing_stub_overlap.slice(0, 5)) lines.push(`- ${a}`);
+  }
+  if (output.tightened_spec_proposal.trim().length > 0) {
+    lines.push("");
+    lines.push("**Proposed tightened spec (copy / edit / re-submit):**");
+    lines.push("```");
+    const cap = 1500;
+    const proposal = output.tightened_spec_proposal.trim();
+    lines.push(proposal.length > cap ? proposal.slice(0, cap) + "\n…[truncated]" : proposal);
+    lines.push("```");
+  }
+  lines.push("");
+  lines.push(
+    "_To bypass the quality gate (e.g. cosmetic / one-off), re-submit with `/ship-anyway`._",
+  );
+  // Discord 2000-char message cap with safety margin.
+  const body = lines.join("\n");
+  return body.length > 1900 ? body.slice(0, 1900) + "\n…[truncated]" : body;
 }
