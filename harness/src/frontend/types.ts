@@ -142,6 +142,15 @@ export interface PostUpdate {
   status: string;
   body?: string;
   channelId?: string;
+  /**
+   * Tier-0 (Ollama) summary of what the agent is doing right now —
+   * one-line, present-progressive ("Reading core/src/X", "Editing
+   * platform/Y"). Surfaces inside the live status embed so the
+   * operator sees ongoing activity instead of a static "running" badge.
+   * Set on a throttled cadence by the orchestrator during the
+   * implementer phase.
+   */
+  activity?: string;
 }
 
 export type IngestHandler<T> = (item: T) => void | Promise<void>;

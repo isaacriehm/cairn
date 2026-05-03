@@ -279,7 +279,9 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
         const msg = await text.messages.fetch(existingMsgId);
         await msg.edit({ embeds: [embed] });
         if (update.body && update.body.length > 0) {
-          await sendChunked(text, update.body);
+          for (const e of buildContentEmbed({ status: update.status, body: update.body })) {
+            await text.send({ embeds: [e] });
+          }
         }
         return;
       } catch (err) {
@@ -631,14 +633,15 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
           bodySlug,
         });
         createdChannelId = channel.id;
-        await channel.send(
-          [
-            `**Task ${taskId} dropped.**`,
-            `> ${body.slice(0, 1000)}`,
-            "",
-            "_orchestrator picking up — tightener → mirror → agent → sensors → reviewer → UAT → backprop._",
-          ].join("\n"),
-        );
+        const dropEmbed = new EmbedBuilder()
+          .setTitle(`🆕 Task ${taskId}`)
+          .setColor(0x607d8b)
+          .setDescription(body.slice(0, 4000))
+          .setFooter({
+            text: "tightener → prep → agent → sensors → reviewer → UAT → backprop",
+          })
+          .setTimestamp(new Date());
+        await channel.send({ embeds: [dropEmbed] });
       } catch (err) {
         log.error({ err: String(err) }, "failed to create task channel");
       }
@@ -1107,8 +1110,62 @@ function buildPhaseEmbed(update: PostUpdate): EmbedBuilder {
   if (update.runId) {
     embed.addFields({ name: "run", value: `\`${update.runId}\``, inline: true });
   }
+  if (update.activity && update.activity.length > 0) {
+    embed.addFields({
+      name: "activity",
+      value: update.activity.slice(0, 1024),
+      inline: false,
+    });
+  }
   embed.setTimestamp(new Date());
   return embed;
+}
+
+/**
+ * Wrap a free-form body string in a quiet, content-color embed so
+ * the per-task channel keeps a uniform embed-only look. Used by
+ * postTaskUpdate when `body` is set (tightener feedback, sensor
+ * remediation, reviewer rationale, etc.).
+ */
+function buildContentEmbed(args: {
+  status: string;
+  body: string;
+}): EmbedBuilder[] {
+  const color = PHASE_COLOR[args.status] ?? 0x808080;
+  const chunks = splitForEmbedDescription(args.body);
+  return chunks.map((chunk, i) =>
+    new EmbedBuilder()
+      .setColor(color)
+      .setDescription(chunk)
+      .setFooter(
+        chunks.length > 1
+          ? { text: `${i + 1} / ${chunks.length}` }
+          : null,
+      ),
+  );
+}
+
+/**
+ * Discord embed descriptions cap at 4096 chars. Split body bigger
+ * than that on paragraph → line → space boundaries (same as the
+ * 2000-char content splitter, just with a larger budget).
+ */
+const EMBED_DESC_CAP = 4000;
+
+function splitForEmbedDescription(body: string): string[] {
+  if (body.length <= EMBED_DESC_CAP) return [body];
+  const out: string[] = [];
+  let remaining = body;
+  while (remaining.length > EMBED_DESC_CAP) {
+    let cut = remaining.lastIndexOf("\n\n", EMBED_DESC_CAP);
+    if (cut < EMBED_DESC_CAP * 0.5) cut = remaining.lastIndexOf("\n", EMBED_DESC_CAP);
+    if (cut < EMBED_DESC_CAP * 0.5) cut = remaining.lastIndexOf(" ", EMBED_DESC_CAP);
+    if (cut <= 0) cut = EMBED_DESC_CAP;
+    out.push(remaining.slice(0, cut).trimEnd());
+    remaining = remaining.slice(cut).trimStart();
+  }
+  if (remaining.length > 0) out.push(remaining);
+  return out;
 }
 
 // re-export utilities for callers (orchestrator, smoke)
