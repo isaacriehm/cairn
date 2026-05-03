@@ -57,6 +57,19 @@ export interface RunMeta {
   /** Populated when tightener ran. */
   tightener_score?: number;
   tightener_ready?: boolean;
+  /**
+   * Set when the tightener returned ready=false and the orchestrator
+   * fired the resolution dialog. `approve_proposed` runs with the
+   * tightener's proposal; `ship_anyway` bypasses the gate using the
+   * operator's original body; `edit` / `cancel` / `timeout` mark the run
+   * failed (operator chose to re-submit / drop).
+   */
+  tightener_user_choice?:
+    | "approve_proposed"
+    | "ship_anyway"
+    | "edit"
+    | "cancel"
+    | "timeout";
   /** Source channel id when ingested via Discord — used for postTaskUpdate. */
   channel_id?: string;
   /** Number of agent attempts dispatched (1 = no retries). */
