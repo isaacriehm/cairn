@@ -178,6 +178,17 @@ export interface OrchestratorOptions {
    */
   backpropTier?: ClaudeTier;
   /**
+   * Tier for the decision-capture extractor (Phase 14). Default = haiku
+   * per workflow.md `decision_extractor: 1`. Sonnet may be useful when
+   * directions are long-form and a Haiku miss-classifies them.
+   */
+  decisionExtractorTier?: ClaudeTier;
+  /**
+   * Confirm-dialog timeout for the decision-capture flow. Default 60_000
+   * ms. Smokes drop this to a few seconds so stub adapters resolve fast.
+   */
+  decisionConfirmTimeoutMs?: number;
+  /**
    * UAT-runner hints surfaced to the agent — base URL for http probes,
    * cli prefix/cwd, and which heavier probe surfaces are available
    * (ui/sql/integration). Adopted from `<project>:` extension block at

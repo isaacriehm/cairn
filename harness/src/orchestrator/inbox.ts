@@ -49,6 +49,86 @@ export function isTaskRow(row: unknown): row is InboxTaskRow {
   return typeof tt["rawText"] === "string" && typeof tt["authorId"] === "string";
 }
 
+/**
+ * Decision-direction inbox row shape — produced by the Discord adapter when
+ * the operator submits `/direction <text>` OR free-texts a message that
+ * Tier-0 classifies as `direction`. Both routes land here for the
+ * orchestrator's decision-capture step.
+ */
+export interface InboxDirectionRow {
+  kind: "slash" | "free_text";
+  source: string;
+  received_at: string;
+  /** Slash-only — the slash event with options.text. */
+  slash?: {
+    command: string;
+    options: Record<string, string | number | boolean>;
+    authorId: string;
+    channelId?: string;
+    guildId?: string;
+    messageId?: string;
+    receivedAt: string;
+  };
+  /** Free-text-only — the classified message body. */
+  free_text?: {
+    intent: string;
+    rawText: string;
+    authorId: string;
+    channelId?: string;
+    guildId?: string;
+    messageId?: string;
+    receivedAt: string;
+  };
+}
+
+/**
+ * True iff the row is a Decision-capture trigger:
+ *   - kind=slash, slash.command === "direction"
+ *   - kind=free_text, free_text.intent === "direction"
+ */
+export function isDirectionRow(row: unknown): row is InboxDirectionRow {
+  if (typeof row !== "object" || row === null) return false;
+  const r = row as Record<string, unknown>;
+  if (r["kind"] === "slash") {
+    const s = r["slash"];
+    if (typeof s !== "object" || s === null) return false;
+    const ss = s as Record<string, unknown>;
+    return ss["command"] === "direction" && typeof ss["authorId"] === "string";
+  }
+  if (r["kind"] === "free_text") {
+    const f = r["free_text"];
+    if (typeof f !== "object" || f === null) return false;
+    const ff = f as Record<string, unknown>;
+    return (
+      ff["intent"] === "direction" &&
+      typeof ff["rawText"] === "string" &&
+      typeof ff["authorId"] === "string"
+    );
+  }
+  return false;
+}
+
+/** Pull the raw direction text out of a direction row. */
+export function directionTextOf(row: InboxDirectionRow): string {
+  if (row.kind === "slash") {
+    const text = row.slash?.options["text"];
+    return typeof text === "string" ? text : "";
+  }
+  return row.free_text?.rawText ?? "";
+}
+
+/** Pull the author id out of a direction row. */
+export function directionAuthorOf(row: InboxDirectionRow): string {
+  if (row.kind === "slash") return row.slash?.authorId ?? "";
+  return row.free_text?.authorId ?? "";
+}
+
+/** Pull channel id out of a direction row, when present. */
+export function directionChannelOf(row: InboxDirectionRow): string | undefined {
+  if (row.kind === "slash") return row.slash?.channelId;
+  return row.free_text?.channelId;
+}
+
 export async function moveToProcessed(
   repoRoot: string,
   file: string,

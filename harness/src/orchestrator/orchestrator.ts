@@ -30,7 +30,11 @@ import type {
   UatRunResult,
 } from "../uat/index.js";
 import {
+  directionAuthorOf,
+  directionChannelOf,
+  directionTextOf,
   ensureInboxDirs,
+  isDirectionRow,
   isTaskRow,
   listInboxFiles,
   moveToProcessed,
@@ -160,10 +164,18 @@ export class Orchestrator {
       this.seenInboxFiles.delete(file); // allow retry on next tick
       return;
     }
+    if (isDirectionRow(row)) {
+      // Phase 14 — decision-capture flow. Run inline (independent of the
+      // task FIFO) since it's adapter-driven and short-circuits without
+      // burning sensors/UAT quota. Best-effort: failures log + drop the
+      // row without poisoning the queue.
+      void this.handleDirectionRow(row, file);
+      return;
+    }
     if (!isTaskRow(row)) {
-      // Non-task rows (slash, free_text, voice, interaction) are not
-      // dispatched in Phase 8 — leave them for downstream consumers.
-      // Keep them out of the inbox dir scan so we don't loop on them.
+      // Non-task rows (other slash, voice, interaction) are not dispatched
+      // by Phase 8 — leave them for downstream consumers. Keep them out of
+      // the inbox dir scan so we don't loop on them.
       return;
     }
     const taskRow = row;
@@ -587,6 +599,63 @@ export class Orchestrator {
       JSON.stringify(result, null, 2),
       "utf8",
     );
+  }
+
+  /**
+   * Phase 14 — process a Discord-issued direction row through the
+   * decision-capture flow. Runs the Tier-1 extractor → writes a draft →
+   * fires the confirm dialog through the first-registered adapter →
+   * accepts / edits / rejects + regenerates the ledger.
+   *
+   * Independent of the task FIFO. Failures are logged and the inbox row
+   * is moved to processed/ regardless so we never replay.
+   */
+  private async handleDirectionRow(
+    row: import("./inbox.js").InboxDirectionRow,
+    file: string,
+  ): Promise<void> {
+    const adapter = this.opts.adapters[0];
+    const rawText = directionTextOf(row);
+    const authorId = directionAuthorOf(row);
+    const channelId = directionChannelOf(row);
+    if (rawText.length === 0 || adapter === undefined) {
+      log.warn(
+        { file, has_adapter: adapter !== undefined, raw_text_len: rawText.length },
+        "direction row dropped — empty text or no adapter",
+      );
+      await moveToProcessed(this.opts.repoRoot, file, "ignored");
+      return;
+    }
+
+    const { runDecisionCapture } = await import("../decision-capture/index.js");
+    try {
+      const result = await runDecisionCapture({
+        repoRoot: this.opts.repoRoot,
+        rawText,
+        authorId,
+        source: `${row.source}:${row.kind}`,
+        receivedAt: row.received_at,
+        adapter,
+        ...(channelId !== undefined ? { channelId } : {}),
+        tier: this.opts.decisionExtractorTier ?? "haiku",
+        ...(this.opts.decisionConfirmTimeoutMs !== undefined
+          ? { confirmTimeoutMs: this.opts.decisionConfirmTimeoutMs }
+          : {}),
+      });
+      log.info(
+        {
+          source: row.source,
+          kind: row.kind,
+          short_circuited: result.short_circuited,
+          decision: result.confirm?.decision,
+          accepted_path: result.confirm?.accepted_path,
+        },
+        "decision-capture complete",
+      );
+    } catch (err) {
+      log.error({ err: String(err), file }, "decision-capture threw");
+    }
+    await moveToProcessed(this.opts.repoRoot, file, "succeeded");
   }
 
   private async runBackpropStep(args: {
