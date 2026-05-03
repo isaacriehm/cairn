@@ -1,6 +1,7 @@
 import type { ToolDef } from "./types.js";
 import { appendTool } from "./append.js";
 import { archiveTool } from "./archive.js";
+import { askOperatorTool } from "./ask-operator.js";
 import { canonicalForTopicTool } from "./canonical-for-topic.js";
 import { decisionGetTool } from "./decision-get.js";
 import { decisionsForSymbolTool } from "./decisions-for-symbol.js";
@@ -39,6 +40,8 @@ export const allTools: ToolDef<unknown>[] = [
   recordRunEventTool as ToolDef<unknown>,
   dropTaskTool as ToolDef<unknown>,
   archiveTool as ToolDef<unknown>,
+  // Operator dialog
+  askOperatorTool as ToolDef<unknown>,
 ];
 
 export type { ToolDef };
