@@ -346,6 +346,28 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
     });
   }
 
+  startTyping(channelId: string): () => void {
+    let stopped = false;
+    const ping = async () => {
+      if (stopped) return;
+      try {
+        const channel = await this.client.channels.fetch(channelId);
+        if (channel && channel.isTextBased() && "sendTyping" in channel) {
+          await (channel as TextChannel).sendTyping();
+        }
+      } catch (err) {
+        log.warn({ err: String(err), channelId }, "sendTyping failed");
+      }
+    };
+    void ping();
+    // Discord's typing indicator decays after ~10s; refresh every 8s.
+    const handle = setInterval(() => void ping(), 8_000);
+    return () => {
+      stopped = true;
+      clearInterval(handle);
+    };
+  }
+
   async notify(level: NotifyLevel, message: string): Promise<void> {
     log[level === "warn" ? "warn" : level === "error" ? "error" : "info"](
       { message },

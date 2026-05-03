@@ -245,12 +245,14 @@ export class Orchestrator {
     let tightenedSpec: string | undefined;
     if (this.opts.bypassTightener !== true) {
       await this.surfacePhase(entry, meta, "tightening");
+      const stopTighteningTyping = this.startTaskTyping(entry);
       try {
         const tightened = await tightenSpec({
           title: taskTitle,
           body: taskBody,
           ...(entry.row.ship_anyway === true ? { ship_anyway: true } : {}),
         });
+        stopTighteningTyping();
         meta.tightener_score = tightened.output.spec_quality_score;
         meta.tightener_ready = tightened.ready;
         tightenedSpec = tightened.output.tightened_spec_proposal;
@@ -288,8 +290,11 @@ export class Orchestrator {
           }
         }
       } catch (err) {
+        stopTighteningTyping();
         await this.completeRun(entry, meta, "failed", `tightener: ${String(err)}`);
         return;
+      } finally {
+        stopTighteningTyping();
       }
     }
 
@@ -355,6 +360,7 @@ export class Orchestrator {
         : basePrompt;
 
       let runResult;
+      const stopRunnerTyping = this.startTaskTyping(entry);
       try {
         runResult = await runImplementer({
           tier,
@@ -376,8 +382,11 @@ export class Orchestrator {
           },
         });
       } catch (err) {
+        stopRunnerTyping();
         await this.completeRun(entry, meta, "failed", `agent: ${String(err)}`);
         return;
+      } finally {
+        stopRunnerTyping();
       }
       meta.events_count = runResult.events;
       meta.duration_ms = runResult.durationMs;
@@ -451,6 +460,7 @@ export class Orchestrator {
         return;
       }
       await this.surfacePhase(entry, meta, "reviewing");
+      const stopReviewerTyping = this.startTaskTyping(entry);
       try {
         lastReviewer = await this.runReviewerStep({
           mirrorPath: meta.mirror_path,
@@ -464,8 +474,11 @@ export class Orchestrator {
           highStakesGlobs: this.opts.projectGlobs?.high_stakes_globs ?? [],
         });
       } catch (err) {
+        stopReviewerTyping();
         await this.completeRun(entry, meta, "failed", `reviewer: ${String(err)}`);
         return;
+      } finally {
+        stopReviewerTyping();
       }
       await this.persistReviewerAttempt(entry.run_id, attempt, lastReviewer);
       const hardGapCount = lastReviewer.output.gaps.filter(
@@ -517,6 +530,7 @@ export class Orchestrator {
       }
       await this.surfacePhase(entry, meta, "uat");
       let uatResult: UatRunResult;
+      const stopUatTyping = this.startTaskTyping(entry);
       try {
         uatResult = await this.runUatStep({
           mirrorPath: meta.mirror_path,
@@ -530,8 +544,11 @@ export class Orchestrator {
           highStakesGlobs: this.opts.projectGlobs?.high_stakes_globs ?? [],
         });
       } catch (err) {
+        stopUatTyping();
         await this.completeRun(entry, meta, "failed", `uat: ${String(err)}`);
         return;
+      } finally {
+        stopUatTyping();
       }
       const probeFailures = uatResult.probe_results.filter((r) => !r.passed && !r.skipped_reason).length;
       meta.uat_history.push({
@@ -1023,6 +1040,39 @@ export class Orchestrator {
     phase: RunPhase,
   ): Promise<void> {
     return this.surfacePhaseWithBody(entry, meta, phase);
+  }
+
+  /**
+   * Start a Discord-style "typing" indicator on the task's channel for
+   * any adapter that supports it. Returns a stop fn that clears the
+   * heartbeat. Safe to call when no adapter / no channelId — returns
+   * a no-op stop fn.
+   */
+  private startTaskTyping(entry: QueueEntry): () => void {
+    const channelId = entry.row.task.channelId;
+    if (channelId === undefined) return () => {};
+    const stops: Array<() => void> = [];
+    for (const adapter of this.opts.adapters) {
+      if (typeof adapter.startTyping === "function") {
+        try {
+          stops.push(adapter.startTyping(channelId));
+        } catch (err) {
+          log.warn(
+            { err: String(err), adapter: adapter.name },
+            "startTyping threw — skipping",
+          );
+        }
+      }
+    }
+    return () => {
+      for (const s of stops) {
+        try {
+          s();
+        } catch {
+          // best-effort
+        }
+      }
+    };
   }
 
   private async surfacePhaseWithBody(

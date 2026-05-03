@@ -163,4 +163,11 @@ export interface FrontendAdapter {
   requestApproval(bundle: ApprovalBundle): Promise<Approval>;
   requestDialog(spec: DialogSpec): Promise<DialogResponse>;
   notify(level: NotifyLevel, message: string): Promise<void>;
+  /**
+   * Show "typing" / activity indicator on the given channel until the
+   * returned stop fn is called. Adapters that don't support a native
+   * typing indicator (CLI, stub) should no-op. Discord refreshes every
+   * ~8 seconds since the native indicator decays after 10s.
+   */
+  startTyping?(channelId: string): () => void;
 }
