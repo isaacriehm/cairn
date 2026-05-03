@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { VERSION } from "../index.js";
 import { gcCli } from "./gc.js";
+import { initCli } from "./init.js";
 import { mcpCli } from "./mcp.js";
 import { mirrorCli } from "./mirror.js";
 import { runCli } from "./run.js";
@@ -10,8 +11,8 @@ const [, , subcommand, ...rest] = process.argv;
 
 switch (subcommand) {
   case "init":
-    console.error(`harness ${subcommand}: not implemented (Phase 16 scaffold).`);
-    process.exit(2);
+    await initCli(rest);
+    break;
   case "run":
     await runCli(rest);
     break;

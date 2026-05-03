@@ -46,6 +46,7 @@
     "smoke:backprop": "tsx scripts/smoke-backprop.ts",
     "smoke:decision-capture": "tsx scripts/smoke-decision-capture.ts",
     "smoke:decision-refinement": "tsx scripts/smoke-decision-refinement.ts",
+    "smoke:init": "tsx scripts/smoke-init.ts",
     "setup:mirror": "tsx scripts/setup-mirror.ts",
     "setup:whisper": "tsx scripts/setup-whisper.ts",
     "setup:uat-browsers": "tsx scripts/setup-uat-browsers.ts",
