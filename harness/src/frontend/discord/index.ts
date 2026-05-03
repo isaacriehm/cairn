@@ -279,7 +279,7 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
         const msg = await text.messages.fetch(existingMsgId);
         await msg.edit({ embeds: [embed] });
         if (update.body && update.body.length > 0) {
-          await text.send({ content: update.body });
+          await sendChunked(text, update.body);
         }
         return;
       } catch (err) {
@@ -298,7 +298,7 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
       log.warn({ err: String(err), taskId: update.taskId }, "live status send failed");
     }
     if (update.body && update.body.length > 0) {
-      await text.send({ content: update.body });
+      await sendChunked(text, update.body);
     }
   }
 
@@ -426,10 +426,22 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
       );
     }
     const row = new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(...builders);
-    const sentMessage = await (channel as TextChannel).send({
-      content: spec.prompt,
-      components: [row],
-    });
+    // Plain content has a 2000-char cap, but operator-walked dialogs
+    // can include 4 long ambiguity candidates that blow past it.
+    // Discord embeds get 4096 chars in the description, so longer
+    // prompts go there. Short prompts stay as content for the
+    // visually-cleaner default rendering.
+    const sendOpts: { content?: string; embeds?: EmbedBuilder[]; components: ActionRowBuilder<MessageActionRowComponentBuilder>[] } = { components: [row] };
+    if (spec.prompt.length > 1800) {
+      sendOpts.embeds = [
+        new EmbedBuilder()
+          .setDescription(spec.prompt.slice(0, 4096))
+          .setColor(0x3498db),
+      ];
+    } else {
+      sendOpts.content = spec.prompt;
+    }
+    const sentMessage = await (channel as TextChannel).send(sendOpts);
     // Bot signals "we're waiting on you" with 👀 reaction.
     try {
       await sentMessage.react("👀");
@@ -697,7 +709,7 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
         payload: { interaction: interactionEvent },
       });
       if (this.interactionHandler) await this.interactionHandler(interactionEvent);
-      await interaction.reply({ content: `Recorded: ${kind}.`, ephemeral: true });
+      await interaction.deferUpdate();
       await this.ackReact(interaction, kind);
       return;
     }
@@ -722,10 +734,7 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
         payload: { interaction: interactionEvent, voice_transcript_id: transcriptId },
       });
       if (this.interactionHandler) await this.interactionHandler(interactionEvent);
-      await interaction.reply({
-        content: choiceId === "yes" ? "Confirmed." : "Will re-record.",
-        ephemeral: true,
-      });
+      await interaction.deferUpdate();
       await this.ackReact(interaction, choiceId);
       return;
     }
@@ -760,12 +769,31 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
         payload: { interaction: interactionEvent },
       });
       if (this.interactionHandler) await this.interactionHandler(interactionEvent);
-      await interaction.reply({ content: `Recorded: ${choiceId}.`, ephemeral: true });
+      // Update the original message: remove buttons, annotate the
+      // chosen letter so the channel scrollback shows what was answered.
+      try {
+        const original = interaction.message;
+        const annotated =
+          (original.content ?? "").trim() +
+          `\n\n_✅ Answered with **${choiceId.toUpperCase()}**_`;
+        await interaction.update({ content: annotated, components: [] });
+      } catch (err) {
+        log.warn(
+          { err: String(err), bundleId, choiceId },
+          "dialog message compact-update failed",
+        );
+        // Fall back to silent ack so the interaction doesn't error.
+        try {
+          await interaction.deferUpdate();
+        } catch {
+          /* noop */
+        }
+      }
       await this.ackReact(interaction, choiceId);
       return;
     }
 
-    await interaction.reply({ content: "Unhandled button kind.", ephemeral: true });
+    await interaction.deferUpdate();
   }
 
   /**
@@ -992,6 +1020,38 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
 
 function newTaskId(): string {
   return `TSK-${Date.now().toString(36)}-${randomBytes(2).toString("hex")}`;
+}
+
+/**
+ * Discord caps message content at 2000 chars. Bodies longer than that
+ * are split on paragraph boundaries when possible, line boundaries
+ * otherwise, char boundaries as last resort. Each chunk goes in its
+ * own message so nothing is silently lost.
+ */
+const DISCORD_CONTENT_CAP = 1990;
+
+async function sendChunked(channel: TextChannel, body: string): Promise<void> {
+  const chunks = splitForDiscord(body);
+  for (const chunk of chunks) {
+    if (chunk.length === 0) continue;
+    await channel.send({ content: chunk });
+  }
+}
+
+function splitForDiscord(body: string): string[] {
+  if (body.length <= DISCORD_CONTENT_CAP) return [body];
+  const out: string[] = [];
+  let remaining = body;
+  while (remaining.length > DISCORD_CONTENT_CAP) {
+    let cut = remaining.lastIndexOf("\n\n", DISCORD_CONTENT_CAP);
+    if (cut < DISCORD_CONTENT_CAP * 0.5) cut = remaining.lastIndexOf("\n", DISCORD_CONTENT_CAP);
+    if (cut < DISCORD_CONTENT_CAP * 0.5) cut = remaining.lastIndexOf(" ", DISCORD_CONTENT_CAP);
+    if (cut <= 0) cut = DISCORD_CONTENT_CAP;
+    out.push(remaining.slice(0, cut).trimEnd());
+    remaining = remaining.slice(cut).trimStart();
+  }
+  if (remaining.length > 0) out.push(remaining);
+  return out;
 }
 
 /**
