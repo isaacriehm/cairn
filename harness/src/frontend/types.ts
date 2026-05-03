@@ -170,4 +170,15 @@ export interface FrontendAdapter {
    * ~8 seconds since the native indicator decays after 10s.
    */
   startTyping?(channelId: string): () => void;
+  /**
+   * Pre-flight check: is this channel still reachable + writable?
+   * Adapters that can answer (Discord) MUST return false when the
+   * channel has been deleted or the bot lacks access. The orchestrator
+   * uses this to skip dispatching a queued task whose per-task channel
+   * is gone — typical when the operator deletes a stale `🟢 active`
+   * channel between runs and the queue shadow restored the entry.
+   * Adapters without channels (CLI / stub) should leave this undefined;
+   * the orchestrator treats undefined as "always alive."
+   */
+  isChannelAlive?(channelId: string): Promise<boolean>;
 }
