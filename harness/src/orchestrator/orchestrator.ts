@@ -18,6 +18,7 @@ import {
 } from "../sensors/decisions.js";
 import { tightenSpec } from "../tightener/index.js";
 import type { TightenerOutput } from "../tightener/index.js";
+import { summarizeActivity } from "./activity-summarizer.js";
 import {
   captureUatRejection,
   formatUatRejectionRemediation,
@@ -386,6 +387,13 @@ export class Orchestrator {
 
       let runResult;
       const stopRunnerTyping = this.startTaskTyping(entry);
+      // Tier-0 activity feed — sliding window of recent events that
+      // gets summarized every 8s and surfaced into the live status
+      // embed's `activity` field. Operator sees what the agent is
+      // doing in present tense ("Reading X", "Editing Y") instead of
+      // a static "running" badge.
+      const activityWindow: Record<string, unknown>[] = [];
+      const stopActivityFeed = this.startActivityFeed(entry, meta, activityWindow);
       try {
         runResult = await runImplementer({
           tier,
@@ -404,14 +412,19 @@ export class Orchestrator {
             if (e["type"] === "assistant" || e["type"] === "result") {
               void this.writeMeta(meta);
             }
+            activityWindow.push(e);
+            // Keep window bounded so memory doesn't grow on long runs.
+            if (activityWindow.length > 60) activityWindow.splice(0, activityWindow.length - 60);
           },
         });
       } catch (err) {
         stopRunnerTyping();
+        stopActivityFeed();
         await this.completeRun(entry, meta, "failed", `agent: ${String(err)}`);
         return;
       } finally {
         stopRunnerTyping();
+        stopActivityFeed();
       }
       meta.events_count = runResult.events;
       meta.duration_ms = runResult.durationMs;
@@ -1095,6 +1108,68 @@ export class Orchestrator {
     // as alive so CLI / stub dispatch normally.
     void answered;
     return true;
+  }
+
+  /**
+   * During the implementer phase, summarize recent stream-jsonl events
+   * via Tier-0 every ~8s and patch the live status embed's `activity`
+   * field. Operator sees the agent's tool calls + text in plain
+   * English ("Reading X", "Running tsc") instead of a static
+   * "running" badge.
+   *
+   * Returns a stop fn that clears the interval. Safe to call when
+   * adapters are missing or channelId is undefined.
+   */
+  private startActivityFeed(
+    entry: QueueEntry,
+    meta: RunMeta,
+    window: Record<string, unknown>[],
+  ): () => void {
+    const channelId = entry.row.task.channelId;
+    if (channelId === undefined) return () => {};
+    let stopped = false;
+    let lastSummary = "";
+    const tick = async () => {
+      if (stopped) return;
+      // Skip when the window's barely populated to avoid burning the
+      // first call on system-init noise.
+      if (window.length < 2) return;
+      try {
+        const summary = await summarizeActivity({
+          events: window.slice(),
+        });
+        if (stopped) return;
+        if (summary === lastSummary) return;
+        lastSummary = summary;
+        for (const adapter of this.opts.adapters) {
+          try {
+            await adapter.postTaskUpdate({
+              taskId: entry.task_id,
+              runId: entry.run_id,
+              status: meta.phase,
+              activity: summary,
+              ...(channelId !== undefined ? { channelId } : {}),
+            });
+          } catch (err) {
+            log.warn(
+              { err: String(err), adapter: adapter.name },
+              "activity-feed postTaskUpdate failed",
+            );
+          }
+        }
+      } catch (err) {
+        log.warn({ err: String(err) }, "activity-feed tick failed");
+      }
+    };
+    // First summary fires after ~5s so the agent has time to do
+    // something interesting; subsequent ticks every 8s.
+    const initial = setTimeout(() => void tick(), 5_000);
+    const interval = setInterval(() => void tick(), 8_000);
+    return () => {
+      stopped = true;
+      clearTimeout(initial);
+      clearInterval(interval);
+    };
   }
 
   /**
