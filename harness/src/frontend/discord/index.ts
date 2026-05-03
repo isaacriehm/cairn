@@ -3,6 +3,7 @@ import {
   ButtonBuilder,
   ButtonStyle,
   Client,
+  EmbedBuilder,
   Events,
   GatewayIntentBits,
   Partials,
@@ -124,6 +125,14 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
 
   private pendingApprovals = new Map<string, PendingApproval>();
   private pendingDialogs = new Map<string, PendingDialog>();
+  /**
+   * In-memory map of taskId → live status messageId. The live status
+   * message is one embed per task that gets edited in place on each
+   * postTaskUpdate call (instead of spamming the channel with a new
+   * message per phase). Restart loses the mapping; a fresh run posts a
+   * new live status message.
+   */
+  private liveStatusMessages = new Map<string, string>();
 
   private started = false;
 
@@ -240,10 +249,39 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
       log.warn({ channelId }, "postTaskUpdate target channel not text-based");
       return;
     }
-    const lines = [`**${update.taskId}** — ${update.status}`];
-    if (update.body) lines.push(update.body);
-    if (update.runId) lines.push(`run \`${update.runId}\``);
-    await (channel as TextChannel).send(lines.join("\n"));
+    const text = channel as TextChannel;
+    const embed = buildPhaseEmbed(update);
+
+    // Try to edit the existing live status message; if it's gone (e.g.
+    // operator deleted it, or this is the first call for this taskId),
+    // create a new one and remember its id.
+    const existingMsgId = this.liveStatusMessages.get(update.taskId);
+    if (existingMsgId !== undefined) {
+      try {
+        const msg = await text.messages.fetch(existingMsgId);
+        await msg.edit({ embeds: [embed] });
+        if (update.body && update.body.length > 0) {
+          await text.send({ content: update.body });
+        }
+        return;
+      } catch (err) {
+        log.warn(
+          { err: String(err), taskId: update.taskId },
+          "live status edit failed; recreating",
+        );
+        this.liveStatusMessages.delete(update.taskId);
+      }
+    }
+
+    try {
+      const sent = await text.send({ embeds: [embed] });
+      this.liveStatusMessages.set(update.taskId, sent.id);
+    } catch (err) {
+      log.warn({ err: String(err), taskId: update.taskId }, "live status send failed");
+    }
+    if (update.body && update.body.length > 0) {
+      await text.send({ content: update.body });
+    }
   }
 
   async requestApproval(bundle: ApprovalBundle): Promise<Approval> {
@@ -278,20 +316,32 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
         .setEmoji("❓"),
     );
 
-    const lines = [
-      `🎬 UAT for ${bundle.runId}`,
-      `Goal: ${bundle.goal}`,
-    ];
-    if (bundle.diffSummary) lines.push(`Diff: ${bundle.diffSummary}`);
-    if (bundle.acceptance && bundle.acceptance.length > 0) {
-      lines.push("Acceptance:");
-      for (const ac of bundle.acceptance) {
-        const mark = ac.status === "pass" ? "✓" : ac.status === "fail" ? "✗" : "○";
-        lines.push(`  ${mark} ${ac.id}${ac.note ? ` — ${ac.note}` : ""}`);
-      }
+    const embed = new EmbedBuilder()
+      .setTitle(`🎬 UAT — ${bundle.runId}`)
+      .setColor(0x1abc9c)
+      .setDescription(bundle.goal)
+      .setTimestamp(new Date());
+    if (bundle.diffSummary) {
+      embed.addFields({ name: "diff", value: bundle.diffSummary.slice(0, 1024) });
     }
-
-    await (channel as TextChannel).send({ content: lines.join("\n"), components: [row] });
+    if (bundle.acceptance && bundle.acceptance.length > 0) {
+      const acText = bundle.acceptance
+        .map((ac) => {
+          const mark = ac.status === "pass" ? "✓" : ac.status === "fail" ? "✗" : "○";
+          return `${mark} ${ac.id}${ac.note ? ` — ${ac.note}` : ""}`;
+        })
+        .join("\n");
+      embed.addFields({ name: "acceptance", value: acText.slice(0, 1024) });
+    }
+    const sentApproval = await (channel as TextChannel).send({
+      embeds: [embed],
+      components: [row],
+    });
+    try {
+      await sentApproval.react("👀");
+    } catch (err) {
+      log.warn({ err: String(err) }, "approval 👀 react failed");
+    }
 
     const timeoutMs = bundle.timeoutMs ?? 24 * 60 * 60 * 1000;
     return new Promise<Approval>((resolve) => {
@@ -329,7 +379,16 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
       );
     }
     const row = new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(...builders);
-    await (channel as TextChannel).send({ content: spec.prompt, components: [row] });
+    const sentMessage = await (channel as TextChannel).send({
+      content: spec.prompt,
+      components: [row],
+    });
+    // Bot signals "we're waiting on you" with 👀 reaction.
+    try {
+      await sentMessage.react("👀");
+    } catch (err) {
+      log.warn({ err: String(err), bundleId: spec.bundleId }, "dialog 👀 react failed");
+    }
 
     const timeoutMs = spec.timeoutMs ?? 5 * 60 * 1000;
     return new Promise<DialogResponse>((resolve) => {
@@ -551,6 +610,7 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
       });
       if (this.interactionHandler) await this.interactionHandler(interactionEvent);
       await interaction.reply({ content: `Recorded: ${kind}.`, ephemeral: true });
+      await this.ackReact(interaction, kind);
       return;
     }
 
@@ -578,6 +638,7 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
         content: choiceId === "yes" ? "Confirmed." : "Will re-record.",
         ephemeral: true,
       });
+      await this.ackReact(interaction, choiceId);
       return;
     }
 
@@ -608,10 +669,40 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
       });
       if (this.interactionHandler) await this.interactionHandler(interactionEvent);
       await interaction.reply({ content: `Recorded: ${choiceId}.`, ephemeral: true });
+      await this.ackReact(interaction, choiceId);
       return;
     }
 
     await interaction.reply({ content: "Unhandled button kind.", ephemeral: true });
+  }
+
+  /**
+   * Stamp the bot's processing on the message: success → ✅, decline →
+   * ❌, ask → ❓. Best-effort; reaction failures don't bubble.
+   */
+  private async ackReact(
+    interaction: ButtonInteraction,
+    decision: string,
+  ): Promise<void> {
+    let emoji = "✅";
+    if (
+      decision === "reject" ||
+      decision === "cancel" ||
+      decision === "no" ||
+      decision === "edit"
+    ) {
+      emoji = "❌";
+    } else if (decision === "ask" || decision === "ship_anyway") {
+      emoji = "⚡";
+    }
+    try {
+      await interaction.message.react(emoji);
+    } catch (err) {
+      log.warn(
+        { err: String(err), choice: decision },
+        "ackReact failed",
+      );
+    }
   }
 
   private async handleMessage(message: Message): Promise<void> {
@@ -809,6 +900,52 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
 
 function newTaskId(): string {
   return `TSK-${Date.now().toString(36)}-${randomBytes(2).toString("hex")}`;
+}
+
+/**
+ * Map orchestrator phase names → embed colors. Mirrors the harness
+ * pipeline: tighten → prep → run → sense → review → uat → done.
+ */
+const PHASE_COLOR: Record<string, number> = {
+  queued: 0x607d8b,
+  tightening: 0x3498db,
+  blocked: 0xf39c12,
+  prepping: 0x95a5a6,
+  running: 0xf1c40f,
+  sensing: 0xe67e22,
+  reviewing: 0x9b59b6,
+  uat: 0x1abc9c,
+  backpropping: 0x6f42c1,
+  succeeded: 0x2ecc71,
+  failed: 0xe74c3c,
+};
+
+const PHASE_EMOJI: Record<string, string> = {
+  queued: "🟦",
+  tightening: "🪛",
+  blocked: "🟧",
+  prepping: "🧰",
+  running: "🟡",
+  sensing: "🔎",
+  reviewing: "🔬",
+  uat: "🧪",
+  backpropping: "📐",
+  succeeded: "🟢",
+  failed: "🔴",
+};
+
+function buildPhaseEmbed(update: PostUpdate): EmbedBuilder {
+  const color = PHASE_COLOR[update.status] ?? 0x808080;
+  const emoji = PHASE_EMOJI[update.status] ?? "•";
+  const embed = new EmbedBuilder()
+    .setTitle(`${emoji} ${update.taskId}`)
+    .setColor(color)
+    .setDescription(`**phase:** \`${update.status}\``);
+  if (update.runId) {
+    embed.addFields({ name: "run", value: `\`${update.runId}\``, inline: true });
+  }
+  embed.setTimestamp(new Date());
+  return embed;
 }
 
 // re-export utilities for callers (orchestrator, smoke)
