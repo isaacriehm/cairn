@@ -257,13 +257,29 @@ export class Orchestrator {
         if (!tightened.ready) {
           const feedback = renderTightenerFeedback(tightened.output, tightened.quality_floor);
           await this.surfacePhaseWithBody(entry, meta, "blocked", feedback);
-          await this.completeRun(
+          const decision = await this.requestTightenerDecision({
             entry,
-            meta,
-            "failed",
-            `tightener: spec quality ${tightened.output.spec_quality_score}/10 below floor ${tightened.quality_floor}`,
-          );
-          return;
+            tightened,
+          });
+          if (decision === "approve") {
+            tightenedSpec = tightened.output.tightened_spec_proposal;
+            meta.tightener_user_choice = "approve_proposed";
+            await this.surfacePhase(entry, meta, "tightening");
+          } else if (decision === "ship_anyway") {
+            // Bypass the quality gate — use the operator's original body.
+            tightenedSpec = taskBody;
+            meta.tightener_user_choice = "ship_anyway";
+            await this.surfacePhase(entry, meta, "tightening");
+          } else {
+            meta.tightener_user_choice = decision;
+            await this.completeRun(
+              entry,
+              meta,
+              "failed",
+              `tightener: operator chose ${decision}`,
+            );
+            return;
+          }
         }
       } catch (err) {
         await this.completeRun(entry, meta, "failed", `tightener: ${String(err)}`);
@@ -1024,6 +1040,78 @@ export class Orchestrator {
       } catch (err) {
         log.warn({ err: String(err), adapter: adapter.name }, "postTaskUpdate failed");
       }
+    }
+  }
+
+  /**
+   * Fire the tightener-resolution dialog: operator picks approve_proposed
+   * / ship_anyway / edit / cancel / timeout. The first registered adapter
+   * owns the dialog (per L08 frontend contract).
+   */
+  private async requestTightenerDecision(args: {
+    entry: QueueEntry;
+    tightened: import("../tightener/index.js").TightenerResult;
+  }): Promise<
+    "approve" | "ship_anyway" | "edit" | "cancel" | "timeout"
+  > {
+    const adapter = this.opts.adapters[0];
+    if (adapter === undefined) {
+      log.warn(
+        { task_id: args.entry.task_id },
+        "no adapter registered — cannot dialog; defaulting to cancel",
+      );
+      return "cancel";
+    }
+    const channelId = args.entry.row.task.channelId;
+    const dialogSpec: import("../frontend/index.js").DialogSpec = {
+      bundleId: args.entry.task_id,
+      prompt: `Spec quality ${args.tightened.output.spec_quality_score}/10 below floor ${args.tightened.quality_floor}. How do you want to proceed?`,
+      choices: [
+        {
+          id: "approve",
+          label: "🟢 approve proposed tightened spec — run continues",
+        },
+        {
+          id: "ship_anyway",
+          label: "⚡ /ship-anyway — bypass quality gate, use original body",
+        },
+        {
+          id: "edit",
+          label: "✏️ cancel & let me re-submit a tighter spec",
+        },
+        {
+          id: "cancel",
+          label: "🔴 cancel run",
+        },
+      ],
+      timeoutMs: 5 * 60_000,
+    };
+    if (channelId !== undefined) dialogSpec.channelId = channelId;
+    try {
+      const response = await adapter.requestDialog(dialogSpec);
+      if (response.timedOut) return "timeout";
+      switch (response.choiceId) {
+        case "approve":
+          return "approve";
+        case "ship_anyway":
+          return "ship_anyway";
+        case "edit":
+          return "edit";
+        case "cancel":
+          return "cancel";
+        default:
+          log.warn(
+            { task_id: args.entry.task_id, choice: response.choiceId },
+            "unknown tightener-dialog choice — treating as cancel",
+          );
+          return "cancel";
+      }
+    } catch (err) {
+      log.error(
+        { err: String(err), task_id: args.entry.task_id },
+        "tightener-dialog dispatch failed — defaulting to cancel",
+      );
+      return "cancel";
     }
   }
 
