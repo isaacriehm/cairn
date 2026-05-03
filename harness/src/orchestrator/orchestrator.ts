@@ -1098,7 +1098,13 @@ function renderTightenerFeedback(
   if (output.ambiguities.length > 0) {
     lines.push("");
     lines.push("**Ambiguities:**");
-    for (const a of output.ambiguities.slice(0, 5)) lines.push(`- ${a}`);
+    for (const a of output.ambiguities.slice(0, 5)) {
+      const candidates =
+        a.candidate_resolutions.length > 0
+          ? `  → ${a.candidate_resolutions.slice(0, 3).join(" | ")}`
+          : "";
+      lines.push(`- **${a.id}** ${a.question}${candidates}`);
+    }
   }
   if (output.missing_acceptance.length > 0) {
     lines.push("");
