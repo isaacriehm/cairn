@@ -3,7 +3,7 @@ type: resume-prompt
 status: handoff
 audience: ai-only
 generated: 2026-05-02
-last-updated: 2026-05-02 (after Phase 13 — backprop protocol)
+last-updated: 2026-05-02 (after Phase 14 — decision capture flow)
 purpose: Drop into a fresh Claude Code session in /Users/user/Documents/DevPlus LLC/06 - Projects/Harness to continue this project where the previous session left off.
 ---
 
@@ -17,7 +17,7 @@ Build a **portable, generic agent harness for solo developers**. Discord-front-e
 
 Mypal (a real-estate CRM at `/Users/user/Documents/DevPlus LLC/06 - Projects/mypalcrm/`) is the proving ground. The harness package extracts cleanly to any other project via `npx @devplusllc/harness init <repo-dir>`.
 
-**Status:** Implementation in progress. Phase 13 complete — Phases 0–13 all landed (~18 founder-days). Phase 14 (decision capture flow) is next. **Documentation in `docs/` is still the source of truth for design; the code in `harness/` is the runtime that implements it.**
+**Status:** Implementation in progress. Phase 14 complete — Phases 0–14 all landed (~18.5 founder-days). Phase 15 (trial-run pilot) is next. **Documentation in `docs/` is still the source of truth for design; the code in `harness/` is the runtime that implements it.**
 
 ## 1A. Implementation snapshot (binding — verify against `git log` before acting)
 
@@ -27,6 +27,7 @@ The Harness repo is **NOT self-hosted**. It's the source for the published npm p
 
 | SHA (short) | Phase | What |
 |-------------|-------|------|
+| _(pending)_ | 14 | Decision capture flow: `harness/src/decision-capture/` (types — DecisionExtractorInput w/ raw_text + author_id + received_at + source + accepted_decisions context + tier; DecisionExtractorOutput w/ subject + summary + scope_globs + supersedes? + candidate_assertions[] (kind+description+parameters loose) + confidence_signal + not_a_decision; DecisionDraft w/ id + draft_path + canonical_path + raw_text; DraftConfirmDecision = commit\|edit\|reject; DecisionCaptureResult); schema — JSON Schema enforcing required fields + assertion kind enum + maxItems:3 candidate cap; prompt — anti-fabrication system: "be the decision-extractor, not the policy author; when in doubt, set not_a_decision=true; emit-only-JSON; supersedes only when input EXPLICITLY revokes prior decision"; id allocator — `allocateDecisionId` scans `.harness/ground/decisions/{,_inbox/}*.md` for highest existing DEC-NNNN incl. drafts AND `.rejected.md` tombstones, returns next monotonic id (per L13.2 — rejected ids burn, never recycled); extractor — `runDecisionExtractor` Tier 1 default (Haiku per workflow.md `decision_extractor: 1`), validates parsed output via isOutput guard; writer — `writeDecisionDraft` mints DEC-NNNN.draft.md frontmatter (status:draft, decided_at, decided_by, scope_globs, supersedes, capture_source, capture_confidence) + body w/ Summary/Original direction/Scope/Candidate assertions sections — candidate_assertions stored under FRONTMATTER `candidate_assertions:` field NOT strict `assertions:` (loose proposals; lifted to `assertions:` only after Phase 14.x refinement so DecisionFrontmatter zod doesn't reject the draft); `acceptDraft` flips status:draft→accepted, moves to canonical, `writeDecisionsLedger` regenerates → assertions become live (when refined), stamps `superseded_by` on referenced prior decision when set; `rejectDraft` writes `.rejected.md` tombstone (NOT delete) so DEC-id is monotonically burned; capture — `runDecisionCapture` orchestrates extract → draft → adapter.requestDialog (🟢 commit / 🟡 edit / 🔴 not-a-decision / E) Other) → accept/edit/reject branch; on extractor `not_a_decision=true` short-circuits without writing draft; on dialog timeout treats as edit so draft survives in `_inbox/` for operator return-trip. Orchestrator wired w/ `isDirectionRow`/`directionTextOf`/`directionAuthorOf`/`directionChannelOf` helpers; `absorbInboxFile` routes slash:command=direction OR free_text:intent=direction rows through `handleDirectionRow` inline (independent of task FIFO; never burns sensors/UAT quota); `OrchestratorOptions.decisionExtractorTier` + `decisionConfirmTimeoutMs` overrides. `smoke:decision-capture` (6 steps — id allocator empty→DEC-0001 + advances past accepted DEC-0003 + draft DEC-0005 → DEC-0006; writeDecisionDraft frontmatter validates incl. status:draft; acceptDraft flips status + ledger contains DEC-0006; LIVE haiku extracts FK-denorm direction → not_a_decision=false subject mentions FK/denorm; commit-path runDecisionCapture w/ stub-extractor + stub-adapter dialogResponse=a → accepted_path canonical + ledger_size=1; reject-path → tombstone leaves DEC-id burned + allocator advances). ~1 cheap haiku call (~$0.03). |
 | `da7e965` | 13 | Backprop protocol (Layer §V): `harness/src/backprop/` (types — BackpropInput w/ tightened_spec + acceptance + diff + failure_summary + run_id + in_scope_decision_ids + tier; BackpropOutput w/ slug + title + body_markdown + introduced_for_bug + enforcement{kind:regex_sensor\|named_e2e, regex, target_globs, language, failure_message, e2e_path}; BackpropResult w/ allocated id + invariant_path + sensor_path; schema — JSON Schema enforcing slug pattern + required fields for `--json-schema` gate; prompt — anti-tautology system: "extract the invariant *what*, not the bug; pick the cheapest enforcement that catches the regression class without false positives", emit-only-JSON, escape-hatch wildly-permissive regex when fix is cosmetic; id allocator — `allocateInvariantId` scans `.harness/ground/invariants/V*.md`, returns next monotonic V<NNNN> per L13.2; runner — `runBackprop` Tier 2 default (haiku in smokes), validates parsed BackpropOutput, mints id, writes V<N>.md + check-v<N>-<slug>.ts atomically; writer — `writeInvariantArtifacts` emits frontmatter (id/title/type:invariant/status:active/source_run/introduced_for_bug/sensor/naming_convention/source_decisions) + body w/ `## Enforcement` link to sensor; sensor template is a self-contained tsx walker w/ embedded REGEX/TARGET_GLOBS/LANGUAGE/FAILURE_MESSAGE constants — same SKIP_DIRS/glob-compile/lineOf primitives as Layer A; `named_e2e` writes `e2e/V<N>_<slug>.spec.ts` stub. Orchestrator wiring: `backpropping` phase added to RunPhase, `bypassBackprop` option, `backpropTier` override (default tier matches implementer); `runBackpropStep` runs after UAT pass, builds failure_summary from soft-sensor-findings + UAT-rejection-note + task-body, persists `runs/active/<run>/backprop/result.json`, commits invariant + sensor in mirror as `chore(invariants): add §V<N> from run <id>`. Existing `smoke:orchestrator` gets `bypassBackprop:true`. New `smoke:backprop` (5 steps — id allocator empty repo→V0001 + seeded V1+V7→V8 monotonic; LIVE haiku call on synthetic cross-tenant fix → asserts V0001 minted + invariant frontmatter shape + sensor generated; regenerated sensor exit 0 on clean tree; regenerated sensor exit 1 on regression tree w/ failure message; ~1 cheap haiku call ~$0.05). |
 | `915f358` | 12 | GC cadence: `harness/src/gc/` (types — GcPass/GcFinding/GcCommitProposal/GcSweepResult/GcBatchResult/GcAutoMergeClass discriminator; `runFrontmatterFreshness` walks canonical zone, evaluates verified-at via existing `evaluateFreshness` w/ warn=30d/block=60d defaults, optional `forceRefresh:true` produces safe-class verified-at-bump proposals; `runGeneratorDrift` iterates `Profile.extractors`, regenerates output, emits safe-class regen-commit-proposal when on-disk content differs; `runStubCatalogHits` walks the FULL source tree (not just diff or canonical), runs the stub-pattern catalog regex against current content — Phase 12 v1 surfaces only, future revs add targeted-refactor proposals; `runDocGardening` extracts markdown links, surfaces broken-link findings + orphan markdowns not referenced by any other doc; `runQualityGradesUpdate` rebuilds `quality-grades.yaml` via existing `buildQualityGrades`, proposes safe-class write only when modules array changes (ignores generated-timestamp churn); `classifyAutoMerge` maps paths → safe|code|high-stakes per L16/L17/L18 — high-stakes globs dominate, code extension under source dominates over safe; `verifyBatchCanary` (per L46 must-fix) renders workflow.md against synthetic-task fixture and asserts every `{{var}}` resolves + required section headers present + manifest rebuild yields >0 entries — runs after multi-commit batches; `applyCommit` writes patch + git add + commit; `runGcSweep` composes all five passes, re-classifies via project globs; `runGcBatch` sweep → filter by applyClasses → applyCommit each → canary if applied≥2 → on canary fail `git reset --hard <pre_batch_sha>` rollback). CLI: `harness gc sweep|run` (`run --apply-classes safe[,code,high-stakes]` defaults safe-only; `--no-canary`, `--force-frontmatter-refresh`, `--json`). Ten-step `smoke:gc` (synthetic stale doc 90d → frontmatter pass surfaces block-severity finding, forceRefresh produces safe-class proposal, runGcBatch lands chore(gc) commit on main with verified-at bumped + body preserved, stub-catalog full-tree scan flags throw-not-implemented under .claude/skills, doc-gardening surfaces broken_link + orphan_path, quality-grades writes fresh yaml from terminal-runs fixture, classifier escalates high-stakes path correctly, multi-commit canary detects truncated workflow.md and rolls back to pre-batch SHA). PURE MECHANICAL — no claude burn. |
 | `51916fb` | 11 complete | Phase 11 finishing pieces (11.x + 11.y + 11.5b): UAT-rejection-driven retry — `harness/src/uat/rejection.ts` (captureUatRejection runs A/B/C/D dialog via adapter.requestDialog after 🔴, optional voice URL detection + Whisper transcription via existing voice/transcribeUrl, writeRejectionYaml lands manifest under uat/, formatUatRejectionRemediation produces category-specific agent prompt); orchestrator dispatch loop now retries on operator-reject when attempts remain (cap = maxAttempts per L42), terminal-fails on probe-only fail or exhausted reject. Question flow — `harness/src/uat/question.ts` (read-only Tier-1 Haiku Q&A agent w/ structured output {answer, confidence_signal, citations}, NO file write tools); runUat extends ApprovalGate with optional questionText + cycles ❓ Ask up to maxQuestionRounds (default 5) calling questionHandler + notifier per round. Live pg + mysql drivers — `harness/src/uat/probes/sql/{pg,mysql}.ts` (lazy-loaded clients; READ-ONLY enforced by upstream regex gate AND defense-in-depth `BEGIN READ ONLY ... ROLLBACK` for pg / `SET SESSION TRANSACTION READ ONLY` for mysql; credentials only via env vars). setup-uat-sql gains `--install` (auto pnpm-add the matching driver pkg). Three new smokes: `smoke:uat-rejection` (6 mechanical cases — extractAudioUrl detection, captureUatRejection category=B w/ free text, invalid-choice fallback to D, writeRejectionYaml round-trip + parsed YAML check, formatUatRejectionRemediation includes operator note + failed AC + correct guidance, all 4 categories produce distinct guidance); `smoke:uat-question` (1 claude haiku call — agent answers concrete bundle question about AC failure, asserts answer references casing miss + at least one citation); both pure mechanical for rejection / 1 cheap haiku for question. |
@@ -43,7 +44,7 @@ The Harness repo is **NOT self-hosted**. It's the source for the published npm p
 | `ce30537` | 2 | mirror checkout runtime (clone/sync/push/dirty-overlap; `~/.local/harness/repos/<slug>/`) |
 | `d011463` | 0–1 | bootstrap pkg + design docs + canonical templates under `harness/templates/` |
 
-### Nineteen sensors green (smoke:backprop added — ~1 cheap haiku call; smoke:gc + smoke:sensors pure mechanical)
+### Twenty sensors green (smoke:decision-capture added — ~1 cheap haiku call; smoke:backprop + smoke:gc + smoke:sensors pure mechanical-or-cheap)
 
 ```
 pnpm -F @devplusllc/harness build              # tsc -b
@@ -65,6 +66,7 @@ pnpm -F @devplusllc/harness smoke:uat-rejection # 6 cases — extractAudioUrl de
 pnpm -F @devplusllc/harness smoke:uat-question  # 1 case — question agent answers concrete bundle question, asserts citations + casing-miss reference. ~1 cheap haiku call. SKIPS without `claude`
 pnpm -F @devplusllc/harness smoke:gc            # 10 cases — frontmatter-stale 90d surfaced, forceRefresh proposal, runGcBatch lands safe-class commit on main with body preserved, stub-catalog full-tree scan flags throw-not-implemented, doc-gardening broken_link+orphan_path, quality-grades fresh-yaml proposal, classifier safe|code|high-stakes precedence, multi-commit canary rollback on truncated workflow.md. PURE MECHANICAL — no claude burn.
 pnpm -F @devplusllc/harness smoke:backprop      # 5 steps — id allocator empty→V0001, seeded V1+V7→V8 monotonic; LIVE haiku call on synthetic cross-tenant fix mints invariant + emits regex sensor; regenerated sensor exit 0 on clean tree, exit 1 on regression. ~1 cheap haiku call ~$0.05. SKIPS without `claude`.
+pnpm -F @devplusllc/harness smoke:decision-capture # 6 steps — id allocator empty→DEC-0001 + advances past existing accepted+draft → DEC-0006; writeDecisionDraft frontmatter passes parse w/ status:draft; acceptDraft flips status, moves to canonical, ledger regenerates incl. DEC-0006; LIVE haiku extracts "FK denorm only" direction (not_a_decision=false, subject mentions FK/denorm); end-to-end commit path lands accepted_path; reject path leaves `.rejected.md` tombstone so DEC-id is monotonically burned. ~1 cheap haiku call (~$0.03). SKIPS Step 4 only without `claude`.
 ```
 
 Run all sixteen cheap ones before doing anything that mutates `harness/src/` or `harness/templates/`. The tightener, reviewer, uat-runner, orchestrator, and backprop smokes each cost ~1-3 `claude` calls; budget ~$1 of subscription quota for the full sweep, skip casually for unrelated touches.
@@ -307,7 +309,7 @@ harness/
 │                        applyCommit each → if applied≥2 run canary →
 │                        on canary fail `git reset --hard <pre_batch_sha>`
 │                        rollback). Index
-│   └── backprop/        Phase 13 backprop protocol (Layer §V).
+│   ├── backprop/        Phase 13 backprop protocol (Layer §V).
 │                        types (BackpropInput w/ tightened_spec +
 │                        acceptance + diff + failure_summary + run_id +
 │                        in_scope_decision_ids + tier; BackpropOutput w/
@@ -339,6 +341,44 @@ harness/
 │                        runner (`runBackprop` Tier 2 default, validates
 │                        parsed BackpropOutput shape, mints id, writes
 │                        invariant + sensor atomically). Index
+│   └── decision-capture/ Phase 14 decision capture flow.
+│                        types (DecisionExtractorInput/Output, CandidateAssertion
+│                        loose, DecisionDraft, DraftConfirmDecision = commit |
+│                        edit | reject, ConfirmResult, DecisionCaptureResult);
+│                        schema (JSON Schema for `--json-schema` gate enforcing
+│                        required fields + assertion-kind enum + maxItems:3);
+│                        prompt (anti-fabrication system: "extract the *what*,
+│                        not the bug; not_a_decision=true for rambling/off-
+│                        topic/questions; supersedes only when input EXPLICITLY
+│                        revokes a prior decision"; emit-only-JSON; passes
+│                        accepted_decisions context for supersedes detection);
+│                        id (`allocateDecisionId` scans
+│                        .harness/ground/decisions/{,_inbox/}*.md for highest
+│                        existing DEC-NNNN incl. drafts AND `.rejected.md`
+│                        tombstones, returns next monotonic id per L13.2);
+│                        extractor (`runDecisionExtractor` Tier 1 default per
+│                        workflow.md `decision_extractor: 1`, validates parsed
+│                        output via isOutput guard); writer (`writeDecisionDraft`
+│                        emits frontmatter — id/title/type:adr/status:draft/
+│                        decided_at/decided_by/scope_globs/supersedes/
+│                        capture_source/capture_confidence — and body w/
+│                        Summary/Original direction/Scope/Candidate assertions
+│                        sections; CRITICAL: candidate_assertions go under
+│                        FRONTMATTER `candidate_assertions:` field NOT strict
+│                        `assertions:` so DecisionFrontmatter zod doesn't
+│                        reject the draft — assertions get lifted only after
+│                        Phase 14.x refinement; `acceptDraft` flips status:
+│                        draft→accepted, moves to canonical, regenerates
+│                        decisions.ledger.yaml, stamps `superseded_by` on
+│                        prior decision when set; `rejectDraft` writes
+│                        `.rejected.md` tombstone NOT delete so DEC-id is
+│                        monotonically burned); capture (`runDecisionCapture`
+│                        orchestrates extract → if not_a_decision short-circuit
+│                        → write draft → adapter.requestDialog 🟢/🟡/🔴/E) →
+│                        accept/edit/reject branch; on dialog timeout treat
+│                        as edit so draft survives for return-trip;
+│                        `extractorOverride` injection point for smokes that
+│                        skip the LLM call). Index
 ├── scripts/
 │   ├── check-layout.ts  Phase 1 sensor — also scans pkg/templates for banned
 │   │                    "mypal" strings (project-agnostic check per L50, S1)
@@ -431,7 +471,7 @@ harness/
 │                        commit canary detects truncated workflow.md
 │                        and rolls back to pre-batch SHA. PURE
 │                        MECHANICAL — no claude burn.
-│   └── smoke-backprop.ts Phase 13 acceptance: 5 steps — id allocator
+│   ├── smoke-backprop.ts Phase 13 acceptance: 5 steps — id allocator
 │                        empty repo→V0001, seeded V1+V7→V8 monotonic;
 │                        LIVE haiku call on synthetic cross-tenant fix
 │                        (findTokenByProvider missing user_id) mints
@@ -444,6 +484,24 @@ harness/
 │                        infra is verified independent of LLM judgment.
 │                        ~1 cheap haiku call (~$0.05). SKIPS without
 │                        `claude`.
+│   └── smoke-decision-capture.ts Phase 14 acceptance: 6 steps —
+│                        allocateDecisionId on empty repo→DEC-0001 +
+│                        advances past existing DEC-0003 + draft
+│                        DEC-0005 → DEC-0006; writeDecisionDraft
+│                        emits valid frontmatter w/ status:draft;
+│                        acceptDraft flips status, moves to
+│                        canonical, ledger contains DEC-0006 entry;
+│                        LIVE haiku extractor on "scrap that — FK
+│                        denorm only" direction returns
+│                        not_a_decision=false w/ subject mentioning
+│                        FK/denorm; runDecisionCapture commit path
+│                        w/ stub-adapter dialogResponse=a leaves
+│                        accepted_path canonical + ledger_size=1;
+│                        reject path w/ dialogResponse=c leaves
+│                        `.rejected.md` tombstone so allocator
+│                        advances to DEC-0002 (no recycle). Steps 1/2/
+│                        3/5/6 pure mechanical; Step 4 ~1 haiku call
+│                        (~$0.03). Step 4 only SKIPS without `claude`.
 └── templates/           seed copied into adopting projects by `harness init`
     ├── README.md
     ├── .harness/
@@ -464,14 +522,15 @@ harness/
 
 ### What's NOT yet wired
 
-Phases 14–18 from `docs/INTEGRATION_PLAN.md`. In particular:
+Phases 15–18 from `docs/INTEGRATION_PLAN.md`. In particular:
 
-- **No decision capture flow.** Phase 14 — `/direction` slash + Tier-1 extractor + Discord 🟢 confirm → ledger.
+- **No trial-run pilot.** Phase 15 — exercise full lifecycle on a real backlog item from an adopted project (mypal). Voice variant + decision-capture variant per spec.
 - **No GC cron schedule.** `harness gc sweep|run` exists as a CLI; nightly `/loop` or systemd-timer wiring is Phase 12.x or part of Phase 17 polish.
 - **No init script.** `harness init` is a stub; Phase 16 (inquirer-driven per operator note 2026-05-02). Phase 16's E2E-setup question (per operator pivot 2026-05-02): "Set up E2E now / Defer / Skip" — branches into running setup:uat-browsers + setup:uat-sql + setup:uat-docker per stack profile.
 - **No git commit + push from a successful run.** The orchestrator stops after backprop's local commit; the push to `origin/main` is gated on the pre-push evidence-file recompute per L16/L17/L18 trust posture (Phase 16 wires the push step).
+- **Decision-capture refinement step.** Phase 14 v1 stores candidate_assertions under a loose `candidate_assertions:` frontmatter field; lifting them to the strict `assertions:` form (which Layer-D sensors enforce) needs Phase 14.x — operator edit-loop that fills in the schema-required parameters per assertion kind.
 
-The `harness watch`, `harness mirror`, `harness mcp serve`, `harness run`, and `harness gc {sweep,run}` CLIs work today. End-to-end ingest → tightener → mirror → agent → sensors (Layer A/B/D + decision-assertions) → reviewer subagent (Layer C, fresh context) → UAT pipeline (multi-probe http/cli/ui/sql-sqlite/integration routing, evidence-file gate) → adapter approval → backprop (Layer §V — invariant + regex sensor + chore(invariants) commit on mirror) runs cleanly. GC composes five passes (frontmatter freshness, generator drift, stub-catalog hits, doc-gardening, quality-grades) with an auto-merge classifier, batch canary, and rollback-on-canary-fail. Next missing pieces: decision capture flow, the eventual git-push step gated on the recomputed evidence hash, and the GC cron schedule.
+The `harness watch`, `harness mirror`, `harness mcp serve`, `harness run`, and `harness gc {sweep,run}` CLIs work today. End-to-end ingest → tightener → mirror → agent → sensors (Layer A/B/D + decision-assertions) → reviewer subagent (Layer C, fresh context) → UAT pipeline (multi-probe http/cli/ui/sql-sqlite/integration routing, evidence-file gate) → adapter approval → backprop (Layer §V — invariant + regex sensor + chore(invariants) commit on mirror) runs cleanly. GC composes five passes (frontmatter freshness, generator drift, stub-catalog hits, doc-gardening, quality-grades) with an auto-merge classifier, batch canary, and rollback-on-canary-fail. Decision capture turns Discord `/direction` slash + free_text classified as `direction` into draft DEC-NNNN files, fires the 🟢/🟡/🔴 confirm dialog, and on commit regenerates the decisions ledger. Next missing pieces: trial-run pilot, candidate-assertion refinement, the eventual git-push step gated on the recomputed evidence hash, and the GC cron schedule.
 
 ### Phase 11.5 design notes (binding)
 
@@ -491,6 +550,18 @@ The `harness watch`, `harness mirror`, `harness mcp serve`, `harness run`, and `
 - **Phase 11 v1 fails-terminal on UAT failure.** UAT_PIPELINE §6 specifies a rejection.yaml-driven retry; that lands in Phase 11.x. v1 marks the run failed with the operator's rejection reason or the probe failure summary so the operator knows what to fix manually.
 - **Persistent UAT.md per task** (`.harness/tasks/<task_id>/uat.md`) per GSD pattern. `blocked_by` (env issues — server down, third-party rate-limit) is NEVER folded into Gaps. Crossing the boundary triggers unnecessary fix-plan cycles per UAT_PIPELINE §8.
 - **Adapter approval gate uses existing `requestApproval(ApprovalBundle)`.** No new adapter contract. The orchestrator maps `Approval` → UAT decision; the stub adapter's default-approve makes the smoke pure-mechanical.
+
+### Phase 14 design notes (binding)
+
+- **Two ingress paths, one extractor.** Discord `/direction <text>` slash (kind=slash, command=direction) AND free-text Tier-0-classified as `direction` (kind=free_text, intent=direction) both land in `.harness/inbox/` and the orchestrator routes them through the same `runDecisionCapture` flow. No path-specific behavior.
+- **Capture is independent of the task FIFO.** `handleDirectionRow` fires inline from `absorbInboxFile` rather than enqueueing a task. Decision capture should not be blocked behind a long-running implementer run, and it does not consume sensors/UAT quota.
+- **Tier 1 default per workflow.md.** `decisionExtractorTier` defaults to haiku per `decision_extractor: 1`. Sonnet override exists for long-form directions where Haiku miss-classifies; not the default per L42 budget concerns.
+- **Anti-fabrication: `not_a_decision` short-circuits.** When the extractor sets `not_a_decision=true`, the harness writes NO draft and returns `short_circuited: true`. The prompt explicitly biases toward setting this true on rambling/off-topic/question-shaped input — a false-positive draft pollutes the ledger; a false-negative is recoverable via re-submission.
+- **Candidate assertions are loose proposals, not strict assertions.** The extractor's `candidate_assertions` array carries a `kind` + `description` + free-form `parameters` object. They're stored under FRONTMATTER `candidate_assertions:` (passthrough) — NOT under strict `assertions:` which `DecisionFrontmatter` zod validates. Reason: a partially-specified `query_must_filter_by` candidate would fail strict validation and bork the ledger regenerate. Phase 14.x lifts candidates into `assertions:` only after operator edit fills in schema-required parameters per kind.
+- **Monotonic ids burn through tombstones.** Per L13.2, even rejected drafts keep their DEC-id forever. `rejectDraft` writes a `.rejected.md` tombstone (status:rejected, body preserved for audit) instead of `rm`-ing the file. `allocateDecisionId` scans both `.draft.md` and `.rejected.md` files when computing the high-water mark — so DEC-0001 cannot resurrect after a reject + retry.
+- **Confirm dialog timeout = edit, not reject.** When `requestDialog` times out (default 60s; smokes drop to 1s), the flow treats it as `edit` so the draft survives in `_inbox/` for the operator's return trip. Reject would lose the capture; commit on timeout would be an accidental ledger update. Edit is the safe middle.
+- **Supersedes is operator-driven, not inferred.** The extractor only sets `supersedes` when the input EXPLICITLY revokes a prior decision (`scrap DEC-0042`, `undo the FK denorm rule`). On accept, `acceptDraft` stamps `superseded_by:` on the referenced decision file (best-effort — missing referent doesn't block). The next ledger regenerate excludes the superseded entry per existing `superseded_by` filter.
+- **Source field encodes provenance.** `<source>:<kind>` — e.g., `discord:slash`, `discord:free_text`, `smoke:commit`. Stored in draft frontmatter as `capture_source:` for audit; cited in extractor logs. Discord-specific data (channelId, guildId) survives via the inbox row but is not duplicated into the decision file.
 
 ### Phase 13 design notes (binding)
 
@@ -729,18 +800,20 @@ Each layer fail → run marked `failed-honesty-check` with structured findings. 
 
 ## 10. What the operator wants next (most likely)
 
-Phase 13 is complete. Next is **Phase 14 — decision capture flow** (`docs/INTEGRATION_PLAN.md` §5 Phase 14; ~0.5 founder-day).
+Phase 14 is complete. Next is **Phase 15 — trial-run pilot** (`docs/INTEGRATION_PLAN.md` §5 Phase 15; ~2 founder-days).
 
-Phase 14 deliverables (per WORKFLOW_GUIDE + L26/L27):
+Phase 15 deliverables (per spec):
 
-1. **`/direction` slash + free-text classifier hook** — Discord adapter routes both into a Tier-1 decision-extractor.
-2. **Decision-extractor (Tier 1)** — structured output `{ subject, scope_globs, supersedes?, summary, candidate_assertions }`.
-3. **Draft drop** — `.harness/ground/decisions/_inbox/<DEC-id>.draft.md` (with frontmatter + body).
-4. **Discord prompt** — "Confirm DEC-NNNN? [🟢 commit] [🟡 edit] [🔴 not a decision]".
-5. **Confirm path** — move draft → `.harness/ground/decisions/<DEC-id>.md`; daemon regenerates `decisions.ledger.yaml`; assertions become live.
-6. **Smoke** — synthetic Discord message ("scrap that, FK denorm only") produces draft within 30s; confirm → ledger reflects within 5s; next run loads the new entry in always-injected ledger.
+1. **Pilot task** — a real backlog item from an adopted project (mypal): e.g. "add unique partial index on `integration_oauth_tokens(provider, user_id) WHERE archived_at IS NULL`".
+2. **Submission via `/task` slash + dialog OR voice note** — full ingress path exercised end-to-end.
+3. **Watch full lifecycle** — spec tightener → mirror prep → agent run → sensors → reviewer → UAT-on-phone → 🟢 → push to main → backprop. (Push step lands as part of this phase or Phase 16.)
+4. **Voice variant** — same task as voice note → assert transcription → intent classification → full pipeline.
+5. **Decision-capture variant** — `/direction "actually, also add the symmetric index for archived_at IS NOT NULL"` → confirm → next run sees it in ledger.
 
-Phase 12.x **GC cron schedule** (`/loop` or systemd-timer wrapping `harness gc run`) may also land next if operator prefers — small, ~0.25 founder-day.
+Quicker alternatives if operator prefers smaller scope:
+
+- **Phase 12.x — GC cron schedule** (`/loop` or systemd-timer wrapping `harness gc run`) — ~0.25 founder-day.
+- **Phase 14.x — candidate-assertion refinement** — operator edit-loop that lifts candidate_assertions into the strict assertions schema so Layer-D enforces them. ~0.5 founder-day.
 
 ### Phase 16 init script E2E setup (referenced from operator pivot 2026-05-02)
 
@@ -749,16 +822,16 @@ Per operator pivot, the init script must ask "Set up E2E now / Defer / Skip" and
 - `defer` → `e2e_setup: deferred` in `.harness/config.yaml`; orchestrator prompts again on first UAT need
 - `skip` → `e2e_setup: skipped`; code-class UAT becomes review-only; high-stakes refuses dispatch
 
-Do NOT start Phase 14 until the operator says "go". Confirm what's landed first.
+Do NOT start Phase 15 until the operator says "go". Confirm what's landed first.
 
 ## 11. How to start a fresh session
 
 ```
 1. Read this RESUME_PROMPT.md fully (esp. §1A — implementation snapshot).
 2. Read docs/PRIMER.md fully.
-3. Skim docs/INTEGRATION_PLAN.md §5 Phase 14 (decision capture flow) — that's
-   what's next. Phase 13 spec/contract is settled in code; refer to the
-   landed `harness/src/backprop/` for surface + smoke for examples.
+3. Skim docs/INTEGRATION_PLAN.md §5 Phase 15 (trial-run pilot) — that's
+   what's next. Phase 14 spec/contract is settled in code; refer to the
+   landed `harness/src/decision-capture/` for surface + smoke for examples.
 4. Run the cheap sensors to confirm nothing has broken:
      pnpm -F @devplusllc/harness build typecheck check:layout
                                        smoke:mirror smoke:watch smoke:mcp
@@ -766,10 +839,10 @@ Do NOT start Phase 14 until the operator says "go". Confirm what's landed first.
                                        smoke:uat smoke:uat-rejection smoke:gc
    All cheap ones should print OK without burning claude quota.
 5. Confirm to operator in 2-3 lines, e.g.:
-     "Resumed Harness project. Phases 0–13 landed. Cheap sensors green.
-      Ready for Phase 14 (decision capture) OR Phase 12.x (GC cron). Proceed?"
+     "Resumed Harness project. Phases 0–14 landed. Cheap sensors green.
+      Ready for Phase 15 (trial pilot) OR Phase 12.x (GC cron) OR Phase 14.x (assertion refine). Proceed?"
 6. Wait for direction. Don't propose anything beyond what's in INTEGRATION_PLAN.md
-   §5 Phase 14 / §5 Phase 12.x.
+   §5 Phase 15 / §5 Phase 12.x / §5 Phase 14.x.
 7. Caveman ultra mode active for chat replies. Documents/commits/PRs in normal
    English. Match operator's terse-direct style.
 ```
