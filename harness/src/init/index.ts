@@ -14,11 +14,18 @@ export { seedHarnessLayout, templatesRoot } from "./seed.js";
 export type { SeedOptions, SeedResult } from "./seed.js";
 export {
   freeTextWithDefault,
+  secretInput,
   squareIntoSquareHole,
+  yesNo,
   type Choice,
   type PromptMode,
   type PromptOptions,
 } from "./prompts.js";
+export {
+  harnessEnvPath,
+  readHarnessEnv,
+  upsertHarnessEnv,
+} from "./secrets.js";
 export type {
   DetectionResult,
   HookCapability,

@@ -1,16 +1,21 @@
 /**
- * `harness init` orchestrator.
+ * `harness init` orchestrator — full guided setup.
  *
- * Three steps with two operator dialogs (L44 cap):
- *   1. Detect → print summary → one "proceed?" dialog
- *   2. Seed `.harness/` + .archive/ from templates with `<project_name>`
- *      substituted. Write `.harness/config.yaml` carrying the
- *      project-specific overlay (slug, origin, start_command,
- *      hook_capability, e2e_setup, detected_sensors).
- *   3. Mirror init (skippable). E2E setup dialog → now / defer / skip.
+ * Stages:
+ *   1. Detect → print summary
+ *   2. Proceed dialog (cancel exits cleanly, no writes)
+ *   3. Guided setup loop — for each missing prerequisite, prompt to fix:
+ *        • discord bot token + guild → write to ~/.local/harness/.env
+ *        • whisper model → curl download
+ *        • ollama service → brew install + ollama pull
+ *        • claude CLI → instruct (interactive auth, can't automate)
+ *   4. Seed `.harness/` + .archive/ from templates with `<project_name>`
+ *      substituted. Write `.harness/config.yaml`.
+ *   5. Mirror init (skippable).
+ *   6. E2E dialog — now actually executes setup:uat-* via subprocess.
  *
- * Advisory environment warnings (whisper, ollama, discord, claude) print
- * inline; they never block.
+ * Pre-configured environment skips guided setup dialogs entirely; init
+ * for an already-set-up operator runs proceed + e2e and that's it.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -18,9 +23,25 @@ import { join } from "node:path";
 import { stringify as stringifyYaml } from "yaml";
 import { ensureMirror, normalizeProjectName } from "../mirror/index.js";
 import { logger } from "../logger.js";
-import { detectAll } from "./detect.js";
-import { done, freeTextWithDefault, header, info, squareIntoSquareHole, type PromptMode } from "./prompts.js";
+import { detectAll, detectEnvironment } from "./detect.js";
+import {
+  done,
+  freeTextWithDefault,
+  header,
+  info,
+  secretInput,
+  squareIntoSquareHole,
+  yesNo,
+  type PromptMode,
+} from "./prompts.js";
+import { harnessEnvPath, upsertHarnessEnv } from "./secrets.js";
 import { seedHarnessLayout } from "./seed.js";
+import {
+  downloadWhisperModel,
+  offerInstallOllama,
+  pullOllamaModel,
+  runHarnessSetupScript,
+} from "./setup-runners.js";
 import type { DetectionResult } from "./types.js";
 
 const log = logger("init");
@@ -40,6 +61,8 @@ export interface RunInitArgs {
   autoE2e?: "now" | "defer" | "skip";
   /** Auto-pick proceed? when mode=auto. */
   autoProceed?: "a" | "b";
+  /** Skip guided setup (claude/whisper/ollama/discord) — smoke convenience. */
+  skipGuidedSetup?: boolean;
 }
 
 export interface InitResult {
@@ -113,6 +136,12 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
       e2e_setup: null,
       warnings,
     };
+  }
+
+  // ── Guided setup: fix each missing prerequisite ────────────────────
+  let envState = detection.environment;
+  if (mode === "interactive" && args.skipGuidedSetup !== true) {
+    envState = await runGuidedSetup({ envState, warnings, mode });
   }
 
   // ── Step 2: seed templates ─────────────────────────────────────────
@@ -191,22 +220,26 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   });
   recordE2eDecision({ repoRoot, e2eChoice });
   if (e2eChoice === "now") {
-    info(
-      "\nE2E setup chosen `now` — run these in your project shell when convenient:",
-    );
-    info(`  pnpm dlx @devplusllc/harness setup:uat-browsers`);
-    info(`  pnpm dlx @devplusllc/harness setup:uat-sql --build-binding`);
-    info(`  pnpm dlx @devplusllc/harness setup:uat-docker`);
-    info(
-      "(The init wizard does not invoke them automatically yet — that lands in P16.x.)",
-    );
+    header("E2E setup — running setup:uat-browsers + setup:uat-sql + setup:uat-docker");
+    const browsers = await runHarnessSetupScript("setup-uat-browsers");
+    if (!browsers.ok) {
+      warnings.push(`setup:uat-browsers exited ${browsers.exit_code} — re-run manually`);
+    }
+    const sql = await runHarnessSetupScript("setup-uat-sql", ["--build-binding"]);
+    if (!sql.ok) {
+      warnings.push(`setup:uat-sql exited ${sql.exit_code} — re-run manually`);
+    }
+    const docker = await runHarnessSetupScript("setup-uat-docker");
+    if (!docker.ok) {
+      warnings.push(`setup:uat-docker exited ${docker.exit_code} — re-run manually`);
+    }
   }
 
   // ── Step 5: next-steps ─────────────────────────────────────────────
   header("Done. Next steps");
   info(`  cd "${repoRoot}"`);
   info(`  pnpm dlx @devplusllc/harness watch --project ${decidedSlug}    # daemon`);
-  if (detection.environment.discord_token && detection.environment.discord_guild) {
+  if (envState.discord_token && envState.discord_guild) {
     info(
       `  pnpm dlx @devplusllc/harness run --project ${decidedSlug} --frontend discord`,
     );
@@ -265,6 +298,164 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
       );
     }
   }
+}
+
+/**
+ * For each missing prerequisite, prompt the operator to fix it. Returns
+ * the (possibly mutated) environment state.
+ *
+ * Order matters: claude → whisper → ollama → discord. Claude is the
+ * hardest blocker (no Tier-1 calls without it); discord is the most
+ * likely missing piece (operator hasn't pasted the bot token yet).
+ */
+async function runGuidedSetup(args: {
+  envState: DetectionResult["environment"];
+  warnings: string[];
+  mode: PromptMode;
+}): Promise<DetectionResult["environment"]> {
+  const env = { ...args.envState };
+  header("Guided setup — fixing missing prerequisites");
+
+  // ── claude CLI: can't auto. ─────────────────────────────────────────
+  if (!env.claude_auth) {
+    info("");
+    info("✗ claude CLI is missing or unauthenticated.");
+    info("  Install:  https://docs.claude.com/claude-code");
+    info("  Then run: claude   (one-time interactive auth)");
+    const ack = await yesNo({
+      mode: args.mode,
+      prompt: "Continue without claude? (Tier-1+ LLM calls will fail.)",
+      defaultYes: false,
+    });
+    if (!ack) {
+      throw new Error(
+        "init aborted — operator declined to continue without claude",
+      );
+    }
+    args.warnings.push("claude CLI not available — Tier-1+ LLM calls will fail");
+  } else {
+    done("✓ claude CLI authenticated");
+  }
+
+  // ── whisper model. ──────────────────────────────────────────────────
+  if (!env.whisper_model) {
+    info("");
+    info("✗ whisper model not found at ~/.local/harness/models/.");
+    const action = await yesNo({
+      mode: args.mode,
+      prompt: "Download whisper model now (~800MB, ~2 min on fast wifi)?",
+      defaultYes: true,
+    });
+    if (action) {
+      const r = await downloadWhisperModel();
+      if (r.ok) {
+        env.whisper_model = true;
+        done("✓ whisper model downloaded");
+      } else {
+        args.warnings.push(`whisper download failed (${r.exit_code}) — re-run manually`);
+      }
+    } else {
+      args.warnings.push("whisper model not present — voice ingress disabled");
+    }
+  } else {
+    done("✓ whisper model present");
+  }
+
+  // ── ollama service. ─────────────────────────────────────────────────
+  if (!env.ollama_running) {
+    info("");
+    info("✗ ollama is not reachable on $OLLAMA_HOST (default http://localhost:11434).");
+    const action = await squareIntoSquareHole<"install" | "skip">({
+      mode: args.mode,
+      prompt: "Set up Ollama (Tier-0 classifier)?",
+      choices: [
+        { id: "install", label: "install via brew + pull llama3.2:3b", isDefault: true },
+        { id: "skip", label: "skip — Tier-0 falls back to regex" },
+      ],
+      auto: "skip",
+    });
+    if (action === "install") {
+      const installR = await offerInstallOllama();
+      if (installR.ok) done("✓ ollama installed");
+      else args.warnings.push(`brew install ollama failed (${installR.exit_code})`);
+      info("  starting ollama service in background — run `brew services start ollama`");
+      info("  then: ollama pull llama3.2:3b");
+      const pullR = await pullOllamaModel("llama3.2:3b");
+      if (pullR.ok) {
+        env.ollama_running = true;
+        done("✓ llama3.2:3b pulled");
+      } else {
+        args.warnings.push(
+          `ollama pull failed (${pullR.exit_code}) — start service then re-run`,
+        );
+      }
+    } else {
+      args.warnings.push("ollama skipped — Tier-0 uses regex fallback");
+    }
+  } else {
+    done("✓ ollama reachable");
+  }
+
+  // ── discord token + guild. ──────────────────────────────────────────
+  const discordMissing = !env.discord_token || !env.discord_guild;
+  if (discordMissing) {
+    info("");
+    info("✗ Discord adapter not configured (DISCORD_BOT_TOKEN / DISCORD_GUILD_ID missing).");
+    const action = await squareIntoSquareHole<"enter" | "skip">({
+      mode: args.mode,
+      prompt: "Enter Discord bot credentials now?",
+      choices: [
+        {
+          id: "enter",
+          label: "enter token + guild now",
+          description: "writes to ~/.local/harness/.env (mode 0600)",
+          isDefault: true,
+        },
+        {
+          id: "skip",
+          label: "skip — use stub adapter for now",
+          description: "you can `harness init` again later to add credentials",
+        },
+      ],
+      auto: "skip",
+    });
+    if (action === "enter") {
+      const updates: Record<string, string> = {};
+      if (!env.discord_token) {
+        const token = await secretInput({
+          mode: args.mode,
+          prompt: "DISCORD_BOT_TOKEN (Bot tab → Reset Token, paste hidden):",
+        });
+        if (token.length > 0) {
+          updates["DISCORD_BOT_TOKEN"] = token;
+          env.discord_token = true;
+        }
+      }
+      if (!env.discord_guild) {
+        const guild = await freeTextWithDefault({
+          mode: args.mode,
+          prompt: "DISCORD_GUILD_ID (right-click server → Copy Server ID):",
+          defaultValue: "",
+        });
+        if (guild.trim().length > 0) {
+          updates["DISCORD_GUILD_ID"] = guild.trim();
+          env.discord_guild = true;
+        }
+      }
+      if (Object.keys(updates).length > 0) {
+        const path = upsertHarnessEnv(updates);
+        done(`✓ wrote ${Object.keys(updates).join(" + ")} → ${path}`);
+      } else {
+        args.warnings.push("discord credentials skipped — adapter will fall back to stub");
+      }
+    } else {
+      args.warnings.push("discord credentials skipped — adapter falls back to stub");
+    }
+  } else {
+    done("✓ Discord credentials present");
+  }
+
+  return env;
 }
 
 function buildProjectOverlay(args: {
