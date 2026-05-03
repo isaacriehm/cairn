@@ -133,6 +133,14 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
    * new live status message.
    */
   private liveStatusMessages = new Map<string, string>();
+  /**
+   * Channels that have responded with Unknown Channel (Discord error
+   * 10003). Once flagged dead, subsequent postTaskUpdate / sendTyping
+   * / requestDialog calls bail without hitting Discord. This stops the
+   * 8s typing heartbeat from spamming logs after the operator deletes
+   * a per-task channel mid-run.
+   */
+  private deadChannels = new Set<string>();
 
   private started = false;
 
@@ -244,7 +252,17 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
       log.warn({ taskId: update.taskId }, "postTaskUpdate without channelId; dropping");
       return;
     }
-    const channel = await this.client.channels.fetch(channelId);
+    if (this.isChannelDead(channelId)) return;
+    let channel;
+    try {
+      channel = await this.client.channels.fetch(channelId);
+    } catch (err) {
+      if (isUnknownChannelError(err)) {
+        this.markChannelDead(channelId);
+        return;
+      }
+      throw err;
+    }
     if (!channel || !channel.isTextBased() || !("send" in channel)) {
       log.warn({ channelId }, "postTaskUpdate target channel not text-based");
       return;
@@ -289,7 +307,21 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
     if (!channelId) {
       throw new Error("requestApproval requires bundle.channelId");
     }
-    const channel = await this.client.channels.fetch(channelId);
+    if (this.isChannelDead(channelId)) {
+      // Same dead-channel sentinel as requestDialog — orchestrator
+      // treats timeout as ask/abandon.
+      return { bundleId: bundle.bundleId, decision: "ask", timedOut: true };
+    }
+    let channel;
+    try {
+      channel = await this.client.channels.fetch(channelId);
+    } catch (err) {
+      if (isUnknownChannelError(err)) {
+        this.markChannelDead(channelId);
+        return { bundleId: bundle.bundleId, decision: "ask", timedOut: true };
+      }
+      throw err;
+    }
     if (!channel || !("send" in channel) || !channel.isTextBased()) {
       throw new Error(`approval target channel not text-based: ${channelId}`);
     }
@@ -362,7 +394,22 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
     if (!channelId) {
       throw new Error("requestDialog requires spec.channelId");
     }
-    const channel = await this.client.channels.fetch(channelId);
+    if (this.isChannelDead(channelId)) {
+      // Operator can't see the prompt — return a dead-channel sentinel
+      // (timed-out so the orchestrator's existing timeout-handling
+      // branch fires).
+      return { bundleId: spec.bundleId, choiceId: "e_other", timedOut: true };
+    }
+    let channel;
+    try {
+      channel = await this.client.channels.fetch(channelId);
+    } catch (err) {
+      if (isUnknownChannelError(err)) {
+        this.markChannelDead(channelId);
+        return { bundleId: spec.bundleId, choiceId: "e_other", timedOut: true };
+      }
+      throw err;
+    }
     if (!channel || !("send" in channel) || !channel.isTextBased()) {
       throw new Error(`dialog target channel not text-based: ${channelId}`);
     }
@@ -409,12 +456,21 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
     let stopped = false;
     const ping = async () => {
       if (stopped) return;
+      if (this.isChannelDead(channelId)) {
+        stopped = true;
+        return;
+      }
       try {
         const channel = await this.client.channels.fetch(channelId);
         if (channel && channel.isTextBased() && "sendTyping" in channel) {
           await (channel as TextChannel).sendTyping();
         }
       } catch (err) {
+        if (isUnknownChannelError(err)) {
+          this.markChannelDead(channelId);
+          stopped = true;
+          return;
+        }
         log.warn({ err: String(err), channelId }, "sendTyping failed");
       }
     };
@@ -438,6 +494,25 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
   }
 
   // ── private ────────────────────────────────────────────────────────────
+
+  /**
+   * Discord error 10003 = Unknown Channel. Operator deleted the
+   * per-task channel after the harness recorded its id. Once flagged,
+   * silently no-op on every subsequent send/edit/typing call so we
+   * don't spam logs while the orchestrator winds the run down.
+   */
+  private isChannelDead(channelId: string): boolean {
+    return this.deadChannels.has(channelId);
+  }
+  private markChannelDead(channelId: string): void {
+    if (!this.deadChannels.has(channelId)) {
+      this.deadChannels.add(channelId);
+      log.warn(
+        { channelId },
+        "channel marked dead — operator likely deleted it; further posts/typing/dialogs will no-op",
+      );
+    }
+  }
 
   private async requireGuild(): Promise<Guild> {
     const guild = await this.client.guilds.fetch(this.opts.guildId);
@@ -904,6 +979,17 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
 
 function newTaskId(): string {
   return `TSK-${Date.now().toString(36)}-${randomBytes(2).toString("hex")}`;
+}
+
+/**
+ * True when the error is a discord.js DiscordAPIError with code 10003
+ * (Unknown Channel). The harness flags the channel dead and silently
+ * no-ops every subsequent post against it.
+ */
+function isUnknownChannelError(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  const e = err as Record<string, unknown>;
+  return e["code"] === 10003;
 }
 
 /**
