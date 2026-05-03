@@ -29,6 +29,7 @@ export type RunPhase =
   | "sensing"
   | "reviewing"
   | "uat"
+  | "backpropping"
   | "succeeded"
   | "failed";
 
@@ -103,6 +104,18 @@ export interface RunMeta {
     probe_failures: number;
     operator_decision: UatDecision;
   };
+  /** Backprop subagent (Phase 13) summary. Set when backprop ran. */
+  last_backprop?: {
+    ok: boolean;
+    invariant_id: string;
+    invariant_path: string;
+    sensor_path: string;
+    enforcement_kind: "regex_sensor" | "named_e2e";
+    /** Commit SHA on the mirror; undefined if commit step skipped/failed. */
+    commit_sha?: string;
+    /** Set when ok=false; agent threw / write failed / commit threw. */
+    error?: string;
+  };
 }
 
 /**
@@ -152,6 +165,18 @@ export interface OrchestratorOptions {
   bypassReviewer?: boolean;
   /** Skip the UAT pipeline (Phase 11). Smoke convenience. Default false. */
   bypassUat?: boolean;
+  /**
+   * Skip the backprop subagent (Phase 13). Smoke convenience. Default
+   * false — production runs invoke backprop on every successful code-class
+   * UAT-approved run.
+   */
+  bypassBackprop?: boolean;
+  /**
+   * Override the backprop tier. Default = `tier_assignment.backprop_author`
+   * from workflow.md (Tier 2 / Sonnet). Smokes drop to Tier 1 (Haiku) for
+   * speed + quota.
+   */
+  backpropTier?: ClaudeTier;
   /**
    * UAT-runner hints surfaced to the agent — base URL for http probes,
    * cli prefix/cwd, and which heavier probe surfaces are available

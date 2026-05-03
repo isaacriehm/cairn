@@ -509,6 +509,25 @@ export class Orchestrator {
       await this.writeMeta(meta);
 
       if (uatResult.ok) {
+        // ── Backprop subagent (Phase 13) ───────────────────────────────
+        if (this.opts.bypassBackprop !== true) {
+          await this.surfacePhase(entry, meta, "backpropping");
+          await this.runBackpropStep({
+            mirrorPath: meta.mirror_path,
+            shaPin: prep.sha_pin,
+            tightenedSpec: tightenedSpec ?? taskBody,
+            acceptanceCriteria: entry.row.acceptance_criteria ?? [],
+            runId: entry.run_id,
+            tier: this.opts.backpropTier ?? tier,
+            softFindings: (lastSweep?.results ?? []).flatMap((r) =>
+              r.findings.filter((f) => f.severity === "soft").map((f) => f.message),
+            ),
+            uatRejectionNote: uatResult.rejection?.operator_note,
+            taskBody,
+            meta,
+          });
+          await this.writeMeta(meta);
+        }
         await this.completeRun(entry, meta, "succeeded");
         return;
       }
@@ -568,6 +587,94 @@ export class Orchestrator {
       JSON.stringify(result, null, 2),
       "utf8",
     );
+  }
+
+  private async runBackpropStep(args: {
+    mirrorPath: string;
+    shaPin: string;
+    tightenedSpec: string;
+    acceptanceCriteria: string[];
+    runId: string;
+    tier: "haiku" | "sonnet" | "opus";
+    softFindings: string[];
+    uatRejectionNote: string | undefined;
+    taskBody: string;
+    meta: RunMeta;
+  }): Promise<void> {
+    const { runBackprop } = await import("../backprop/index.js");
+    const { simpleGit } = await import("simple-git");
+
+    const diff = await getDiff({ mirrorPath: args.mirrorPath, shaPin: args.shaPin });
+    const decisions = loadAcceptedDecisions(args.mirrorPath);
+    const inScope = decisionsInScope(decisions, diff);
+    const decisionIds = inScope.map((d) => d.id);
+
+    const failureSummaryParts: string[] = [];
+    if (args.uatRejectionNote) failureSummaryParts.push(`UAT rejection: ${args.uatRejectionNote}`);
+    if (args.softFindings.length > 0) {
+      failureSummaryParts.push(`Soft sensor findings on this run: ${args.softFindings.join("; ")}`);
+    }
+    if (failureSummaryParts.length === 0) {
+      failureSummaryParts.push(
+        `No prior failure recorded — task body: ${args.taskBody.slice(0, 500)}`,
+      );
+    }
+    const failure_summary = failureSummaryParts.join("\n\n");
+
+    let result;
+    try {
+      result = await runBackprop({
+        mirrorPath: args.mirrorPath,
+        tightened_spec: args.tightenedSpec,
+        acceptance_criteria: args.acceptanceCriteria,
+        diff,
+        failure_summary,
+        run_id: args.runId,
+        in_scope_decision_ids: decisionIds,
+        tier: args.tier,
+      });
+    } catch (err) {
+      args.meta.last_backprop = {
+        ok: false,
+        invariant_id: "",
+        invariant_path: "",
+        sensor_path: "",
+        enforcement_kind: "regex_sensor",
+        error: String(err),
+      };
+      log.warn({ run_id: args.runId, err: String(err) }, "backprop failed");
+      return;
+    }
+
+    // Persist result for telemetry.
+    const dir = join(this.opts.repoRoot, RUNS_ACTIVE_REL, args.runId, "backprop");
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "result.json"), JSON.stringify(result, null, 2), "utf8");
+
+    // Commit the invariant + sensor in the mirror.
+    let commitSha: string | undefined;
+    try {
+      const git = simpleGit({ baseDir: args.mirrorPath });
+      await git.add([result.invariant_path, result.sensor_path]);
+      const subject = `chore(invariants): add §${result.id} from run ${args.runId}`;
+      const body = `Backprop subagent extracted invariant ${result.id} (${result.output.title}) from this run.\n\nEnforcement: ${result.output.enforcement.kind}\nInvariant: ${result.invariant_path}\nSensor: ${result.sensor_path}\n`;
+      await git.commit(`${subject}\n\n${body}`);
+      commitSha = (await git.revparse(["HEAD"])).trim();
+    } catch (err) {
+      log.warn(
+        { run_id: args.runId, err: String(err) },
+        "backprop commit failed — invariant + sensor written but uncommitted",
+      );
+    }
+
+    args.meta.last_backprop = {
+      ok: true,
+      invariant_id: result.id,
+      invariant_path: result.invariant_path,
+      sensor_path: result.sensor_path,
+      enforcement_kind: result.output.enforcement.kind,
+      ...(commitSha !== undefined ? { commit_sha: commitSha } : {}),
+    };
   }
 
   private async runUatStep(args: {
