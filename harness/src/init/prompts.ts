@@ -9,7 +9,7 @@
  * run non-interactively.
  */
 
-import { input, select } from "@inquirer/prompts";
+import { input, password, select, confirm } from "@inquirer/prompts";
 
 export type PromptMode = "interactive" | "auto";
 
@@ -72,6 +72,45 @@ export async function freeTextWithDefault(opts: FreeTextOptions): Promise<string
   return input({
     message: opts.prompt,
     default: opts.defaultValue,
+  });
+}
+
+export interface SecretOptions {
+  mode: PromptMode;
+  prompt: string;
+  /** When mode === "auto" returns this directly (default empty string). */
+  auto?: string;
+  /** Reject empty input. Default true — secrets must not be blank. */
+  required?: boolean;
+}
+
+export async function secretInput(opts: SecretOptions): Promise<string> {
+  if (opts.mode === "auto") return opts.auto ?? "";
+  return password({
+    message: opts.prompt,
+    mask: true,
+    validate: (value) => {
+      if (opts.required !== false && value.trim().length === 0) {
+        return "value cannot be empty";
+      }
+      return true;
+    },
+  });
+}
+
+export interface YesNoOptions {
+  mode: PromptMode;
+  prompt: string;
+  defaultYes?: boolean;
+  /** When mode === "auto" returns this directly. Defaults to defaultYes. */
+  auto?: boolean;
+}
+
+export async function yesNo(opts: YesNoOptions): Promise<boolean> {
+  if (opts.mode === "auto") return opts.auto ?? (opts.defaultYes ?? false);
+  return confirm({
+    message: opts.prompt,
+    default: opts.defaultYes ?? false,
   });
 }
 
