@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { VERSION } from "../index.js";
+import { gcCli } from "./gc.js";
 import { mcpCli } from "./mcp.js";
 import { mirrorCli } from "./mirror.js";
 import { runCli } from "./run.js";
@@ -23,6 +24,9 @@ switch (subcommand) {
   case "mcp":
     await mcpCli(rest);
     break;
+  case "gc":
+    await gcCli(rest);
+    break;
   case "--version":
   case "-v":
     console.log(VERSION);
@@ -37,7 +41,9 @@ switch (subcommand) {
         "  mirror    manage the parallel mirror checkout\n" +
         "            (subcommands: init | sync | push | status)\n" +
         "  mcp       MCP server (stdio transport)\n" +
-        "            (subcommands: serve)",
+        "            (subcommands: serve)\n" +
+        "  gc        garbage-collection passes against the canonical zone\n" +
+        "            (subcommands: sweep | run)",
     );
     process.exit(subcommand ? 2 : 1);
 }

@@ -3,7 +3,7 @@ type: resume-prompt
 status: handoff
 audience: ai-only
 generated: 2026-05-02
-last-updated: 2026-05-02 (after Phase 11 fully complete — 11.x + 11.y + 11.5b)
+last-updated: 2026-05-02 (after Phase 12 — GC cadence)
 purpose: Drop into a fresh Claude Code session in <operator-home>/Cairn to continue this project where the previous session left off.
 ---
 
@@ -17,7 +17,7 @@ Build a **portable, generic agent harness for solo developers**. Discord-front-e
 
 Sample project (a real-estate CRM at `<operator-home>/sample-project/`) is the proving ground. The harness package extracts cleanly to any other project via `npx @isaacriehm/harness init <repo-dir>`.
 
-**Status:** Implementation in progress. Phase 11 fully complete — Phases 0–11 + 11.5 + 11.x (rejection retry) + 11.y (question flow) + 11.5b (pg/mysql drivers) all landed (~16.5 founder-days). Phase 12 (GC cadence) is next. **Documentation in `docs/` is still the source of truth for design; the code in `harness/` is the runtime that implements it.**
+**Status:** Implementation in progress. Phase 12 complete — Phases 0–12 all landed (~17.5 founder-days). Phase 13 (backprop protocol) is next. **Documentation in `docs/` is still the source of truth for design; the code in `harness/` is the runtime that implements it.**
 
 ## 1A. Implementation snapshot (binding — verify against `git log` before acting)
 
@@ -27,7 +27,8 @@ The Cairn repo is **NOT self-hosted**. It's the source for the published npm pac
 
 | SHA (short) | Phase | What |
 |-------------|-------|------|
-| _(pending)_ | 11 complete | Phase 11 finishing pieces (11.x + 11.y + 11.5b): UAT-rejection-driven retry — `harness/src/uat/rejection.ts` (captureUatRejection runs A/B/C/D dialog via adapter.requestDialog after 🔴, optional voice URL detection + Whisper transcription via existing voice/transcribeUrl, writeRejectionYaml lands manifest under uat/, formatUatRejectionRemediation produces category-specific agent prompt); orchestrator dispatch loop now retries on operator-reject when attempts remain (cap = maxAttempts per L42), terminal-fails on probe-only fail or exhausted reject. Question flow — `harness/src/uat/question.ts` (read-only Tier-1 Haiku Q&A agent w/ structured output {answer, confidence_signal, citations}, NO file write tools); runUat extends ApprovalGate with optional questionText + cycles ❓ Ask up to maxQuestionRounds (default 5) calling questionHandler + notifier per round. Live pg + mysql drivers — `harness/src/uat/probes/sql/{pg,mysql}.ts` (lazy-loaded clients; READ-ONLY enforced by upstream regex gate AND defense-in-depth `BEGIN READ ONLY ... ROLLBACK` for pg / `SET SESSION TRANSACTION READ ONLY` for mysql; credentials only via env vars). setup-uat-sql gains `--install` (auto pnpm-add the matching driver pkg). Three new smokes: `smoke:uat-rejection` (6 mechanical cases — extractAudioUrl detection, captureUatRejection category=B w/ free text, invalid-choice fallback to D, writeRejectionYaml round-trip + parsed YAML check, formatUatRejectionRemediation includes operator note + failed AC + correct guidance, all 4 categories produce distinct guidance); `smoke:uat-question` (1 claude haiku call — agent answers concrete bundle question about AC failure, asserts answer references casing miss + at least one citation); both pure mechanical for rejection / 1 cheap haiku for question. |
+| _(pending)_ | 12 | GC cadence: `harness/src/gc/` (types — GcPass/GcFinding/GcCommitProposal/GcSweepResult/GcBatchResult/GcAutoMergeClass discriminator; `runFrontmatterFreshness` walks canonical zone, evaluates verified-at via existing `evaluateFreshness` w/ warn=30d/block=60d defaults, optional `forceRefresh:true` produces safe-class verified-at-bump proposals; `runGeneratorDrift` iterates `Profile.extractors`, regenerates output, emits safe-class regen-commit-proposal when on-disk content differs; `runStubCatalogHits` walks the FULL source tree (not just diff or canonical), runs the stub-pattern catalog regex against current content — Phase 12 v1 surfaces only, future revs add targeted-refactor proposals; `runDocGardening` extracts markdown links, surfaces broken-link findings + orphan markdowns not referenced by any other doc; `runQualityGradesUpdate` rebuilds `quality-grades.yaml` via existing `buildQualityGrades`, proposes safe-class write only when modules array changes (ignores generated-timestamp churn); `classifyAutoMerge` maps paths → safe|code|high-stakes per L16/L17/L18 — high-stakes globs dominate, code extension under source dominates over safe; `verifyBatchCanary` (per L46 must-fix) renders workflow.md against synthetic-task fixture and asserts every `{{var}}` resolves + required section headers present + manifest rebuild yields >0 entries — runs after multi-commit batches; `applyCommit` writes patch + git add + commit; `runGcSweep` composes all five passes, re-classifies via project globs; `runGcBatch` sweep → filter by applyClasses → applyCommit each → canary if applied≥2 → on canary fail `git reset --hard <pre_batch_sha>` rollback). CLI: `harness gc sweep|run` (`run --apply-classes safe[,code,high-stakes]` defaults safe-only; `--no-canary`, `--force-frontmatter-refresh`, `--json`). Ten-step `smoke:gc` (synthetic stale doc 90d → frontmatter pass surfaces block-severity finding, forceRefresh produces safe-class proposal, runGcBatch lands chore(gc) commit on main with verified-at bumped + body preserved, stub-catalog full-tree scan flags throw-not-implemented under .claude/skills, doc-gardening surfaces broken_link + orphan_path, quality-grades writes fresh yaml from terminal-runs fixture, classifier escalates high-stakes path correctly, multi-commit canary detects truncated workflow.md and rolls back to pre-batch SHA). PURE MECHANICAL — no claude burn. |
+| `51916fb` | 11 complete | Phase 11 finishing pieces (11.x + 11.y + 11.5b): UAT-rejection-driven retry — `harness/src/uat/rejection.ts` (captureUatRejection runs A/B/C/D dialog via adapter.requestDialog after 🔴, optional voice URL detection + Whisper transcription via existing voice/transcribeUrl, writeRejectionYaml lands manifest under uat/, formatUatRejectionRemediation produces category-specific agent prompt); orchestrator dispatch loop now retries on operator-reject when attempts remain (cap = maxAttempts per L42), terminal-fails on probe-only fail or exhausted reject. Question flow — `harness/src/uat/question.ts` (read-only Tier-1 Haiku Q&A agent w/ structured output {answer, confidence_signal, citations}, NO file write tools); runUat extends ApprovalGate with optional questionText + cycles ❓ Ask up to maxQuestionRounds (default 5) calling questionHandler + notifier per round. Live pg + mysql drivers — `harness/src/uat/probes/sql/{pg,mysql}.ts` (lazy-loaded clients; READ-ONLY enforced by upstream regex gate AND defense-in-depth `BEGIN READ ONLY ... ROLLBACK` for pg / `SET SESSION TRANSACTION READ ONLY` for mysql; credentials only via env vars). setup-uat-sql gains `--install` (auto pnpm-add the matching driver pkg). Three new smokes: `smoke:uat-rejection` (6 mechanical cases — extractAudioUrl detection, captureUatRejection category=B w/ free text, invalid-choice fallback to D, writeRejectionYaml round-trip + parsed YAML check, formatUatRejectionRemediation includes operator note + failed AC + correct guidance, all 4 categories produce distinct guidance); `smoke:uat-question` (1 claude haiku call — agent answers concrete bundle question about AC failure, asserts answer references casing miss + at least one citation); both pure mechanical for rejection / 1 cheap haiku for question. |
 | `f8f6121` | 11.5 | Heavy probes + setup helpers: live Playwright UI probe in `harness/src/uat/probes/ui.ts` (lazy-loaded `playwright-core`, launches chromium headless, runs UiStep[] script — goto/click/fill/screenshot/wait_for_selector/wait_for_text — captures per-step screenshots, video.webm, console.log, network.json under `runs/active/<id>/uat/probes/<probe_id>/`); live SQL probe split into `harness/src/uat/probes/sql/{types,config,sqlite,pg,mysql,index}.ts` (sqlite via lazy-loaded `better-sqlite3` is fully functional + READ-ONLY enforced + non-SELECT rejected; pg/mysql return Phase 11.5b placeholder errors; connection config from `.harness/config/probes/sql.yaml` with credentials only via env vars per operator preference); live integration probe in `harness/src/uat/probes/integration.ts` (docker-compose orchestration: `docker compose up -d <service>` → ready_check polling (http or cli, 60s deadline) → nested test probe (http or cli) → unconditional `docker compose down` teardown; SKIPS gracefully when docker compose not on PATH or compose file missing). Setup helpers: `setup:uat-browsers` wraps `npx playwright install chromium`; `setup:uat-sql --build-binding` writes `.harness/config/probes/sql.yaml` template + builds better-sqlite3 native binding using same path-with-spaces /tmp-staging trick as setup-whisper; `setup:uat-docker` sanity-checks docker compose + writes default compose template. devDependencies updated with `playwright-core@1.50.0` + `better-sqlite3@11.10.0` + `@types/better-sqlite3@7.6.13` (all heavy deps stay devDep so adopters install lean and opt in via setup helpers). smoke-uat updated: removed step 6 ui placeholder check (was env-fragile once playwright-core landed), added live UI probe step (visits in-process http page, captures 4 artifacts incl. video), added live SQL probe step (creates ephemeral sqlite db with 2 rows, asserts rowcount + first_row_includes), added SQL non-SELECT rejection step. |
 | `bb8dd3f` | 11 | UAT-on-phone (Layer U) as multi-probe E2E framework: `harness/src/uat/` (types — discriminated union UatProbe over http/cli/ui/sql/integration, UatAcceptanceCheck routes ONE probe per AC, UatSummary canonical bundle, UatRunResult, UatRejection w/ A/B/C/D categories, EvidenceFile manifest; schema — JSON Schema for `--json-schema` gate; prompt — anti-hallucination "pick the cheapest probe that fits" ladder, http > cli > sql > ui > integration; runner — `generateUatChecks` Tier 2 default w/ defense-in-depth filter rejecting unavailable surfaces; probes/{http,cli}.ts — fetch + child_process w/ status/body/exit/stdout assertions, header_present, json_path_equals, body_matches_regex; probes/{ui,sql,integration}.ts — placeholder skipped_reason returns until Phase 11.5/11.6; probes/index.ts dispatches by `kind`; bundle — writeSummary, writeEvidenceFile (per-file SHA256 + bundle SHA256 manifest), verifyEvidenceFile rejecting bare-touch + post-hoc artifact mod + extra-file-after-evidence + non-approve decision; persistent — upsertUatTask under .harness/tasks/<task_id>/uat.md w/ status (pending|passing|passed|failed|blocked|abandoned), AC checklist, blocked_by NEVER folded into Gaps, gaps_resolved/gaps_open lists, attempt counter; uat — `runUat` full pipeline orchestrator: runner → cold-start smoke → probes → summary → UAT.md → adapter approval → evidence file). Orchestrator wired w/ `uat` phase after reviewer:ok, computes is_high_stakes from project_globs, approval gate maps adapter.requestApproval(ApprovalBundle) → UAT decision, RunMeta gets uat_history + last_uat. Phase 11 v1 fails-terminal on UAT failure (no retry); Phase 11.x adds rejection.yaml-driven retry. Existing smoke-orchestrator gets `bypassUat:true`. Two new smokes: `smoke:uat` 13 mechanical cases (http happy/fail, cross-tenant 403, cli pass/fail, ui/sql/integration → skipped, bundle write+verify, bare-touch reject, post-hoc-mod reject, extra-file reject, requireDecision reject, persistent UAT.md round-trip w/ gap resolution); `smoke:uat-runner` 3 claude scenarios (API spec → all http probes + backend_only=true; CLI spec → all cli probes; high-stakes spec → cross-tenant fixture flagged is_high_stakes_required=true). |
 | `d29ccb3` | 10 | reviewer subagent (Layer C): `harness/src/reviewer/` (types — ReviewVerdict, ReviewGapCategory w/ 10 kinds incl `deferred_but_claimed_done` + `query_scope_omission` + `decision_contradiction`, ReviewerInput/Output/Result; schema — JSON Schema for `--json-schema` gate w/ verdict/gaps/confidence_signal/summary; prompt — anti-completionist system prompt (default-fail framing, "prove the implementer wrong"), buildReviewerUserPrompt assembles tightened spec + acceptance + decisions-in-scope + soft-findings + diff content (32k cap per file) + high-stakes augmentation per Codex audit Q1; reviewer — `runReviewer` Tier-matched-to-implementer per L15, validates parsed structured_output, computes ok = verdict:pass AND zero hard gaps; remediation — `formatReviewerRemediation` agent-prompt-shaped retry context; index). Orchestrator wired w/ `reviewing` phase after sensors:ok, runs reviewer w/ `runReviewerStep` (re-computes diff + decisions + high-stakes flag from project_globs), persists `reviewer/attempt-N.json`, RunMeta gets `reviewer_history` + `last_reviewer`, on verdict:fail w/ attempts left appends remediation + retries, exhaustion → fail-honesty-check. Existing smoke-orchestrator gets `bypassReviewer:true`. New `smoke:reviewer` (clean diff → verdict:pass; deferred-but-claimed-done diff → verdict:fail w/ hard gaps citing tax/discount/deferred miss; ~2 cheap haiku calls, ~$0.05 quota) |
@@ -41,7 +42,7 @@ The Cairn repo is **NOT self-hosted**. It's the source for the published npm pac
 | `ce30537` | 2 | mirror checkout runtime (clone/sync/push/dirty-overlap; `~/.local/harness/repos/<slug>/`) |
 | `d011463` | 0–1 | bootstrap pkg + design docs + canonical templates under `harness/templates/` |
 
-### Seventeen sensors green (smoke:uat now exercises live UI + SQL probes when devDeps installed; rejection + question smokes added)
+### Eighteen sensors green (smoke:gc added — pure mechanical; smoke:uat exercises live UI + SQL probes when devDeps installed)
 
 ```
 pnpm -F @isaacriehm/harness build              # tsc -b
@@ -61,9 +62,10 @@ pnpm -F @isaacriehm/harness smoke:uat          # 16 cases — http/cli probes pa
 pnpm -F @isaacriehm/harness smoke:uat-runner   # 3 cases — API spec → http; CLI spec → cli; high-stakes spec → cross-tenant fixture flagged. SKIPS without `claude`
 pnpm -F @isaacriehm/harness smoke:uat-rejection # 6 cases — extractAudioUrl detection, captureUatRejection w/ stub adapter A/B/C/D, invalid-choice fallback, writeRejectionYaml round-trip, remediation formatter shape, category-specific guidance differs. PURE MECHANICAL — no claude burn
 pnpm -F @isaacriehm/harness smoke:uat-question  # 1 case — question agent answers concrete bundle question, asserts citations + casing-miss reference. ~1 cheap haiku call. SKIPS without `claude`
+pnpm -F @isaacriehm/harness smoke:gc            # 10 cases — frontmatter-stale 90d surfaced, forceRefresh proposal, runGcBatch lands safe-class commit on main with body preserved, stub-catalog full-tree scan flags throw-not-implemented, doc-gardening broken_link+orphan_path, quality-grades fresh-yaml proposal, classifier safe|code|high-stakes precedence, multi-commit canary rollback on truncated workflow.md. PURE MECHANICAL — no claude burn.
 ```
 
-Run all fifteen before doing anything that mutates `harness/src/` or `harness/templates/`. The tightener, reviewer, uat-runner, and orchestrator smokes each cost ~1-3 `claude` calls; budget ~$1 of subscription quota for the full sweep, skip casually for unrelated touches.
+Run all sixteen cheap ones before doing anything that mutates `harness/src/` or `harness/templates/`. The tightener, reviewer, uat-runner, and orchestrator smokes each cost ~1-3 `claude` calls; budget ~$1 of subscription quota for the full sweep, skip casually for unrelated touches.
 
 The Discord adapter is real code (`harness/src/frontend/discord/`); it is not exercised in CI/smoke because live exercise needs `DISCORD_BOT_TOKEN`. Live wiring confirmed against guild `1487133145013944443` during Phase 5 acceptance: bot connects, 13 slash commands register, the three category channels (`📋 backlog`, `🟢 active`, `📦 archive`) are ensured.
 
@@ -236,7 +238,7 @@ harness/
 │   │                    (`formatReviewerRemediation` agent-prompt-shaped
 │   │                    retry context naming each hard gap by category +
 │   │                    path + symbol); index
-│   └── uat/             Phase 11/11.5 Layer U — multi-probe E2E framework.
+│   ├── uat/             Phase 11/11.5 Layer U — multi-probe E2E framework.
 │                        types (discriminated union UatProbe over
 │                        http/cli/ui/sql/integration, UatAcceptanceCheck
 │                        routes ONE probe per AC, UatSummary, UatRunResult,
@@ -265,6 +267,44 @@ harness/
 │                        uat (`runUat` full pipeline: runner → cold-start
 │                        smoke → probes → summary → UAT.md → adapter
 │                        approval → evidence file). Index
+│   └── gc/              Phase 12 garbage-collection cadence. types
+│                        (GcPass, GcFinding, GcCommitProposal,
+│                        GcSweepResult, GcBatchResult, GcAutoMergeClass,
+│                        CanarySyntheticContext); frontmatter
+│                        (`runFrontmatterFreshness` walk canonical →
+│                        `evaluateFreshness` warn=30d/block=60d, optional
+│                        forceRefresh produces safe-class verified-at-bump
+│                        proposal preserving body); generator-drift
+│                        (`runGeneratorDrift` iterates Profile.extractors,
+│                        regenerates output, safe-class proposal when
+│                        on-disk differs); stub-hits (`runStubCatalogHits`
+│                        full-tree walk skipping .git/node_modules/dist/
+│                        .archive, language-filtered regex, surface-only
+│                        v1); doc-gardening (`runDocGardening` extracts
+│                        markdown link tuples, surfaces broken_link +
+│                        orphan_path findings — orientation files always
+│                        excluded from orphan check); quality-update
+│                        (`runQualityGradesUpdate` rebuilds grades via
+│                        existing buildQualityGrades, proposes safe-class
+│                        write only when modules array changes — ignores
+│                        generated-timestamp churn); classify
+│                        (`classifyAutoMerge` paths→safe|code|high-stakes
+│                        — high-stakes globs dominate; .ts/.py/etc outside
+│                        safe-prefixes escalates to code; docs/.harness/
+│                        ground/.archive/.claude/ all safe by default);
+│                        canary (`verifyBatchCanary` per L46 — render
+│                        workflow.md against synthetic fixture, assert
+│                        every {{var}} resolves + required section
+│                        headers present, manifest rebuild non-empty;
+│                        `buildSyntheticContext` ships a minimal known-
+│                        good fixture); apply (`applyCommit` writes
+│                        patch + git add + commit, returns SHA);
+│                        sweep (`runGcSweep` composes all five passes
+│                        sequentially, re-classifies via project globs;
+│                        `runGcBatch` sweep → filter by applyClasses →
+│                        applyCommit each → if applied≥2 run canary →
+│                        on canary fail `git reset --hard <pre_batch_sha>`
+│                        rollback). Index
 ├── scripts/
 │   ├── check-layout.ts  Phase 1 sensor — also scans pkg/templates for banned
 │   │                    "sample-project" strings (project-agnostic check per L50, S1)
@@ -341,8 +381,22 @@ harness/
 │   │                    --version` + writes default
 │   │                    .harness/config/probes/docker-compose.yml
 │   │                    template. Idempotent.
-│   └── setup-whisper.ts one-time native binding build helper (works around
-│                        node-gyp + path-with-spaces failure)
+│   ├── setup-whisper.ts one-time native binding build helper (works around
+│   │                    node-gyp + path-with-spaces failure)
+│   └── smoke-gc.ts      Phase 12 acceptance: 10 cases — synthetic stale
+│                        doc 90d → frontmatter pass surfaces block-
+│                        severity finding, forceRefresh produces safe-
+│                        class proposal, runGcBatch lands chore(gc)
+│                        commit on main with verified-at bumped + body
+│                        preserved, stub-catalog full-tree scan flags
+│                        throw-not-implemented under .claude/skills,
+│                        doc-gardening surfaces broken_link +
+│                        orphan_path, quality-grades writes fresh yaml
+│                        from terminal-runs fixture, classifier
+│                        escalates high-stakes path correctly, multi-
+│                        commit canary detects truncated workflow.md
+│                        and rolls back to pre-batch SHA. PURE
+│                        MECHANICAL — no claude burn.
 └── templates/           seed copied into adopting projects by `harness init`
     ├── README.md
     ├── .harness/
@@ -363,13 +417,14 @@ harness/
 
 ### What's NOT yet wired
 
-Phases 12–18 from `docs/INTEGRATION_PLAN.md`. In particular:
+Phases 13–18 from `docs/INTEGRATION_PLAN.md`. In particular:
 
-- **No GC cron / backprop / decision capture flow.** Phases 12–14.
+- **No backprop / decision capture flow.** Phases 13–14.
+- **No GC cron schedule.** `harness gc sweep|run` exists as a CLI; nightly `/loop` or systemd-timer wiring is Phase 12.x or part of Phase 17 polish.
 - **No init script.** `harness init` is a stub; Phase 16 (inquirer-driven per operator note 2026-05-02). Phase 16's E2E-setup question (per operator pivot 2026-05-02): "Set up E2E now / Defer / Skip" — branches into running setup:uat-browsers + setup:uat-sql + setup:uat-docker per stack profile.
 - **No git commit + push from a successful run.** The orchestrator stops after UAT verdict; commits are gated on the pre-push evidence-file recompute per L16/L17/L18 trust posture.
 
-The `harness watch`, `harness mirror`, `harness mcp serve`, and `harness run` CLIs work today. End-to-end ingest → tightener → mirror → agent → sensors (Layer A/B/D + decision-assertions) → reviewer subagent (Layer C, fresh context) → UAT pipeline (multi-probe http/cli/ui/sql-sqlite/integration routing, evidence-file gate) → adapter approval runs cleanly. Next missing pieces: postgres/mysql SQL drivers, UAT-rejection-driven retry, and the eventual git-commit-to-main step gated on the recomputed evidence hash.
+The `harness watch`, `harness mirror`, `harness mcp serve`, `harness run`, and `harness gc {sweep,run}` CLIs work today. End-to-end ingest → tightener → mirror → agent → sensors (Layer A/B/D + decision-assertions) → reviewer subagent (Layer C, fresh context) → UAT pipeline (multi-probe http/cli/ui/sql-sqlite/integration routing, evidence-file gate) → adapter approval runs cleanly. GC composes five passes (frontmatter freshness, generator drift, stub-catalog hits, doc-gardening, quality-grades) with an auto-merge classifier, batch canary, and rollback-on-canary-fail. Next missing pieces: backprop subagent (V<N> invariants + sensor scripts per fix), the eventual git-commit-to-main step gated on the recomputed evidence hash, and the GC cron schedule.
 
 ### Phase 11.5 design notes (binding)
 
@@ -389,6 +444,18 @@ The `harness watch`, `harness mirror`, `harness mcp serve`, and `harness run` CL
 - **Phase 11 v1 fails-terminal on UAT failure.** UAT_PIPELINE §6 specifies a rejection.yaml-driven retry; that lands in Phase 11.x. v1 marks the run failed with the operator's rejection reason or the probe failure summary so the operator knows what to fix manually.
 - **Persistent UAT.md per task** (`.harness/tasks/<task_id>/uat.md`) per GSD pattern. `blocked_by` (env issues — server down, third-party rate-limit) is NEVER folded into Gaps. Crossing the boundary triggers unnecessary fix-plan cycles per UAT_PIPELINE §8.
 - **Adapter approval gate uses existing `requestApproval(ApprovalBundle)`.** No new adapter contract. The orchestrator maps `Approval` → UAT decision; the stub adapter's default-approve makes the smoke pure-mechanical.
+
+### Phase 12 design notes (binding)
+
+- **Five passes, one composer.** `runGcSweep` always runs all five passes. Findings + commit proposals come back together. `runGcBatch` is the apply-side wrapper that filters proposals by class and runs canary verification.
+- **Auto-merge classes default to safe-only.** `harness gc run` (and `runGcBatch` programmatic) accept `applyClasses` as a list. The default `["safe"]` matches L16. Operator opts code/high-stakes in explicitly per run. The classifier never auto-promotes; high-stakes globs dominate, code extension dominates over safe.
+- **Frontmatter freshness is surface-only by default; bump only with `forceRefresh`.** A verified-at bump without re-verification is a lie. Phase 12 v1 produces a refresh proposal only when the operator (or smoke) explicitly opts into `forceRefresh: true`. The proposal is frontmatter-only — body is preserved. Future revisions will gate the auto-bump on a content-sha-stable check.
+- **Stub-catalog GC walks the FULL source tree, unlike Layer A.** Layer A in `src/sensors/stub-catalog.ts` flags only newly-added lines per diff (avoid paying for pre-existing debt every run). The GC pass closes the loop on accumulated debt — walks all source files (skipping .git/node_modules/dist/.archive/etc.), runs the same regex catalog. Phase 12 v1 surfaces only; targeted-refactor proposals deferred to a richer Phase 12.x.
+- **Quality-grades pass ignores `generated:` timestamp churn.** `quality-grades.yaml` carries a `generated: <ISO>` that changes every build. The pass compares the modules array as JSON (timestamp ignored) and only proposes a write when modules content actually changed. No churn commits.
+- **Doc-gardening uses orientation-file allowlist.** `AGENTS.md`, `CLAUDE.md`, `README.md`, `RESUME_PROMPT.md`, and the four `.harness/config/*.{md,yaml}` shipped with the harness are NEVER flagged as orphans (nothing links to them by design — they're roots). Operator can extend via `orphanExcludes` per-project.
+- **Canary fires only when batch lands ≥2 commits.** Per L46. A single commit is not a "batch" and the canary's value is detecting "individually safe, collectively broken" — which requires multiplicity. Single-commit batches skip canary; the per-commit safety is enforced by the proposal's class.
+- **Canary check is mechanical: workflow.md re-render + manifest rebuild.** Render `templates/.harness/config/workflow.md` body against `buildSyntheticContext()`, assert (a) every `{{var}}` resolves, (b) required section headings present, (c) `buildManifest` returns >0 entries against the post-batch tree. No claude burn. Future revs add a synthetic-diff sensor sweep (Phase 12.x).
+- **Rollback is `git reset --hard <pre_batch_sha>`.** When canary fails, the entire batch — every applied commit — is undone atomically. The operator sees the failures in `canary_failures` and the surfaced proposals so they can retry manually.
 
 ### Phase 10 design notes (binding)
 
@@ -603,19 +670,17 @@ Each layer fail → run marked `failed-honesty-check` with structured findings. 
 
 ## 10. What the operator wants next (most likely)
 
-Phase 11 is fully complete. Next is **Phase 12 — garbage collection cadence** (`docs/INTEGRATION_PLAN.md` §5 Phase 12; ~1 founder-day).
+Phase 12 is complete. Next is **Phase 13 — backprop protocol** (`docs/INTEGRATION_PLAN.md` §5 Phase 13; ~0.5 founder-day).
 
-Phase 12 deliverables:
+Phase 13 deliverables (per PRIMER §13):
 
-1. **Nightly drift sweep** via `/loop` skill or harness service cron. Passes (per PRIMER §12.1):
-   - Frontmatter freshness (>30d → warn, >60d → block)
-   - Generator drift (re-run profile.generators commands; commit `chore(gc): regenerate <artifact>` if no source change)
-   - Stub catalog hits (open targeted refactor commits for safe-class)
-   - Doc gardening (broken links, orphan paths)
-   - Quality-grade update (per-module score → `.harness/ground/quality-grades.yaml`)
-2. **Batch canary** (per Codex audit must-fix): multi-commit GC batches re-render workflow.md against a synthetic-task fixture AND re-run all sensors against the post-batch `main` snapshot before pushing. Abort + surface on either failure — catches "individually safe, collectively broken."
-3. **Auto-merge classes** wired per L16/L17/L18: safe-class auto-merges, code-class needs sensors + reviewer + UAT 🟢, high-stakes adds Layer E.
-4. **Smoke** at `harness/scripts/smoke-gc.ts` — synthetic stale frontmatter case; GC pass surfaces it; safe-class auto-merge produces clean commit on main visible in user's working-tree pull.
+1. **Backprop subagent** runs as a second commit phase after a code-class fix lands. Reads `spec.tightened.md`, the diff, and the failure that motivated the fix.
+2. **Outputs a §V invariant entry** at `.harness/ground/invariants/V<N>.md`.
+3. **Generates** a sensor script `harness/scripts/check-v<N>-<slug>.ts` OR a named E2E case `e2e/V<N>_<slug>.spec.ts`.
+4. **Commits** `chore(invariants): add §V<N> from run #<id>` — invariant + sensor + naming convention all reference the V<N> id.
+5. **Smoke** at `harness/scripts/smoke-backprop.ts` — synthetic fix lands; backprop produces an invariant + sensor script; the sensor script catches a synthetic regression on the next run.
+
+Phase 12 may also benefit from a **GC cron schedule** (`/loop`-driven or systemd-timer) — that's small and could land as Phase 12.x before Phase 13 if the operator wants it next.
 
 ### Phase 16 init script E2E setup (referenced from operator pivot 2026-05-02)
 
@@ -624,26 +689,27 @@ Per operator pivot, the init script must ask "Set up E2E now / Defer / Skip" and
 - `defer` → `e2e_setup: deferred` in `.harness/config.yaml`; orchestrator prompts again on first UAT need
 - `skip` → `e2e_setup: skipped`; code-class UAT becomes review-only; high-stakes refuses dispatch
 
-Do NOT start Phase 12 until the operator says "go". Confirm what's landed first.
+Do NOT start Phase 13 until the operator says "go". Confirm what's landed first.
 
 ## 11. How to start a fresh session
 
 ```
 1. Read this RESUME_PROMPT.md fully (esp. §1A — implementation snapshot).
 2. Read docs/PRIMER.md fully.
-3. Skim docs/INTEGRATION_PLAN.md §5 Phase 10 (reviewer subagent) — that's
-   what's next. Phase 9 spec/contract is settled in code; refer to the
-   landed `harness/src/sensors/` for surface + smoke for examples.
+3. Skim docs/INTEGRATION_PLAN.md §5 Phase 13 (backprop protocol) — that's
+   what's next. Phase 12 spec/contract is settled in code; refer to the
+   landed `harness/src/gc/` for surface + smoke for examples.
 4. Run the cheap sensors to confirm nothing has broken:
      pnpm -F @isaacriehm/harness build typecheck check:layout
                                        smoke:mirror smoke:watch smoke:mcp
                                        smoke:discord smoke:tier0 smoke:sensors
-   All nine cheap ones should print OK without burning claude quota.
+                                       smoke:uat smoke:uat-rejection smoke:gc
+   All cheap ones should print OK without burning claude quota.
 5. Confirm to operator in 2-3 lines, e.g.:
-     "Resumed Cairn project. Phases 0–11.5 landed. Cheap sensors green.
-      Ready for Phase 11.5b (pg/mysql) OR Phase 11.x (UAT retry) OR Phase 12 (GC). Proceed?"
+     "Resumed Cairn project. Phases 0–12 landed. Cheap sensors green.
+      Ready for Phase 13 (backprop) OR Phase 12.x (GC cron). Proceed?"
 6. Wait for direction. Don't propose anything beyond what's in INTEGRATION_PLAN.md
-   §5 Phase 11.5b / §5 Phase 11.x / §5 Phase 12.
+   §5 Phase 13 / §5 Phase 12.x.
 7. Caveman ultra mode active for chat replies. Documents/commits/PRs in normal
    English. Match operator's terse-direct style.
 ```
