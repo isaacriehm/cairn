@@ -1138,12 +1138,21 @@ export class Orchestrator {
       const a = walkable[i]!;
       // Cap at 4 candidates so the dialog stays readable.
       const candidates = a.candidate_resolutions.slice(0, 4);
+      // Discord truncates button labels at 80 chars and operator can't
+      // read them. Move the full option text into the prompt body and
+      // make buttons single-letter so they're scannable.
+      const optionsBlock = candidates
+        .map(
+          (label, idx) =>
+            `**${String.fromCharCode(0x41 + idx)}.** ${label}`,
+        )
+        .join("\n\n");
       const dialogSpec: import("../frontend/index.js").DialogSpec = {
         bundleId: `${args.entry.task_id}:${a.id}`,
-        prompt: `**${a.id}** of ${walkable.length}: ${a.question}`,
-        choices: candidates.map((label, idx) => ({
+        prompt: `**${a.id}** of ${walkable.length}: ${a.question}\n\n${optionsBlock}`,
+        choices: candidates.map((_, idx) => ({
           id: String.fromCharCode(0x61 + idx), // a, b, c, d
-          label: label.length > 80 ? label.slice(0, 77) + "…" : label,
+          label: String.fromCharCode(0x41 + idx), // A, B, C, D
         })),
         timeoutMs: 5 * 60_000,
       };
