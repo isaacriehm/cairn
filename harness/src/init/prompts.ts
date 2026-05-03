@@ -1,24 +1,25 @@
 /**
- * CLI prompt primitives for `harness init`.
+ * Inquirer-driven prompts for `harness init`.
  *
- * Squares-into-square-holes (L13 / L22): every operator interaction is a
- * lettered choice, default highlighted, free text only as `E) Other`. Stdin
- * read uses readline; non-TTY contexts (smoke tests, scripted adoption) skip
- * prompts via `mode: "auto"` and use the `auto` value preconfigured per call.
+ * Per operator note 2026-05-02: harness init uses inquirer
+ * (`@inquirer/prompts`) for operator-facing dialogs. Hand-rolled readline
+ * was rejected as too ad-hoc.
  *
- * No inquirer — operator preference for fewer moving pieces. Hand-rolled
- * readline gets us A/B/C/D + free text without a dep.
+ * `mode: "auto"` short-circuits prompts so smokes / scripted adoption can
+ * run non-interactively.
  */
 
-import { createInterface } from "node:readline";
+import { input, select } from "@inquirer/prompts";
 
 export type PromptMode = "interactive" | "auto";
 
 export interface Choice<T extends string = string> {
   id: T;
   label: string;
-  /** Distinguish the visual default; pressing return alone selects it. */
+  /** Distinguish the visual default (cursor lands here at first paint). */
   isDefault?: boolean;
+  /** Optional sub-line shown under the choice in inquirer. */
+  description?: string;
 }
 
 export interface PromptOptions<T extends string> {
@@ -46,21 +47,16 @@ export async function squareIntoSquareHole<T extends string>(
     return opts.auto;
   }
   const def = opts.choices.find((c) => c.isDefault);
-  process.stdout.write(`\n${opts.prompt}\n`);
-  for (const c of opts.choices) {
-    const marker = c.isDefault ? "*" : " ";
-    process.stdout.write(`  ${marker} [${c.id}] ${c.label}\n`);
-  }
-  const hint = def !== undefined ? ` (enter for [${def.id}])` : "";
-  process.stdout.write(`> ${hint}: `);
-
-  const answer = await readLine();
-  const trimmed = answer.trim().toLowerCase();
-  if (trimmed.length === 0 && def !== undefined) return def.id;
-  const match = opts.choices.find((c) => c.id.toLowerCase() === trimmed);
-  if (match) return match.id;
-  process.stdout.write(`unknown choice "${trimmed}" — using default ${def?.id ?? opts.choices[0]!.id}\n`);
-  return def?.id ?? (opts.choices[0]!.id as T);
+  const answer = await select({
+    message: opts.prompt,
+    default: def?.id,
+    choices: opts.choices.map((c) => ({
+      name: c.label,
+      value: c.id,
+      ...(c.description !== undefined ? { description: c.description } : {}),
+    })),
+  });
+  return answer;
 }
 
 export interface FreeTextOptions {
@@ -73,9 +69,10 @@ export interface FreeTextOptions {
 
 export async function freeTextWithDefault(opts: FreeTextOptions): Promise<string> {
   if (opts.mode === "auto") return opts.auto ?? opts.defaultValue;
-  process.stdout.write(`\n${opts.prompt}\n  default: ${opts.defaultValue}\n> `);
-  const answer = await readLine();
-  return answer.trim().length === 0 ? opts.defaultValue : answer.trim();
+  return input({
+    message: opts.prompt,
+    default: opts.defaultValue,
+  });
 }
 
 export function info(line: string): void {
@@ -88,14 +85,4 @@ export function header(line: string): void {
 
 export function done(line: string): void {
   process.stdout.write(`  ${line}\n`);
-}
-
-function readLine(): Promise<string> {
-  return new Promise((resolve) => {
-    const rl = createInterface({ input: process.stdin, output: process.stdout });
-    rl.once("line", (line) => {
-      rl.close();
-      resolve(line);
-    });
-  });
 }

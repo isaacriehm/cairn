@@ -167,12 +167,25 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   // ── Dialog 2: E2E setup ────────────────────────────────────────────
   const e2eChoice = await squareIntoSquareHole<"now" | "defer" | "skip">({
     mode,
-    prompt:
-      "E2E heavy probes (browsers / sql / docker compose) — set up now?\n  • now = run setup:uat-browsers + setup:uat-sql --build-binding + setup:uat-docker\n  • defer = orchestrator prompts on first UAT need\n  • skip = code-class UAT becomes review-only; high-stakes refused dispatch",
+    prompt: "E2E heavy probes (browsers / sql / docker compose) — set up now?",
     choices: [
-      { id: "now", label: "set up E2E heavy probes now" },
-      { id: "defer", label: "defer (recommended for first adoption)", isDefault: true },
-      { id: "skip", label: "skip — no UAT-on-phone dispatch" },
+      {
+        id: "now",
+        label: "now",
+        description: "run setup:uat-browsers + setup:uat-sql --build-binding + setup:uat-docker",
+      },
+      {
+        id: "defer",
+        label: "defer (recommended for first adoption)",
+        description: "orchestrator prompts again on the first UAT need",
+        isDefault: true,
+      },
+      {
+        id: "skip",
+        label: "skip",
+        description:
+          "code-class UAT becomes review-only; high-stakes refused dispatch",
+      },
     ],
     auto: args.autoE2e ?? "defer",
   });
