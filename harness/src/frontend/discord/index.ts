@@ -643,8 +643,12 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
     }
 
     if (kind === "dialog") {
-      const bundleId = parts[2] ?? "";
-      const choiceId = parts.slice(3).join(":");
+      // bundleId may contain colons (e.g. `TSK-XXX:Q1` from the
+      // tightener per-question walk), so the choiceId is always the
+      // LAST segment and bundleId is everything between `dialog:` and
+      // the last `:`.
+      const choiceId = parts[parts.length - 1] ?? "";
+      const bundleId = parts.slice(2, -1).join(":");
       const pending = this.pendingDialogs.get(bundleId);
       if (pending) {
         clearTimeout(pending.timeoutHandle);
