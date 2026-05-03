@@ -255,28 +255,34 @@ export class Orchestrator {
         meta.tightener_ready = tightened.ready;
         tightenedSpec = tightened.output.tightened_spec_proposal;
         if (!tightened.ready) {
-          const feedback = renderTightenerFeedback(tightened.output, tightened.quality_floor);
-          await this.surfacePhaseWithBody(entry, meta, "blocked", feedback);
-          const decision = await this.requestTightenerDecision({
+          const walkable = tightened.output.ambiguities.filter(
+            (a) => a.candidate_resolutions.length >= 2,
+          );
+          const blockedNote =
+            walkable.length > 0
+              ? `spec quality ${tightened.output.spec_quality_score}/10 — walking ${walkable.length} ambiguit${walkable.length === 1 ? "y" : "ies"}…`
+              : `spec quality ${tightened.output.spec_quality_score}/10 — no candidate resolutions to walk.`;
+          await this.surfacePhaseWithBody(entry, meta, "blocked", blockedNote);
+          const result = await this.requestTightenerDecision({
             entry,
             tightened,
           });
-          if (decision === "approve") {
-            tightenedSpec = tightened.output.tightened_spec_proposal;
+          if (result.decision === "approve") {
+            tightenedSpec =
+              result.resolved_spec ?? tightened.output.tightened_spec_proposal;
             meta.tightener_user_choice = "approve_proposed";
             await this.surfacePhase(entry, meta, "tightening");
-          } else if (decision === "ship_anyway") {
-            // Bypass the quality gate — use the operator's original body.
+          } else if (result.decision === "ship_anyway") {
             tightenedSpec = taskBody;
             meta.tightener_user_choice = "ship_anyway";
             await this.surfacePhase(entry, meta, "tightening");
           } else {
-            meta.tightener_user_choice = decision;
+            meta.tightener_user_choice = result.decision;
             await this.completeRun(
               entry,
               meta,
               "failed",
-              `tightener: operator chose ${decision}`,
+              `tightener: operator chose ${result.decision}`,
             );
             return;
           }
@@ -1044,74 +1050,124 @@ export class Orchestrator {
   }
 
   /**
-   * Fire the tightener-resolution dialog: operator picks approve_proposed
-   * / ship_anyway / edit / cancel / timeout. The first registered adapter
-   * owns the dialog (per L08 frontend contract).
+   * Walk the tightener's ambiguities one-at-a-time, then dispatch with
+   * the resolved spec.
+   *
+   * Per operator pivot: replace the single-blob dialog with per-question
+   * A/B/C walks. Each ambiguity dialog has up to 4 buttons (the LLM's
+   * candidate_resolutions, capped at 4) plus a final approve/ship-anyway/
+   * cancel confirm after the walk.
+   *
+   * Returns:
+   *   - { decision: "approve", resolved_spec }   → run with this spec
+   *   - { decision: "ship_anyway" }              → run with original body
+   *   - { decision: "edit"|"cancel"|"timeout" }  → fail run
    */
   private async requestTightenerDecision(args: {
     entry: QueueEntry;
     tightened: import("../tightener/index.js").TightenerResult;
-  }): Promise<
-    "approve" | "ship_anyway" | "edit" | "cancel" | "timeout"
-  > {
+  }): Promise<{
+    decision: "approve" | "ship_anyway" | "edit" | "cancel" | "timeout";
+    resolved_spec?: string;
+  }> {
     const adapter = this.opts.adapters[0];
     if (adapter === undefined) {
       log.warn(
         { task_id: args.entry.task_id },
         "no adapter registered — cannot dialog; defaulting to cancel",
       );
-      return "cancel";
+      return { decision: "cancel" };
     }
     const channelId = args.entry.row.task.channelId;
-    const dialogSpec: import("../frontend/index.js").DialogSpec = {
-      bundleId: args.entry.task_id,
-      prompt: `Spec quality ${args.tightened.output.spec_quality_score}/10 below floor ${args.tightened.quality_floor}. How do you want to proceed?`,
+    const ambiguities = args.tightened.output.ambiguities;
+    const walkable = ambiguities.filter((a) => a.candidate_resolutions.length >= 2);
+    const resolutions: { id: string; question: string; choice: string }[] = [];
+
+    // ── Per-ambiguity walk (only when we have ≥2 candidates each). ─────
+    for (let i = 0; i < walkable.length; i++) {
+      const a = walkable[i]!;
+      // Cap at 4 candidates so the dialog stays readable.
+      const candidates = a.candidate_resolutions.slice(0, 4);
+      const dialogSpec: import("../frontend/index.js").DialogSpec = {
+        bundleId: `${args.entry.task_id}:${a.id}`,
+        prompt: `**${a.id}** of ${walkable.length}: ${a.question}`,
+        choices: candidates.map((label, idx) => ({
+          id: String.fromCharCode(0x61 + idx), // a, b, c, d
+          label: label.length > 80 ? label.slice(0, 77) + "…" : label,
+        })),
+        timeoutMs: 5 * 60_000,
+      };
+      if (channelId !== undefined) dialogSpec.channelId = channelId;
+      try {
+        const response = await adapter.requestDialog(dialogSpec);
+        if (response.timedOut) return { decision: "timeout" };
+        const idx = response.choiceId.charCodeAt(0) - 0x61;
+        const chosenText = candidates[idx];
+        if (chosenText === undefined) {
+          log.warn(
+            {
+              task_id: args.entry.task_id,
+              ambiguity: a.id,
+              choice: response.choiceId,
+            },
+            "unknown ambiguity choice — treating as cancel",
+          );
+          return { decision: "cancel" };
+        }
+        resolutions.push({ id: a.id, question: a.question, choice: chosenText });
+      } catch (err) {
+        log.error(
+          { err: String(err), task_id: args.entry.task_id, ambiguity: a.id },
+          "ambiguity dialog threw — defaulting to cancel",
+        );
+        return { decision: "cancel" };
+      }
+    }
+
+    // ── Final confirm. ────────────────────────────────────────────────
+    const summary =
+      resolutions.length > 0
+        ? `Resolutions captured for ${resolutions.length} ambiguit${resolutions.length === 1 ? "y" : "ies"}. Dispatch?`
+        : `Spec quality ${args.tightened.output.spec_quality_score}/10 below floor ${args.tightened.quality_floor} (no per-question walk available). How to proceed?`;
+    const confirmSpec: import("../frontend/index.js").DialogSpec = {
+      bundleId: `${args.entry.task_id}:confirm`,
+      prompt: summary,
       choices: [
-        {
-          id: "approve",
-          label: "🟢 approve proposed tightened spec — run continues",
-        },
-        {
-          id: "ship_anyway",
-          label: "⚡ /ship-anyway — bypass quality gate, use original body",
-        },
-        {
-          id: "edit",
-          label: "✏️ cancel & let me re-submit a tighter spec",
-        },
-        {
-          id: "cancel",
-          label: "🔴 cancel run",
-        },
+        { id: "approve", label: "🟢 dispatch with resolved spec" },
+        { id: "ship_anyway", label: "⚡ /ship-anyway — use original body" },
+        { id: "cancel", label: "🔴 cancel" },
       ],
       timeoutMs: 5 * 60_000,
     };
-    if (channelId !== undefined) dialogSpec.channelId = channelId;
+    if (channelId !== undefined) confirmSpec.channelId = channelId;
     try {
-      const response = await adapter.requestDialog(dialogSpec);
-      if (response.timedOut) return "timeout";
+      const response = await adapter.requestDialog(confirmSpec);
+      if (response.timedOut) return { decision: "timeout" };
       switch (response.choiceId) {
-        case "approve":
-          return "approve";
+        case "approve": {
+          const resolvedSpec = renderResolvedSpec({
+            proposal: args.tightened.output.tightened_spec_proposal,
+            resolutions,
+          });
+          return { decision: "approve", resolved_spec: resolvedSpec };
+        }
         case "ship_anyway":
-          return "ship_anyway";
-        case "edit":
-          return "edit";
+          return { decision: "ship_anyway" };
         case "cancel":
-          return "cancel";
+          return { decision: "cancel" };
         default:
           log.warn(
             { task_id: args.entry.task_id, choice: response.choiceId },
-            "unknown tightener-dialog choice — treating as cancel",
+            "unknown confirm choice — treating as cancel",
           );
-          return "cancel";
+          return { decision: "cancel" };
       }
     } catch (err) {
       log.error(
         { err: String(err), task_id: args.entry.task_id },
-        "tightener-dialog dispatch failed — defaulting to cancel",
+        "confirm dialog threw — defaulting to cancel",
       );
-      return "cancel";
+      return { decision: "cancel" };
     }
   }
 
@@ -1166,6 +1222,27 @@ function countAddedLines(before: string | undefined, after: string | undefined):
     if (!beforeLines.has(line)) added += 1;
   }
   return added;
+}
+
+/**
+ * Build the spec the implementer agent will see, baking the operator's
+ * per-ambiguity resolutions into the tightener's proposal so the agent
+ * works against settled answers instead of the LLM's defaults.
+ */
+function renderResolvedSpec(args: {
+  proposal: string;
+  resolutions: { id: string; question: string; choice: string }[];
+}): string {
+  if (args.resolutions.length === 0) return args.proposal;
+  const lines: string[] = [];
+  lines.push(args.proposal.trim());
+  lines.push("");
+  lines.push("## Operator-resolved ambiguities");
+  for (const r of args.resolutions) {
+    lines.push(`- **${r.id}** — ${r.question}`);
+    lines.push(`  → ${r.choice}`);
+  }
+  return lines.join("\n");
 }
 
 /**
