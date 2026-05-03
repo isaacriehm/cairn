@@ -130,6 +130,95 @@ export interface DecisionCaptureResult {
   draft?: DecisionDraft;
   /** Set when the operator confirmed via the dialog. */
   confirm?: ConfirmResult;
+  /**
+   * Set when refinement ran after a 🟢 commit. Absent on edit/reject paths,
+   * on bypassRefinement, or when the proposer call failed (the accept still
+   * succeeds in that case — refinement is best-effort).
+   */
+  refinement?: RefinementResult;
   /** Total wall-clock time. */
   duration_ms: number;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Phase 14.x — refinement (lift candidate_assertions → strict assertions).    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The Tier-1 proposer's per-candidate verdict on whether a strict
+ * `DecisionAssertion` shape can be formed and what it should contain.
+ *
+ * The proposer never decides what gets persisted — it just provides a
+ * recommendation. The operator's dialog choice determines what actually
+ * lands in the file. The runner re-validates each `strict_assertion`
+ * against the production `DecisionAssertion` zod before lifting; a
+ * proposal that fails zod is downgraded to `demote` automatically.
+ */
+export interface RefinementProposal {
+  /** Stable id of the candidate this proposal corresponds to (`<DEC-id>-A<NN>`). */
+  candidate_id: string;
+  /** Original loose kind from the candidate. */
+  candidate_kind: CandidateAssertion["kind"];
+  /**
+   * Proposer's verdict:
+   *   - `lift`    — confident strict shape; ready to promote into `assertions:`
+   *   - `demote`  — too vague to form mechanical params; convert to
+   *                 `human_review_hint` (always soft, always zod-valid)
+   *   - `skip`    — leave under `candidate_assertions:` for future refinement
+   */
+  status: "lift" | "demote" | "skip";
+  /** Proposer's confidence in its own recommendation. */
+  confidence_signal: "high" | "medium" | "low";
+  /**
+   * Strict params object the proposer recommends. SHAPE depends on
+   * `candidate_kind`. Validated against `DecisionAssertion` zod at apply
+   * time; an invalid shape forces auto-demote.
+   * Only set when status === "lift".
+   */
+  strict_assertion?: Record<string, unknown>;
+  /**
+   * Human-readable explanation rendered into the operator dialog.
+   * Always present so the operator can audit each proposal at confirm
+   * time without reading the raw JSON.
+   */
+  rationale: string;
+}
+
+/** Aggregate output of `proposeStrictAssertions`. */
+export interface RefinerOutput {
+  /** One proposal per candidate, in original order. */
+  proposals: RefinementProposal[];
+}
+
+export interface RefinerInput {
+  decision_id: string;
+  /** Decision's one-line subject (for prompt context). */
+  subject: string;
+  /** Decision's summary (for prompt context). */
+  summary: string;
+  /** Repo-relative globs the decision binds. */
+  scope_globs: string[];
+  /** Candidate assertions to refine. Order preserved on output. */
+  candidates: CandidateAssertion[];
+  /** Tier — default haiku. */
+  tier: ClaudeTier;
+  /** Per-call timeout. Default 120_000 ms. */
+  timeout_ms?: number;
+}
+
+/** Final outcome after operator dialog + lift. */
+export interface RefinementResult {
+  decision_id: string;
+  /** Proposals as returned by the proposer (pre-decision). */
+  proposals: RefinementProposal[];
+  /** Operator's choice id from the refinement dialog. */
+  operator_choice: "approve_all" | "approve_high_only" | "demote_all" | "skip";
+  /** Number of candidates lifted into `assertions:`. */
+  lifted_count: number;
+  /** Number of candidates demoted into `human_review_hint`. */
+  demoted_count: number;
+  /** Number of candidates kept under `candidate_assertions:`. */
+  skipped_count: number;
+  /** Set when the proposer threw or returned malformed output. */
+  proposer_failed?: boolean;
 }

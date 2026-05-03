@@ -15,9 +15,10 @@
 
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { stringify as stringifyYaml } from "yaml";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { decisionsDir, decisionsLedgerPath } from "../ground/paths.js";
 import { writeDecisionsLedger } from "../ground/ledgers.js";
+import { parseFrontmatter } from "../ground/frontmatter.js";
 import type {
   DecisionDraft,
   DecisionExtractorOutput,
@@ -214,4 +215,146 @@ function stampSupersededBy(args: {
   const restText = original.slice(fenceEnd);
   const updated = `${fenceText}\nsuperseded_by: ${args.supersedingId}${restText}`;
   writeFileSync(target, updated, "utf8");
+}
+
+/* -------------------------------------------------------------------------- */
+/* Phase 14.x — refinement lift writer.                                        */
+/* -------------------------------------------------------------------------- */
+
+export interface LiftVerdict {
+  candidate_id: string;
+  status: "lift" | "demote" | "skip";
+  /** Strict assertion params (without id/kind — writer injects them). */
+  strict_assertion?: Record<string, unknown>;
+  /** Original candidate kind (carried onto lifted assertion). */
+  candidate_kind:
+    | "schema_must_contain"
+    | "text_must_match"
+    | "text_must_not_match"
+    | "index_must_exist"
+    | "ast_pattern"
+    | "file_must_not_be_modified"
+    | "query_must_filter_by"
+    | "route_must_have_guard"
+    | "event_must_emit"
+    | "service_method_must_call"
+    | "human_review_hint";
+  /** Original candidate description (used when demoted to human_review_hint). */
+  candidate_description: string;
+}
+
+export interface LiftResult {
+  decision_id: string;
+  decision_path: string;
+  lifted_count: number;
+  demoted_count: number;
+  skipped_count: number;
+  ledger_size: number;
+}
+
+/**
+ * Apply per-candidate verdicts to an accepted decision file.
+ *
+ * For each verdict:
+ *   - status="lift"   → strict_assertion (with id/kind injected) lands in
+ *                       frontmatter `assertions:`
+ *   - status="demote" → a `{kind: human_review_hint, description}` assertion
+ *                       lands in `assertions:` (always soft, always zod-valid)
+ *   - status="skip"   → original candidate stays under `candidate_assertions:`
+ *
+ * Then regenerates the decisions ledger so the new strict assertions are
+ * visible to Layer-D sensors on the next run.
+ */
+export function liftCandidatesToAssertions(args: {
+  repoRoot: string;
+  decisionId: string;
+  verdicts: LiftVerdict[];
+}): LiftResult {
+  const decisionRel = `.harness/ground/decisions/${args.decisionId}.md`;
+  const decisionAbs = join(args.repoRoot, decisionRel);
+  if (!existsSync(decisionAbs)) {
+    throw new Error(
+      `liftCandidatesToAssertions: decision file missing at ${decisionRel}`,
+    );
+  }
+  const original = readFileSync(decisionAbs, "utf8");
+  const parsed = parseFrontmatter(original);
+  const fmRaw =
+    parsed.raw.length > 0 ? (parseYaml(parsed.raw) as Record<string, unknown>) : {};
+
+  const existingAssertions = Array.isArray(fmRaw["assertions"])
+    ? (fmRaw["assertions"] as Array<Record<string, unknown>>).slice()
+    : [];
+  const existingCandidates = Array.isArray(fmRaw["candidate_assertions"])
+    ? (fmRaw["candidate_assertions"] as Array<Record<string, unknown>>).slice()
+    : [];
+
+  let liftedCount = 0;
+  let demotedCount = 0;
+  let skippedCount = 0;
+
+  const newAssertions = [...existingAssertions];
+  const liftedIds = new Set<string>();
+  const demotedIds = new Set<string>();
+  const skippedIds = new Set<string>();
+
+  for (const v of args.verdicts) {
+    if (v.status === "lift" && v.strict_assertion !== undefined) {
+      newAssertions.push({
+        id: v.candidate_id,
+        kind: v.candidate_kind,
+        ...v.strict_assertion,
+      });
+      liftedIds.add(v.candidate_id);
+      liftedCount++;
+      continue;
+    }
+    if (v.status === "demote") {
+      newAssertions.push({
+        id: v.candidate_id,
+        kind: "human_review_hint",
+        description: v.candidate_description,
+      });
+      demotedIds.add(v.candidate_id);
+      demotedCount++;
+      continue;
+    }
+    skippedIds.add(v.candidate_id);
+    skippedCount++;
+  }
+
+  const remainingCandidates = existingCandidates.filter((c) => {
+    const id = typeof c["id"] === "string" ? (c["id"] as string) : "";
+    return !liftedIds.has(id) && !demotedIds.has(id);
+  });
+
+  // Build the new frontmatter object preserving every existing field, just
+  // updating assertions: + candidate_assertions: + verified-at.
+  const newFm: Record<string, unknown> = { ...fmRaw };
+  if (newAssertions.length > 0) {
+    newFm["assertions"] = newAssertions;
+  } else {
+    delete newFm["assertions"];
+  }
+  if (remainingCandidates.length > 0) {
+    newFm["candidate_assertions"] = remainingCandidates;
+  } else {
+    delete newFm["candidate_assertions"];
+  }
+  newFm["verified-at"] = new Date().toISOString();
+
+  const newYaml = stringifyYaml(newFm);
+  const newContent = `---\n${newYaml}---\n${parsed.body.startsWith("\n") ? "" : "\n"}${parsed.body}`;
+  writeFileSync(decisionAbs, newContent, "utf8");
+
+  const ledger = writeDecisionsLedger({ repoRoot: args.repoRoot });
+
+  return {
+    decision_id: args.decisionId,
+    decision_path: decisionRel,
+    lifted_count: liftedCount,
+    demoted_count: demotedCount,
+    skipped_count: skippedCount,
+    ledger_size: ledger.entries.length,
+  };
 }

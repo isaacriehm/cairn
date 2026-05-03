@@ -641,6 +641,15 @@ export class Orchestrator {
         ...(this.opts.decisionConfirmTimeoutMs !== undefined
           ? { confirmTimeoutMs: this.opts.decisionConfirmTimeoutMs }
           : {}),
+        ...(this.opts.bypassRefinement === true
+          ? { bypassRefinement: true }
+          : {}),
+        ...(this.opts.refinementTier !== undefined
+          ? { refinementTier: this.opts.refinementTier }
+          : {}),
+        ...(this.opts.refinementDialogTimeoutMs !== undefined
+          ? { refinementDialogTimeoutMs: this.opts.refinementDialogTimeoutMs }
+          : {}),
       });
       log.info(
         {

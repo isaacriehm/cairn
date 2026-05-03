@@ -18,6 +18,10 @@ export type {
   DecisionExtractorOutput,
   DraftConfirmDecision,
   ConfirmResult,
+  RefinementProposal,
+  RefinementResult,
+  RefinerInput,
+  RefinerOutput,
 } from "./types.js";
 
 export { allocateDecisionId } from "./id.js";
@@ -30,12 +34,28 @@ export { runDecisionExtractor } from "./extractor.js";
 export type { ExtractorResult } from "./extractor.js";
 export {
   acceptDraft,
+  liftCandidatesToAssertions,
   rejectDraft,
   writeDecisionDraft,
 } from "./writer.js";
 export type {
   AcceptDraftResult,
+  LiftResult,
+  LiftVerdict,
   WriteDecisionDraftArgs,
 } from "./writer.js";
 export { runDecisionCapture } from "./capture.js";
 export type { RunDecisionCaptureArgs } from "./capture.js";
+export {
+  REFINEMENT_PROPOSER_SYSTEM_PROMPT,
+  buildRefinementProposerUserPrompt,
+} from "./refinement-prompt.js";
+export { REFINEMENT_PROPOSER_OUTPUT_SCHEMA } from "./refinement-schema.js";
+export {
+  proposeStrictAssertions,
+  runDecisionRefinement,
+} from "./refinement.js";
+export type {
+  ProposerResult,
+  RunDecisionRefinementArgs,
+} from "./refinement.js";

@@ -189,6 +189,20 @@ export interface OrchestratorOptions {
    */
   decisionConfirmTimeoutMs?: number;
   /**
+   * Skip the post-commit refinement step (Phase 14.x). Default false.
+   * Smokes that don't care about refinement (e.g. `smoke:decision-capture`)
+   * flip this on to keep the flow pure-mechanical.
+   */
+  bypassRefinement?: boolean;
+  /**
+   * Tier for the refinement-proposer call. Default = decisionExtractorTier
+   * (haiku). The refiner is small JSON in / small JSON out; haiku is
+   * sufficient for almost every case.
+   */
+  refinementTier?: ClaudeTier;
+  /** Refinement-dialog timeout. Default 60_000 ms. */
+  refinementDialogTimeoutMs?: number;
+  /**
    * UAT-runner hints surfaced to the agent — base URL for http probes,
    * cli prefix/cwd, and which heavier probe surfaces are available
    * (ui/sql/integration). Adopted from `<project>:` extension block at

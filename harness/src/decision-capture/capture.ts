@@ -22,6 +22,10 @@ import {
   rejectDraft,
   writeDecisionDraft,
 } from "./writer.js";
+import {
+  proposeStrictAssertions,
+  runDecisionRefinement,
+} from "./refinement.js";
 import type {
   DecisionCaptureResult,
   DecisionDraft,
@@ -55,6 +59,18 @@ export interface RunDecisionCaptureArgs {
    * draft/confirm/ledger flow needs verifying.
    */
   extractorOverride?: typeof runDecisionExtractor;
+  /**
+   * Skip the post-commit refinement step. Defaults to false. The
+   * orchestrator's `bypassRefinement` mirrors this for production runs;
+   * smokes that don't care about refinement can flip it on.
+   */
+  bypassRefinement?: boolean;
+  /** Tier for the refinement proposer. Default = haiku. */
+  refinementTier?: ClaudeTier;
+  /** Refinement dialog timeout. Default 60_000 ms. */
+  refinementDialogTimeoutMs?: number;
+  /** Smokes inject a stub proposer to avoid burning claude quota. */
+  refinementProposerOverride?: typeof proposeStrictAssertions;
 }
 
 const CHOICE_COMMIT = "a";
@@ -117,6 +133,45 @@ export async function runDecisionCapture(
       { id, accepted_path: accepted.acceptedPath, ledger_size: accepted.ledgerSize },
       "draft accepted; ledger regenerated",
     );
+
+    let refinement: DecisionCaptureResult["refinement"] | undefined;
+    const hasCandidates = extractorResult.output.candidate_assertions.length > 0;
+    if (!args.bypassRefinement && hasCandidates) {
+      try {
+        refinement = await runDecisionRefinement({
+          repoRoot: args.repoRoot,
+          decisionId: id,
+          adapter: args.adapter,
+          ...(args.channelId !== undefined ? { channelId: args.channelId } : {}),
+          tier: args.refinementTier ?? tier,
+          ...(args.refinementDialogTimeoutMs !== undefined
+            ? { dialogTimeoutMs: args.refinementDialogTimeoutMs }
+            : {}),
+          ...(args.refinementProposerOverride !== undefined
+            ? { proposerOverride: args.refinementProposerOverride }
+            : {}),
+        });
+        log.info(
+          {
+            id,
+            operator_choice: refinement.operator_choice,
+            lifted: refinement.lifted_count,
+            demoted: refinement.demoted_count,
+            kept_candidate: refinement.skipped_count,
+          },
+          "refinement complete",
+        );
+      } catch (err) {
+        // Refinement failure must NEVER roll back the accept. Log and move
+        // on; candidates stay loose under candidate_assertions: for the
+        // operator's next refine pass.
+        log.error(
+          { err: String(err), id },
+          "refinement threw — accept stands; candidates remain loose",
+        );
+      }
+    }
+
     return {
       short_circuited: false,
       draft,
@@ -127,6 +182,7 @@ export async function runDecisionCapture(
         draft,
         confidence: extractorResult.output.confidence_signal,
       },
+      ...(refinement !== undefined ? { refinement } : {}),
       duration_ms: Date.now() - startedAt,
     };
   }
