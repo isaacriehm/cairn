@@ -455,7 +455,7 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
             `**Task ${taskId} dropped.**`,
             `> ${body.slice(0, 1000)}`,
             "",
-            "Spec tightener will run when the orchestrator picks this up (Phase 8 — not wired yet).",
+            "_orchestrator picking up — tightener → mirror → agent → sensors → reviewer → UAT → backprop._",
           ].join("\n"),
         );
       } catch (err) {
