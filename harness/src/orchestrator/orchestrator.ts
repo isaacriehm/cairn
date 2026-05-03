@@ -222,6 +222,31 @@ export class Orchestrator {
   }
 
   private async dispatch(entry: QueueEntry): Promise<void> {
+    // Pre-flight: skip the run if the per-task channel is gone (operator
+    // deleted it). Otherwise we'd burn LLM quota on tightener / agent /
+    // sensors with no operator visibility, and dialogs would silently
+    // time-out into failed runs. Cleaner to abandon up front.
+    const channelId = entry.row.task.channelId;
+    if (channelId !== undefined) {
+      const alive = await this.isChannelAlive(channelId);
+      if (!alive) {
+        log.warn(
+          { task_id: entry.task_id, channelId },
+          "task abandoned — channel gone (operator deleted it before dispatch)",
+        );
+        try {
+          await moveToProcessed(this.opts.repoRoot, entry.inbox_file, "failed");
+        } catch (err) {
+          log.warn(
+            { err: String(err), file: entry.inbox_file },
+            "abandon-move failed",
+          );
+        }
+        this.seenInboxFiles.delete(entry.inbox_file);
+        return;
+      }
+    }
+
     const tier = this.opts.defaultTier ?? "haiku";
     const taskBody = entry.row.task.rawText;
     const taskTitle = entry.row.title ?? taskBody.slice(0, 80);
@@ -1040,6 +1065,36 @@ export class Orchestrator {
     phase: RunPhase,
   ): Promise<void> {
     return this.surfacePhaseWithBody(entry, meta, phase);
+  }
+
+  /**
+   * Ask any adapter that supports it whether `channelId` is still
+   * reachable. Adapters that don't expose `isChannelAlive` (CLI / stub)
+   * are treated as "always alive." If multiple adapters answer, ALL
+   * must say true — any single dead vote → false (dispatching to a
+   * dead channel for one adapter would lose surfacing on that adapter).
+   */
+  private async isChannelAlive(channelId: string): Promise<boolean> {
+    let answered = false;
+    for (const adapter of this.opts.adapters) {
+      if (typeof adapter.isChannelAlive === "function") {
+        try {
+          const alive = await adapter.isChannelAlive(channelId);
+          if (!alive) return false;
+          answered = true;
+        } catch (err) {
+          log.warn(
+            { err: String(err), adapter: adapter.name },
+            "isChannelAlive threw — treating as dead",
+          );
+          return false;
+        }
+      }
+    }
+    // No adapter answered → no channel-aware adapter registered. Treat
+    // as alive so CLI / stub dispatch normally.
+    void answered;
+    return true;
   }
 
   /**

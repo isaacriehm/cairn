@@ -452,6 +452,19 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
     });
   }
 
+  async isChannelAlive(channelId: string): Promise<boolean> {
+    if (this.isChannelDead(channelId)) return false;
+    try {
+      const ch = await this.client.channels.fetch(channelId);
+      return ch !== null;
+    } catch (err) {
+      if (isUnknownChannelError(err)) {
+        this.markChannelDead(channelId);
+      }
+      return false;
+    }
+  }
+
   startTyping(channelId: string): () => void {
     let stopped = false;
     const ping = async () => {
