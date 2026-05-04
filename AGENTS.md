@@ -14,7 +14,7 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the layered model and the
 
 | Item | Location |
 |------|----------|
-| The current handoff | [`harness-build/HANDOFF_PLUGIN_PIVOT.md`](harness-build/HANDOFF_PLUGIN_PIVOT.md) — read this first if you are a freshly-spawned agent |
+| The current handoff | [`harness-build/RESUME.md`](harness-build/RESUME.md) — read this first if you are a freshly-spawned agent |
 | **Locked architecture (layered model)** | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | Concept primer | [`docs/PRIMER.md`](docs/PRIMER.md) |
 | Phased build plan (historical — see ARCHITECTURE for current model) | [`docs/INTEGRATION_PLAN.md`](docs/INTEGRATION_PLAN.md) |
@@ -62,7 +62,7 @@ Harness/                         — repo root (this file lives here)
 
 ## When you (an agent) are starting fresh
 
-1. Read [`harness-build/HANDOFF_PLUGIN_PIVOT.md`](harness-build/HANDOFF_PLUGIN_PIVOT.md) end-to-end.
+1. Read [`harness-build/RESUME.md`](harness-build/RESUME.md) end-to-end.
 2. Read [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — locked layered model.
 3. Read [`docs/PRIMER.md`](docs/PRIMER.md) for concepts + anti-patterns.
 4. Skim the other `docs/*.md` files.
