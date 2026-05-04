@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { appendFile, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { logger } from "../logger.js";
+import { ClaudeError, classifyClaudeError } from "../claude/error.js";
 import type { ClaudeTier } from "../claude/index.js";
 
 const log = logger("orchestrator.runner");
@@ -37,6 +38,14 @@ export interface ImplementerOptions {
   timeoutMs?: number;
   /** Called for every parsed event (incl. partials when enabled). */
   onEvent?: (event: Record<string, unknown>) => void;
+  /**
+   * External abort signal — when aborted, the spawned child receives SIGTERM
+   * via `spawn`'s native signal plumbing, then SIGKILL after `killGraceMs`
+   * if it hasn't exited. Used by `/halt` to interrupt an active run.
+   */
+  abortSignal?: AbortSignal;
+  /** Grace period between SIGTERM and SIGKILL. Default 30_000 ms. */
+  killGraceMs?: number;
 }
 
 export interface ImplementerResult {
@@ -85,14 +94,38 @@ export async function runImplementer(opts: ImplementerOptions): Promise<Implemen
 
   const startedAt = Date.now();
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 600_000);
+  const timer = setTimeout(() => ctrl.abort("timeout"), opts.timeoutMs ?? 600_000);
+  const signal =
+    opts.abortSignal !== undefined
+      ? AbortSignal.any([ctrl.signal, opts.abortSignal])
+      : ctrl.signal;
 
   return new Promise<ImplementerResult>((resolve, reject) => {
     const child = spawn("claude", args, {
       cwd: opts.cwd,
       stdio: ["pipe", "pipe", "pipe"],
-      signal: ctrl.signal,
+      signal,
     });
+
+    // SIGKILL escalation when the abort fires (whether from /halt or timeout).
+    // `spawn`'s `signal` option sends SIGTERM via Node's internals; if the
+    // child ignores it (e.g. blocked on stdin), we force-terminate after the
+    // grace period so /halt actually kills.
+    let killEscalation: NodeJS.Timeout | undefined;
+    const onAbort = (): void => {
+      if (killEscalation !== undefined) return;
+      killEscalation = setTimeout(() => {
+        if (child.exitCode === null && child.signalCode === null) {
+          try {
+            child.kill("SIGKILL");
+          } catch {
+            // best-effort
+          }
+        }
+      }, opts.killGraceMs ?? 30_000);
+    };
+    if (signal.aborted) onAbort();
+    else signal.addEventListener("abort", onAbort, { once: true });
 
     let stderr = "";
     let buffer = "";
@@ -144,21 +177,27 @@ export async function runImplementer(opts: ImplementerOptions): Promise<Implemen
     });
     child.on("close", (code) => {
       clearTimeout(timer);
+      if (killEscalation !== undefined) clearTimeout(killEscalation);
       // Flush any trailing line.
       if (buffer.length > 0) handleLine(buffer);
       writeChain
         .then(() => {
           const durationMs = Date.now() - startedAt;
           if (code !== 0 && resultEvent === undefined) {
-            reject(
-              new Error(
-                `claude (implementer) exited ${code}${stderr ? `: ${stderr.trim()}` : ""}`,
-              ),
-            );
+            const message = `claude (implementer) exited ${code}${stderr ? `: ${stderr.trim()}` : ""}`;
+            const kind = classifyClaudeError({ message, exitCode: code, stderr });
+            reject(new ClaudeError({ message, kind, exitCode: code, stderr }));
             return;
           }
           if (resultEvent === undefined) {
-            reject(new Error(`implementer ended without a result event`));
+            reject(
+              new ClaudeError({
+                message: `implementer ended without a result event`,
+                kind: "other",
+                exitCode: code,
+                stderr,
+              }),
+            );
             return;
           }
           const isErr = resultEvent["is_error"] === true;

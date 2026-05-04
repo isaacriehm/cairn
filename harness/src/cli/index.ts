@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 import { VERSION } from "../index.js";
+import { daemonCli } from "./daemon.js";
 import { gcCli } from "./gc.js";
 import { initCli } from "./init.js";
+import { installCli } from "./install.js";
 import { mcpCli } from "./mcp.js";
 import { mirrorCli } from "./mirror.js";
 import { runCli } from "./run.js";
+import { taskCli } from "./task.js";
 import { watchCli } from "./watch.js";
 
 const [, , subcommand, ...rest] = process.argv;
@@ -28,6 +31,19 @@ switch (subcommand) {
   case "gc":
     await gcCli(rest);
     break;
+  case "task":
+    await taskCli(rest);
+    break;
+  case "daemon":
+    await daemonCli(rest);
+    break;
+  case "install":
+  case "uninstall":
+    // Both route to installCli; uninstall is an alias subcommand.
+    await installCli(
+      subcommand === "uninstall" ? ["uninstall", ...rest] : rest,
+    );
+    break;
   case "--version":
   case "-v":
     console.log(VERSION);
@@ -35,16 +51,20 @@ switch (subcommand) {
   default:
     console.error(
       "Usage: harness <command>\n" +
-        "  watch     long-lived grounding daemon\n" +
-        "            (--project <slug> [--repo-root <path>])\n" +
-        "  run       orchestrator + frontend adapters\n" +
-        "  init      adopt this harness into a project\n" +
-        "  mirror    manage the parallel mirror checkout\n" +
-        "            (subcommands: init | sync | push | status)\n" +
-        "  mcp       MCP server (stdio transport)\n" +
-        "            (subcommands: serve)\n" +
-        "  gc        garbage-collection passes against the canonical zone\n" +
-        "            (subcommands: sweep | run)",
+        "  init       adopt this harness into a project\n" +
+        "  task       drop a task from the terminal (no Discord required)\n" +
+        "  daemon     supervise watch + run + nightly gc as one process\n" +
+        "  install    register the daemon as a launchd LaunchAgent (macOS)\n" +
+        "  uninstall  unregister the launchd LaunchAgent\n" +
+        "  watch      long-lived grounding daemon\n" +
+        "             (--project <slug> [--repo-root <path>])\n" +
+        "  run        orchestrator + frontend adapters\n" +
+        "  mirror     manage the parallel mirror checkout\n" +
+        "             (subcommands: init | sync | push | status)\n" +
+        "  mcp        MCP server (stdio transport)\n" +
+        "             (subcommands: serve)\n" +
+        "  gc         garbage-collection passes against the canonical zone\n" +
+        "             (subcommands: sweep | run)",
     );
     process.exit(subcommand ? 2 : 1);
 }
