@@ -23,3 +23,10 @@ export type {
   SessionIdSource,
   SessionMeta,
 } from "./id.js";
+export {
+  eventsMarkerPath,
+  readEventsMarker,
+  seedEventsMarker,
+  stampEventsPoll,
+} from "./events-marker.js";
+export type { EventsMarker } from "./events-marker.js";

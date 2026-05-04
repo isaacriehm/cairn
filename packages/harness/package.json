@@ -56,7 +56,8 @@
     "setup:uat-sql": "tsx scripts/setup-uat-sql.ts",
     "setup:uat-docker": "tsx scripts/setup-uat-docker.ts",
     "smoke:lock": "tsx scripts/smoke-lock.ts",
-    "smoke:session-state": "tsx scripts/smoke-session-state.ts"
+    "smoke:session-state": "tsx scripts/smoke-session-state.ts",
+    "smoke:events": "tsx scripts/smoke-events.ts"
   },
   "dependencies": {
     "@isaacriehm/harness-core": "workspace:*",

@@ -28,11 +28,13 @@ import {
   cleanupSession,
   defaultStatusJson,
   ensureSessionDir,
+  gcStaleEvents,
   gcStaleSessions,
   resolveRepoRoot,
   resolveSessionId,
   runReadEnricher,
   runWriteGuardian,
+  seedEventsMarker,
   writeStatusJson,
 } from "@isaacriehm/harness-core";
 
@@ -153,13 +155,15 @@ async function sessionStartHook(): Promise<void> {
   // ── Per-session state partition (PLUGIN_ARCHITECTURE §7) ───────────
   // Resolve the session id (Claude Code provides it; fallback uuid only
   // matters for dev/test). Create the per-session dir, seed status.json
-  // with attention_count derived from current ground state, then GC any
-  // sessions left behind by crashed Claude Code processes.
+  // with attention_count derived from current ground state, arm the
+  // events marker, then GC any sessions / events left behind by crashed
+  // Claude Code processes.
   const sessionWarnings: string[] = [];
   const sessionId = resolveSessionId({ session_id: payloadSessionId ?? undefined });
   try {
     ensureSessionDir({ repoRoot, sessionId });
     writeStatusJson(repoRoot, sessionId, defaultStatusJson(true));
+    seedEventsMarker({ repoRoot, sessionId });
   } catch (err) {
     sessionWarnings.push(
       `session_dir_init_failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -173,6 +177,16 @@ async function sessionStartHook(): Promise<void> {
   } catch (err) {
     sessionWarnings.push(
       `session_gc_failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  try {
+    const eventsGc = gcStaleEvents({ repoRoot });
+    if (eventsGc.removed.length > 0) {
+      sessionWarnings.push(`events_gc_removed:${eventsGc.removed.length}`);
+    }
+  } catch (err) {
+    sessionWarnings.push(
+      `events_gc_failed: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 

@@ -2,6 +2,10 @@
 # Created at SessionStart, removed at SessionEnd, GC'd if stale.
 sessions/
 
+# Invalidation event log — inter-session signal, 7-day retention,
+# regenerable. Spec: PLUGIN_ARCHITECTURE §7.
+events/
+
 # Per-write flock + whole-operation locks (per PLUGIN_ARCHITECTURE §7).
 .write-lock
 .gc-lock

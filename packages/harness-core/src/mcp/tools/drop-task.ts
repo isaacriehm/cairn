@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { stringify as stringifyYaml } from "yaml";
 import type { McpContext } from "../context.js";
+import { writeInvalidationEvent } from "../../events/index.js";
 import { withWriteLock } from "../../lock.js";
 import { dropTaskInput } from "../schemas.js";
 import type { ToolDef } from "./types.js";
@@ -56,6 +57,17 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
       related_run_ids: [],
     };
     writeFileSync(join(dir, "status.yaml"), stringifyYaml(status), "utf8");
+
+    try {
+      writeInvalidationEvent(ctx.repoRoot, {
+        kind: "task_created",
+        refs: [{ kind: "task", id }],
+        path: `.harness/tasks/active/${id}/spec.md`,
+        source: { session_id: ctx.sessionId ?? null, tool: "harness_drop_task" },
+      });
+    } catch {
+      // Event emission must never roll back the task spec write.
+    }
 
     return { ok: true, id, path: `.harness/tasks/active/${id}/spec.md` };
   });

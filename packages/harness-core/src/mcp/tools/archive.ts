@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, renameSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { McpContext } from "../context.js";
+import { writeInvalidationEvent, type InvalidationEventRef } from "../../events/index.js";
 import { recordDriftEvent } from "../../ground/index.js";
 import { withWriteLock } from "../../lock.js";
 import { mcpError } from "../errors.js";
@@ -46,6 +47,21 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
       detail: `archived: ${input.reason}`,
       severity: "soft",
     });
+
+    try {
+      const refs: InvalidationEventRef[] = [{ kind: "path", id: rel }];
+      const decMatch = rel.match(/^\.harness\/ground\/decisions\/(?:_inbox\/)?(DEC-\d+)/);
+      if (decMatch) refs.unshift({ kind: "decision", id: decMatch[1]! });
+      writeInvalidationEvent(ctx.repoRoot, {
+        kind: "path_archived",
+        refs,
+        path: rel,
+        source: { session_id: ctx.sessionId ?? null, tool: "harness_archive" },
+      });
+    } catch {
+      // Event emission must never roll back the rename.
+    }
+
     return {
       ok: true,
       archived_from: rel,

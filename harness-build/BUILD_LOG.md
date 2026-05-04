@@ -246,6 +246,33 @@ Notes:
   Files added:
     harness/src/cli/attention.ts
 
+## Step 3c — Invalidation events + per-session marker [DONE 2026-05-04T21:30]
+Subagent attempts: 0 (inline)
+Compile: PASS (workspace-wide tsc -b clean)
+Smokes: PASS — smoke:events (6/6 new), smoke:session-state (5/5), smoke:status-line (6/6), smoke:session-start (8/8), smoke:handoff (3/3), smoke:scope-index (3/3), smoke:read-enrich (4/4), smoke:init OK, smoke:ingestion-baseline (4/4), smoke:tier0 OK, smoke:gc OK, smoke:lock OK
+Notes:
+  Implements PLUGIN_ARCHITECTURE §7 layer-2 (invalidation events). Every locked write to global state (`harness_record_decision`, `harness_archive`, `harness_drop_task`) emits a JSON file under `.harness/events/`. The Stop hook (step 4) will read events newer than the per-session marker and surface inline A/B/C if any touch a DEC/§V the reader has in scope. 7-day retention.
+  Files added:
+    packages/harness-core/src/events/index.ts (barrel)
+    packages/harness-core/src/events/paths.ts (eventsDir helper)
+    packages/harness-core/src/events/writer.ts (writeInvalidationEvent: `<14-digit-ts>-<kind>.json`, collision suffix on EEXIST via crypto.randomBytes; payload schema InvalidationEvent { ts, kind, refs: { kind: "decision"|"invariant"|"task"|"path", id }[], path?, source: { session_id, tool } })
+    packages/harness-core/src/events/reader.ts (eventsSince — filter by ts, sort ascending, optional limit, malformed files reported separately so the reader never throws; gcStaleEvents — drops files older than 7 days, falls back to mtimeMs when payload ts is unreadable)
+    packages/harness-core/src/session/events-marker.ts (seedEventsMarker — idempotent, preserves existing ts on re-seed; stampEventsPoll — advances last_polled_ts without resetting ts; readEventsMarker — returns null on missing/malformed)
+    packages/harness/scripts/smoke-events.ts (6 steps: writer round-trip, collision suffix, eventsSince filter+sort+malformed handling, gcStaleEvents 7-day boundary, marker seed+stamp idempotency, end-to-end via harness_record_decision lookup through allTools)
+  Files modified:
+    packages/harness-core/src/index.ts — exports * from events + session
+    packages/harness-core/src/session/index.ts — exports events-marker symbols
+    packages/harness-core/src/mcp/context.ts — McpContext gains optional sessionId; createContext forwards
+    packages/harness-core/src/mcp/tools/record-decision.ts — emits `decision_drafted` (target=inbox) or `decision_accepted` (target=accepted); refs include the new DEC id and any `supersedes` target so events fan out across the supersedes chain. Wrapped in try/catch — emit failure must never roll back the lock-protected write.
+    packages/harness-core/src/mcp/tools/archive.ts — emits `path_archived`; if the archived path is `decisions/<DEC-NNNN>.md` (or `_inbox/<DEC-NNNN>.draft.md`), prepend a `decision` ref so DEC-scoped readers see it.
+    packages/harness-core/src/mcp/tools/drop-task.ts — emits `task_created` referencing the new task id.
+    packages/harness/src/cli/hook.ts — SessionStart now seeds events marker (`seedEventsMarker`) immediately after the session dir is created, runs `gcStaleEvents` alongside `gcStaleSessions` so each SessionStart amortizes both retention sweeps.
+    packages/harness-core/templates/.harness/.gitignore — adds `events/` (regenerable inter-session signal, 7-day retention) alongside `sessions/`.
+    packages/harness/package.json — registers `smoke:events`.
+  Concurrency posture: emit happens *inside* the withWriteLock callback (after the underlying write completes, before lock release) to prevent torn-state events; readers always see the canonical write before the event file. Emit failures are swallowed — the lock-protected write is the source of truth, events are advisory signal.
+  Notable design choice: `harness_append` is allowlisted to runs/active/<id>/* + staleness/log + inbox/**, all of which are run-internal or duplicated by other emitters; not wired to emit in this step. `harness_ask_operator` writes per-run question files (run-internal, not global state per spec §7) — also not wired.
+  Step 4 (plugin scaffold + Stop hook subcommand that reads `eventsSince(repoRoot, marker.last_polled_ts)`, filters to in-scope DEC/§V, surfaces A/B/C, then `stampEventsPoll`) remains.
+
 ## Step 3b — Per-session state partition [DONE 2026-05-04T21:00]
 Subagent attempts: 0 (inline)
 Compile: PASS (workspace-wide tsc -b clean)

@@ -6,6 +6,7 @@ import {
   scanExistingDecisionIds,
 } from "../../decision-capture/index.js";
 import type { McpContext } from "../context.js";
+import { writeInvalidationEvent } from "../../events/index.js";
 import { decisionsDir } from "../../ground/index.js";
 import { DecisionAssertion } from "../../ground/index.js";
 import { withWriteLock } from "../../lock.js";
@@ -90,15 +91,27 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     const content = `---\n${stringifyYaml(frontmatter)}---\n\n${body}`;
     writeFileSync(path, content, "utf8");
 
-    return {
-      ok: true,
-      id,
-      target,
-      path:
-        target === "accepted"
-          ? `.harness/ground/decisions/${filename}`
-          : `.harness/ground/decisions/_inbox/${filename}`,
-    };
+    const relPath =
+      target === "accepted"
+        ? `.harness/ground/decisions/${filename}`
+        : `.harness/ground/decisions/_inbox/${filename}`;
+    try {
+      writeInvalidationEvent(ctx.repoRoot, {
+        kind: target === "accepted" ? "decision_accepted" : "decision_drafted",
+        refs: [
+          { kind: "decision", id },
+          ...(input.supersedes !== undefined
+            ? ([{ kind: "decision", id: input.supersedes }] as const)
+            : []),
+        ],
+        path: relPath,
+        source: { session_id: ctx.sessionId ?? null, tool: "harness_record_decision" },
+      });
+    } catch {
+      // Event emission must never roll back the underlying write.
+    }
+
+    return { ok: true, id, target, path: relPath };
   });
 }
 

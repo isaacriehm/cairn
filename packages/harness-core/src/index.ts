@@ -26,6 +26,7 @@ export * from "./mcp/index.js";
 export * from "./paths/index.js";
 export * from "./profiles/index.js";
 export * from "./sensors/index.js";
+export * from "./events/index.js";
 export * from "./session/index.js";
 export * from "./session-start/index.js";
 export * from "./status-line/index.js";
