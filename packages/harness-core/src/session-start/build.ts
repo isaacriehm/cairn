@@ -5,7 +5,7 @@
  */
 
 import { type Dirent, existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { buildHandoffBlock } from "../context/index.js";
 import {
@@ -13,6 +13,7 @@ import {
   buildInvariantsLedger,
   parseFrontmatter,
 } from "../ground/index.js";
+import { loadSensorRegistry } from "../sensors/catalog.js";
 import {
   SESSION_START_HEADER,
   TOOL_QUICK_REFERENCE,
@@ -22,6 +23,7 @@ import {
 export type SessionStartSource = "startup" | "resume" | "clear" | "compact" | string;
 
 export type SessionStartSection =
+  | "first_session_onboarding"
   | "run_handoff"
   | "header"
   | "two_zone_reminder"
@@ -172,9 +174,28 @@ export async function buildSessionStartContext(
   // ── Section 1.5 — brand + product positioning (always injected) ───
   const brandAndPositioningSection = readBrandAndPositioning(args.repoRoot, warnings);
 
+  // ── First-session onboarding block (Phase 6.6) ────────────────────
+  // Fires once: decisions_count === 0 AND invariants_count === 0 AND a
+  // baseline audit yaml exists. After the first DEC is accepted, the
+  // condition no longer holds and this section disappears for good.
+  let firstSessionOnboardingSection: string | null = null;
+  if (counts.decisions === 0 && counts.invariants === 0) {
+    firstSessionOnboardingSection = renderFirstSessionOnboarding({
+      repoRoot: args.repoRoot,
+      pendingDrafts: counts.pendingDrafts,
+      warnings,
+    });
+  }
+
   // Truncation strategy per spec: always include 1 + 7; then 4, 2, 3,
   // 6, 5; drop in reverse order if over cap.
   const orderedSections: { id: SessionStartSection; body: string }[] = [];
+  if (firstSessionOnboardingSection !== null) {
+    orderedSections.push({
+      id: "first_session_onboarding",
+      body: firstSessionOnboardingSection,
+    });
+  }
   if (runHandoffSection !== null) {
     orderedSections.push({ id: "run_handoff", body: runHandoffSection });
   }
@@ -218,6 +239,7 @@ export async function buildSessionStartContext(
     "two_zone_reminder",
     "header",
     "run_handoff",
+    "first_session_onboarding",
   ];
 
   let kept = orderedSections.slice();
@@ -593,6 +615,163 @@ function listPendingDrafts(repoRoot: string, warnings: string[]): DraftEntry[] {
   }
   out.sort((a, b) => a.id.localeCompare(b.id));
   return out;
+}
+
+interface OnboardingArgs {
+  repoRoot: string;
+  pendingDrafts: number;
+  warnings: string[];
+}
+
+function renderFirstSessionOnboarding(args: OnboardingArgs): string | null {
+  const audit = readLatestBaselineAudit(args.repoRoot, args.warnings);
+  if (audit === null) return null;
+
+  const projectName = readProjectSlug(args.repoRoot) ?? basename(args.repoRoot);
+  const minutesAgo = audit.runAt !== null ? minutesSince(audit.runAt) : null;
+  const sensorIds = readActiveSensorIds(args.repoRoot, args.warnings);
+
+  const lines: string[] = [];
+  lines.push(`⬡ Harness active — ${projectName}`);
+  lines.push("");
+  if (minutesAgo !== null) {
+    lines.push(
+      `  This project was adopted ${humanizeMinutes(minutesAgo)}. Project brain is new.`,
+    );
+  } else {
+    lines.push("  This project was adopted recently. Project brain is new.");
+  }
+  lines.push("");
+
+  if (sensorIds.length > 0) {
+    const head = sensorIds.slice(0, 3).join(" · ");
+    const more =
+      sensorIds.length > 3
+        ? ` + ${sensorIds.length - 3} more`
+        : "";
+    lines.push(
+      "  Sensors active (run on complete diff after you emit attestation.yaml):",
+    );
+    lines.push(`    ${head}${more}`);
+    lines.push("");
+  }
+
+  if (audit.totalFindings > 0) {
+    lines.push(
+      `  Baseline debt: ${audit.totalFindings} pre-Harness violation${audit.totalFindings === 1 ? "" : "s"} found in existing code.`,
+    );
+    lines.push("  Run `harness attention` to review before starting work.");
+    lines.push("");
+  } else {
+    lines.push(
+      `  Baseline scan ran clean — no pre-Harness violations on ${audit.filesScanned} source file${audit.filesScanned === 1 ? "" : "s"}.`,
+    );
+    lines.push("");
+  }
+
+  if (args.pendingDrafts > 0) {
+    lines.push(
+      `  DEC drafts awaiting review: ${args.pendingDrafts}`,
+    );
+    lines.push("  Run `harness attention` to confirm or discard.");
+    lines.push("");
+  }
+
+  lines.push("  To capture a decision during this session: /direction <your instruction>");
+  return lines.join("\n");
+}
+
+interface BaselineSummary {
+  runAt: string | null;
+  totalFindings: number;
+  filesScanned: number;
+}
+
+function readLatestBaselineAudit(
+  repoRoot: string,
+  warnings: string[],
+): BaselineSummary | null {
+  const dir = join(repoRoot, ".harness", "baseline");
+  if (!existsSync(dir)) return null;
+  let entries: string[];
+  try {
+    entries = readdirSync(dir, { encoding: "utf8" });
+  } catch (err) {
+    warnings.push(
+      `baseline dir read failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
+  }
+  const matching = entries
+    .filter((name) => /^sensor-audit-.*\.yaml$/.test(name))
+    .sort();
+  const latest = matching.at(-1);
+  if (latest === undefined) return null;
+  const abs = join(dir, latest);
+  try {
+    const parsed = parseYaml(readFileSync(abs, "utf8")) as Record<string, unknown>;
+    const runAt =
+      typeof parsed["run_at"] === "string" ? (parsed["run_at"] as string) : null;
+    const totalFindings =
+      typeof parsed["total_findings"] === "number"
+        ? (parsed["total_findings"] as number)
+        : 0;
+    const filesScanned =
+      typeof parsed["files_scanned"] === "number"
+        ? (parsed["files_scanned"] as number)
+        : 0;
+    return { runAt, totalFindings, filesScanned };
+  } catch (err) {
+    warnings.push(
+      `baseline audit unreadable: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
+  }
+}
+
+function readActiveSensorIds(repoRoot: string, warnings: string[]): string[] {
+  try {
+    const reg = loadSensorRegistry(repoRoot);
+    const disabled = new Set(reg.disabled_per_project ?? []);
+    return reg.sensors
+      .map((s) => s.id)
+      .filter((id) => id.length > 0)
+      .filter((id) => !disabled.has(id));
+  } catch (err) {
+    warnings.push(
+      `sensor registry read failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return [];
+  }
+}
+
+function readProjectSlug(repoRoot: string): string | null {
+  const path = join(repoRoot, ".harness", "config.yaml");
+  if (!existsSync(path)) return null;
+  try {
+    const parsed = parseYaml(readFileSync(path, "utf8")) as Record<string, unknown>;
+    if (typeof parsed["slug"] === "string") return parsed["slug"] as string;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function minutesSince(iso: string): number | null {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return null;
+  const diffMs = Date.now() - t;
+  if (diffMs < 0) return 0;
+  return Math.floor(diffMs / 60_000);
+}
+
+function humanizeMinutes(minutes: number): string {
+  if (minutes < 1) return "moments ago";
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
 }
 
 function renderPendingDraftsSection(drafts: DraftEntry[]): string | null {

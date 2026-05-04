@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { readStatusForCLI, VERSION } from "../index.js";
+import { attentionCli } from "./attention.js";
 import { daemonCli } from "./daemon.js";
 import { doctorCli, fixCli } from "./doctor.js";
 import { gcCli } from "./gc.js";
@@ -42,6 +43,9 @@ switch (subcommand) {
     break;
   case "fix":
     await fixCli(rest);
+    break;
+  case "attention":
+    await attentionCli(rest);
     break;
   case "hook":
     await hookCli(rest);
@@ -101,6 +105,8 @@ switch (subcommand) {
         "  doctor     verify the adoption is healthy (checks core, ground, sensors)\n" +
         "             (--repo <path>?)\n" +
         "  fix        auto-resolve doctor warnings where possible\n" +
+        "             (--repo <path>?)\n" +
+        "  attention  list pending DEC drafts + baseline sensor findings\n" +
         "             (--repo <path>?)\n" +
         "  hook       Claude Code hook runner (stdin = hook payload JSON)\n" +
         "             (subcommands: session-start | read-enrich | write-guard)\n" +

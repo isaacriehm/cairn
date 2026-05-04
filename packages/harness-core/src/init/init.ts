@@ -36,6 +36,10 @@ import {
   type ScopeIndexEntry,
 } from "../ground/scope-index.js";
 import { ensureMirror, normalizeProjectName } from "../mirror/index.js";
+import {
+  defaultStatusJson,
+  writeStatusJsonForSlug,
+} from "../status-line/index.js";
 import { homedir } from "node:os";
 import { logger, setLogFile } from "../logger.js";
 import {
@@ -43,6 +47,15 @@ import {
   runBrandSetup,
   type BrandAnswers,
 } from "./brand-setup.js";
+import {
+  defaultBaselineLanguages,
+  runBaselineAudit,
+  type BaselineAuditResult,
+} from "./baseline-audit.js";
+import {
+  runDocsIngestion,
+  type IngestionResult,
+} from "./ingest-docs.js";
 import {
   detectMonorepoContext,
   findGitRoot,
@@ -138,6 +151,12 @@ export interface RunInitArgs {
    */
   skipSubmoduleCheck?: boolean;
   /**
+   * Skip Phase 6 — docs ingestion + baseline sensor sweep. Smokes default to
+   * skipping since the Haiku ingestion call costs tokens; production runs
+   * default to running.
+   */
+  skipIngestion?: boolean;
+  /**
    * When mode === "auto", how to answer the submodule init prompt.
    *   "init"  — run `git submodule update --init --recursive`
    *   "skip"  — leave uninitialized, accept partial mapper visibility
@@ -184,6 +203,10 @@ export interface InitResult {
   } | null;
   /** Daemon autostart outcome (Phase 5c). null when skipped. */
   daemon_autostart: DaemonAutostartResult | null;
+  /** Phase 6 ingestion outcome (docs → DEC drafts, canonical-map seed). */
+  ingestion: IngestionResult | null;
+  /** Phase 6 baseline sensor audit outcome. */
+  baseline_audit: BaselineAuditResult | null;
   /** Absolute path to the log file pino output was redirected to. */
   log_file_path: string | null;
   /** Monorepo subdir context if init was launched from a sub-package. */
@@ -317,6 +340,8 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
       mapper_applied_to_config: false,
       brand_setup: null,
       daemon_autostart: null,
+      ingestion: null,
+      baseline_audit: null,
       log_file_path: logFilePath,
       monorepo_context: monorepoContext,
       submodules: submoduleSummary,
@@ -538,9 +563,54 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   }
 
   // ── Step 5c: daemon autostart ──────────────────────────────────────
+  // Write a baseline status.json BEFORE the autostart attempt so the file
+  // always exists with `ctx_tokens_budget: 4000`. Without this, projects whose
+  // daemon binary isn't on PATH (or whose autostart fails for any reason)
+  // would render `ctx:0/0` in the status line. Daemon, when it does start,
+  // overwrites the file with its own snapshot — our baseline is just a guard.
   let daemonAutostart: DaemonAutostartResult | null = null;
   if (args.skipDaemonAutostart !== true) {
+    const slug = normalizeProjectName(decidedSlug);
+    try {
+      writeStatusJsonForSlug(slug, defaultStatusJson(false));
+    } catch (err) {
+      warnings.push(`status.json baseline write failed: ${String(err)}`);
+    }
     daemonAutostart = await tryStartDaemon(repoRoot);
+  }
+
+  // ── Phase 6: ingestion sweep + baseline audit ──────────────────────
+  // Populates project brain from docs that already exist in the repo, then
+  // runs every runnable sensor against the full codebase to surface pre-
+  // Harness debt. Both pieces are best-effort; failures degrade to empty
+  // result, never block the init.
+  const phase6 = await runPhaseSix({
+    repoRoot,
+    decidedSlug,
+    detection,
+    mapperOutput,
+    skip: args.skipIngestion === true || mode === "auto",
+    warnings,
+  });
+
+  // Patch status.json with baseline attention_count = drafts + baseline
+  // findings. Only when daemon didn't actually start — a live daemon owns
+  // the file and computes its own attention count.
+  if (
+    args.skipDaemonAutostart !== true &&
+    daemonAutostart !== null &&
+    daemonAutostart.started === false
+  ) {
+    const drafts = phase6.ingestion?.decDraftsWritten.length ?? 0;
+    const baselineFindings = phase6.baselineAudit?.totalFindings ?? 0;
+    const slug = normalizeProjectName(decidedSlug);
+    try {
+      writeStatusJsonForSlug(slug, {
+        attention_count: drafts + baselineFindings,
+      });
+    } catch (err) {
+      warnings.push(`status.json attention patch failed: ${String(err)}`);
+    }
   }
 
   // ── Step 6: completion summary (structured) ────────────────────────
@@ -555,6 +625,8 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
       repoSummary.truncated_at_file_cap ||
       repoSummary.truncated_at_depth_cap,
     mapperFallbackSlugs,
+    ingestion: phase6.ingestion,
+    baselineAudit: phase6.baselineAudit,
     logFilePath,
     warnings,
   });
@@ -571,6 +643,8 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
       mapper_applied_to_config: mapperAppliedToConfig,
       brand_answered: brandSetup?.answered ?? null,
       daemon_started: daemonAutostart?.started ?? null,
+      ingestion_drafts: phase6.ingestion?.decDraftsWritten.length ?? null,
+      baseline_findings: phase6.baselineAudit?.totalFindings ?? null,
       warnings: warnings.length,
     },
     "init complete",
@@ -590,6 +664,8 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     mapper_applied_to_config: mapperAppliedToConfig,
     brand_setup: brandSetup,
     daemon_autostart: daemonAutostart,
+    ingestion: phase6.ingestion,
+    baseline_audit: phase6.baselineAudit,
     log_file_path: logFilePath,
     monorepo_context: monorepoContext,
     submodules: submoduleSummary,
@@ -1020,6 +1096,10 @@ interface CompletionSummaryArgs {
   scanTruncated: boolean;
   /** Module slugs that used the heuristic fallback path; empty when none. */
   mapperFallbackSlugs: string[];
+  /** Phase 6 ingestion outcome — null when ingestion was skipped. */
+  ingestion: IngestionResult | null;
+  /** Phase 6 baseline audit outcome — null when ingestion was skipped. */
+  baselineAudit: BaselineAuditResult | null;
   logFilePath: string | null;
   warnings: string[];
 }
@@ -1063,6 +1143,29 @@ function printCompletionSummary(args: CompletionSummaryArgs): void {
   if (args.logFilePath !== null) {
     info(`  Log               ${shortenHomePath(args.logFilePath)}`);
   }
+
+  // Project brain populated from existing codebase.
+  const ingestionReport = describeIngestion(args.ingestion);
+  const canonicalReport = describeCanonical(args.ingestion);
+  const baselineReport = describeBaseline(args.baselineAudit);
+  if (
+    ingestionReport !== null ||
+    canonicalReport !== null ||
+    baselineReport !== null
+  ) {
+    info("");
+    info("  Project brain populated from existing codebase:");
+    if (ingestionReport !== null) {
+      info(`    DEC drafts        ${ingestionReport}`);
+    }
+    if (canonicalReport !== null) {
+      info(`    Canonical map     ${canonicalReport}`);
+    }
+    if (baselineReport !== null) {
+      info(`    Baseline debt     ${baselineReport}`);
+    }
+  }
+
   info("");
   info("  Open Claude Code in this directory. Harness is live immediately.");
   info("");
@@ -1410,6 +1513,136 @@ function printDiscovery(
   });
   if (!e.discord_token) warnings.push("DISCORD_BOT_TOKEN not set in env");
   if (!e.discord_guild) warnings.push("DISCORD_GUILD_ID not set in env");
+}
+
+interface PhaseSixArgs {
+  repoRoot: string;
+  decidedSlug: string;
+  detection: DetectionResult;
+  mapperOutput: MapperOutput | null;
+  skip: boolean;
+  warnings: string[];
+}
+
+interface PhaseSixResult {
+  ingestion: IngestionResult | null;
+  baselineAudit: BaselineAuditResult | null;
+}
+
+async function runPhaseSix(args: PhaseSixArgs): Promise<PhaseSixResult> {
+  if (args.skip) {
+    return { ingestion: null, baselineAudit: null };
+  }
+
+  process.stdout.write("\n");
+  process.stdout.write(
+    `  ${visualC.bold("Phase 6")} — ingesting existing project knowledge…\n`,
+  );
+
+  // ── 6.1 — docs ingestion (Haiku per doc; cap 20 largest) ───────────
+  let ingestion: IngestionResult | null = null;
+  try {
+    ingestion = await runDocsIngestion({
+      repoRoot: args.repoRoot,
+      onGroupProgress: (row) => {
+        const status = row.ok ? "✓" : "✗";
+        const label = row.group.padEnd(20);
+        const summary =
+          row.drafts > 0
+            ? `${row.drafts} DEC draft${row.drafts === 1 ? "" : "s"} proposed`
+            : `${row.total} doc${row.total === 1 ? "" : "s"} scanned`;
+        process.stdout.write(`    ${label} ${status}  ${summary}\n`);
+      },
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    args.warnings.push(`docs ingestion failed: ${msg}`);
+    process.stdout.write(
+      `    ${visualC.yellow("⚠")} docs ingestion failed — ${msg}\n`,
+    );
+    ingestion = null;
+  }
+
+  // ── 6.4 — baseline sensor sweep (full repo, not a diff) ────────────
+  let baselineAudit: BaselineAuditResult | null = null;
+  try {
+    const stackKinds = args.detection.stack_signatures.map((s) => s.kind);
+    const projectGlobs = {
+      route_handler_globs: args.mapperOutput?.route_handler_globs ?? [],
+      dto_globs: args.mapperOutput?.dto_globs ?? [],
+      generator_source_globs: args.mapperOutput?.generator_source_globs ?? [],
+      high_stakes_globs: args.mapperOutput?.high_stakes_globs ?? [],
+    };
+    const printedSensors: string[] = [];
+    let suppressedCount = 0;
+    baselineAudit = await runBaselineAudit({
+      repoRoot: args.repoRoot,
+      languages: defaultBaselineLanguages(stackKinds),
+      projectGlobs,
+      onSensorProgress: (row) => {
+        if (printedSensors.length < 3) {
+          const id = row.sensor_id.padEnd(22);
+          const status = row.skipped
+            ? visualC.dim("skipped")
+            : row.finding_count > 0
+              ? `${row.finding_count} existing violation${row.finding_count === 1 ? "" : "s"} found`
+              : "clean";
+          process.stdout.write(
+            `    ${id} ${row.skipped ? "○" : row.finding_count > 0 ? "⚠" : "✓"}  ${status}\n`,
+          );
+          printedSensors.push(row.sensor_id);
+        } else {
+          suppressedCount += 1;
+        }
+      },
+    });
+    if (suppressedCount > 0) {
+      process.stdout.write(`    ${visualC.dim(`+ ${suppressedCount} more…`)}\n`);
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    args.warnings.push(`baseline audit failed: ${msg}`);
+    process.stdout.write(
+      `    ${visualC.yellow("⚠")} baseline audit failed — ${msg}\n`,
+    );
+    baselineAudit = null;
+  }
+
+  return { ingestion, baselineAudit };
+}
+
+function describeIngestion(ingestion: IngestionResult | null): string | null {
+  if (ingestion === null) return null;
+  const draftCount = ingestion.decDraftsWritten.length;
+  if (draftCount === 0 && !ingestion.voiceUpdated) {
+    return `0 proposed  (no actionable docs found)`;
+  }
+  const parts: string[] = [];
+  parts.push(
+    `${draftCount} proposed${draftCount > 0 ? "  (run harness attention to review)" : ""}`,
+  );
+  if (ingestion.voiceUpdated) {
+    parts.push("brand/voice.md filled from existing doc");
+  }
+  return parts.join("; ");
+}
+
+function describeCanonical(ingestion: IngestionResult | null): string | null {
+  if (ingestion === null) return null;
+  const n = ingestion.canonicalTopicsAdded.length;
+  if (n === 0) return null;
+  return `${n} topic${n === 1 ? "" : "s"} seeded`;
+}
+
+function describeBaseline(audit: BaselineAuditResult | null): string | null {
+  if (audit === null) return null;
+  if (audit.totalFindings === 0) {
+    if (audit.skippedSensorIds.length > 0 && audit.cleanSensorIds.length === 0) {
+      return null;
+    }
+    return `0 findings  (run on ${audit.filesScanned} files)`;
+  }
+  return `${audit.totalFindings} existing sensor finding${audit.totalFindings === 1 ? "" : "s"}  (run harness attention)`;
 }
 
 function remoteShorthand(url: string): string {
