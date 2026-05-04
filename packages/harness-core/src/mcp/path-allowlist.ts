@@ -10,12 +10,17 @@ import { mcpError, type McpErrorPayload } from "./errors.js";
  *   - .harness/runs/active/<run-id>/commands.jsonl
  *   - .harness/staleness/log.jsonl
  *   - .harness/inbox/**         (system-only; rarely used by agents)
+ *
+ * Per CONTEXT_CONTINUITY_SPEC §2.3:
+ *   - .harness/tasks/active/<task-id>/notes.md  — agent-authored run notes
+ *     (consumed by handoff builder; persists across sessions)
  */
 export const APPEND_ALLOWLIST: readonly string[] = [
   ".harness/runs/active/*/events.jsonl",
   ".harness/runs/active/*/commands.jsonl",
   ".harness/staleness/log.jsonl",
   ".harness/inbox/**",
+  ".harness/tasks/active/*/notes.md",
 ];
 
 /**

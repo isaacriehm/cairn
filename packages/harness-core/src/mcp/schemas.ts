@@ -130,6 +130,24 @@ export const archiveInput = {
   archive_dir: z.string().optional(),
 };
 
+export const appendRunNoteInput = {
+  /**
+   * Path-safe task id matching the directory under `.harness/tasks/active/`.
+   * The note appends to `.harness/tasks/active/<run_id>/notes.md`. The field
+   * is named `run_id` to match the spec; the agent is responsible for passing
+   * the id that aligns with its current task dir.
+   */
+  run_id: z
+    .string()
+    .min(1)
+    .max(80)
+    .regex(/^[A-Za-z0-9_-]+$/, "run_id must be path-safe"),
+  /** Phase label, e.g. "phase-2", "sensor-check". Free-form; ≤80 chars. */
+  phase: z.string().min(1).max(80),
+  /** The note body. Free text. */
+  note: z.string().min(1),
+};
+
 export const askOperatorInput = {
   /** The agent's run id — files land under runs/active/<run_id>/questions/. */
   run_id: z.string().min(1),

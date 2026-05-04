@@ -1,4 +1,5 @@
 import type { ToolDef } from "./types.js";
+import { appendRunNoteTool } from "./append-run-note.js";
 import { archiveTool } from "./archive.js";
 import { canonicalForTopicTool } from "./canonical-for-topic.js";
 import { decisionGetTool } from "./decision-get.js";
@@ -32,6 +33,7 @@ export const allTools: ToolDef<unknown>[] = [
   queryHistoryTool as ToolDef<unknown>,
   // Write
   recordDecisionTool as ToolDef<unknown>,
+  appendRunNoteTool as ToolDef<unknown>,
   archiveTool as ToolDef<unknown>,
 ];
 
