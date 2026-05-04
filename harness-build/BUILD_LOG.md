@@ -246,6 +246,29 @@ Notes:
   Files added:
     harness/src/cli/attention.ts
 
+## Step 10 — Pre-publish prep (gitleaks + content audit + README + name) [DONE 2026-05-05T00:45]
+Subagent attempts: 0 (inline)
+Compile: PASS (workspace-wide tsc -b clean across 5 packages); 22/22 smokes regression-clean (no code changes).
+Notes:
+  Pre-publish housekeeping per RESUME §"Build sequence remaining" step 10. Three outputs: gitleaks scan, content audit, README rewrite + project name. Manual phase (history wipe + fresh public repo at v0.1.0) is the operator's call — this commit lands the audit findings + clean README so they have a clear go/no-go signal.
+  Project name: **Cairn** — stack of stones marking a trail. Decisions stack up like cairns; agents follow them; built incrementally; navigational truth.
+  Publish target: `github.com/isaacriehm/cairn` + `npm @isaacriehm/cairn-{core,cli,plugin,frontend-stub,lens}`. Operator overrode the devplusllc-continuity recommendation; LLC attribution can shift later via owner transfer if commercial framing materializes. Working-tree code still uses the `@devplusllc/harness*` names (and `harness` CLI binary); the search-replace to `@isaacriehm/cairn-*` + `cairn` binary lands as part of the public-repo initial commit so it's a single mechanical pass rather than a churn commit on the private mirror.
+  Files modified:
+    README.md — full rewrite. Drops the "design phase / no code yet" framing (stale; pre-pivot). Lands the current architecture: state + context layer, MCP surface, Claude Code plugin as primary surface + CLI as bootstrap, four-package layered model, multi-developer enforcement (4 layers), `.harness/` disk layout, dev workflow, doc index. Uses "Cairn" as the public name throughout, with a one-line note about the technical `harness` namespace continuing under `@devplusllc/`.
+  Audit findings:
+    1. `gitleaks detect` (working tree, no-git): 2 hits — both in `packages/harness/.env` which is gitignored. Discord bot token + decoded base64 variant. Operator should rotate the token before any environment-sharing event but it's not in git history.
+    2. `gitleaks git` (full history, 101 commits): 0 leaks. Clean.
+    3. Mypal/mypalcrm references inventory: README.md (now removed via this commit), AGENTS.md (line 26 — research-artifacts row), `.archive/2026-05-04/{STALENESS_INVENTORY,DISCORD_WHISPER_DESIGN}.md`, `.archive/2026-05-03/{CODEX_REVIEW_BRIEF,QUESTIONS,WORKFLOW_GUIDE}.md`, `docs/_history/INTEGRATION_PLAN.md`, `docs/INIT_SPEC.md`, `docs/_review/STATE_AUDIT_2026-05-04.md`, `harness-build/BUILD_LOG.md`, `harness-build/RESUME.md`, `packages/harness/scripts/check-layout.ts` (the *guard*, which bans them in templates — this file SHOULD keep its references). Active source code itself is mypal-free.
+    4. Personal-name leak: 1 hit in `.archive/2026-05-03/CODEX_REVIEW_BRIEF_REVIEW.md` ("Isaac"). Single mention in an archived review brief. Operator decides whether to scrub or accept — first name is low-PII and this is a one-time mention.
+    5. `.env` tracking: the live `.env` is gitignored AND has never been added to git history (verified via `git log --diff-filter=A` — only `.env.example` ever committed). Safe to leave in working tree; would not propagate to a fresh public repo cloned from the *clean working tree* per the publish strategy.
+  Recommendations to operator (pre-publish manual phase):
+    - Rotate the Discord bot token before sharing the harness-dev environment with anyone.
+    - Decide on history-wipe scope: per RESUME the strategy is "fresh public repo with current clean working tree as initial commit at v0.1.0". The `.archive/`, `docs/_history/`, `docs/_review/`, `harness-build/` subtrees are operator-only build artifacts; consider whether they ship in the public repo or stay in the private mirror.
+    - Decide on LICENSE: README cites MIT pending; the LICENSE file is not yet committed.
+    - Package rename pass during fresh-public-repo creation: `@devplusllc/harness-*` → `@isaacriehm/cairn-*`, `harness` CLI bin → `cairn`, `harness_*` MCP tool prefix → `cairn_*` (or keep the MCP tool names since they're ABI surface — operator's call). Single search-replace on the initial-commit working tree.
+  Smoke regression: full 22-smoke gate ran clean — no code changes in this commit so nothing should drift, but the gate confirms the README rewrite didn't accidentally break a docs-aware path (it doesn't).
+  Build sequence complete. The pre-publish manual phase (history wipe + fresh public repo + initial v0.1.0 tag) is the operator's call from here.
+
 ## Step 9 — End-to-end smoke + Phase 7b/7c/12 init.ts wiring [DONE 2026-05-05T00:20]
 Subagent attempts: 0 (inline)
 Compile: PASS (workspace-wide tsc -b clean across 5 packages)
