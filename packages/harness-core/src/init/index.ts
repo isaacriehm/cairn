@@ -35,8 +35,21 @@ export type {
   MapperOutput,
   MapperProposedSensor,
   MapperResult,
+  MapperScopeIndex,
+  MapperScopeIndexEntry,
   RunMapperArgs,
 } from "./mapper.js";
+export { sliceModules } from "./module-slicer.js";
+export type { ModuleSlice, SliceModulesArgs } from "./module-slicer.js";
+export { mapModulesParallel } from "./mapper-parallel.js";
+export type {
+  MapModulesParallelArgs,
+  ModuleProposal,
+} from "./mapper-parallel.js";
+export { mergeModuleProposals, mechanicalMerge } from "./mapper-merge.js";
+export type { MergeArgs } from "./mapper-merge.js";
+export { runLegacyMapper } from "./mapper-legacy.js";
+export type { RunLegacyMapperArgs } from "./mapper-legacy.js";
 export { seedHarnessLayout, templatesRoot } from "./seed.js";
 export type { SeedOptions, SeedResult } from "./seed.js";
 export {

@@ -47,6 +47,7 @@
     "smoke:decision-refinement": "tsx scripts/smoke-decision-refinement.ts",
     "smoke:init": "tsx scripts/smoke-init.ts",
     "smoke:init-mapper": "tsx scripts/smoke-init-mapper.ts",
+    "smoke:module-slicer": "tsx scripts/smoke-module-slicer.ts",
     "smoke:steering": "tsx scripts/smoke-steering.ts",
     "smoke:visibility": "tsx scripts/smoke-visibility.ts",
     "smoke:ux-cleanups": "tsx scripts/smoke-ux-cleanups.ts",

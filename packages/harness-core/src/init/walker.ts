@@ -4,8 +4,17 @@
  * Walks the adopted project's working tree at adoption time, respecting
  * `.gitignore` (via `git ls-files --cached --others --exclude-standard`
  * when a git repo is present) and a hardcoded set of vendored / generated
- * directory names. Caps both depth and total file count so the mapper
- * prompt stays bounded in token cost on large monorepos.
+ * directory names.
+ *
+ * Two-pass priority walk:
+ *   • Pass 1 — high-signal source trees (any path with a segment in
+ *     HIGH_SIGNAL_DIRS: src, lib, app, pages, components, services,
+ *     controllers, routes, models, schemas, domain). No depth limit so
+ *     deeply nested src/auth/services/guards/*.ts is reachable. Cap 500.
+ *   • Pass 2 — everything else, depth ≤ 6. Cap 200. (Shallow config /
+ *     manifests / top-level docs.)
+ *   • Overall belt-and-suspenders cap: 3000. If exceeded, Pass 2 truncates
+ *     before Pass 1.
  *
  * No prompts, no LLM calls, no side effects beyond reading files. Output is
  * a `RepoSummary` of:
@@ -61,8 +70,30 @@ const DEFAULT_OFF_LIMITS_DIRS = new Set<string>([
   ".archive",
 ]);
 
-const DEFAULT_DEPTH_CAP = 5;
-const DEFAULT_FILE_CAP = 3000;
+/**
+ * Per-pass + total caps. Per-pass caps keep the mapper prompt focused; the
+ * 3000 total is a forward-looking safety net (the per-pass sum is well below
+ * it but kept so future cap raises don't bypass a single bound).
+ */
+const HIGH_SIGNAL_DIRS = new Set<string>([
+  "src",
+  "lib",
+  "app",
+  "pages",
+  "components",
+  "services",
+  "controllers",
+  "routes",
+  "models",
+  "schemas",
+  "domain",
+]);
+const DEFAULT_PASS1_CAP = 500;
+const DEFAULT_PASS2_CAP = 200;
+const DEFAULT_PASS2_DEPTH_CAP = 6;
+const DEFAULT_TOTAL_CAP = 3000;
+/** Legacy single-pass depth cap, retained for the fallback walker only. */
+const DEFAULT_DEPTH_CAP = 10;
 const MANIFEST_PREVIEW_LINES = 80;
 
 const MANIFEST_FILES = new Set<string>([
@@ -170,19 +201,45 @@ export interface RepoSummary {
 
 export interface BuildRepoSummaryOptions {
   repoRoot: string;
-  /** Max directory depth to descend. Default 5. */
+  /**
+   * Hard cap on Pass-1 (high-signal-dir) file count. Default 500.
+   */
+  pass1Cap?: number;
+  /**
+   * Hard cap on Pass-2 (other) file count. Default 200.
+   */
+  pass2Cap?: number;
+  /**
+   * Max directory depth for Pass 2 (paths NOT under a high-signal dir).
+   * Pass 1 has no depth limit. Default 6.
+   */
+  pass2DepthCap?: number;
+  /**
+   * Backwards-compat alias for `pass2DepthCap`. Older callers (smokes, the
+   * `harness scope rebuild` command) used `depthCap` against the legacy
+   * single-pass walker. Treated as `pass2DepthCap` so they keep working.
+   */
   depthCap?: number;
-  /** Hard cap on the number of files included. Default 3000. */
+  /**
+   * Belt-and-suspenders total cap. Default 3000. If exceeded, Pass 2 is
+   * truncated first.
+   */
   fileCap?: number;
 }
 
 export function buildRepoSummary(opts: BuildRepoSummaryOptions): RepoSummary {
   const root = opts.repoRoot;
-  const depthCap = opts.depthCap ?? DEFAULT_DEPTH_CAP;
-  const fileCap = opts.fileCap ?? DEFAULT_FILE_CAP;
+  const pass1Cap = opts.pass1Cap ?? DEFAULT_PASS1_CAP;
+  const pass2Cap = opts.pass2Cap ?? DEFAULT_PASS2_CAP;
+  // pass2DepthCap explicit > legacy depthCap > default 6
+  const pass2DepthCap =
+    opts.pass2DepthCap ?? opts.depthCap ?? DEFAULT_PASS2_DEPTH_CAP;
+  const fileCap = opts.fileCap ?? DEFAULT_TOTAL_CAP;
   const { paths, dirs, truncatedFile, truncatedDepth, usedGit } = listFiles({
     root,
-    depthCap,
+    pass1Cap,
+    pass2Cap,
+    pass2DepthCap,
     fileCap,
   });
   return summarize({
@@ -197,14 +254,22 @@ export function buildRepoSummary(opts: BuildRepoSummaryOptions): RepoSummary {
 
 interface ListFilesArgs {
   root: string;
-  depthCap: number;
+  pass1Cap: number;
+  pass2Cap: number;
+  pass2DepthCap: number;
   fileCap: number;
 }
 
 interface ListFilesResult {
   paths: string[];
   dirs: Set<string>;
+  /** Set when any pass hit its file cap (Pass 1, Pass 2, or overall). */
   truncatedFile: boolean;
+  /**
+   * Set only by the legacy single-pass walker fallback (not normally used).
+   * The two-pass walker leaves this false because it does not depth-truncate
+   * paths under a high-signal dir.
+   */
   truncatedDepth: boolean;
   usedGit: boolean;
 }
@@ -217,20 +282,50 @@ function listFiles(args: ListFilesArgs): ListFilesResult {
   return walkFilesystem(args);
 }
 
+function isHighSignalPath(rel: string): boolean {
+  for (const seg of rel.split("/")) {
+    if (HIGH_SIGNAL_DIRS.has(seg)) return true;
+  }
+  return false;
+}
+
+function addAncestors(dirs: Set<string>, rel: string): void {
+  const segs = rel.split("/");
+  for (let i = 1; i <= segs.length - 1; i++) {
+    dirs.add(segs.slice(0, i).join("/"));
+  }
+}
+
 function tryGitLsFiles(root: string): string[] | null {
   if (!existsSync(join(root, ".git"))) return null;
+  // We need TWO listings unioned because git ls-files cannot combine
+  // `--recurse-submodules` with `--others` (git rejects it as "unsupported
+  // mode"). Without --recurse-submodules, submodule contents (initialized or
+  // not) never enumerate — `core/`, `platform/`, `site/` show as bare
+  // gitlink entries and the mapper sees none of their source.
+  //   1) `--cached --recurse-submodules` → tracked files including submodule contents
+  //   2) `--others --exclude-standard`    → untracked-but-not-ignored files at parent
+  const tracked = runGitLsFiles(root, [
+    "--cached",
+    "--recurse-submodules",
+  ]);
+  if (tracked === null) return null;
+  const untracked = runGitLsFiles(root, ["--others", "--exclude-standard"]);
+  if (untracked === null) return tracked;
+  // Dedup — `--cached` and `--others` are disjoint by definition, but
+  // submodule paths may appear in tracked as the bare gitlink in some git
+  // versions; a Set keeps us safe.
+  const set = new Set<string>();
+  for (const p of tracked) set.add(p);
+  for (const p of untracked) set.add(p);
+  return [...set];
+}
+
+function runGitLsFiles(root: string, extraArgs: string[]): string[] | null {
   try {
     const out = execFileSync(
       "git",
-      [
-        "-C",
-        root,
-        "ls-files",
-        "--cached",
-        "--others",
-        "--exclude-standard",
-        "-z",
-      ],
+      ["-C", root, "ls-files", ...extraArgs, "-z"],
       { encoding: "buffer", maxBuffer: 100 * 1024 * 1024 },
     );
     return out
@@ -245,36 +340,56 @@ function tryGitLsFiles(root: string): string[] | null {
 function filterGitListing(
   args: ListFilesArgs & { fromGit: string[] },
 ): ListFilesResult {
-  const paths: string[] = [];
   const dirs = new Set<string>();
-  let truncatedFile = false;
-  let truncatedDepth = false;
+  const pass1: string[] = [];
+  const pass2: string[] = [];
+  let pass1Hit = false;
+  let pass2Hit = false;
+
+  // Single sweep — partition each path into pass1 (high-signal) or pass2.
   for (const rel of args.fromGit) {
     const segs = rel.split("/");
     if (segs.some((s) => DEFAULT_OFF_LIMITS_DIRS.has(s))) continue;
-    if (segs.length - 1 > args.depthCap) {
-      truncatedDepth = true;
-      continue;
-    }
-    paths.push(rel);
-    for (let i = 1; i <= segs.length - 1; i++) {
-      dirs.add(segs.slice(0, i).join("/"));
-    }
-    if (paths.length >= args.fileCap) {
-      truncatedFile = true;
-      break;
+    if (isHighSignalPath(rel)) {
+      if (pass1.length >= args.pass1Cap) {
+        pass1Hit = true;
+        continue;
+      }
+      pass1.push(rel);
+      addAncestors(dirs, rel);
+    } else {
+      if (segs.length - 1 > args.pass2DepthCap) continue;
+      if (pass2.length >= args.pass2Cap) {
+        pass2Hit = true;
+        continue;
+      }
+      pass2.push(rel);
+      addAncestors(dirs, rel);
     }
   }
-  return { paths, dirs, truncatedFile, truncatedDepth, usedGit: true };
+
+  const { combined, totalHit } = applyTotalCap(pass1, pass2, args.fileCap);
+  return {
+    paths: combined,
+    dirs,
+    truncatedFile: pass1Hit || pass2Hit || totalHit,
+    truncatedDepth: false,
+    usedGit: true,
+  };
 }
 
 function walkFilesystem(args: ListFilesArgs): ListFilesResult {
-  const paths: string[] = [];
   const dirs = new Set<string>();
-  let truncatedFile = false;
+  const pass1: string[] = [];
+  const pass2: string[] = [];
+  let pass1Hit = false;
+  let pass2Hit = false;
   let truncatedDepth = false;
-  const stack: { abs: string; rel: string; depth: number }[] = [
-    { abs: args.root, rel: "", depth: 0 },
+  // Stack frame carries `underHighSignal` so descendants of any high-signal
+  // dir inherit Pass-1 classification AND skip the Pass-2 depth cap.
+  type Frame = { abs: string; rel: string; depth: number; underHigh: boolean };
+  const stack: Frame[] = [
+    { abs: args.root, rel: "", depth: 0, underHigh: false },
   ];
   while (stack.length > 0) {
     const cur = stack.pop();
@@ -296,22 +411,65 @@ function walkFilesystem(args: ListFilesArgs): ListFilesResult {
         continue;
       }
       if (s.isDirectory()) {
-        if (cur.depth + 1 > args.depthCap) {
+        const childUnderHigh = cur.underHigh || HIGH_SIGNAL_DIRS.has(name);
+        // Pass-2 depth cap: only enforced for non-high-signal subtrees.
+        if (!childUnderHigh && cur.depth + 1 > args.pass2DepthCap) {
+          truncatedDepth = true;
+          continue;
+        }
+        // Defensive belt: hard cap depth even under high-signal subtrees so
+        // a runaway symlink loop or pathological tree can't OOM us.
+        if (cur.depth + 1 > DEFAULT_DEPTH_CAP * 4) {
           truncatedDepth = true;
           continue;
         }
         dirs.add(rel);
-        stack.push({ abs, rel, depth: cur.depth + 1 });
+        stack.push({
+          abs,
+          rel,
+          depth: cur.depth + 1,
+          underHigh: childUnderHigh,
+        });
       } else if (s.isFile()) {
-        paths.push(rel);
-        if (paths.length >= args.fileCap) {
-          truncatedFile = true;
-          return { paths, dirs, truncatedFile, truncatedDepth, usedGit: false };
+        if (cur.underHigh) {
+          if (pass1.length >= args.pass1Cap) {
+            pass1Hit = true;
+            continue;
+          }
+          pass1.push(rel);
+        } else {
+          if (pass2.length >= args.pass2Cap) {
+            pass2Hit = true;
+            continue;
+          }
+          pass2.push(rel);
         }
       }
     }
   }
-  return { paths, dirs, truncatedFile, truncatedDepth, usedGit: false };
+  const { combined, totalHit } = applyTotalCap(pass1, pass2, args.fileCap);
+  return {
+    paths: combined,
+    dirs,
+    truncatedFile: pass1Hit || pass2Hit || totalHit,
+    truncatedDepth,
+    usedGit: false,
+  };
+}
+
+function applyTotalCap(
+  pass1: string[],
+  pass2: string[],
+  totalCap: number,
+): { combined: string[]; totalHit: boolean } {
+  const combined = [...pass1, ...pass2];
+  if (combined.length <= totalCap) return { combined, totalHit: false };
+  // Drop Pass 2 first.
+  const room = Math.max(0, totalCap - pass1.length);
+  return {
+    combined: pass1.slice(0, totalCap).concat(pass2.slice(0, room)),
+    totalHit: true,
+  };
 }
 
 interface SummarizeArgs {

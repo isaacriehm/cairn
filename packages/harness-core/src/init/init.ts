@@ -63,7 +63,7 @@ import {
   c as visualC,
   discoveryRow,
   installInitCancelHandlers,
-  withSpinner,
+  startSpinner,
 } from "./visual.js";
 import {
   runMapper,
@@ -88,7 +88,7 @@ import {
   runHarnessSetupScript,
 } from "./setup-runners.js";
 import type { DetectionResult } from "./types.js";
-import { buildRepoSummary } from "./walker.js";
+import { buildRepoSummary, type RepoSummary } from "./walker.js";
 import { updateWorkflowSlugBlock } from "./workflow-block.js";
 
 const log = logger("init");
@@ -280,7 +280,18 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     args.slugOverride !== undefined
       ? normalizeProjectName(args.slugOverride)
       : detection.project_slug;
-  printDiscovery(detection, decidedSlug, warnings);
+  // Walk repo here so the scan row appears in the Phase-1 discovery output.
+  // The same summary feeds the mapper later — no re-walk.
+  const repoSummary = buildRepoSummary({ repoRoot });
+  if (repoSummary.truncated_at_file_cap) {
+    warnings.push(
+      "repo walk truncated at file cap — pilot scope will be conservative",
+    );
+  }
+  if (repoSummary.truncated_at_depth_cap) {
+    warnings.push("repo walk truncated at depth cap");
+  }
+  printDiscovery(detection, decidedSlug, warnings, repoSummary);
 
   // ── Dialog 1 (legacy proceed?) — only fired in auto mode for smoke compat.
   // Interactive runs skip the explicit confirm per INIT_SPEC.md §3 (single
@@ -322,9 +333,10 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   // ── Init mapper (Tier 2 / Sonnet) — proposes pilot_module + project_globs.
   // Without this, project_globs.{route_handler,dto,generator_source,high_stakes}
   // sit empty and Layer-D sensors never fire on real diffs (rework brief §3.1).
-  const mapperOutput = await maybeRunMapper({
+  const mapperRunResult = await maybeRunMapper({
     repoRoot,
     detection,
+    repoSummary,
     mode,
     skipMapper: args.skipMapper === true,
     ...(args.mockMapperOutput !== undefined
@@ -333,6 +345,10 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     envClaudeAuth: envState.claude_auth,
     warnings,
   });
+  const mapperOutput: MapperOutput | null =
+    mapperRunResult === null ? null : mapperRunResult.output;
+  const mapperFallbackSlugs: string[] =
+    mapperRunResult === null ? [] : mapperRunResult.fallbackSlugs;
 
   // ── Step 2: seed templates ─────────────────────────────────────────
   header("Seeding .harness/ + .archive/");
@@ -535,6 +551,10 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     brandSetup,
     daemonAutostart,
     submodules: submoduleSummary,
+    scanTruncated:
+      repoSummary.truncated_at_file_cap ||
+      repoSummary.truncated_at_depth_cap,
+    mapperFallbackSlugs,
     logFilePath,
     warnings,
   });
@@ -647,6 +667,7 @@ function buildProjectOverlay(args: {
 interface MaybeRunMapperArgs {
   repoRoot: string;
   detection: DetectionResult;
+  repoSummary: RepoSummary;
   mode: PromptMode;
   skipMapper: boolean;
   mockMapperOutput?: MapperOutput;
@@ -654,10 +675,18 @@ interface MaybeRunMapperArgs {
   warnings: string[];
 }
 
-async function maybeRunMapper(args: MaybeRunMapperArgs): Promise<MapperOutput | null> {
+interface MaybeRunMapperResult {
+  output: MapperOutput;
+  /** Module slugs whose Sonnet call failed and used the heuristic fallback. */
+  fallbackSlugs: string[];
+}
+
+async function maybeRunMapper(
+  args: MaybeRunMapperArgs,
+): Promise<MaybeRunMapperResult | null> {
   if (args.mockMapperOutput !== undefined) {
     info("\n── Init mapper — using injected mockMapperOutput (smoke / scripted adoption)");
-    return args.mockMapperOutput;
+    return { output: args.mockMapperOutput, fallbackSlugs: [] };
   }
   if (args.skipMapper) {
     info("\n── Init mapper skipped (--skip-mapper); project_globs left empty");
@@ -680,29 +709,58 @@ async function maybeRunMapper(args: MaybeRunMapperArgs): Promise<MapperOutput | 
     return null;
   }
 
-  // Walk silently — file count is internal noise; spinner shows progress.
-  const summary = buildRepoSummary({ repoRoot: args.repoRoot });
-  if (summary.truncated_at_file_cap) {
-    args.warnings.push("repo walk truncated at file cap — pilot scope will be conservative");
-  }
-  if (summary.truncated_at_depth_cap) {
-    args.warnings.push("repo walk truncated at depth cap");
-  }
+  // Reuse the summary built during Phase-1 discovery — no second walk.
+  const summary = args.repoSummary;
 
   // Mapper dispatches automatically per INIT_SPEC §3 — no per-run cost prompt.
+  // The orchestrator handles parallel module calls + Haiku merge internally;
+  // legacy single-call path is its own fallback when every module call fails.
   let mapperResult: MapperResult;
+  const spinner = startSpinner("Analyzing codebase…");
+  let totalSlices = 0;
+  let completed = 0;
+  let failedModules = 0;
+  const t0 = Date.now();
   try {
-    mapperResult = await withSpinner(
-      "Analyzing codebase (this takes ~60s)…",
-      () => runMapper({ detection: args.detection, summary }),
-      {
-        successText: (_r, ms) =>
-          `Analysis complete (${(ms / 1000).toFixed(0)}s)`,
-        failText: (err) =>
-          `Analysis failed — ${err instanceof Error ? err.message : String(err)}`,
+    mapperResult = await runMapper({
+      detection: args.detection,
+      summary,
+      repoRoot: args.repoRoot,
+      onSlicesDetected: (slices) => {
+        totalSlices = slices.length;
+        spinner.update(
+          totalSlices === 1
+            ? `Analyzing codebase (1 module)…`
+            : `Analyzing codebase (${totalSlices} modules)…`,
+        );
       },
-    );
+      onModuleEnd: (slice, p) => {
+        completed++;
+        if (p.failed) failedModules++;
+        const mark = p.failed ? "✗" : "✓";
+        const dur = `${(p.durationMs / 1000).toFixed(0)}s`;
+        spinner.update(
+          `Analyzing codebase (${completed}/${totalSlices}) — ${mark} ${slice.moduleSlug} ${dur}`,
+        );
+      },
+    });
+    const ms = Date.now() - t0;
+    const seconds = `${(ms / 1000).toFixed(0)}s`;
+    if (mapperResult.path === "legacy") {
+      spinner.succeed(`Analysis complete (${seconds} · legacy fallback)`);
+    } else if (failedModules > 0) {
+      spinner.succeed(
+        `Analysis complete (${seconds} · ${completed - failedModules}/${totalSlices} modules ok)`,
+      );
+    } else {
+      spinner.succeed(
+        `Analysis complete (${seconds} · ${completed} module${completed === 1 ? "" : "s"})`,
+      );
+    }
   } catch (err) {
+    spinner.fail(
+      `Analysis failed — ${err instanceof Error ? err.message : String(err)}`,
+    );
     args.warnings.push(`mapper dispatch failed: ${String(err)}`);
     return null;
   }
@@ -718,7 +776,16 @@ async function maybeRunMapper(args: MaybeRunMapperArgs): Promise<MapperOutput | 
   if (pilotChoice.length > 0 && pilotChoice !== mapperResult.output.pilot_module) {
     mapperResult.output.pilot_module = pilotChoice;
   }
-  return mapperResult.output;
+  const fallbackSlugs =
+    mapperResult.module_proposals === undefined
+      ? []
+      : mapperResult.module_proposals.filter((p) => p.failed).map((p) => p.moduleSlug);
+  if (fallbackSlugs.length > 0) {
+    args.warnings.push(
+      `mapper fallback used for: ${fallbackSlugs.join(", ")} — rerun \`harness scope rebuild\` for full classification`,
+    );
+  }
+  return { output: mapperResult.output, fallbackSlugs };
 }
 
 function printMapperProposal(
@@ -949,6 +1016,10 @@ interface CompletionSummaryArgs {
   brandSetup: { answered: number; updated_files: string[] } | null;
   daemonAutostart: DaemonAutostartResult | null;
   submodules: SubmoduleSummary | null;
+  /** True when the Phase-1 walker hit a file or depth cap. */
+  scanTruncated: boolean;
+  /** Module slugs that used the heuristic fallback path; empty when none. */
+  mapperFallbackSlugs: string[];
   logFilePath: string | null;
   warnings: string[];
 }
@@ -956,7 +1027,11 @@ interface CompletionSummaryArgs {
 function printCompletionSummary(args: CompletionSummaryArgs): void {
   const groundCount = countGroundFiles(args.repoRoot);
   const sensorCount = countSensorEntries(args.repoRoot);
-  const scopeReport = describeScopeIndex(args.repoRoot, args.submodules);
+  const scopeReport = describeScopeIndex(
+    args.repoRoot,
+    args.submodules,
+    args.scanTruncated,
+  );
   const brandReport = describeBrandStatus(args.repoRoot);
   const daemonReport = describeDaemon(args.daemonAutostart);
   const hookReport = describeHooks(args.repoRoot);
@@ -969,6 +1044,16 @@ function printCompletionSummary(args: CompletionSummaryArgs): void {
   info(`  MCP server        ${mcpReport}`);
   info(`  Hooks             ${hookReport}`);
   info(`  Sensors           ${sensorCount} active`);
+  if (args.mapperFallbackSlugs.length > 0) {
+    const head = args.mapperFallbackSlugs.slice(0, 3).join(", ");
+    const more =
+      args.mapperFallbackSlugs.length > 3
+        ? ` +${args.mapperFallbackSlugs.length - 3} more`
+        : "";
+    info(
+      `                    ${head}${more} used fallback — rerun harness scope rebuild`,
+    );
+  }
   info(`  Brand             ${brandReport}`);
   info(`  Scope index       ${scopeReport.line}`);
   if (scopeReport.followUp !== null) {
@@ -1047,15 +1132,15 @@ interface ScopeReport {
 function describeScopeIndex(
   repoRoot: string,
   submodules: SubmoduleSummary | null,
+  scanTruncated: boolean,
 ): ScopeReport {
   const path = join(repoRoot, ".harness", "ground", "scope-index.yaml");
   const submoduleNoteJustInitialized =
     submodules !== null &&
     submodules.initialized &&
     submodules.success;
-  const partialFollowUp = submoduleNoteJustInitialized
-    ? "Run harness scope rebuild for full classification"
-    : null;
+  const truncationFollowUp =
+    "Run harness scope rebuild for full classification";
 
   if (!existsSync(path)) {
     return {
@@ -1080,6 +1165,12 @@ function describeScopeIndex(
     }
     const count = Object.keys(filesRaw as Record<string, unknown>).length;
     if (count === 0) {
+      if (scanTruncated) {
+        return {
+          line: "empty — analysis was truncated during init",
+          followUp: truncationFollowUp,
+        };
+      }
       return {
         line: submoduleNoteJustInitialized
           ? "empty — submodules now initialized, run harness scope rebuild"
@@ -1087,10 +1178,16 @@ function describeScopeIndex(
         followUp: null,
       };
     }
+    if (scanTruncated) {
+      return {
+        line: "partial — analysis was truncated during init",
+        followUp: truncationFollowUp,
+      };
+    }
     if (submoduleNoteJustInitialized) {
       return {
         line: `partial — ${count} file${count === 1 ? "" : "s"} classified (submodules now initialized)`,
-        followUp: partialFollowUp,
+        followUp: truncationFollowUp,
       };
     }
     return {
@@ -1199,6 +1296,7 @@ function printDiscovery(
   d: DetectionResult,
   decidedSlug: string,
   warnings: string[],
+  summary: RepoSummary,
 ): void {
   process.stdout.write("\n");
   process.stdout.write(`  ${visualC.bold("Scanning")}${visualC.dim("…")}\n`);
@@ -1232,6 +1330,39 @@ function printDiscovery(
         ? visualC.dim(stackKinds.join(", "))
         : visualC.dim("unknown"),
   });
+
+  // codebase scan — surfaces walker truncation so a degraded mapper input
+  // can be acted on (run `harness scope rebuild` after init).
+  if (summary.truncated_at_file_cap) {
+    discoveryRow({
+      status: "warn",
+      label: "codebase scan",
+      value: visualC.dim("incomplete — file cap reached"),
+    });
+    process.stdout.write(
+      `       ${visualC.dim("some source trees may be missing from analysis")}\n`,
+    );
+    process.stdout.write(
+      `       ${visualC.dim("run: harness scope rebuild  after init for full classification")}\n`,
+    );
+  } else if (summary.truncated_at_depth_cap) {
+    discoveryRow({
+      status: "warn",
+      label: "codebase scan",
+      value: visualC.dim("incomplete — depth cap reached"),
+    });
+    process.stdout.write(
+      `       ${visualC.dim("run: harness scope rebuild  after init for full classification")}\n`,
+    );
+  } else {
+    discoveryRow({
+      status: "ok",
+      label: "codebase scan",
+      value: visualC.dim(
+        `${summary.total_files} files, ${summary.total_dirs} dirs`,
+      ),
+    });
+  }
 
   // claude code
   const e = d.environment;

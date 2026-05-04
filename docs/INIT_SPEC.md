@@ -96,43 +96,95 @@ While the terminal is printing Phase 1 output, the walker is building a gitignor
 - Cap at ~20,000 tokens
 - Prioritize: existing `docs/`, `AGENTS.md`, schema files, route/controller files, `package.json` / `pyproject.toml`
 
-### Phase 3: LLM mapper (Tier 2, one call — runs while Phase 1 is printing)
+### Phase 3: LLM mapper (chunked parallel — runs while Phase 1 is printing)
 
-Single Tier-2 call fires as soon as the repo summary is ready, which is typically before Phase 1 finishes printing. By the time the operator reads the discovery output, the mapper is already done.
+**Why not one call:** A single mapper call receiving a token-bounded flat summary of a large monorepo produces degraded proposals. The summary has to compress everything into ~20k tokens, which loses module-level detail. The mapper makes broad guesses rather than targeted sensor proposals.
 
-Output (structured JSON):
+**The actual approach: parallel per-module calls + cheap merge.**
 
+Phase 2 identifies top-level modules (packages, apps, submodules). Phase 3 dispatches one Sonnet call *per module* in parallel, each receiving a focused deep view of its slice. A final cheap Haiku merge call synthesizes the results.
+
+```
+mypalcrm/
+  core/      → Sonnet A  →  ModuleProposal
+  platform/  → Sonnet B  →  ModuleProposal
+  phone-ai/  → Sonnet C  →  ModuleProposal
+  site/      → Sonnet D  →  ModuleProposal
+                  ↓
+          Haiku merge  →  MapperProposal
+```
+
+Wall-clock time is similar to one sequential call since module calls are parallel. Signal quality per module is dramatically better — each call sees its full package.json, representative service/controller/schema files, and local docs without lossy compression.
+
+**Per-module call input (~8k tokens each):**
+- Full directory tree for the module (paths only, no content)
+- `package.json` / `pyproject.toml` full contents
+- Up to 5 representative files (heuristic: most-imported file, index.ts/main.ts, largest controller, schema root)
+- Module-level README or docs if present
+- Existing decisions/invariants in scope of this module (from ledger, if any)
+
+**Per-module call output (`ModuleProposal`):**
+```ts
+interface ModuleProposal {
+  moduleName: string;
+  moduleSlug: string;
+  modulePath: string;
+  domain: string;                    // one-line description
+  sensorProposals: SensorProposal[];
+  highStakesGlobs: string[];
+  offLimitsGlobs: string[];
+  pilotModuleCandidate: boolean;     // true if highest change-velocity guess
+  confidence: number;
+}
+```
+
+**Merge call input:** all ModuleProposals + top-level package.json / pnpm-workspace.yaml. Haiku merges them into the final MapperProposal, deduplicates overlapping sensor proposals, picks the pilot module, and sets top-level globs.
+
+**Final output (`MapperProposal`):**
 ```ts
 interface MapperProposal {
   projectSlug: string;
   projectName: string;
+  domain: string;
   pilotModule: string;
+  modules: ModuleProposal[];
   sensorProposals: SensorProposal[];
   generatorProposals: GeneratorProposal[];
   offLimitsGlobs: string[];
   highStakesGlobs: string[];
   moduleGlobs: string[];
   canonicalMapSeed: TopicEntry[];
-  scopeIndex: ScopeIndexProposal;          // forward map: file → {decisions[], invariants[]}
+  scopeIndex: ScopeIndexProposal;
   agentsMdAppend: string | null;
-  decDraftProposals: DecDraftProposal[];   // see below
-  confidence: number;            // < 0.6 → show note but still proceed with defaults
+  decDraftProposals: DecDraftProposal[];
+  confidence: number;
 }
 
 interface ScopeIndexProposal {
   files: Record<string, {
-    decisions: string[];          // DEC-NNNN ids
-    invariants: string[];         // V-NNNN ids
-    unscoped?: boolean;           // explicit "no rules apply" — suppresses GC scope-coverage warnings
+    decisions: string[];
+    invariants: string[];
+    unscoped?: boolean;
   }>;
 }
 ```
 
-If mapper fails: fall back to defaults, print a note, continue.
+**Progress display** while calls run in parallel:
+```
+  ↻  Analyzing codebase…
+       core/        ✓  (8s)
+       platform/    ✓  (12s)
+       phone-ai/    ↻  analyzing…
+       site/        ↻  analyzing…
+```
 
-**Scope index seeding.** While reading the repo summary, the mapper also produces a forward-mapping `scopeIndex` from every relevant file path to the decisions and invariants that apply to it. This is semantic classification (the mapper LLM judges relevance from decision titles + bodies + the file's purpose), not glob evaluation. Operators don't see this directly during init — it's written as part of Phase 5 outputs (see §3.5.7) and consumed by PostToolUse hooks + GC at runtime per `DOCS_SPEC.md` §3.8.
+Each line updates in-place as its call completes. Operator sees real progress instead of a single hanging spinner.
 
-When `--skip-mapper`, mapper failure, or `confidence < 0.4`: an empty `{ generated, files: {} }` skeleton is written so PostToolUse hooks can find the file and treat lookups as "no scope known." Operator can re-run `harness scope rebuild` later to populate.
+**Scope index seeding.** Each module call classifies its files into the scopeIndex — mapping file path → `{decisions[], invariants[]}`. The merge call assembles per-module scope indexes into the final ScopeIndexProposal. Operators don't see this directly during init — written as part of Phase 5 outputs and consumed by PostToolUse hooks + GC at runtime per `DOCS_SPEC.md` §3.8.
+
+**Fallback:** If a module call fails, skip that module, note it in the proposal with `confidence: 0`. If all module calls fail, fall back to the legacy single-call path with the flat 20k-token summary. If merge call fails, use ModuleProposals directly without synthesis.
+
+When `--skip-mapper`, all calls fail, or final `confidence < 0.4`: an empty `{ generated, files: {} }` skeleton is written. Operator can re-run `harness scope rebuild` later to populate.
 
 #### Comment extraction → DEC drafts
 
