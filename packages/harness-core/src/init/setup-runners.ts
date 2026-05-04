@@ -131,10 +131,6 @@ async function downloadWithProgress(opts: DownloadOpts): Promise<RunResult> {
   }
 }
 
-export async function pullOllamaModel(model: string): Promise<RunResult> {
-  return runInherit("ollama", ["pull", model]);
-}
-
 export async function runHarnessSetupScript(
   script:
     | "setup-whisper"
@@ -158,20 +154,6 @@ export async function runHarnessSetupScript(
     ["exec", "tsx", scriptPath, ...extraArgs],
     PKG_ROOT,
   );
-}
-
-export async function offerInstallOllama(): Promise<RunResult> {
-  // Best-effort detect of brew so we don't spawn it on systems that
-  // don't have it.
-  const brewCheck = await runInherit("which", ["brew"]);
-  if (!brewCheck.ok) {
-    return {
-      ok: false,
-      exit_code: null,
-      note: "brew not on PATH — install Ollama manually from ollama.com",
-    };
-  }
-  return runInherit("brew", ["install", "ollama"]);
 }
 
 function runInherit(

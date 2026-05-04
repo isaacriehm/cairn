@@ -1,5 +1,5 @@
+import { ClaudeError, runClaude } from "../claude/index.js";
 import { logger } from "../logger.js";
-import { ollamaGenerate, ollamaIsAvailable } from "./ollama.js";
 import type {
   ClassificationResult,
   Tier0ClassifyOptions,
@@ -8,9 +8,6 @@ import type {
 } from "./types.js";
 
 const log = logger("tier0.classify");
-
-export const DEFAULT_OLLAMA_HOST = "http://localhost:11434";
-export const DEFAULT_OLLAMA_MODEL = "llama3.2:3b";
 
 const VALID_INTENTS: readonly Tier0Intent[] = [
   "code_task",
@@ -35,6 +32,27 @@ const SYSTEM_PROMPT = [
   "- unknown: none of the above match.",
   "Be honest with confidence; below 0.7 means it is genuinely ambiguous.",
 ].join("\n");
+
+const INTENT_SCHEMA = {
+  type: "object",
+  required: ["intent", "confidence"],
+  additionalProperties: false,
+  properties: {
+    intent: {
+      type: "string",
+      enum: [
+        "code_task",
+        "review",
+        "direction",
+        "question",
+        "halt",
+        "status",
+        "unknown",
+      ],
+    },
+    confidence: { type: "number", minimum: 0, maximum: 1 },
+  },
+} as const;
 
 function regexFallbackDefault(text: string): {
   intent: Tier0Intent;
@@ -69,34 +87,30 @@ function regexFallbackDefault(text: string): {
 
 export const REGEX_FALLBACK: Tier0RegexFallback = regexFallbackDefault;
 
+/**
+ * Classify a free-text developer message into a tier0 intent. Calls the
+ * Claude binary (Haiku tier) for nuanced reasoning; falls back to a regex
+ * matcher when the binary is unreachable so smoke tests + scripted callers
+ * stay green. The regex fallback is escape-only — production flows assume
+ * the Claude binary is present (per docs/PLUGIN_ARCHITECTURE.md §16).
+ */
 export async function classifyTier0(
   text: string,
   opts: Tier0ClassifyOptions = {},
 ): Promise<ClassificationResult> {
-  const host = opts.host ?? process.env["OLLAMA_HOST"] ?? DEFAULT_OLLAMA_HOST;
-  const model = opts.model ?? DEFAULT_OLLAMA_MODEL;
   const fallback = opts.regexFallback ?? REGEX_FALLBACK;
-  const timeoutMs = opts.timeoutMs ?? 5_000;
-
-  if (!(await ollamaIsAvailable(host))) {
-    log.debug({ host }, "ollama unreachable; using regex fallback");
-    const r = fallback(text);
-    return { intent: r.intent, confidence: r.confidence, source: "regex_fallback" };
-  }
+  const timeoutMs = opts.timeoutMs ?? 30_000;
 
   try {
-    const res = await ollamaGenerate({
-      host,
-      model,
-      prompt: `Message:\n${text}\n\nReturn the JSON now.`,
+    const res = await runClaude({
+      tier: "haiku",
       system: SYSTEM_PROMPT,
-      format: "json",
+      prompt: `Message:\n${text}\n\nReturn the JSON now.`,
+      jsonSchema: INTENT_SCHEMA,
       timeoutMs,
     });
-    const parsed = JSON.parse(res.response) as {
-      intent?: string;
-      confidence?: number;
-    };
+    const parsed = (res.parsed ??
+      JSON.parse(res.text)) as { intent?: string; confidence?: number };
     const intent =
       typeof parsed.intent === "string" &&
       (VALID_INTENTS as readonly string[]).includes(parsed.intent)
@@ -106,10 +120,12 @@ export async function classifyTier0(
       typeof parsed.confidence === "number" && Number.isFinite(parsed.confidence)
         ? Math.max(0, Math.min(1, parsed.confidence))
         : 0;
-    return { intent, confidence, source: "ollama" };
+    return { intent, confidence, source: "claude" };
   } catch (err) {
-    log.warn({ err: String(err) }, "ollama classify failed; falling back to regex");
+    const reason =
+      err instanceof ClaudeError ? err.kind : err instanceof Error ? err.message : String(err);
+    log.warn({ reason }, "tier0 claude classify failed; falling back to regex");
     const r = fallback(text);
-    return { intent: r.intent, confidence: r.confidence, source: "regex_fallback" };
+    return { intent: r.intent, confidence: r.confidence, source: "fallback" };
   }
 }

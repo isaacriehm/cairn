@@ -65,8 +65,5 @@ export interface DetectionResult {
   environment: {
     claude_auth: boolean;
     whisper_model: boolean;
-    ollama_running: boolean;
-    discord_token: boolean;
-    discord_guild: boolean;
   };
 }

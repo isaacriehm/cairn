@@ -92,8 +92,6 @@ import {
 import { seedHarnessLayout } from "./seed.js";
 import {
   downloadWhisperModel,
-  offerInstallOllama,
-  pullOllamaModel,
   runHarnessSetupScript,
 } from "./setup-runners.js";
 import type { DetectionResult } from "./types.js";
@@ -1410,17 +1408,6 @@ function printDiscovery(
   });
   if (!e.claude_auth) warnings.push("claude CLI not available");
 
-  // ollama
-  discoveryRow({
-    status: e.ollama_running ? "ok" : "warn",
-    label: "ollama",
-    value: e.ollama_running
-      ? visualC.dim("reachable")
-      : visualC.dim("not reachable — Tier-0 falls back to regex"),
-  });
-  if (!e.ollama_running)
-    warnings.push("ollama not reachable on $OLLAMA_HOST — Tier-0 falls back to regex");
-
   // whisper
   discoveryRow({
     status: e.whisper_model ? "ok" : "warn",
@@ -1433,18 +1420,6 @@ function printDiscovery(
     warnings.push(
       "whisper model not at ~/.local/harness/models/ggml-large-v3-turbo-q5_0.bin — voice ingress disabled",
     );
-
-  // discord — combined token + guild row (silent skip per spec)
-  const discordOk = e.discord_token && e.discord_guild;
-  discoveryRow({
-    status: discordOk ? "ok" : "err",
-    label: "Discord",
-    value: discordOk
-      ? visualC.dim("configured")
-      : visualC.dim("token not configured"),
-  });
-  if (!e.discord_token) warnings.push("DISCORD_BOT_TOKEN not set in env");
-  if (!e.discord_guild) warnings.push("DISCORD_GUILD_ID not set in env");
 }
 
 interface PhaseSixArgs {

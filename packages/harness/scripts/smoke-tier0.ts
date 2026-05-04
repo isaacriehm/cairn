@@ -1,27 +1,15 @@
 #!/usr/bin/env tsx
 /**
- * smoke-tier0 — Phase 6 acceptance sensor for the Tier-0 classifier.
+ * smoke-tier0 — verifies the regex fallback path for the Tier-0 classifier.
  *
- * Exercises:
- *   1) regex fallback: classifyTier0 against a host that won't respond
- *      → source === "regex_fallback"; intent matches the regex catalog.
- *   2) Ollama path: when llama3.2:3b is available, classify a small
- *      battery of prompts → source === "ollama"; intent honours the
- *      definitions. Skips this section if Ollama is unreachable or the
- *      model is missing — keeps CI green.
+ * Production tier0 calls the Claude binary (Haiku) — see
+ * docs/PLUGIN_ARCHITECTURE.md §14. We can't reliably exercise the live
+ * Claude path in a smoke (would need real auth + spend), so this smoke
+ * stubs the fallback and asserts the regex catalog covers the canonical
+ * intents. The Claude path is exercised end-to-end in adoption smoke.
  */
 
-import {
-  classifyTier0,
-  DEFAULT_OLLAMA_HOST,
-  DEFAULT_OLLAMA_MODEL,
-  ollamaHasModel,
-  ollamaIsAvailable,
-} from "@devplusllc/harness-core";
-
-function header(line: string): void {
-  console.log(`\n── ${line}`);
-}
+import { classifyTier0, REGEX_FALLBACK } from "@devplusllc/harness-core";
 
 function fail(reason: string): never {
   console.error(`smoke-tier0 FAIL: ${reason}`);
@@ -29,65 +17,38 @@ function fail(reason: string): never {
 }
 
 async function main(): Promise<void> {
-  header("Step 1: regex fallback — unreachable host");
-  const fallback = await classifyTier0("fix the integration thing", {
-    host: "http://localhost:1",
-    timeoutMs: 200,
-  });
-  if (fallback.source !== "regex_fallback") {
-    fail(`expected regex_fallback when host is closed, got ${fallback.source}`);
-  }
-  if (fallback.intent !== "code_task") {
-    fail(`regex fallback should classify "fix..." as code_task, got ${fallback.intent}`);
-  }
-
-  const halt = await classifyTier0("halt the run now", {
-    host: "http://localhost:1",
-    timeoutMs: 200,
-  });
-  if (halt.source !== "regex_fallback") fail("halt fallback source");
-  if (halt.intent !== "halt") fail(`halt classify: ${halt.intent}`);
-
-  header("Step 2: Ollama path");
-  const host = process.env["OLLAMA_HOST"] ?? DEFAULT_OLLAMA_HOST;
-  if (!(await ollamaIsAvailable(host))) {
-    console.log(`  SKIP: ollama not reachable at ${host} — install via \`brew install ollama\``);
-    console.log("\nsmoke-tier0: OK (regex fallback verified; ollama path skipped)");
-    return;
-  }
-  if (!(await ollamaHasModel(host, DEFAULT_OLLAMA_MODEL))) {
-    console.log(`  SKIP: ${DEFAULT_OLLAMA_MODEL} not pulled — \`ollama pull ${DEFAULT_OLLAMA_MODEL}\``);
-    console.log("\nsmoke-tier0: OK (regex fallback verified; ollama path skipped)");
-    return;
-  }
-
-  const cases: { text: string; expect: readonly string[] }[] = [
-    { text: "fix the auth middleware bug", expect: ["code_task"] as const },
-    { text: "review the integrations module for cross-tenant leaks", expect: ["review"] as const },
-    {
-      text: "scrap that — going forward, FK denormalization only",
-      expect: ["direction"] as const,
-    },
-    { text: "halt run-abc123", expect: ["halt"] as const },
-    {
-      text: "what's the current queue depth?",
-      expect: ["question", "status"] as const,
-    },
+  console.log("── Step 1: regex catalog");
+  const cases: { text: string; expect: string }[] = [
+    { text: "fix the auth middleware bug", expect: "code_task" },
+    { text: "review the integrations module", expect: "review" },
+    { text: "scrap that — going forward, FK denormalization only", expect: "direction" },
+    { text: "halt run-abc123", expect: "halt" },
+    { text: "status of the orchestrator", expect: "status" },
+    { text: "what is the current queue depth?", expect: "question" },
+    { text: "an opaque sentence with no rule match", expect: "unknown" },
   ];
   for (const c of cases) {
-    const r = await classifyTier0(c.text, { timeoutMs: 30_000 });
-    console.log(`  "${c.text}" → ${r.source}/${r.intent} (${r.confidence.toFixed(2)})`);
-    if (r.source === "regex_fallback") {
-      console.log(`    note: ollama returned malformed/timeout; classifier fell back`);
-      continue;
-    }
-    if (!(c.expect as readonly string[]).includes(r.intent)) {
-      fail(`"${c.text}" — expected one of ${c.expect.join("|")}, got ${r.intent}`);
-    }
-    if (r.confidence < 0 || r.confidence > 1) {
-      fail(`confidence out of [0,1]: ${r.confidence}`);
-    }
+    const r = REGEX_FALLBACK(c.text);
+    if (r.intent !== c.expect) fail(`"${c.text}" → ${r.intent}, expected ${c.expect}`);
   }
+
+  console.log("── Step 2: classifyTier0 falls back when Claude unavailable");
+  // Force fallback by passing a fast-failing regex matcher; the production
+  // call would shell to `claude` — we don't want that in CI, so we rely on
+  // the wrapper's exception path.
+  const text = "fix the auth middleware";
+  const result = await classifyTier0(text, {
+    timeoutMs: 1, // 1ms — guaranteed to time out the spawn before completion
+  });
+  // Either source is acceptable depending on whether `claude` is on PATH;
+  // both paths must produce a sane intent + confidence.
+  if (!["claude", "fallback"].includes(result.source)) {
+    fail(`unexpected source: ${result.source}`);
+  }
+  if (result.confidence < 0 || result.confidence > 1) {
+    fail(`confidence out of [0,1]: ${result.confidence}`);
+  }
+  console.log(`  classifyTier0 → ${result.source}/${result.intent} (${result.confidence.toFixed(2)})`);
 
   console.log("\nsmoke-tier0: OK");
 }

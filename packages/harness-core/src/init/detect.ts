@@ -21,7 +21,6 @@ import type {
 } from "./types.js";
 
 const WHISPER_MODEL_PATH = `${process.env["HOME"] ?? ""}/.local/harness/models/ggml-large-v3-turbo-q5_0.bin`;
-const OLLAMA_HOST = process.env["OLLAMA_HOST"] ?? "http://localhost:11434";
 
 interface PackageJson {
   name?: string;
@@ -311,26 +310,10 @@ export function detectHookCapability(repoRoot: string): HookCapability {
   return "cli-only";
 }
 
-async function probeOllama(): Promise<boolean> {
-  try {
-    const res = await fetch(`${OLLAMA_HOST}/api/tags`, { method: "GET" });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
 export async function detectEnvironment(): Promise<DetectionResult["environment"]> {
   return {
     claude_auth: claudeIsAvailable(),
     whisper_model: existsSync(WHISPER_MODEL_PATH),
-    ollama_running: await probeOllama(),
-    discord_token:
-      typeof process.env["DISCORD_BOT_TOKEN"] === "string" &&
-      process.env["DISCORD_BOT_TOKEN"]!.length > 0,
-    discord_guild:
-      typeof process.env["DISCORD_GUILD_ID"] === "string" &&
-      process.env["DISCORD_GUILD_ID"]!.length > 0,
   };
 }
 
