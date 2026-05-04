@@ -155,6 +155,28 @@ required_glob_keys:
   - high_stakes_globs          # paths whose changes require Layer E + cross-tenant fixture
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Copy-safety configuration (write guardian + Layer D sensor)
+#
+# The write guardian (PostToolUse hook on Write/Edit) and the Layer D
+# copy-safety sensor both consume this block. Globs default to common frontend
+# file extensions; extend per-project as needed. allowlist holds verbatim
+# strings that match a pattern but are intentional (technical error codes,
+# product names, etc.).
+# ──────────────────────────────────────────────────────────────────────────────
+
+copy_safety:
+  enabled: true
+  globs:
+    - "src/**/*.tsx"
+    - "src/**/*.jsx"
+    - "src/**/*.vue"
+    - "src/**/*.svelte"
+    - "**/*.html"
+    - "src/**/i18n/**/*.json"
+    - "src/**/locales/**/*.json"
+  allowlist: []
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Disable list — sensors known to false-positive at >50% on a given project.
 # Default empty; populated per-project via /oops dialog (PRIMER §11 anti-pattern:
 # we DO NOT mock or stub sensor results to make them pass).

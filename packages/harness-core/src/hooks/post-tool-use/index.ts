@@ -1,8 +1,9 @@
 /**
  * PostToolUse hook handlers.
  *
- * Currently exposes the Read enricher (`runReadEnricher`) and its
- * helpers. Spec: docs/READ_ENRICHER_SPEC.md.
+ * Exposes the Read enricher (`runReadEnricher`), the Write guardian
+ * (`runWriteGuardian`), and their shared helpers.
+ * Spec: docs/READ_ENRICHER_SPEC.md.
  */
 
 export { runReadEnricher } from "./read-enricher.js";
@@ -15,3 +16,8 @@ export {
 export type { LedgerSnapshot, TaskLookupResult } from "./ledger-cache.js";
 export { buildLegend } from "./legend-builder.js";
 export type { ScopeIndexHint } from "./legend-builder.js";
+export { runWriteGuardian } from "./write-guardian.js";
+export { scanForCopyLeakage } from "./copy-scanner.js";
+export type { CopyIssue } from "./copy-scanner.js";
+export { readCopySafetyConfig } from "./allowlist-reader.js";
+export type { CopySafetyConfig } from "./allowlist-reader.js";

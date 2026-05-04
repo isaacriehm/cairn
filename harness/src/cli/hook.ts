@@ -8,6 +8,7 @@
  *
  *   harness hook session-start
  *   harness hook read-enrich    PostToolUse on Read — citation legend
+ *   harness hook write-guard    PostToolUse on Write/Edit — copy-safety + scope reminder
  *
  * Future events (locked direction, not yet implemented):
  *   harness hook user-prompt-submit
@@ -25,6 +26,7 @@ import {
   buildSessionStartContext,
   resolveRepoRoot,
   runReadEnricher,
+  runWriteGuardian,
 } from "@devplusllc/harness-core";
 
 const HARNESS_HOOK_VERSION = "0.0.0";
@@ -181,6 +183,7 @@ function usage(): never {
     "Usage: harness hook <event>\n" +
       "  session-start    SessionStart hook (default)\n" +
       "  read-enrich      PostToolUse on Read — citation legend enricher\n" +
+      "  write-guard      PostToolUse on Write/Edit — copy-safety + scope reminder\n" +
       "\n" +
       "Reads the Claude Code hook payload JSON on stdin, emits the\n" +
       "Shape-B response on stdout. Designed to be wired in\n" +
@@ -198,6 +201,9 @@ export async function hookCli(argv: string[]): Promise<void> {
       return;
     case "read-enrich":
       await runReadEnricher();
+      return;
+    case "write-guard":
+      await runWriteGuardian();
       return;
     default:
       console.error(`harness hook: unknown event "${sub}"`);
