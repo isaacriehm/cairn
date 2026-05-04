@@ -1,340 +1,309 @@
 ---
 type: resume-prompt
-status: rework-brief
+status: package-split-handoff
 audience: ai-only
-generated: 2026-05-03
-purpose: A fresh agent picking this up should NOT continue building phases. Read this brief, read the docs, then help the operator FIX what was built. The existing code passed its smokes but the integrated experience is broken: shallow init, opaque runs, un-steerable mid-flight, terrible UX. Stop adding. Start fixing.
+generated: 2026-05-04
+purpose: A fresh agent picking this up should NOT continue building runtime features. The mental model has been re-framed (Cairn = state + context layer; runtime + frontend are consumers). The packages skeleton is in place. Your job is to execute the file migration and verify, OR push back with a better plan if you spot a flaw.
 ---
 
-# Resume Prompt — Cairn Rework Brief
+# Resume Prompt — Cairn package split
 
-You're picking up an in-flight project that **shipped a lot but doesn't work as a system**. Phases 0–16.3 landed (commits in `git log --oneline`). Each smoke passed. The operator just ran the harness against their real project and called it a "MASSIVE FAIL across the entire board." This brief exists so you don't repeat the mistake of the prior session: chasing phase-completion smokes while the actual operator experience rots.
+You're picking up a project mid-refactor. Today's session diagnosed a per-Q dialog stall in the live Discord run, fixed it (commits below), and used the failure as the trigger for a bigger reframing: **Cairn is a state + context-loading layer for AI orchestration; the runtime + frontend adapters are consumers built on top, not part of its core**. The current `harness/` package conflates all three layers in a 2000-line orchestrator, which is what produced the brittle UX the operator's been hitting.
 
-Read this file end-to-end. Then read `docs/PRIMER.md`, `docs/INTEGRATION_PLAN.md` §16, and `docs/WORKFLOW_GUIDE.md`. Then confirm to the operator what you've loaded and propose the fix order.
+The conceptual split is locked: `docs/ARCHITECTURE.md` (new file). Four packages: `harness-core`, `harness-runtime`, `harness-frontend-discord`, `harness-frontend-stub`. Skeleton package.json + tsconfig + src/index.ts are all in place under `packages/`. They build clean. **What's left: move ~30 source files from `harness/src/` into the right package, rewrite imports, verify smokes still pass, and update the umbrella `harness/` to depend on the four sub-packages.**
 
-## 1. What's actually broken (operator's verdict)
+Read this brief end-to-end. Then read `docs/ARCHITECTURE.md` and `docs/PRIMER.md`. Then either execute the migration per §3 below, or come back with a sharper plan if anything in this brief is wrong.
 
-Quoted directly from the operator after running the harness against `sample-project`:
+## 0. What's true at handoff
 
-> "I'd say this is a MASSIVE FAIL across the entire board, the UX is terrible, the functionality is terrible, the user is left in the dark and cant steer, so many problem. The whole init thing isnt doing the pre-setup it should with the data mining, the docs/ laid out better than it was coded."
+```
+git log --oneline -8
 
-The four named failures, decomposed:
+746c54a fix: per-Q walk stall + UX cleanups (§3.4)         ← today
+2515501 feat: steering primitives + run visibility (§3.2 + §3.3)  ← today
+026f352 feat: init mapper (§3.1)                            ← today
+9dd0557 docs: replace RESUME_PROMPT with rework brief      ← previous session
+…
+```
 
-### 1.1 Init is shallow
+```
+Working tree status:
+  modified:  AGENTS.md, docs/PRIMER.md, pnpm-workspace.yaml, tsconfig.json
+  new:       docs/ARCHITECTURE.md
+  new:       packages/harness-core/{package.json, tsconfig.json, src/index.ts}
+  new:       packages/harness-runtime/{package.json, tsconfig.json, src/index.ts}
+  new:       packages/harness-frontend-discord/{package.json, tsconfig.json, src/index.ts}
+  new:       packages/harness-frontend-stub/{package.json, tsconfig.json, src/index.ts}
+```
 
-The init wizard at `harness/src/init/` does **stack-signature detection and sensor proposal**, then seeds templates and sets up a mirror. Per `docs/INTEGRATION_PLAN.md` §16.2 line 471, init was supposed to also dispatch a **Tier-2 LLM mapper agent** that:
+The package skeletons build (`pnpm -r build` is green). They're empty stubs (`export const __SKELETON__ = "..."`). The umbrella `harness/` package still contains all the actual code and still builds + typechecks + passes its smokes.
 
-- Walks the repo using profile-aware canonical-path rules
-- Inventories canonical paths
-- Proposes the pilot module
-- Proposes the project-specific sensor list (beyond the generic stack-detected ones)
-- Proposes off-limits paths (beyond the generic node_modules/dist defaults)
-- Proposes the initial `WORKFLOW.md` body's `<project_name>:` extension block (route_handler_globs, dto_globs, generator_source_globs, high_stakes_globs)
+sample-project test data has been wiped:
+- `~/Documents/.../sample-project/.harness/` deleted (working tree clean)
+- `~/.local/harness/repos/sample-project/` deleted (mirror gone)
+- `~/.local/harness/state/sample-project/` deleted (state gone)
+- `~/.local/harness/state/smoke_*` — smoke leftovers, still present (cleanup hygiene; not blocking)
 
-None of this exists. The current init writes empty arrays for `project_globs.*` in `.harness/config.yaml` and skips the mapper entirely. So the orchestrator runs against a project it has never read.
+## 1. The locked layered model
 
-The `init_mapper: 2` slot in `templates/.harness/config/workflow.md` was meant to hold this dispatch; it's referenced but never invoked.
+Read `docs/ARCHITECTURE.md`. The TL;DR:
 
-### 1.2 Runs are opaque
+- **harness-core** = state + context (ground writers, MCP, init mapper, GC, decision-capture, tightener, claude wrapper, tier0, stub-pattern catalog, decision-assertion evaluator, provenance).
+- **harness-runtime** = orchestration consumer (orchestrator, FIFO, mirror, runner, sensors, reviewer, UAT, backprop, watchdog, slash handlers).
+- **harness-frontend-discord** = Discord adapter (bot, voice, channels, slash, embed builder).
+- **harness-frontend-stub** = test adapter for smokes.
+- **harness** (umbrella) = CLI bin (`harness init/run/watch/task/install`), depends on all four. Smokes stay here for now.
 
-The Tier-0 activity feed (`harness/src/orchestrator/activity-summarizer.ts`) was supposed to surface "what the agent is doing right now" via Ollama llama3.2:3b. It does fire on an 8s cadence but:
+The boundary is the `FrontendAdapter` interface (lives in harness-core). Runtime calls `adapter.requestDialog(spec)` — knows nothing about Discord vs CLI vs Notion.
 
-- The activity field renders inside an embed; Discord caches embeds aggressively and the visual update is sluggish
-- The first summary takes 5s + ~200ms Ollama latency, so for short tool calls the operator never sees that step
-- Ollama failure silently falls back to "Working…" — there's no second-source visibility (e.g. recent file edits surfaced from the events log directly)
-- The events.jsonl file has FAR more structured data than the summary captures (file paths edited, bash commands run, search patterns) — none of it surfaces structurally; only the LLM summary
+## 2. Confirmed L01-L50 (still hold)
 
-The operator is asked to TRUST the orchestrator for 60-300s with at most a sentence-per-8s of vague "Reading X" updates.
+The architectural locks from prior sessions all hold. The split changes WHERE code lives, not WHAT it does. In particular:
 
-### 1.3 Operator can't steer mid-run
+- L02 — pnpm monorepo. The split makes this real, not aspirational.
+- L08 — frontend adapter pluggability. Now actually plugged.
+- L36 — generic harness pkg + per-project `.harness/config.yaml`. Becomes "harness-core is the generic pkg; per-project config is unchanged."
+- L42 — Claude Code coding-plan quota is the budget metric. Cross-package, unchanged.
+- L50 — project-agnostic harness pkg code. Now distributed across four packages, all still agnostic.
 
-Per `docs/WORKFLOW_GUIDE.md` §3, the documented slash surface includes `/halt`, `/status`, `/oops`, `/queue`, `/eval`, `/resume`, `/archive`. Of these, NONE are wired except the existing `/task` and `/direction` from earlier phases. The operator can:
+The L01-L50 list itself is in the prior RESUME_PROMPT (commit 9dd0557). Treat as binding.
 
-- Submit a task ✓
-- Walk per-Q tightener dialog ✓
-- Approve UAT bundle ✓
-- Click ship-anyway / cancel on tightener fail ✓
+## 3. The migration — file moves, in execution order
 
-The operator CANNOT:
+**Pre-flight:** all moves use `git mv` so blame is preserved. Don't `cp`+`rm` or rewrite history.
 
-- Pause an active run
-- Cancel an active run
-- Check what's currently running without scrolling Discord
-- Inspect the queue
-- Re-prioritize tasks
-- Roll back a recent commit
-- Inject a hint or correction mid-run
+### 3.1 Move into `harness-core`
 
-`harness_ask_operator` (Phase 16.3) adds AGENT-initiated questions, but the operator still can't proactively reach in. This is backwards — the operator is the one who knows when something's going wrong.
+```
+git mv harness/src/init                  packages/harness-core/src/init
+git mv harness/src/mcp                   packages/harness-core/src/mcp
+git mv harness/src/ground                packages/harness-core/src/ground
+git mv harness/src/decision-capture      packages/harness-core/src/decision-capture
+git mv harness/src/gc                    packages/harness-core/src/gc
+git mv harness/src/claude                packages/harness-core/src/claude
+git mv harness/src/tier0                 packages/harness-core/src/tier0
+git mv harness/src/tightener             packages/harness-core/src/tightener
+git mv harness/src/profiles              packages/harness-core/src/profiles
+git mv harness/src/logger.ts             packages/harness-core/src/logger.ts
+```
 
-### 1.4 Discord UX feels broken
+**Plus the FrontendAdapter contract types** — these are the seam between layers, they belong in core:
 
-Operator's wrapper-up frustration was specifically about UX. Concrete defects observed:
+```
+git mv harness/src/frontend/types.ts     packages/harness-core/src/frontend-types.ts
+git mv harness/src/frontend/inbox.ts     packages/harness-core/src/inbox.ts
+```
 
-- Initial task drop message and the live status embed are separate messages (predates the embed-everywhere commit on the operator's instance, but the architecture still creates them as two posts even after `f332544`)
-- Per-Q walks created N+1 messages (4 questions + 1 confirm), filling the channel
-- Approve-button reactions worked but the button-press → run-resumes loop took 60+ seconds with no visible signal except a phase color change
-- Failure surfaces (sensor / reviewer fails) eject the run with a one-line embed and no remediation guidance to the operator
-- Stale tasks from `_queue.yaml` with deleted channels burned LLM quota every restart until preflight-channel-check landed in `eb41191`
+(`inbox.ts` is the inbox writer — used by both frontends and runtime; it's a state-layer concern.)
 
-## 2. What the docs specified vs what was built
+### 3.2 Move into `harness-runtime`
 
-| Doc spec | What exists in code | Gap |
-|----------|---------------------|-----|
-| Init mapper (Tier 2 LLM) walks repo, proposes pilot module + project_globs + off-limits + WORKFLOW.md body (`INTEGRATION_PLAN.md` §16.2 line 471) | `harness/src/init/detect.ts` does stack-signature + sensor proposal; no mapper | **Mapper agent never built** |
-| Stack profiles with canonical-path rules, generator commands, high-stakes defaults (`INTEGRATION_PLAN.md` §16.1) | Operator told me to drop profiles. I dropped them entirely. | **Overshot.** Profiles for canonical-path / generator / high-stakes defaults still needed even with detection-driven adoption |
-| `/halt`, `/status`, `/oops`, `/queue`, `/eval`, `/resume`, `/archive` slash commands (`WORKFLOW_GUIDE.md` §3) | Only `/task`, `/direction`, `/ship-anyway` exist | **6 slash commands missing** |
-| Pre-run cost projection (>1% daily plan-headroom prompts operator) (`WORKFLOW_GUIDE.md` §2.2) | Not implemented | **Missing** |
-| Plan-quota monitor + auto Tier-1-only throttle when <20% remaining (`WORKFLOW_GUIDE.md` §2.2) | Not implemented | **Missing** |
-| `/oops` conversational dialog (`WORKFLOW_GUIDE.md` §4.1) | Not implemented | **Missing** |
-| `/status` returns running task, queue depth, recent runs, eval, weakest module (`INTEGRATION_PLAN.md` §17) | Not implemented | **Missing** |
-| Pino logs to `.harness/runs/<id>/log.jsonl` (`INTEGRATION_PLAN.md` §6.2) | Logs go to pino stdout only; no per-run log.jsonl | **Per-run log file missing** |
-| Discord thread per run (operator-visible) (`INTEGRATION_PLAN.md` §6.2) | Each run gets a CHANNEL not a thread; threads would scope better | **Channel-per-task chosen instead — review whether thread-per-task is the right shape** |
-| `quality-grades.yaml` for module-health surface (`INTEGRATION_PLAN.md` §6.2) | File generated by GC; never surfaced to operator | **Surface missing — `/status` would render this** |
-| Init script E2E `now` actually runs setup commands | Phase 16.1 fixed this | ✓ landed |
-| Init uses inquirer not hand-rolled prompts | Phase 16.0→16.1 swap | ✓ landed |
-| Operator-visible "what's the agent doing" during run | Tier-0 activity feed (16.2) | ⚠ partially — summary is vague, no structured events surface |
+```
+git mv harness/src/orchestrator          packages/harness-runtime/src/orchestrator
+git mv harness/src/mirror                packages/harness-runtime/src/mirror
+git mv harness/src/sensors               packages/harness-runtime/src/sensors
+git mv harness/src/reviewer              packages/harness-runtime/src/reviewer
+git mv harness/src/uat                   packages/harness-runtime/src/uat
+git mv harness/src/backprop              packages/harness-runtime/src/backprop
+git mv harness/src/watch                 packages/harness-runtime/src/watch
+```
 
-## 3. Reset path — what to fix and in what order
+### 3.3 Move into `harness-frontend-discord`
 
-Stop building forward. The next session should EXECUTE the fixes below; do not start Phase 17 / 18 / trial pilot until 3.1 through 3.4 are landed, smoke-tested, AND integration-tested against `sample-project`.
+```
+git mv harness/src/frontend/discord      packages/harness-frontend-discord/src/discord
+git mv harness/src/voice                 packages/harness-frontend-discord/src/voice
+```
 
-### 3.1 Init mapper agent (the missing 70% of init)
+Voice lives here for now — only Discord uses it. Extract to its own package only when a second adapter wants it.
 
-**Highest priority.** Without this, the harness runs blind against the project. `.harness/config.yaml` has empty `project_globs` so route-handler / DTO / decision sensors don't fire on real diffs.
+### 3.4 Move into `harness-frontend-stub`
 
-Build in `harness/src/init/mapper.ts`:
+```
+git mv harness/src/frontend/stub         packages/harness-frontend-stub/src/stub
+```
 
-- Walks the repo respecting `.gitignore`, capping depth at 4-5 levels and total-file count
-- Builds a structural summary (top-level dirs, package layout, key file types, frameworks detected from imports/configs)
-- Sends this summary to a Tier-2 (Sonnet) `claude --print --json-schema` call with structured output:
-  - `pilot_module` (suggested initial scope)
-  - `route_handler_globs[]` (file glob patterns where HTTP/CLI handlers live)
-  - `dto_globs[]` (DTO/schema files)
-  - `generator_source_globs[]` (e.g. drizzle schema, openapi spec)
-  - `high_stakes_globs[]` (auth, billing, multi-tenant data flows)
-  - `off_limits_globs[]` (vendored code, generated artifacts, third-party)
-  - `domain_summary` (one-paragraph description of what the project does)
-  - `key_modules[]` (each with name + path + purpose)
-  - `proposed_sensors[]` (project-specific sensors beyond stack-detected: ORM-level / framework-level)
-- Operator confirms via inquirer `confirm`/`edit` per the docs
-- Approved output writes into `.harness/config.yaml` (project_globs filled) AND `.harness/config/workflow.md` `<slug>:` extension block
+### 3.5 What stays in `harness/`
 
-This is the **deep mapper** the docs promised. Budget: ~$1-3 per adoption, one-time. Tier 2 per `init_mapper: 2`.
+```
+harness/src/cli/             — CLI bin (init/run/watch/task/install/daemon)
+harness/src/index.ts          — re-exports (thin, becomes a re-export of the four packages)
+harness/scripts/              — smokes (move per-package later; not phase 1)
+harness/templates/            — `.harness/` skeleton for adopters
+harness/package.json          — depends on the four sub-packages; bin entry stays
+harness/tsconfig.json         — references the four sub-packages
+```
 
-### 3.2 Operator-steering primitives
+After the moves, `harness/src/` only has `cli/` and `index.ts`.
 
-Six slash commands per `WORKFLOW_GUIDE.md` §3:
+## 4. Import rewrite plan
 
-| Command | Implementation |
-|---------|---------------|
-| `/halt [run-id]` | Kill the active claude subprocess (SIGTERM + 30s grace + SIGKILL); orphan-process scan on harness restart. Mark run as `aborted`. |
-| `/status` | Return queue depth, running task id + phase + activity, last 5 runs (id + status + duration), GC age, plan-quota headroom |
-| `/queue` | Render the FIFO queue + per-task channel links |
-| `/oops` | Multi-step dialog per `WORKFLOW_GUIDE.md` §4.1 — captures stub-pattern additions, doc-staleness signals, sensor false-positives |
-| `/eval [scope]` | On-demand sensor sweep without dispatching an implementer |
-| `/resume <run-id>` | Re-attach a UAT bundle's approval dialog after operator was AFK |
+Every file's relative imports need rewriting.
 
-These need adapter contract additions (`adapter.handleSlash` is already there; just register more commands). Discord `slashCommandBuilders` array needs new entries.
+### 4.1 Within a package — relative paths stay
 
-### 3.3 Run visibility
+Inside `packages/harness-core/src/init/init.ts`, `from "../logger.js"` still resolves correctly to `packages/harness-core/src/logger.js`. **No change for intra-package imports.**
 
-Three concrete wins:
+### 4.2 Across packages — switch to package-name imports
 
-1. **Per-run log.jsonl mirrored in channel** — write a structured log alongside events.jsonl (run started, phase changed, sensor-id+result, reviewer verdict, UAT decision). Periodically tail the last N entries into the live status embed's description (replacing the static "phase: running" line) so operator sees ACTUAL progress.
+| Old path (in harness/src) | New import (across packages) |
+|----------------------------|------------------------------|
+| `../init/index.js` | `@isaacriehm/harness-core` (re-exported) |
+| `../mcp/server.js` | `@isaacriehm/harness-core/mcp` (sub-export) OR top-level re-export |
+| `../mirror/index.js` | `@isaacriehm/harness-runtime` |
+| `../frontend/types.js` | `@isaacriehm/harness-core` (FrontendAdapter contract) |
+| `../frontend/discord/index.js` | `@isaacriehm/harness-frontend-discord` |
+| `../frontend/stub/index.js` | `@isaacriehm/harness-frontend-stub` |
+| `../orchestrator/index.js` | `@isaacriehm/harness-runtime` |
+| `../tightener/index.js` | `@isaacriehm/harness-core` |
+| `../tier0/index.js` | `@isaacriehm/harness-core` |
+| `../sensors/index.js` | `@isaacriehm/harness-runtime` |
+| `../reviewer/index.js` | `@isaacriehm/harness-runtime` |
+| `../uat/index.js` | `@isaacriehm/harness-runtime` |
+| `../backprop/index.js` | `@isaacriehm/harness-runtime` |
+| `../decision-capture/index.js` | `@isaacriehm/harness-core` |
+| `../claude/index.js` | `@isaacriehm/harness-core` |
+| `../voice/index.js` | `@isaacriehm/harness-frontend-discord` (avoid this — runtime should not import voice) |
+| `../logger.js` | `@isaacriehm/harness-core` |
 
-2. **Structured event surfacer** — directly extract from events.jsonl: list of files edited (deduped), bash commands run, search patterns. Render as a fixed-format embed FIELD that updates alongside the Tier-0 activity field. This is the second-source visibility that doesn't depend on Ollama.
+### 4.3 Each package's `src/index.ts` becomes a re-export barrel
 
-3. **Drop the live-edit + post-content split** — when a content body needs to surface (tightener feedback, reviewer rationale), append it as a FIELD on the live status embed (up to 1024 chars), don't post a separate message. Keeps the channel minimal.
+The current `packages/{X}/src/index.ts` has only `export const __SKELETON__`. Replace with re-exports from the moved subdirectories. Mirror the existing `harness/src/index.ts` structure.
 
-### 3.4 UX cleanups
+### 4.4 The umbrella `harness/src/index.ts`
 
-- Make the per-Q walk one composite message that edits in place (Q1 → Q2 → Q3 → confirm), not N separate posts
-- When a run fails (sensors / reviewer / UAT), show a remediation embed with: failure reason + last 3 events from the agent + suggested next action (re-run with /ship-anyway / re-submit with edits / open a thread for discussion)
-- Fail-button states the actual class: 🟧 sensor-fail, 🟪 reviewer-fail, 🟦 UAT-rejected, 🟥 hard-error — operator can route differently per class
+After the split, `harness/src/index.ts` becomes:
 
-### 3.5 Defer until 3.1–3.4 are landed
+```ts
+export * from "@isaacriehm/harness-core";
+export * from "@isaacriehm/harness-runtime";
+export * from "@isaacriehm/harness-frontend-discord";
+export * from "@isaacriehm/harness-frontend-stub";
+```
 
-- Phase 15 trial-run pilot (the integration test of all the above)
-- Plan-quota monitor + cost projection (tactical; build after the structural fixes)
-- `/archive` slash (non-critical)
-- Multi-adapter routing (only matters when Notion adapter exists)
-- Voice variant of /direction (covered in earlier phases; verify still works after 3.1)
+Backwards-compat for any adopter currently doing `import { runInit } from "@isaacriehm/harness"`.
 
-## 4. Locked architectural decisions still hold
+### 4.5 Update `harness/package.json` deps
 
-Do NOT redo the harness from scratch. The following are correct and shouldn't be reopened:
+```json
+"dependencies": {
+  "@isaacriehm/harness-core": "workspace:*",
+  "@isaacriehm/harness-runtime": "workspace:*",
+  "@isaacriehm/harness-frontend-discord": "workspace:*",
+  "@isaacriehm/harness-frontend-stub": "workspace:*",
+  // … keep CLI-specific deps (inquirer for install command, etc.)
+}
+```
 
-| # | Decision | Reason it holds |
-|---|----------|-----------------|
-| L01 | TypeScript-first stack | Operator's primary language |
-| L02 | pnpm monorepo workspace package (`harness/`) inside the repo | Adopters get it via `pnpm dlx --package <local-path>` or eventual `npx @isaacriehm/harness` |
-| L03 | Filesystem-only state | Operator's preference; visible, version-controlled |
-| L04 | Two-zone canonical/historical separation | Stale never sits next to live |
-| L05 | Direct commits to `main`, no branches/PRs (solo mode) | Operator preference |
-| L06 | Parallel mirror checkout at `~/.local/harness/repos/<slug>/` | User's working tree is sacred |
-| L07 | Concurrency = 1 (single-task FIFO) | Operator works sequentially |
-| L08 | Frontend adapter is pluggable | Discord is default; Notion / CLI / web adapters are peers |
-| L09 | Channel-per-task with category lifecycle (📋 backlog / 🟢 active / 📦 archive) | Visible state at a glance — but reconsider channel-vs-thread per §3 |
-| L10–L12 | Local Whisper for voice (whisper.cpp + smart-whisper, audio never on disk) | TS-everywhere; Metal+CoreML on M-series; PII risk avoided |
-| L13 | Squares-into-square-holes UX (A/B/C/D dialogs) | Operator preference |
-| L14 | Tier ladder (0/1/2/3 → Ollama / Haiku / Sonnet / Opus) | Cost discipline |
-| L15 | Reviewer subagent uses SAME model as implementer, fresh context | Context isolation catches blindspots |
-| L16–L18 | Auto-merge classes (safe / code / high-stakes) | Risk-stratified gating |
-| L19 | Backprop protocol (every fix → §V invariant + sensor) | Repeats become preventable |
-| L20 | GC cadence (nightly background drift sweep) | Continuous curation |
-| L21 | `AGENTS.md` = TOC pattern, ~150 lines max | Progressive disclosure |
-| L22 | All operator I/O multiple-choice-first | Free-text only as escape hatch |
-| L23 | Voice-note rejection on UAT 🔴 → Whisper transcribes the rejection reason | Same pipeline both ways |
-| L24 | `/ship-anyway` operator override | For trivial cases or sensor false-positives |
-| L25 | Stub-pattern catalog (Layer A) grows via `/oops` dialog only | No CLI commands |
-| L26 | Decision assertions are machine-readable (11 kinds) | Mechanical evaluation |
-| L27 | Decision capture flow — Discord 🟢-confirm at confirm-time | Decisions survive across runs |
-| L28 | No phase-gates between modules | Cairn adopts modules as operator opts in |
-| L29 | Snapshot pinning per run (origin/main SHA at start) | Eliminates "wait what changed?" |
-| L30 | MCP retrieval is structured graph traversal | Deterministic |
-| L31 | Append-only writes via MCP | Saves N file reads per write |
-| L32 | Custom sensor remediation messages — agent-prompt-shaped | Per OpenAI pattern |
-| L33 | Evidence-file gate (`.uat-passed` SHA256) | Bare touch rejected |
-| L34 | Provenance frontmatter required on canonical zone load-bearing markdown | Staleness detection |
-| L35 | Stale doc lifecycle = MOVE not flag | Move to `.archive/<date>/<original-path>` |
-| L36 | Generic harness pkg + per-project `.harness/config.yaml` | Portable |
-| L37 | `npx @isaacriehm/harness init` runs deep mapper (Tier 2 LLM, one-time) | **THIS IS THE GAP. §3.1 fixes it.** |
-| L38 | Ollama for cheap classification | $0 Tier 0 |
-| L41 | Decision-assertion DSL (11 kinds incl. behavioral) | Per Codex audit |
-| L42 | Budget metric is Claude Code coding-plan quota, NOT $/day | Per operator answer T1 |
-| L43 | High-stakes UAT MUST include cross-tenant negative fixture | Per Codex audit |
-| L44 | Operator dialog cap: 2 questions per turn | Per Codex audit |
-| L45 | Pre-dispatch + pre-push `local_dirty_overlap` gate | Per Codex audit |
-| L46 | GC batch canary | Per Codex audit |
-| L48 | `collaboration_mode: solo \| team` config | Per Codex audit |
-| L49 | Distribution mechanism for early testers | Private GitHub repo / tarball / symlink-clone |
-| L50 | Project-agnostic harness pkg code (no hardcoded project names) | Per operator answer S1 |
+Drop deps that are now sub-package concerns (chokidar, discord.js, smart-whisper, simple-git, fastify, ws, zod, yaml — they live where they're used now).
 
-L47 (stack profiles for portability) was OVER-corrected. Re-introduce profiles ONLY for canonical-path detection and generator commands; everything else stays detection-driven. Operator's "agnostic" objection was about hardcoded behavior, not about reusable adoption-time templates.
+### 4.6 Update `harness/tsconfig.json`
 
-## 5. Operator profile (binding)
+Add `"references"` to the four sub-packages.
+
+## 5. Likely gotchas
+
+1. **Circular imports.** `harness-core/types.ts` defines `FrontendAdapter` which references types like `DialogSpec`. If a frontend implementation tries to import a type-only thing from another frontend, that's circular. **Fix:** the FrontendAdapter contract is type-only; types live in `harness-core` and frontends `import type { FrontendAdapter, DialogSpec, … }`.
+2. **`runImplementer` (`harness/src/orchestrator/runner.ts`) shells out to claude.** It's runtime's responsibility, not core's. But core also has `claude/runner.ts` for one-shot calls (tightener, mapper). **Keep both.** Two different consumers; both need the subprocess wrapper. Either: keep two copies, OR factor a `claude-spawn.ts` helper into harness-core that both wrappers use.
+3. **The CLI calls into all four packages.** `harness/src/cli/init.ts` already imports from `init/`, `secrets/`, `mirror/`, `discord adapter`. Post-split the CLI's imports are all `@isaacriehm/harness-...`. Adapters that need wiring at start-up time (Discord token, ownerIds env) are passed in by the CLI.
+4. **Smokes break first.** Every smoke imports from `../src/...`. The smokes live in `harness/scripts/`, so post-move imports become `@isaacriehm/harness-...` because the source moved. **Update each smoke's imports.** ~25 smokes. Cheap.
+5. **Templates.** `harness/templates/` stays where it is. The init package's `seed.ts` references `templatesRoot()` which derives from `import.meta.url`; after moving init.ts to harness-core, `templatesRoot()` resolves relative to harness-core/dist/init/seed.js. **Either:** copy templates/ into harness-core, OR update `templatesRoot()` to walk back up to find the umbrella's templates/. **Recommend:** copy templates into `packages/harness-core/templates/` since the templates are an init-time concern.
+6. **`@inquirer/prompts` is in harness/package.json but used by both init (core) and the CLI install command.** Move to harness-core's deps; CLI's install command can import via the umbrella re-export.
+7. **`zod` dep.** Currently in harness; moves to harness-core (used for MCP schemas + mapper output validation? — verify; keep where used).
+
+## 6. Verification — what passes after the migration
+
+After moves + import rewrites:
+
+```
+pnpm install                      # workspace links resolve
+pnpm -r build                     # all five packages compile
+pnpm -F @isaacriehm/harness check:layout  # path allowlist still right
+pnpm -F @isaacriehm/harness smoke:mirror smoke:watch smoke:mcp \
+                              smoke:tier0 smoke:tightener smoke:sensors \
+                              smoke:reviewer smoke:uat smoke:gc smoke:backprop \
+                              smoke:decision-capture smoke:decision-refinement \
+                              smoke:init smoke:init-mapper smoke:steering \
+                              smoke:visibility smoke:ux-cleanups \
+                              smoke:quota-archive smoke:cli-extras
+```
+
+Smoke:uat step 14 hangs on real chromium launch (environmental, predates this work) — skip in verification.
+
+## 7. Doc updates that ride along
+
+After the migration:
+
+- **`AGENTS.md`** — already updated; no further changes.
+- **`docs/PRIMER.md`** — already has the §0 disclaimer; rewrite §3 to drop the "Symphony-shaped harness" framing.
+- **`docs/INTEGRATION_PLAN.md`** — currently frames everything as one package. Add §0.5 noting the split, OR move the file to `docs/_history/` and create a fresh `INTEGRATION_PLAN.md` aligned with the new layout. **Recommend:** add a top-level "superseded by ARCHITECTURE.md" banner; don't rewrite (the old phase plan is historical).
+- **`docs/MCP_SURFACE.md`** — note that the MCP server lives in `harness-core`. No content change.
+- **`docs/FILESYSTEM_LAYOUT.md`** — no change (talks about adopted-project layout, not Cairn's own layout).
+- **`docs/WORKFLOW_GUIDE.md`** — no change.
+
+## 8. After the migration — what's possible
+
+Adopters can:
+
+- `npx -y @isaacriehm/harness-core init` — bootstrap `.harness/ground/` + run init mapper, skip the orchestrator and run `claude code` manually with the MCP server registered. This is the "I just want curated state" mode.
+- `npx -y @isaacriehm/harness-core@latest @isaacriehm/harness-runtime@latest run --frontend stub` — orchestrator-driven dispatch without Discord. Useful for CI.
+- `npx -y @isaacriehm/harness@latest run --project sample-project --frontend discord` — full stack. Today's behavior.
+
+Each layer is documented + smoke-covered + independently versionable.
+
+## 9. Operator profile (binding — applies to your replies + commits)
 
 | Trait | Behavior |
 |-------|----------|
-| Communication | Terse-direct. Lead with answer/action. No filler. |
+| Communication | Terse-direct. Lead with answer/action. Caveman ultra mode active for chat replies; commits + PRs + docs are full English. |
 | Decisions | Fast-intuitive. Don't present options unless explicitly asked. When operator states a decision, treat it as final. |
 | Explanations | Concise. Root cause in 1-2 sentences then fix. |
-| UX Philosophy | Design-conscious. UX equal in importance to functional correctness. |
-| Vendor Choices | Opinionated. Do not suggest alternative libraries/frameworks unless they avoid real risk. |
-| Env vars | Hates env vars. Quote: *"I hate env vars, it's more moving pieces, the only thing that should be stored in env is stuff that might change, like brand domain, secrets, etc."* Hardcoded model IDs in code = correct. |
-| Tests | *"Tests are shitware, the only tests that matter truly is E2E with real db."* Drop test framing entirely. Sensors and E2E real-DB only. |
-| Backward compat | *"We DO not care about legacy or backward compat, we are very early in development."* Hard cutovers. No transition shims. |
-| AI features | AI is the platform. Default tilt: implement, not strip, when uncertain. EXCEPT when AI is misaligned product debt — then strip without hesitation. |
-| Frustrations | Instruction-adherence. Follow exactly. Don't add framing/features they didn't request. Never report done unless fully satisfies criteria. |
-| Mobile mode | When operator is on mobile, `AskUserQuestion` options get truncated. Switch to chat-mode K/R/U/M with concise option labels. |
-| UX rule (load-bearing) | Squares-into-square-holes. Always propose A/B/C/D before asking for typed input. Free-text only as escape (`E) Other`). |
-| Inquirer | Use `@inquirer/prompts` for harness CLI dialogs, NOT hand-rolled readline. Operator note 2026-05-02 + correction 2026-05-03 after I substituted hand-rolled. |
+| UX Philosophy | Design-conscious. UX = functional correctness. |
+| Vendor Choices | Opinionated. Don't suggest alternatives unless they avoid real risk. |
+| Env vars | Hates env vars. Hardcoded model IDs in code = correct. |
+| Tests | "Tests are shitware. Only E2E with real DB matters." Drop the test framing entirely. Sensors and E2E only. |
+| Backward compat | Hates backward compat. No transition shims. Hard cutovers. |
+| Inquirer | Use `@inquirer/prompts` for all CLI dialogs. Never hand-roll readline. |
+| Mobile mode | When operator is on mobile, AskUserQuestion options get truncated. Switch to chat-mode K/R/U/M with concise option labels. |
 
-Caveman ultra mode is active for chat replies. Output format = `[thing] [action] [reason]. [next step].` Drop articles, filler, pleasantries. Fragments OK. Code/commits/PRs/documents written normal full English.
+## 10. What NOT to do
 
-## 6. What landed in the codebase (so you don't redo it)
+- Do not run the migration as `cp`+`rm`. Use `git mv` so blame survives.
+- Do not rewrite the orchestrator while moving it. Keep behavior identical; the split is structural only.
+- Do not delete the umbrella `harness/` package. It's the entry point for adopters who want everything.
+- Do not break the existing smokes. After the import rewrite, every smoke should still pass (modulo smoke:uat step 14 chromium hang which is environmental).
+- Do not promote any adapter (Discord, voice, etc.) into harness-core. The whole point of the split is that core doesn't know what adapter is running.
+- Do not start phase 17 (trial pilot) or phase 18 (anything new) until the migration lands and smokes are green. The "we shipped lots of features but the integrated experience is broken" pattern from the prior session must not repeat.
 
-The git history is authoritative. Before doing anything: `git log --oneline | head -30` and read each commit's first-line summary. As of this writing the recent runway is:
+## 11. References
 
-- `16ea9ab` — RESUME_PROMPT update for 16.2/16.3 (THIS FILE supersedes that)
-- `a66bfaf` — `harness_ask_operator` MCP tool + queue-restore inbox-file check
-- `f332544` — embed-everywhere + Tier-0 activity feed
-- `4e17fea` — silent ack + answered-question compaction + body chunking
-- `eb41191` — abandon stale-channel tasks at dispatch
-- `4efaec7` — dead-channel suppression
-- `6e3f20c` — dialog buttons stalled when bundleId contains colons (FIX)
-- `7ab96a4` — short letter buttons + full text in prompt
-- `0b3e6b4` — single edited status + colored embeds + reactions (initial)
-- `ad48838` — typing indicator
-- `48907b8` — Ambiguity object render (FIX — was [object Object])
-- `f92f5a8` — tightener fail → operator dialog (replacing terminal-fail)
-- `03208e8` — kill stale "Phase 8 not wired" lie + surface tightener feedback
-- `9d842fd` / `3293fe0` / `3c52e37` — Phase 16.x init wizard
-- `1486ed0` — Phase 14.x decision-capture refinement
-- `f482685` — Phase 14 decision-capture
-- `da7e965` — Phase 13 backprop
-- `915f358` — Phase 12 GC cadence
-- `51916fb` — Phase 11.x UAT rejection / question / live SQL drivers
-- `f8f6121` — Phase 11.5 heavy probes
-- `bb8dd3f` — Phase 11 UAT pipeline
-- `d29ccb3` — Phase 10 reviewer
-- `9223ef0` — Phase 9 sensors
-- `6c945fa` — Phase 8 orchestrator
-- `b730bac` — Phase 7 tightener
-- `cdd0f13` — Phase 6 voice + tier-0
-- `b5c7420` — Phase 5 Discord ingress
-- `c665fce` — Phase 4 MCP server (17 tools — `harness_ask_operator` is the 18th)
-- `96b2fa7` — Phase 3 grounding daemon
-- `ce30537` — Phase 2 mirror runtime
-- `d011463` — Phase 0–1 bootstrap
-
-23 smoke scripts under `harness/scripts/smoke-*.ts`; CLI entries under `harness/src/cli/`; 18 MCP tools under `harness/src/mcp/tools/`; init module under `harness/src/init/`.
-
-The smokes pass individually. The integrated experience does not.
-
-## 7. How a fresh session starts
-
-```
-1. Read THIS FILE end-to-end.
-2. Read docs/PRIMER.md (concepts + anti-patterns).
-3. Read docs/INTEGRATION_PLAN.md §16 (init spec, including the mapper).
-4. Read docs/WORKFLOW_GUIDE.md §3 + §4 (slash surface + dialog templates).
-5. Skim git log for what landed since the last commit.
-6. Run cheap smokes once to confirm tree builds:
-     pnpm -F @isaacriehm/harness build typecheck check:layout
-                                       smoke:mirror smoke:watch smoke:mcp
-                                       smoke:discord smoke:tier0 smoke:sensors
-                                       smoke:uat smoke:gc smoke:init
-7. Confirm to the operator in 3-4 lines:
-     "Loaded rework brief. Phases landed but UX broken. Fix order:
-      §3.1 init mapper → §3.2 steering slashes → §3.3 visibility → §3.4 UX.
-      Start with §3.1?"
-8. Wait for direction. Don't propose phases beyond §3 until §3.1–3.4 land.
-```
-
-## 8. Things the operator has said (verbatim, load-bearing)
-
-- *"It should feel like Im a baby putting squares into the square hole"*
-- *"the end-user Human purely just wants to be able to prompt and have a fully done project spit out"*
-- *"if we use Sonnet model to code and Opus to review, we effectively just kill the limits of the coding plan"*
-- *"NOTHING should be a stub. This is completely missing functionality from the site."*
-- *"I find [branches] as a waste of time, especially since Im the only developer and I only start 1 task and finish 1 task before doing another"*
-- *"AIs want UAT testing, however most times Im working im out of the house and cannot access the site"*
-- *"the discord part is more of a feature, I have a buddy that likes using Notion so it should be built slightly agnostic"* — drove L08 frontend pluggability
-- *"I'd say this is a MASSIVE FAIL across the entire board"* — drove this rework brief
-
-## 9. Anti-patterns to avoid in the rework
-
-Do not:
-
-- Build new phases that smoke-pass in isolation but don't integrate cleanly. Cross-cutting concerns (steering, visibility, UX cohesion) need their own pass.
-- Add config knobs as a substitute for fixing defaults. The init should produce a working setup; not a working setup conditional on the operator twiddling 12 yaml fields.
-- Treat per-feature smokes as proof of system health. Run the actual end-to-end flow against `sample-project` before claiming a fix is complete.
-- Continue the "phases landed" narrative if it's not true. The phase-completion accounting hid the fact that the integrated experience had broken months before.
-- Substitute hand-rolled logic for libraries the operator has stated they want (inquirer was the prior session's mistake; that guidance is now in `~/.claude/projects/<operator-home-key>/memory/`).
-- Skip `docs/INTEGRATION_PLAN.md` § references when building. The docs were better than the code; they're authoritative for what the harness should be.
-
-## 10. Tooling notes
-
-- Operator uses Claude Code (Opus 4.7) primarily; sparse Codex usage for second-model audits.
-- Operator's adopted-project for testing is `<operator-home>/sample-project/`. Mirror at `~/.local/harness/repos/sample-project/`.
-- Operator's Discord guild ID `1487133145013944443`; bot token + guild ID in `~/.local/harness/.env` (mode 0600).
-- Whisper model at `~/.local/harness/models/ggml-large-v3-turbo-q5_0.bin`.
-- Ollama with `llama3.2:3b` available locally.
-- The harness is invoked via `pnpm dlx --package "<operator-home>/Cairn/harness" harness <subcommand>` until npm-published.
-
-## 11. References (read before fixing)
-
-- `docs/PRIMER.md` — concepts, anti-patterns, glossary
-- `docs/INTEGRATION_PLAN.md` — phase-by-phase spec; §16 is THE init source-of-truth
-- `docs/FILESYSTEM_LAYOUT.md` — adopted-project layout
-- `docs/MCP_SURFACE.md` — MCP tool surface (now 18 tools incl. ask-operator)
-- `docs/UAT_PIPELINE.md` — UAT-on-phone via Discord buttons
-- `docs/WORKFLOW_GUIDE.md` — operator UX rules + slash surface + dialog templates (§3, §4 are critical for §3.2 in this brief)
+- `docs/ARCHITECTURE.md` — locked layered model, package contents, FrontendAdapter contract, MCP surface, migration path
+- `docs/PRIMER.md` — concepts, anti-patterns (§11), glossary
+- `docs/INTEGRATION_PLAN.md` — historical phase plan (will be retitled superseded after migration)
+- `docs/MCP_SURFACE.md` — 18 MCP tools (lives in harness-core)
+- `docs/UAT_PIPELINE.md` — Layer U pipeline (lives in harness-runtime)
+- `docs/WORKFLOW_GUIDE.md` — operator UX rules + tier ladder + slash surface
 - `docs/QUESTIONS.md` — residual open items
 - `docs/CODEX_REVIEW_BRIEF_REVIEW.md` — Codex's audit findings (3 must-fix landed via L41/L43–L48)
 
----
+## 12. Fast-start checklist
 
-End of rework brief. The harness has the bones; it lacks the connective tissue between adoption (deep mapping) and operation (steering + visibility). Build the connective tissue. Don't add more bones.
+```
+□ Read this file.
+□ Read docs/ARCHITECTURE.md.
+□ Read docs/PRIMER.md (skim for §11 anti-patterns).
+□ git log --oneline -8  → confirm three commits from 2026-05-04 landed.
+□ pnpm -r build  → confirm packages skeleton builds.
+□ Confirm to operator in 3-4 lines:
+  "Loaded handoff. Skeleton builds. Ready to execute §3 migration. Start now?"
+□ Wait for explicit approval.
+□ Execute §3 git mv chain. After each subdir, fix imports + verify pnpm -r build.
+□ Update harness/src/index.ts as the re-export barrel.
+□ Update each smoke's imports.
+□ Run smoke battery (skip smoke:uat which hangs on chromium).
+□ Commit:
+    refactor: package split per docs/ARCHITECTURE.md (state + context layered model)
+□ Hand back to operator with: "split landed; smokes green; ready for next."
+```
+
+End of brief.

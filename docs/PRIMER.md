@@ -1,8 +1,9 @@
 ---
 type: primer
-status: draft-v2
+status: draft-v3
 audience: dual
 generated: 2026-05-02
+revised: 2026-05-04
 sources:
   - https://openai.com/index/harness-engineering/ (cited via MartinFowler / InfoQ / Latent Space)
   - https://openai.com/index/open-source-codex-orchestration-symphony/
@@ -15,9 +16,11 @@ sources:
   - docs/orchestration/_research/DISCORD_WHISPER_DESIGN.md
 ---
 
-# Cairn Engineering & Agent Orchestration — Primer for sample-project.
+# Cairn Engineering & Agent Orchestration — Primer
 
-A teaching document. Read this end-to-end. The other six docs in `docs/orchestration/` (`INTEGRATION_PLAN.md`, `FILESYSTEM_LAYOUT.md`, `MCP_SURFACE.md`, `UAT_PIPELINE.md`, `WORKFLOW_GUIDE.md`, `QUESTIONS.md`) are reference material that depends on the concepts here.
+A teaching document. Read this end-to-end. The other docs in `docs/` (`ARCHITECTURE.md`, `INTEGRATION_PLAN.md`, `FILESYSTEM_LAYOUT.md`, `MCP_SURFACE.md`, `UAT_PIPELINE.md`, `WORKFLOW_GUIDE.md`, `QUESTIONS.md`) are reference material that depends on the concepts here.
+
+> **Note (2026-05-04):** The earlier framing in §3 ("Cairn = Symphony-shaped agent orchestrator with Discord UX") is superseded. Cairn is **a state + context-loading layer**; orchestration runtime, sensor sweeps, mirror checkouts, and Discord adapters are *consumers* built on top. See [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) for the locked layered model and four-package boundary.
 
 ## TL;DR
 

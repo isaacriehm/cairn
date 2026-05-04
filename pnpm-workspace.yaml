@@ -1,5 +1,6 @@
 packages:
   - "harness"
+  - "packages/*"
 allowBuilds:
   esbuild: true
   smart-whisper: true
