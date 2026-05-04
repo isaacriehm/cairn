@@ -22,3 +22,73 @@ Notes: <anything unusual>
 Added: scope-index design (spec only, new build task added — Task 9)
 Added: spec delta injection (spec only, Task 3 amended to also implement buildSpecDelta + SpecDelta type)
 Compile: PASS
+
+## Task 1 — Remove banned MCP tools from public surface [DONE 2026-05-04T01:46]
+Subagent attempts: 1
+Compile: PASS (both packages)
+Notes: tools/index.ts was already at target state from prior pre-flight; only templates.ts needed edits (TOOL_QUICK_REFERENCE write section + Operator dialog block stripped). allTools confirmed at 14 entries.
+
+## Task 2 — Status line module [DONE 2026-05-04T01:55]
+Subagent attempts: 1
+Compile: PASS (both packages)
+Notes: 4 new files under packages/harness-core/src/status-line/. Reused mirror/paths.ts normalizeProjectName + projectStatePath. CLI status-line subcommand outputs placeholder string when no state file exists. Confirmed runtime via `npx tsx src/cli/index.ts status-line` → `⬡ harness  daemon:down  ○`.
+
+## Task 3 — Context module: handoff builder + spec delta [DONE 2026-05-04T02:05]
+Subagent attempts: 1
+Compile: PASS (both packages)
+Notes: 4 new files under packages/harness-core/src/context/. Manual fix on handoff renderer — taskId already starts with "TSK-" so the `TSK-${taskId}` template would have doubled the prefix; corrected to bare `${parts.taskId}`. Spec delta uses set-difference pattern for superseded entries (HEAD ledger only contains accepted+active). Brand stat checks `.harness/ground/brand/{overview,voice}.md` + `product/{positioning,personas}.{md,yaml}`.
+
+## Task 4 — Session-start Section 0 handoff injection [DONE 2026-05-04T02:18]
+Subagent attempts: 1
+Compile: PASS (both packages); smoke-session-start PASS (6 steps)
+Notes: buildSessionStartContext now async; "run_handoff" added as first orderedSection + LAST in dropPriority (most-protected). Manual fix in hook.ts — subagent flagged that source wasn't being passed through buildArgs; added `if (source !== null) buildArgs.source = source;` so handoff fires in production.
+
+## Task 4b — Session-start brand + product positioning injection [DONE 2026-05-04T02:28]
+Subagent attempts: 1
+Compile: PASS (both packages); smoke-session-start PASS (8 steps — original 6 + new 7/8)
+Notes: brand_and_positioning section added between two_zone_reminder and tool_quick_reference; placed in dropPriority between pending_drafts and invariants_active. readBrandAndPositioning emits [DRAFT — ...] hint when frontmatter status is "draft". Subagent ran `pnpm build` on harness-core for the smoke (consumes via dist/) — smoke runner imports through @devplusllc/harness-core which resolves to built dist.
+
+## Task 5 — PostToolUse read enricher [DONE 2026-05-04T02:50]
+Subagent attempts: 1
+Compile: PASS (both packages); runtime smoke PASS (Bash pass-through, Read with citations on /tmp/ path produces empty additionalContext since no .harness/ ancestor)
+Notes: 5 new files under packages/harness-core/src/hooks/post-tool-use/. Output uses additionalContext (NOT modified_tool_response — that's not a documented Claude Code field). Top-level try/catch wraps everything; defer-fail emits Shape B empty + exit 0. Scope-index reader is a stub inside read-enricher.ts; Task 9 will refactor into shared ground/scope-index.ts. citation-scanner strips leading \d+\t (cat -n) for line-number computation only. hook.ts updated by linter post-edit to add docblock entry — kept.
+
+## Task 6 — PostToolUse write guardian + sensors.yaml extension [DONE 2026-05-04T03:00]
+Subagent attempts: 1
+Compile: PASS (both packages)
+Notes: 3 new files (copy-scanner, allowlist-reader, write-guardian). Sensors.yaml gets copy_safety block between required_glob_keys and disabled_per_project. JSX/TSX uses regex-based string-literal extractor (not full AST). JSON only scans values. Other extensions scan entire content. Scope-index reader duplicated from read-enricher.ts; Task 9 will refactor both call sites into shared module.
+
+## Task 7 — Init: register PostToolUse hooks in settings.json template [DONE 2026-05-04T03:08]
+Subagent attempts: 0 (inline, template-only)
+Compile: PASS; valid JSON; 3 PostToolUse entries
+Notes: settings.json template was previously gitignored (`.claude/` rule at root caught it). Added exception `!packages/harness-core/templates/.claude/` + `!packages/harness-core/templates/.claude/**` to .gitignore so the template tracks. Then wrote new template content with SessionStart + 3 PostToolUse matchers (Read→read-enrich, Write→write-guard, Edit→write-guard) using `npx -y @devplusllc/harness hook <event>`.
+
+## Task 8 — Seed brand/product/capabilities ground templates [DONE 2026-05-04T03:14]
+Subagent attempts: 0 (inline, template-only)
+Compile: PASS; seedHarnessLayout smoke against fresh tempdir copied all 5 files
+Notes: 5 new files under packages/harness-core/templates/.harness/ground/ — brand/overview.md (status: draft), product/positioning.md (status: draft), capabilities/{skills,mcp-tools,snippets}.yaml (empty arrays). seedHarnessLayout walks templates/ recursively so no code changes needed.
+
+## Task 9 — Scope index: type, init seed, hook integration, GC pass [DONE 2026-05-04T03:35]
+Subagent attempts: 1
+Compile: PASS (both packages); runtime smoke: scope_index_missing finding works, readScopeIndex/writeScopeIndex/lookupScope round-trip works, scope_uncovered emits for files not in index
+Notes: 3 new files (ground/scope-index.ts, gc/walk-source.ts, gc/scope-coverage.ts). Refactored stub-hits.ts to use shared walk-source. ledger-cache.ts gained getScopeIndexEntry with mtime cache. read-enricher.ts and write-guardian.ts both refactored to use cached version (deleted private duplicates). Mapper schema gets scope_index field (NOT in required — older mappers tolerated). init.ts adds Step 3b that writes empty {files:{}} skeleton when --skip-mapper. Manual fix: added `.harness` to SOURCE_TREE_SKIP_DIRS so scope-coverage doesn't flag .harness/ files as uncovered.
+
+## Task 10 — GC completion-integrity pass [DONE 2026-05-04T03:42]
+Subagent attempts: 1
+Compile: PASS (both packages)
+Notes: New gc/completion-integrity.ts. For each task in tasks/done/, validates phase=succeeded, related_run_ids[last] runId resolves to runs/{terminal,active}/<runId>/, meta.json parseable with sha_pin, attestation.yaml present, sensor-results.yaml has no non-pass entries, sha reachable via git.catFile([-e, sha]). All findings task_integrity_error severity warn. Pass 6 in sweep.ts ordering (between quality-grades and scope-coverage).
+
+## Task 11 — GC citation-integrity pass [DONE 2026-05-04T03:50]
+Subagent attempts: 1
+Compile: PASS (both packages)
+Notes: New gc/citation-integrity.ts. Reuses scanCitations from hooks/post-tool-use + walkSourceTree from gc/walk-source. Restricts to TEXT_EXTS (no .json/.yaml/.md). For §V citations: superseded_citation if id has superseded_by in raw ledger; orphaned_citation if absent from active ledger. DEC-N inline comments → banned_dec_comment per PRIMER §10. TODO(TSK-) citations checked against tasks/{active,done}/<id>/; done dirs are silent (will be removed). Pass 8 in sweep.ts.
+
+## Task 12 — harness_append_run_note MCP tool + path-allowlist extension [DONE 2026-05-04T03:58]
+Subagent attempts: 0 (inline)
+Compile: PASS (both packages); runtime smoke: allTools count=15, isAppendAllowed(.harness/tasks/active/TSK-001/notes.md)=true
+Notes: New mcp/tools/append-run-note.ts. APPEND_ALLOWLIST gains .harness/tasks/active/*/notes.md. Schema appendRunNoteInput has run_id (path-safe regex, ≤80) + phase (≤80) + note. Handler validates run_id, checks task dir exists (RUN_NOT_FOUND if not), appends `\n## <ISO> [<phase>]\n<note>\n` to notes.md. Initial INVALID_RUN_ID code wasn't in McpErrorCode union — switched to VALIDATION_FAILED.
+
+## Task 13 — Smoke tests for new modules [DONE 2026-05-04T04:08]
+Subagent attempts: 0 (inline)
+Compile: PASS; all 4 new smokes PASS; existing smoke-session-start still PASS (8 steps)
+Notes: 4 new smoke scripts under harness/scripts/: smoke-status-line.ts (4 steps incl. priority ordering), smoke-handoff.ts (3 steps null-cases), smoke-scope-index.ts (3 steps incl. unscoped flag), smoke-read-enrich.ts (4 steps incl. scope-hint integration). package.json gets four new pnpm scripts. The Task 4b session-start smoke step was already added during Task 4b — no additional changes needed there.
