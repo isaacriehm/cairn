@@ -15,9 +15,7 @@
  * Spec: docs/READ_ENRICHER_SPEC.md "Write Guardian" section.
  */
 
-import { existsSync, readFileSync } from "node:fs";
-import { basename, join, relative } from "node:path";
-import { parse as parseYaml } from "yaml";
+import { basename, relative } from "node:path";
 import { matchAnyGlob } from "../../ground/glob.js";
 import { resolveRepoRoot } from "../../session-start/index.js";
 import {
@@ -25,6 +23,7 @@ import {
   type CopySafetyConfig,
 } from "./allowlist-reader.js";
 import { scanForCopyLeakage, type CopyIssue } from "./copy-scanner.js";
+import { getScopeIndexEntry } from "./ledger-cache.js";
 import type { ScopeIndexHint } from "./legend-builder.js";
 
 interface ClaudePostToolUsePayload {
@@ -92,43 +91,6 @@ function computeRelPath(repoRoot: string, filePath: string): string {
   const rel = relative(repoRoot, filePath);
   if (rel.startsWith("..") || rel.length === 0) return filePath;
   return rel.replace(/\\/g, "/");
-}
-
-/**
- * NOTE: duplicated from read-enricher.ts intentionally — Task 9 will
- * refactor both call sites into a shared module.
- */
-function getScopeIndexEntry(
-  repoRoot: string,
-  relPath: string,
-): ScopeIndexHint | null {
-  const path = join(repoRoot, ".harness", "ground", "scope-index.yaml");
-  if (!existsSync(path)) return null;
-  let parsed: unknown;
-  try {
-    parsed = parseYaml(readFileSync(path, "utf8"));
-  } catch {
-    return null;
-  }
-  if (typeof parsed !== "object" || parsed === null) return null;
-  const filesRaw = (parsed as { files?: unknown }).files;
-  if (typeof filesRaw !== "object" || filesRaw === null) return null;
-  const entry = (filesRaw as Record<string, unknown>)[relPath];
-  if (typeof entry !== "object" || entry === null) return null;
-  const e = entry as Record<string, unknown>;
-  if (e["unscoped"] === true) return null;
-  const decisions = Array.isArray(e["decisions"])
-    ? (e["decisions"] as unknown[]).filter(
-        (x): x is string => typeof x === "string",
-      )
-    : [];
-  const invariants = Array.isArray(e["invariants"])
-    ? (e["invariants"] as unknown[]).filter(
-        (x): x is string => typeof x === "string",
-      )
-    : [];
-  if (decisions.length === 0 && invariants.length === 0) return null;
-  return { decisions, invariants };
 }
 
 function emitShapeB(additionalContext: string): void {
@@ -233,7 +195,14 @@ export async function runWriteGuardian(): Promise<void> {
       issues = filterAllowed(raw, config);
     }
 
-    const scopeHint = getScopeIndexEntry(repoRoot, relPath);
+    const cachedEntry = getScopeIndexEntry(repoRoot, relPath);
+    const scopeHint: ScopeIndexHint | null =
+      cachedEntry !== null
+        ? {
+            decisions: cachedEntry.decisions,
+            invariants: cachedEntry.invariants,
+          }
+        : null;
 
     const sections: string[] = [];
     if (issues.length > 0) {

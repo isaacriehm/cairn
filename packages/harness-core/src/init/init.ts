@@ -21,6 +21,12 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import {
+  scopeIndexPath,
+  writeScopeIndex,
+  type ScopeIndex,
+  type ScopeIndexEntry,
+} from "../ground/scope-index.js";
 import { ensureMirror, normalizeProjectName } from "../mirror/index.js";
 import { logger } from "../logger.js";
 import { detectAll } from "./detect.js";
@@ -256,6 +262,33 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     writeFileSync(configPath, stringifyYaml(config), "utf8");
     done(`+ .harness/config.yaml`);
     if (mapperOutput !== null) mapperAppliedToConfig = true;
+  }
+
+  // ── Step 3b: scope-index.yaml ──────────────────────────────────────
+  header("Writing .harness/ground/scope-index.yaml");
+  const scopeIndexFile = scopeIndexPath(repoRoot);
+  if (existsSync(scopeIndexFile) && args.force !== true) {
+    warnings.push(
+      ".harness/ground/scope-index.yaml already exists — kept existing (use --force to overwrite)",
+    );
+    done(`= .harness/ground/scope-index.yaml (kept)`);
+  } else {
+    const seedFiles: Record<string, ScopeIndexEntry> = {};
+    const mapperFiles = mapperOutput?.scope_index?.files ?? {};
+    for (const [path, e] of Object.entries(mapperFiles)) {
+      const entry: ScopeIndexEntry = {
+        decisions: e.decisions,
+        invariants: e.invariants,
+      };
+      if (e.unscoped === true) entry.unscoped = true;
+      seedFiles[path] = entry;
+    }
+    const seed: ScopeIndex = {
+      generated: new Date().toISOString(),
+      files: seedFiles,
+    };
+    writeScopeIndex(repoRoot, seed);
+    done(`+ .harness/ground/scope-index.yaml`);
   }
 
   // ── Step 4: mirror ─────────────────────────────────────────────────

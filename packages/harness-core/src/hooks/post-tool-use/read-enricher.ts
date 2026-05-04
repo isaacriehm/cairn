@@ -11,13 +11,12 @@
  * Spec: docs/READ_ENRICHER_SPEC.md
  */
 
-import { existsSync, readFileSync } from "node:fs";
-import { join, relative } from "node:path";
-import { parse as parseYaml } from "yaml";
+import { relative } from "node:path";
 import { resolveRepoRoot } from "../../session-start/index.js";
 import { scanCitations } from "./citation-scanner.js";
 import {
   getInvariantsLedger,
+  getScopeIndexEntry,
   lookupTask,
   type TaskLookupResult,
 } from "./ledger-cache.js";
@@ -116,35 +115,6 @@ function computeRelPath(repoRoot: string, filePath: string): string {
   return rel.replace(/\\/g, "/");
 }
 
-function getScopeIndexEntry(
-  repoRoot: string,
-  relPath: string,
-): ScopeIndexHint | null {
-  const path = join(repoRoot, ".harness", "ground", "scope-index.yaml");
-  if (!existsSync(path)) return null;
-  let parsed: unknown;
-  try {
-    parsed = parseYaml(readFileSync(path, "utf8"));
-  } catch {
-    return null;
-  }
-  if (typeof parsed !== "object" || parsed === null) return null;
-  const filesRaw = (parsed as { files?: unknown }).files;
-  if (typeof filesRaw !== "object" || filesRaw === null) return null;
-  const entry = (filesRaw as Record<string, unknown>)[relPath];
-  if (typeof entry !== "object" || entry === null) return null;
-  const e = entry as Record<string, unknown>;
-  if (e["unscoped"] === true) return null;
-  const decisions = Array.isArray(e["decisions"])
-    ? (e["decisions"] as unknown[]).filter((x): x is string => typeof x === "string")
-    : [];
-  const invariants = Array.isArray(e["invariants"])
-    ? (e["invariants"] as unknown[]).filter((x): x is string => typeof x === "string")
-    : [];
-  if (decisions.length === 0 && invariants.length === 0) return null;
-  return { decisions, invariants };
-}
-
 function emitShapeB(additionalContext: string): void {
   const out: PostToolUseShapeBOutput = {
     continue: true,
@@ -200,7 +170,14 @@ export async function runReadEnricher(): Promise<void> {
 
     const matches = scanCitations(content);
     const ledger = getInvariantsLedger(repoRoot);
-    const scopeHint = getScopeIndexEntry(repoRoot, relPath);
+    const cachedEntry = getScopeIndexEntry(repoRoot, relPath);
+    const scopeHint: ScopeIndexHint | null =
+      cachedEntry !== null
+        ? {
+            decisions: cachedEntry.decisions,
+            invariants: cachedEntry.invariants,
+          }
+        : null;
     const resolveTaskFn = (taskId: string): TaskLookupResult =>
       lookupTask(repoRoot, taskId);
 

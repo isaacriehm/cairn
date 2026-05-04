@@ -12,12 +12,13 @@
  * fixes the stub, which needs an agent. That belongs in Phase 14+.
  */
 
-import { type Dirent, readdirSync, readFileSync } from "node:fs";
-import { relative, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { loadStubCatalog } from "../sensors/catalog.js";
 import { detectLanguage } from "../sensors/stub-catalog.js";
 import type { SensorLanguage, StubCatalog } from "../sensors/types.js";
 import type { GcFinding } from "./types.js";
+import { walkSourceTree } from "./walk-source.js";
 
 const PASS_ID = "stub-catalog-hits" as const;
 
@@ -33,20 +34,6 @@ export interface StubCatalogHitsOptions {
    */
   maxFileBytes?: number;
 }
-
-/** Directories the scan never descends into. */
-const SKIP_DIRS = new Set([
-  ".git",
-  "node_modules",
-  ".pnpm-store",
-  "dist",
-  "build",
-  ".next",
-  ".turbo",
-  ".cache",
-  ".archive",
-  "coverage",
-]);
 
 export interface StubCatalogHitsResult {
   findings: GcFinding[];
@@ -100,38 +87,6 @@ export function runStubCatalogHits(
   }
 
   return { findings };
-}
-
-/**
- * Walk every file in repoRoot, yielding repo-relative paths. Skips the SKIP_DIRS
- * set eagerly. Returns a sorted list. Mirrors the strategy of walkCanonical
- * but without the canonical-zone glob filter — the stub catalog wants to
- * catch debt anywhere in the source tree, not just docs.
- */
-function walkSourceTree(repoRoot: string): string[] {
-  const out: string[] = [];
-  const stack: string[] = [repoRoot];
-  while (stack.length > 0) {
-    const dir = stack.pop();
-    if (dir === undefined) break;
-    let entries: Dirent[];
-    try {
-      entries = readdirSync(dir, { withFileTypes: true, encoding: "utf8" });
-    } catch {
-      continue;
-    }
-    for (const entry of entries) {
-      const abs = resolve(dir, entry.name);
-      if (entry.isDirectory()) {
-        if (SKIP_DIRS.has(entry.name)) continue;
-        stack.push(abs);
-      } else if (entry.isFile()) {
-        out.push(relative(repoRoot, abs).replace(/\\/g, "/"));
-      }
-    }
-  }
-  out.sort();
-  return out;
 }
 
 function lineOf(text: string, charIndex: number): number {
