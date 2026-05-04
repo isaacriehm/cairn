@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import { logger } from "../logger.js";
+import { ClaudeError, classifyClaudeError } from "./error.js";
 import type { ClaudeTier, RunClaudeOptions, RunClaudeResult } from "./types.js";
 
 const log = logger("claude.runner");
@@ -72,18 +73,23 @@ export async function runClaude(opts: RunClaudeOptions): Promise<RunClaudeResult
       const stdout = Buffer.concat(stdoutChunks).toString("utf8");
       const stderr = Buffer.concat(stderrChunks).toString("utf8");
       if (code !== 0) {
-        reject(
-          new Error(
-            `claude exited ${code}${stderr ? `: ${stderr.trim()}` : ""}`,
-          ),
-        );
+        const message = `claude exited ${code}${stderr ? `: ${stderr.trim()}` : ""}`;
+        const kind = classifyClaudeError({ message, exitCode: code, stderr });
+        reject(new ClaudeError({ message, kind, exitCode: code, stderr }));
         return;
       }
       let envelope: Record<string, unknown>;
       try {
         envelope = JSON.parse(stdout) as Record<string, unknown>;
       } catch {
-        reject(new Error(`claude output not JSON: ${stdout.slice(0, 200)}`));
+        reject(
+          new ClaudeError({
+            message: `claude output not JSON: ${stdout.slice(0, 200)}`,
+            kind: "other",
+            exitCode: code,
+            stderr,
+          }),
+        );
         return;
       }
       const text = typeof envelope["result"] === "string" ? envelope["result"] : "";

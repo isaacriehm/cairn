@@ -35,15 +35,18 @@ function usage(): never {
       "  --slug <name>     override the auto-derived project slug\n" +
       "  --force           overwrite existing .harness/ files\n" +
       "  --skip-mirror     do not clone the parallel mirror checkout\n" +
-      "  --no-prompt       run non-interactively (uses defaults)\n" +
+      "  --skip-mapper     skip the Tier-2 mapper (project_globs left empty)\n" +
+      "  --no-prompt       run non-interactively (uses defaults; mapper skipped)\n" +
       "  --auto-e2e <v>    when --no-prompt, pick E2E setup answer (now|defer|skip)\n" +
       "\n" +
       "Detects stack signatures (typescript / python / ruby / go / rust /\n" +
-      "elixir / unknown), proposes sensors, seeds .harness/ from the\n" +
-      "harness package templates, writes .harness/config.yaml with the\n" +
-      "project-specific overlay, and clones the parallel mirror at\n" +
-      "~/.local/harness/repos/<slug>/. Two operator dialogs (proceed? +\n" +
-      "E2E setup), under L44's 2-question cap.",
+      "elixir / unknown), proposes sensors, dispatches a one-time Tier-2\n" +
+      "mapper to fill route_handler_globs / dto_globs / generator_source_globs\n" +
+      "/ high_stakes_globs / pilot_module, seeds .harness/ from the harness\n" +
+      "package templates, writes .harness/config.yaml with the project-specific\n" +
+      "overlay (mapper output baked in), patches the `<slug>:` block in\n" +
+      ".harness/config/workflow.md, and clones the parallel mirror at\n" +
+      "~/.local/harness/repos/<slug>/.",
   );
   process.exit(1);
 }
@@ -59,6 +62,7 @@ export async function initCli(argv: string[]): Promise<void> {
     typeof parsed.flags["slug"] === "string" ? parsed.flags["slug"] : undefined;
   const force = parsed.flags["force"] === true;
   const skipMirror = parsed.flags["skip-mirror"] === true;
+  const skipMapper = parsed.flags["skip-mapper"] === true;
   const noPrompt = parsed.flags["no-prompt"] === true;
   const autoE2eRaw =
     typeof parsed.flags["auto-e2e"] === "string"
@@ -80,6 +84,7 @@ export async function initCli(argv: string[]): Promise<void> {
     mode: noPrompt ? "auto" : "interactive",
     force,
     skipMirror,
+    skipMapper,
     ...(noPrompt ? { autoE2e: autoE2eRaw as "now" | "defer" | "skip" } : {}),
     ...(noPrompt ? { autoProceed: "a" as const } : {}),
   });
