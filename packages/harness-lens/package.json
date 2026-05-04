@@ -1,5 +1,5 @@
 {
-  "name": "@isaacriehm/harness-lens",
+  "name": "harness-lens",
   "displayName": "Cairn Lens",
   "description": "Inline citation context for §V invariants and TODO(TSK-) tokens. Hovers, gutter icons, code lens — resolved from .harness/ground/ ledgers.",
   "version": "0.0.0",
@@ -12,7 +12,7 @@
   "categories": [
     "Other"
   ],
-  "main": "./dist/extension.js",
+  "main": "./dist/extension.cjs",
   "activationEvents": [
     "onStartupFinished"
   ],
@@ -57,10 +57,17 @@
       ]
     }
   },
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/isaacriehm/harness.git"
+  },
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc -b",
-    "clean": "rm -rf dist *.tsbuildinfo",
+    "clean": "rm -rf dist *.tsbuildinfo *.vsix",
+    "bundle": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node22 --outfile=dist/extension.cjs --external:vscode --external:fsevents",
+    "package": "pnpm clean && pnpm bundle && vsce package --no-dependencies --out isaacriehm-harness-lens-0.0.0.vsix",
     "smoke:resolver": "tsx scripts/smoke-resolver.ts"
   },
   "dependencies": {
@@ -69,6 +76,8 @@
   "devDependencies": {
     "@types/node": "^25.6.0",
     "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.6.0",
+    "esbuild": "^0.25.0",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3"
   }
