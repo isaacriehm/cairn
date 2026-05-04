@@ -57,17 +57,22 @@
       ]
     }
   },
-  "license": "UNLICENSED",
+  "license": "MIT",
+  "author": "Isaac Riehm",
+  "homepage": "https://github.com/isaacriehm/cairn",
   "repository": {
     "type": "git",
-    "url": "https://github.com/isaacriehm/cairn.git"
+    "url": "git+https://github.com/isaacriehm/cairn.git"
+  },
+  "bugs": {
+    "url": "https://github.com/isaacriehm/cairn/issues"
   },
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc -b",
     "clean": "rm -rf dist *.tsbuildinfo *.vsix",
     "bundle": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node22 --outfile=dist/extension.cjs --external:vscode --external:fsevents",
-    "package": "pnpm clean && pnpm bundle && vsce package --no-dependencies --out isaacriehm-cairn-lens-0.0.0.vsix",
+    "package": "pnpm clean && pnpm bundle && vsce package --no-dependencies",
     "smoke:resolver": "tsx scripts/smoke-resolver.ts"
   },
   "dependencies": {

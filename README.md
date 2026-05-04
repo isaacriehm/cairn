@@ -131,16 +131,26 @@ Plus Stop-hook bypass detection — surfaces inline `[a] backfill / [b] accept
 See [`docs/FILESYSTEM_LAYOUT.md`](docs/FILESYSTEM_LAYOUT.md) for the
 canonical reference.
 
+## Editor extension — Cairn Lens
+
+The Cairn Lens VS Code / Cursor extension surfaces citation context
+inline as you edit: hovers, ghost text after `§V<N>` tokens, gutter
+icons, code lens summaries. Read-only — same `.cairn/ground/` ledgers
+the MCP server uses.
+
+Install the latest `.vsix` from
+[github.com/isaacriehm/cairn/releases](https://github.com/isaacriehm/cairn/releases)
+via `Cmd/Ctrl+Shift+P` → `Extensions: Install from VSIX…`. Full setup +
+config in [`packages/cairn-lens/README.md`](packages/cairn-lens/README.md).
+
 ## Documentation
 
 | File | What |
 |------|------|
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Locked layered model, four-package boundary |
 | [`docs/PLUGIN_ARCHITECTURE.md`](docs/PLUGIN_ARCHITECTURE.md) | Claude Code plugin spec — adoption phases, MCP surface, hooks, multi-dev |
-| [`docs/PRIMER.md`](docs/PRIMER.md) | Concept walkthrough |
 | [`docs/MCP_SURFACE.md`](docs/MCP_SURFACE.md) | Tool-by-tool MCP reference |
 | [`docs/FILESYSTEM_LAYOUT.md`](docs/FILESYSTEM_LAYOUT.md) | `.cairn/` directory contract |
-| [`docs/WORKFLOW_GUIDE.md`](docs/WORKFLOW_GUIDE.md) | Operator UX rules + tier ladder |
 
 ## Development
 
@@ -157,9 +167,6 @@ for s in plugin-layout resolve-attention stop-hook events session-state status-l
   pnpm --filter @isaacriehm/cairn "smoke:$s"
 done
 ```
-
-The build sequence and per-step BUILD_LOG live under
-[`cairn-build/`](cairn-build/).
 
 ## License
 
