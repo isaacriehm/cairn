@@ -33,7 +33,7 @@ Adopters register the server via `.mcp.json` (created by `harness init`):
   "mcpServers": {
     "harness": {
       "command": "npx",
-      "args": ["-y", "@devplusllc/harness", "mcp", "serve"]
+      "args": ["-y", "@isaacriehm/cairn", "mcp", "serve"]
     }
   }
 }

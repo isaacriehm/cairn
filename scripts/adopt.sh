@@ -46,11 +46,11 @@ echo "── Step 2/4: packing five tarballs..."
 declare -a TARBALLS=()
 declare -a SPECS=()
 declare -a PKG_NAMES=(
-  "@devplusllc/harness-core"
-  "@devplusllc/harness-runtime"
-  "@devplusllc/harness-frontend-discord"
-  "@devplusllc/harness-frontend-stub"
-  "@devplusllc/harness"
+  "@isaacriehm/cairn-core"
+  "@isaacriehm/cairn-runtime"
+  "@isaacriehm/cairn-frontend-discord"
+  "@isaacriehm/cairn-frontend-stub"
+  "@isaacriehm/cairn"
 )
 declare -a PKG_DIRS=(
   "packages/harness-core"
@@ -124,10 +124,10 @@ case "$PM" in
       pkg.pnpm = pkg.pnpm || {};
       pkg.pnpm.overrides = pkg.pnpm.overrides || {};
       const overrides = {
-        "@devplusllc/harness-core": `file:${root}/packages/harness-core/devplusllc-harness-core-0.0.0.tgz`,
-        "@devplusllc/harness-runtime": `file:${root}/packages/harness-runtime/devplusllc-harness-runtime-0.0.0.tgz`,
-        "@devplusllc/harness-frontend-discord": `file:${root}/packages/harness-frontend-discord/devplusllc-harness-frontend-discord-0.0.0.tgz`,
-        "@devplusllc/harness-frontend-stub": `file:${root}/packages/harness-frontend-stub/devplusllc-harness-frontend-stub-0.0.0.tgz`,
+        "@isaacriehm/cairn-core": `file:${root}/packages/harness-core/isaacriehm-cairn-core-0.0.0.tgz`,
+        "@isaacriehm/cairn-runtime": `file:${root}/packages/harness-runtime/isaacriehm-cairn-runtime-0.0.0.tgz`,
+        "@isaacriehm/cairn-frontend-discord": `file:${root}/packages/harness-frontend-discord/isaacriehm-cairn-frontend-discord-0.0.0.tgz`,
+        "@isaacriehm/cairn-frontend-stub": `file:${root}/packages/harness-frontend-stub/isaacriehm-cairn-frontend-stub-0.0.0.tgz`,
       };
       Object.assign(pkg.pnpm.overrides, overrides);
       fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");

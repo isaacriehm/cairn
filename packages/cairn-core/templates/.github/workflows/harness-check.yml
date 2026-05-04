@@ -23,7 +23,7 @@ jobs:
           node-version: "20"
 
       - name: Install harness CLI
-        run: npm install -g @devplusllc/harness
+        run: npm install -g @isaacriehm/cairn
 
       - name: Run harness sensors against PR diff
         run: |

@@ -1,4 +1,4 @@
-# @devplusllc/harness-frontend-claudecode
+# @isaacriehm/cairn-frontend-claudecode
 
 Claude Code plugin frontend for harness — the invisible project maintainer.
 
@@ -30,7 +30,7 @@ runners as a debug/dev escape hatch.
 
 ## Distribution
 
-Install via `/plugin marketplace add devplusllc/harness` then
-`/plugin install harness@devplusllc-harness`.
+Install via `/plugin marketplace add isaacriehm/cairn` then
+`/plugin install harness@isaacriehm-cairn`.
 
 See `docs/PLUGIN_ARCHITECTURE.md` §5 for distribution + version cadence.

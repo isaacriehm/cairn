@@ -91,7 +91,7 @@ retention_days:
 # ──────────────────────────────────────────────────────────────────────────────
 # Project-extension placeholder.
 #
-# At adoption (`npx @devplusllc/harness init`), the init script REPLACES this
+# At adoption (`npx @isaacriehm/cairn init`), the init script REPLACES this
 # block with a real key matching the adopting project's `package.json name`
 # (or directory name, lowercased, with non-alphanumerics → underscores).
 #

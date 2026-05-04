@@ -3,7 +3,7 @@
   "displayName": "Harness Lens",
   "description": "Inline citation context for §V invariants and TODO(TSK-) tokens. Hovers, gutter icons, code lens — resolved from .harness/ground/ ledgers.",
   "version": "0.1.0",
-  "publisher": "devplusllc",
+  "publisher": "isaacriehm",
   "type": "module",
   "engines": {
     "node": ">=22",
@@ -60,14 +60,14 @@
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
-    "url": "https://github.com/devplusllc/harness.git"
+    "url": "https://github.com/isaacriehm/cairn.git"
   },
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc -b",
     "clean": "rm -rf dist *.tsbuildinfo *.vsix",
     "bundle": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node22 --outfile=dist/extension.cjs --external:vscode --external:fsevents",
-    "package": "pnpm clean && pnpm bundle && vsce package --no-dependencies --out devplusllc-harness-lens-0.0.0.vsix",
+    "package": "pnpm clean && pnpm bundle && vsce package --no-dependencies --out isaacriehm-cairn-lens-0.0.0.vsix",
     "smoke:resolver": "tsx scripts/smoke-resolver.ts"
   },
   "dependencies": {

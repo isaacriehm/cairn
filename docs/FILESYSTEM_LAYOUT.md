@@ -11,7 +11,7 @@ depends-on:
 
 # Filesystem Layout — Disk-only state for the harness
 
-Replaces the prior Postgres design. Everything lives on disk. Two-zone canonical/historical separation. Hook-enforced. Portable to any project via `npx @devplusllc/harness init`.
+Replaces the prior Postgres design. Everything lives on disk. Two-zone canonical/historical separation. Hook-enforced. Portable to any project via `npx @isaacriehm/cairn init`.
 
 ## 0. Decision summary (locked)
 
@@ -707,7 +707,7 @@ Locked direction (operator decision 2026-05-04): **no PreToolUse hooks.** Soft e
 
 ---
 
-## 11. Init script — `npx @devplusllc/harness init <repo-dir>`
+## 11. Init script — `npx @isaacriehm/cairn init <repo-dir>`
 
 Implementation lives in `packages/harness-core/src/init/`. Key outputs:
 

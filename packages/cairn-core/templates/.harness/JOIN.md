@@ -18,7 +18,7 @@ If the plugin isn't installed yet:
 
 ```bash
 # Inside Claude Code
-/plugin install harness@devplusllc-harness
+/plugin install harness@isaacriehm-cairn
 ```
 
 …then reopen the project. The SessionStart prompt will fire.
@@ -28,7 +28,7 @@ If the plugin isn't installed yet:
 If you don't use Claude Code, run the CLI command:
 
 ```bash
-npm install -g @devplusllc/harness   # only if harness isn't already installed
+npm install -g @isaacriehm/cairn   # only if harness isn't already installed
 harness join                          # idempotent; safe to re-run
 ```
 
@@ -84,4 +84,4 @@ project-level decision, not a per-clone one — discuss with the team first.
   fails silently. If you genuinely need to bypass once, `git commit
   --no-verify` works locally but the CI gate on the PR will still block.
 - **`harness join` reports a version mismatch** — upgrade your CLI:
-  `npm install -g @devplusllc/harness@latest`.
+  `npm install -g @isaacriehm/cairn@latest`.

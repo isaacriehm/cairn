@@ -99,7 +99,7 @@ After draining cross-session invalidation events, advance the per-
 session marker so the next Stop hook poll only sees newer events:
 
 ```
-Bash: node -e "const x = require('@devplusllc/harness-core'); x.stampEventsPoll({repoRoot: process.cwd(), sessionId: process.env.CLAUDE_SESSION_ID, ts: Date.now()})"
+Bash: node -e "const x = require('@isaacriehm/cairn-core'); x.stampEventsPoll({repoRoot: process.cwd(), sessionId: process.env.CLAUDE_SESSION_ID, ts: Date.now()})"
 ```
 
 (The `stampEventsPoll` runtime helper lives in harness-core/session;

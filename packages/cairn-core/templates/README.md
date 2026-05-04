@@ -1,9 +1,9 @@
 # `templates/` — files the init script copies into adopted projects
 
-This directory ships with the `@devplusllc/harness` npm package. It is the seed for `.harness/` and `.archive/` inside any project that runs:
+This directory ships with the `@isaacriehm/cairn` npm package. It is the seed for `.harness/` and `.archive/` inside any project that runs:
 
 ```sh
-npx @devplusllc/harness init <repo-dir>
+npx @isaacriehm/cairn init <repo-dir>
 ```
 
 Layout mirrors `docs/FILESYSTEM_LAYOUT.md`. The init script:
@@ -21,4 +21,4 @@ The `<project_name>:` block in `templates/.harness/config/workflow.md` is a plac
 
 ## Editing templates
 
-Templates are the single source of seed configuration. Changes here flow to every freshly-adopted project on next `npx @devplusllc/harness init`. Existing adoptions are unaffected — they own their copies.
+Templates are the single source of seed configuration. Changes here flow to every freshly-adopted project on next `npx @isaacriehm/cairn init`. Existing adoptions are unaffected — they own their copies.

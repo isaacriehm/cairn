@@ -79,8 +79,8 @@ Component locations follow Claude Code's auto-discovery defaults (`skills/`, `co
   "name": "harness",
   "version": "0.1.0",
   "description": "Project-state + context-loading layer — the invisible project maintainer",
-  "author": { "name": "DevPlus LLC" },
-  "repository": "https://github.com/devplusllc/harness",
+  "author": { "name": "Isaac Riehm" },
+  "repository": "https://github.com/isaacriehm/cairn",
   "license": "MIT"
 }
 ```
@@ -90,9 +90,9 @@ Component locations follow Claude Code's auto-discovery defaults (`skills/`, `co
 ## §5 Distribution
 
 - **v0 → v1**: GitHub URL distribution.
-  - User runs `/plugin marketplace add devplusllc/harness` once
-  - Then `/plugin install harness@devplusllc-harness`
-  - Tag `v0.1.0`, `v0.2.0`, … on each release; users pull via `/plugin update harness@devplusllc-harness`
+  - User runs `/plugin marketplace add isaacriehm/cairn` once
+  - Then `/plugin install cairn@isaacriehm-cairn`
+  - Tag `v0.1.0`, `v0.2.0`, … on each release; users pull via `/plugin update cairn@isaacriehm-cairn`
 - **v1.0.0 milestone**: evaluate moving to the official Anthropic plugin marketplace for first-class discovery + auto-update by default.
 
 Pre-publish (operator's call, not now): wipe history + push current clean working tree as the initial commit of the public repo. The private repo stays as authoritative dev backup.
@@ -459,8 +459,8 @@ set -e
 if ! command -v harness > /dev/null 2>&1; then
   echo "✗ harness CLI not on PATH"
   echo "  This project requires harness. Install:"
-  echo "    /plugin install harness@devplusllc-harness   (Claude Code)"
-  echo "    npm install -g @devplusllc/harness            (CLI)"
+  echo "    /plugin install cairn@isaacriehm-cairn   (Claude Code)"
+  echo "    npm install -g @isaacriehm/cairn            (CLI)"
   echo "  Or: rm .harness/  to opt the project out (irreversible)"
   exit 1
 fi
@@ -506,7 +506,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: npm install -g @devplusllc/harness
+      - run: npm install -g @isaacriehm/cairn
       - run: harness sensor-run --diff origin/main..HEAD --strict
 ```
 

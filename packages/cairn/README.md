@@ -1,4 +1,4 @@
-# @devplusllc/harness
+# @isaacriehm/cairn
 
 Portable agent harness for solo developers. Runtime workspace package.
 
@@ -16,7 +16,7 @@ Both operate against a parallel mirror checkout at `~/.local/harness/repos/<proj
 ## Adoption
 
 ```sh
-npx @devplusllc/harness init <repo-dir>
+npx @isaacriehm/cairn init <repo-dir>
 ```
 
 Detects stack profile (TypeScript/Python/Rails/Go/Rust/unknown), proposes sensors, scaffolds `.harness/` directory, registers MCP server, prompts for frontend adapter setup. See `../docs/INTEGRATION_PLAN.md` Phase 16.

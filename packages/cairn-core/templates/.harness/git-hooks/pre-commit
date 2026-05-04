@@ -15,8 +15,8 @@ set -e
 if ! command -v harness > /dev/null 2>&1; then
   echo "✗ harness CLI not on PATH"
   echo "  This project requires harness. Install:"
-  echo "    /plugin install harness@devplusllc-harness   (Claude Code)"
-  echo "    npm install -g @devplusllc/harness            (CLI)"
+  echo "    /plugin install harness@isaacriehm-cairn   (Claude Code)"
+  echo "    npm install -g @isaacriehm/cairn            (CLI)"
   echo "  Or: rm -rf .harness/  to opt the project out (irreversible)"
   exit 1
 fi
