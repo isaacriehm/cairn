@@ -14,7 +14,7 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the layered model and the
 
 | Item | Location |
 |------|----------|
-| The current handoff | [`RESUME_PROMPT.md`](RESUME_PROMPT.md) — read this first if you are a freshly-spawned agent |
+| The current handoff | [`harness-build/HANDOFF_PLUGIN_PIVOT.md`](harness-build/HANDOFF_PLUGIN_PIVOT.md) — read this first if you are a freshly-spawned agent |
 | **Locked architecture (layered model)** | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | Concept primer | [`docs/PRIMER.md`](docs/PRIMER.md) |
 | Phased build plan (historical — see ARCHITECTURE for current model) | [`docs/INTEGRATION_PLAN.md`](docs/INTEGRATION_PLAN.md) |
@@ -44,24 +44,25 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the layered model and the
 
 - All design decisions are recorded in `docs/`. Drift between conversation and `docs/` is a bug.
 - Anti-patterns are named and rejected in `docs/PRIMER.md` §11. Do not propose anything on that list.
-- Locked architectural decisions in `docs/ARCHITECTURE.md` (§1 layered model, §3 package contents) and the L01–L50 list in earlier RESUME_PROMPT are not reopened without explicit operator instruction.
+- Locked architectural decisions in `docs/ARCHITECTURE.md` (§1 layered model, §3 package contents) are not reopened without explicit operator instruction.
 
 ## Workspace layout (post-split)
 
 ```
 Cairn/                         — repo root (this file lives here)
-├── packages/
-│   ├── harness-core/            — state + context + MCP. The Cairn.
-│   ├── harness-runtime/         — orchestration consumer (FIFO, mirror,
-│   │                              sensors, reviewer, UAT, dispatch)
-│   ├── harness-frontend-discord/ — Discord adapter (bot, voice, channels)
-│   └── harness-frontend-stub/   — in-memory test adapter
-└── harness/                     — umbrella + CLI bin (`harness init/run/…`)
+└── packages/
+    ├── harness/                  — umbrella + CLI bin (`harness init/run/…`)
+    ├── harness-core/             — state + context + MCP. The Cairn.
+    ├── harness-runtime/          — orchestration consumer (FIFO, mirror,
+    │                               sensors, reviewer, UAT, dispatch)
+    ├── harness-frontend-discord/ — Discord adapter (bot, voice, channels)
+    ├── harness-frontend-stub/    — in-memory test adapter
+    └── harness-lens/             — VS Code / Cursor extension (.vsix)
 ```
 
 ## When you (an agent) are starting fresh
 
-1. Read [`RESUME_PROMPT.md`](RESUME_PROMPT.md) end-to-end.
+1. Read [`harness-build/HANDOFF_PLUGIN_PIVOT.md`](harness-build/HANDOFF_PLUGIN_PIVOT.md) end-to-end.
 2. Read [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — locked layered model.
 3. Read [`docs/PRIMER.md`](docs/PRIMER.md) for concepts + anti-patterns.
 4. Skim the other `docs/*.md` files.
