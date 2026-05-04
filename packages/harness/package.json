@@ -65,7 +65,9 @@
     "smoke:rules-merge": "tsx scripts/smoke-rules-merge.ts",
     "smoke:join": "tsx scripts/smoke-join.ts",
     "smoke:bypass-detection": "tsx scripts/smoke-bypass-detection.ts",
-    "smoke:bootstrap-guard": "tsx scripts/smoke-bootstrap-guard.ts"
+    "smoke:bootstrap-guard": "tsx scripts/smoke-bootstrap-guard.ts",
+    "smoke:e2e-adoption": "tsx scripts/smoke-e2e-adoption.ts",
+    "smoke:e2e-daily-flow": "tsx scripts/smoke-e2e-daily-flow.ts"
   },
   "dependencies": {
     "@isaacriehm/harness-core": "workspace:*",

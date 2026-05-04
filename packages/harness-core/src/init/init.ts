@@ -54,6 +54,22 @@ import {
   type IngestionResult,
 } from "./ingest-docs.js";
 import {
+  runSourceCommentsIngestion,
+  type CommentClassification,
+  type IngestSourceCommentsResult,
+} from "./source-comments/index.js";
+import {
+  runRulesMerge,
+  type RuleClassification,
+  type RunRulesMergeResult,
+} from "./rules-merge/index.js";
+import {
+  installMultiDev,
+  type MultiDevInstallResult,
+} from "./multi-dev/index.js";
+import type { CommentBlock } from "./source-comments/walker.js";
+import type { RuleSection, RuleSourceFile } from "./rules-merge/index.js";
+import {
   detectMonorepoContext,
   findGitRoot,
   isCairnSourceRepo,
@@ -163,6 +179,37 @@ export interface RunInitArgs {
    *   "abort"    — exit without writing anything (the default)
    */
   autoMonorepo?: "continue" | "abort";
+  /**
+   * Skip Phase 7b — full-repo source-comment ingestion. Defaults to the
+   * same gate as `skipIngestion`. Tests pass `mockSourceCommentClassify`
+   * to exercise the persistence path without burning Haiku tokens.
+   */
+  skipPhase7b?: boolean;
+  /**
+   * Skip Phase 7c — existing-rules merge + initial CLAUDE.md/AGENTS.md
+   * regeneration. Defaults to the same gate as `skipIngestion`. Tests
+   * pass `mockRulesMergeClassify` to bypass Haiku.
+   */
+  skipPhase7c?: boolean;
+  /**
+   * Skip Phase 12 — multi-dev enforcement install (package.json prepare,
+   * non-Node manual hints). Defaults to false; auto mode runs Phase 12
+   * since it's purely deterministic + idempotent.
+   */
+  skipPhase12?: boolean;
+  /**
+   * Test override for the source-comment classifier. When set, Phase 7b
+   * runs without any Haiku call.
+   */
+  mockSourceCommentClassify?: (block: CommentBlock) => CommentClassification;
+  /**
+   * Test override for the rules-merge classifier. When set, Phase 7c
+   * runs without any Haiku call.
+   */
+  mockRulesMergeClassify?: (
+    section: RuleSection,
+    source: RuleSourceFile,
+  ) => RuleClassification;
 }
 
 export interface InitResult {
@@ -188,6 +235,12 @@ export interface InitResult {
   ingestion: IngestionResult | null;
   /** Phase 6 baseline sensor audit outcome. */
   baseline_audit: BaselineAuditResult | null;
+  /** Phase 7b — full-repo source-comment ingestion. */
+  source_comments: IngestSourceCommentsResult | null;
+  /** Phase 7c — existing-rules merge result. */
+  rules_merge: RunRulesMergeResult | null;
+  /** Phase 12 — multi-dev enforcement install result. */
+  multi_dev: MultiDevInstallResult | null;
   /** Absolute path to the log file pino output was redirected to. */
   log_file_path: string | null;
   /** Monorepo subdir context if init was launched from a sub-package. */
@@ -321,6 +374,9 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
       brand_setup: null,
       ingestion: null,
       baseline_audit: null,
+      source_comments: null,
+      rules_merge: null,
+      multi_dev: null,
       log_file_path: logFilePath,
       monorepo_context: monorepoContext,
       submodules: submoduleSummary,
@@ -532,6 +588,119 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     warnings,
   });
 
+  // ── Phase 7b: source-comment ingestion ─────────────────────────────
+  // Walks every source file, batches block-comments through Haiku, files
+  // DEC drafts + invariant proposals + canonical citations into
+  // `.harness/baseline/`. Skipped under the same condition as Phase 6
+  // unless a `mockSourceCommentClassify` is supplied (smokes).
+  let sourceComments: IngestSourceCommentsResult | null = null;
+  const skip7b =
+    args.skipPhase7b === true ||
+    ((args.skipIngestion === true || mode === "auto") &&
+      args.mockSourceCommentClassify === undefined);
+  if (!skip7b) {
+    process.stdout.write("\n");
+    process.stdout.write(
+      `  ${visualC.bold("Phase 7b")} — source-comment ingestion…\n`,
+    );
+    try {
+      sourceComments = await runSourceCommentsIngestion({
+        repoRoot,
+        ...(args.mockSourceCommentClassify !== undefined
+          ? { mockClassify: args.mockSourceCommentClassify }
+          : {}),
+        onBatchProgress: (row) => {
+          if (row.index === row.total - 1) {
+            process.stdout.write(
+              `    ${row.classified} classified, ${row.failed} failed (${row.total} batch${row.total === 1 ? "" : "es"})\n`,
+            );
+          }
+        },
+      });
+      process.stdout.write(
+        `    DEC drafts: ${sourceComments.decDraftsWritten.length}; ` +
+          `invariant proposals: ${sourceComments.invariantProposalsAdded}; ` +
+          `citations: ${sourceComments.canonicalCitationsAdded}\n`,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      warnings.push(`source-comment ingestion failed: ${msg}`);
+      process.stdout.write(
+        `    ${visualC.yellow("⚠")} source-comment ingestion failed — ${msg}\n`,
+      );
+    }
+  }
+
+  // ── Phase 7c: existing-rules merge + first regenerate ──────────────
+  // Reads CLAUDE.md / AGENTS.md / .claude/CLAUDE.md / .claude/rules/**.md,
+  // classifies sections via Haiku into rule-net-new / rule-conflict /
+  // informational / operator-keep, persists net-new as DEC drafts. The
+  // initial regenerate of CLAUDE.md + AGENTS.md from ground state is
+  // deferred until after operator accepts the drafts in the attention
+  // pass — we don't auto-overwrite their existing rule files at adoption.
+  let rulesMerge: RunRulesMergeResult | null = null;
+  const skip7c =
+    args.skipPhase7c === true ||
+    ((args.skipIngestion === true || mode === "auto") &&
+      args.mockRulesMergeClassify === undefined);
+  if (!skip7c) {
+    process.stdout.write("\n");
+    process.stdout.write(
+      `  ${visualC.bold("Phase 7c")} — existing-rules merge…\n`,
+    );
+    try {
+      rulesMerge = await runRulesMerge({
+        repoRoot,
+        ...(args.mockRulesMergeClassify !== undefined
+          ? { mockClassify: args.mockRulesMergeClassify }
+          : {}),
+      });
+      process.stdout.write(
+        `    Sources: ${rulesMerge.sources.length}; ` +
+          `net-new: ${rulesMerge.kindCounts["rule-net-new"]}; ` +
+          `conflicts: ${rulesMerge.kindCounts["rule-conflict"]}; ` +
+          `informational: ${rulesMerge.kindCounts.informational}; ` +
+          `operator-keep: ${rulesMerge.kindCounts["operator-keep"]}\n`,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      warnings.push(`rules merge failed: ${msg}`);
+      process.stdout.write(
+        `    ${visualC.yellow("⚠")} rules merge failed — ${msg}\n`,
+      );
+    }
+  }
+
+  // ── Phase 12: multi-developer enforcement install ──────────────────
+  // Idempotent + deterministic. Patches `package.json` `scripts.prepare`
+  // for Node projects so every clone runs `harness join` on install.
+  // Surfaces manual hints for non-Node hosts. Templates (.harness/
+  // git-hooks/*, JOIN.md, .github/workflows/harness-check.yml) were
+  // landed by `seedCairnLayout` in Phase 4.
+  let multiDev: MultiDevInstallResult | null = null;
+  if (args.skipPhase12 !== true) {
+    process.stdout.write("\n");
+    process.stdout.write(
+      `  ${visualC.bold("Phase 12")} — multi-dev enforcement install…\n`,
+    );
+    try {
+      multiDev = installMultiDev({ repoRoot });
+      const hostList = multiDev.hostKinds.join(", ");
+      process.stdout.write(
+        `    Hosts detected: ${hostList}; prepare patched: ${multiDev.preparePatched ? "yes" : "no"}\n`,
+      );
+      for (const hint of multiDev.manualHints) {
+        process.stdout.write(`    ${visualC.dim(hint)}\n`);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      warnings.push(`multi-dev install failed: ${msg}`);
+      process.stdout.write(
+        `    ${visualC.yellow("⚠")} multi-dev install failed — ${msg}\n`,
+      );
+    }
+  }
+
   // Per-session status.json is owned by the plugin's SessionStart hook
   // (PLUGIN_ARCHITECTURE §7). Init no longer writes it; the next
   // SessionStart in any clone seeds the per-session file with the
@@ -586,6 +755,9 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     brand_setup: brandSetup,
     ingestion: phase6.ingestion,
     baseline_audit: phase6.baselineAudit,
+    source_comments: sourceComments,
+    rules_merge: rulesMerge,
+    multi_dev: multiDev,
     log_file_path: logFilePath,
     monorepo_context: monorepoContext,
     submodules: submoduleSummary,
