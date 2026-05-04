@@ -1,6 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import type { McpContext } from "../context.js";
+import { requireBootstrap } from "../bootstrap-guard.js";
 import { mcpError } from "../errors.js";
 import { isAppendAllowed, relPosix, safeJoin } from "../path-allowlist.js";
 import { appendInput } from "../schemas.js";
@@ -13,6 +14,8 @@ interface Input {
 }
 
 async function handler(ctx: McpContext, input: Input): Promise<unknown> {
+  const block = requireBootstrap(ctx.repoRoot);
+  if (block !== null) return block;
   const abs = safeJoin(ctx.repoRoot, input.path);
   if (typeof abs !== "string") return abs; // error envelope
   const rel = relPosix(ctx.repoRoot, abs);

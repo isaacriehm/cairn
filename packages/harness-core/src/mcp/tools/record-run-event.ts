@@ -1,6 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { McpContext } from "../context.js";
+import { requireBootstrap } from "../bootstrap-guard.js";
 import { mcpError } from "../errors.js";
 import { recordRunEventInput } from "../schemas.js";
 import type { ToolDef } from "./types.js";
@@ -11,6 +12,8 @@ interface Input {
 }
 
 async function handler(ctx: McpContext, input: Input): Promise<unknown> {
+  const block = requireBootstrap(ctx.repoRoot);
+  if (block !== null) return block;
   const runDir = join(ctx.repoRoot, ".harness", "runs", "active", input.run_id);
   if (!existsSync(runDir)) {
     return mcpError("RUN_NOT_FOUND", `No active run dir at ${runDir}`);

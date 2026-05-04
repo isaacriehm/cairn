@@ -4,6 +4,7 @@ import { stringify as stringifyYaml } from "yaml";
 import type { McpContext } from "../context.js";
 import { writeInvalidationEvent } from "../../events/index.js";
 import { withWriteLock } from "../../lock.js";
+import { requireBootstrap } from "../bootstrap-guard.js";
 import { dropTaskInput } from "../schemas.js";
 import type { ToolDef } from "./types.js";
 
@@ -18,6 +19,8 @@ interface Input {
 }
 
 async function handler(ctx: McpContext, input: Input): Promise<unknown> {
+  const block = requireBootstrap(ctx.repoRoot);
+  if (block !== null) return block;
   return withWriteLock(ctx.repoRoot, () => {
     const today = new Date().toISOString().slice(0, 10);
     const slug = input.title

@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Harness pre-commit hook (versioned, per-clone activation via core.hooksPath).
+#
+# Spec: PLUGIN_ARCHITECTURE §17 Layer 1.
+#
+# Fails the commit when:
+#   - harness CLI is missing from PATH
+#   - sensor-run --staged exits non-zero
+#
+# To opt out a project: rm .harness/  (irreversible).
+# Bypass for a single commit: git commit --no-verify (CI gate still catches).
+
+set -e
+
+if ! command -v harness > /dev/null 2>&1; then
+  echo "✗ harness CLI not on PATH"
+  echo "  This project requires harness. Install:"
+  echo "    /plugin install harness@devplusllc-harness   (Claude Code)"
+  echo "    npm install -g @devplusllc/harness            (CLI)"
+  echo "  Or: rm -rf .harness/  to opt the project out (irreversible)"
+  exit 1
+fi
+
+exec harness sensor-run --staged "$@"

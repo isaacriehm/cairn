@@ -8,7 +8,10 @@
  * `harness-core/src/hooks/session-start.ts` calls into this runner.
  */
 
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { gcStaleEvents } from "../../events/index.js";
+import { inspectJoinState } from "../../join/index.js";
 import { resolveRepoRoot } from "../../session-start/index.js";
 import { buildSessionStartContext } from "../../session-start/index.js";
 import {
@@ -119,11 +122,16 @@ export async function runSessionStartHook(): Promise<void> {
     );
   }
 
+  const bootstrapBanner = renderBootstrapBanner(repoRoot);
+  const additionalContext =
+    bootstrapBanner === null
+      ? result.additionalContext
+      : `${bootstrapBanner}\n\n${result.additionalContext}`;
   const out: SessionStartShapeBOutput = {
     continue: true,
     hookSpecificOutput: {
       hookEventName: "SessionStart",
-      additionalContext: result.additionalContext,
+      additionalContext,
     },
   };
   emitShapeB(out);
@@ -134,11 +142,57 @@ export async function runSessionStartHook(): Promise<void> {
     sessionId,
     source,
     durationMs: Date.now() - startedAt,
-    warnings: [...result.warnings, ...sessionWarnings],
+    warnings: [
+      ...result.warnings,
+      ...sessionWarnings,
+      ...(bootstrapBanner !== null ? ["bootstrap_required"] : []),
+    ],
     extra: {
       sections_rendered: result.sectionsRendered,
       sections_dropped: result.sectionsDropped,
-      total_chars: result.totalChars,
+      total_chars: additionalContext.length,
     },
   });
+}
+
+/**
+ * Per PLUGIN_ARCHITECTURE §17 Layer 4: when a clone is harness-adopted
+ * (`.harness/config.yaml` present + `.git/` present) but `core.hooksPath`
+ * is unset, the plugin enters degraded mode. The session opens — read
+ * tools still work — but main Claude must surface the bootstrap prompt
+ * inline before the operator engages with any harness write surface. The
+ * banner is the only contract: if the surrounding skill / agent does not
+ * gate on it, the MCP write tools' BOOTSTRAP_REQUIRED envelope is the
+ * server-side backstop.
+ */
+function renderBootstrapBanner(repoRoot: string): string | null {
+  if (!existsSync(join(repoRoot, ".git"))) return null;
+  if (!existsSync(join(repoRoot, ".harness", "config.yaml"))) return null;
+  const state = inspectJoinState({ repoRoot });
+  if (state.hooksPathSet) return null;
+  const lines: string[] = [];
+  lines.push("## Harness — bootstrap required");
+  lines.push("");
+  lines.push(
+    "This project is harness-adopted, but this clone is not bootstrapped. " +
+      "Without `harness join`, MCP write tools refuse, the harness-direction " +
+      "skill blocks, and your local commits will fail at the pre-commit hook.",
+  );
+  lines.push("");
+  lines.push(
+    `Project pinned to harness ${state.projectHarnessVersion ?? "(unset)"}.`,
+  );
+  lines.push("");
+  lines.push("Surface this inline to the operator now:");
+  lines.push("");
+  lines.push("> This project uses harness, but your clone isn't bootstrapped.");
+  lines.push("> `[a]` bootstrap now (run `harness join`, ~5s)");
+  lines.push("> `[b]` skip (harness write surface stays disabled)");
+  lines.push("");
+  lines.push(
+    "On `[a]`, run `harness join` from this repo's working directory and " +
+      "wait for it to print `harness join: bootstrapped`. The next assistant " +
+      "turn will pick up the unblocked surface.",
+  );
+  return lines.join("\n");
 }

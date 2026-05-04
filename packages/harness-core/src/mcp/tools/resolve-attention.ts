@@ -34,6 +34,7 @@ import { writeInvalidationEvent } from "../../events/index.js";
 import { decisionsDir } from "../../ground/index.js";
 import { withWriteLock } from "../../lock.js";
 import type { McpContext } from "../context.js";
+import { requireBootstrap } from "../bootstrap-guard.js";
 import { mcpError } from "../errors.js";
 import { resolveAttentionInput } from "../schemas.js";
 import type { ToolDef } from "./types.js";
@@ -46,6 +47,8 @@ interface Input {
 }
 
 async function handler(ctx: McpContext, input: Input): Promise<unknown> {
+  const block = requireBootstrap(ctx.repoRoot);
+  if (block !== null) return block;
   switch (input.kind) {
     case "decision_draft":
       return resolveDecisionDraft(ctx, input);

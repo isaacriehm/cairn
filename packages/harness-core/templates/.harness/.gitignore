@@ -10,3 +10,7 @@ events/
 .write-lock
 .gc-lock
 .audit-lock
+
+# Per-clone attested-commits log — written by post-commit hook, read by
+# Stop hook bypass detection. Per PLUGIN_ARCHITECTURE §17 Layer 1.
+.attested-commits

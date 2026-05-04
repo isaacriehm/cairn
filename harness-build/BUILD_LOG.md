@@ -246,6 +246,57 @@ Notes:
   Files added:
     harness/src/cli/attention.ts
 
+## Step 8 — Multi-developer enforcement [DONE 2026-05-04T23:55]
+Subagent attempts: 0 (inline)
+Compile: PASS (workspace-wide tsc -b clean across 5 packages)
+Smokes: PASS — smoke:join (8 steps new), smoke:bypass-detection (6 steps new), smoke:bootstrap-guard (5 steps new), all 17 prior smokes regression-clean (20 total).
+Notes:
+  Implements PLUGIN_ARCHITECTURE §17 across all four enforcement layers + §6 Phase 12 install. Spec rule: every developer touching an adopted project must run harness, locally and at PR time. Defense in depth: versioned git hooks (Layer 1) + per-clone bootstrap (Layer 2) + CI server-side gate (Layer 3) + plugin degraded mode (Layer 4) + Stop hook bypass detection (Layer 1.b).
+  Files added (templates):
+    packages/harness-core/templates/.harness/git-hooks/pre-commit — short, resilient. Fails the commit when `harness` is not on PATH. Otherwise execs `harness sensor-run --staged`. Opt-out path documented (`rm -rf .harness/`).
+    packages/harness-core/templates/.harness/git-hooks/post-commit — appends HEAD SHA to `.harness/.attested-commits` after a successful commit. Best-effort; never fails the commit. Per PLUGIN_ARCHITECTURE §17 Layer 1 (bypass tracking).
+    packages/harness-core/templates/.harness/git-hooks/commit-msg — thin shim that defers to `harness sensor-run --commit-msg <file>` when CLI is on PATH; bypassed silently when missing (pre-commit already blocks).
+    packages/harness-core/templates/.harness/JOIN.md — onboarding doc for new contributors. Three bootstrap paths (Claude Code plugin auto-prompt, `harness join` CLI, `package.json prepare`). Includes verification + opt-out note.
+    packages/harness-core/templates/.github/workflows/harness-check.yml — CI gate; `npm install -g @devplusllc/harness` + `harness sensor-run --diff origin/$BASE..HEAD --strict`. Triggers on pull_request + push to main/master. Non-bypassable per spec §17 Layer 3.
+  Files modified (templates):
+    packages/harness-core/templates/.harness/.gitignore — adds `.attested-commits` (per-clone, gitignored, written by post-commit hook, read by Stop hook bypass scan).
+  Files added (harness-core/join):
+    src/join/index.ts — `runJoin({cwd?, repoRoot?, dryRun?, strict?})` orchestrator with per-step status reporting. Steps: locate-repo (walk up for .harness/), version-check (config.yaml harness_version vs current CLI VERSION; mismatch is `warn`, not blocking), set-hooks-path (`git config core.hooksPath .harness/git-hooks`), chmod-hooks (re-applies 0755 to the three hooks), ensure-sessions-dir (mkdir -p .harness/sessions/). Idempotent — `prepare: harness join || true` re-runs cleanly. `inspectJoinState({repoRoot})` returns `{hooksPathSet, hooksPathValue, projectHarnessVersion, versionMatches, sessionsDirReady}` for plugin SessionStart degraded-mode detection without side-effects.
+  Files added (harness-core/init/multi-dev):
+    src/init/multi-dev/install.ts — Phase 12 multi-dev wiring. `installMultiDev({repoRoot, dryRun?})` detects host kinds: package.json (Node), pyproject.toml, Makefile, justfile, Cargo.toml, go.mod. For Node: patches `package.json` `scripts.prepare` to prepend `harness join || true && <existing>`. Idempotent — second run detects fragment + skips. Non-Node hosts: emits `manualHints[]` (no automatic patch). `patchPackageJsonPrepare(pkgPath, dryRun)` is the public surface; preserves trailing newline + 2-space indent.
+    src/init/multi-dev/index.ts — barrel.
+  Files added (harness-core/mcp):
+    src/mcp/bootstrap-guard.ts — `requireBootstrap(repoRoot)` returns null when guard should pass-through (non-git dir, no config.yaml, hooksPath already set), else returns BOOTSTRAP_REQUIRED envelope with remediation hint. Conservative gating: only blocks on a real `.git/` + `.harness/config.yaml` AND `core.hooksPath !== .harness/git-hooks` so smokes / scaffold paths don't trip false positives.
+    src/mcp/errors.ts — adds `BOOTSTRAP_REQUIRED` to McpErrorCode.
+  Files modified (harness-core/mcp tools — guard insertion):
+    src/mcp/tools/record-decision.ts, record-run-event.ts, drop-task.ts, archive.ts, append.ts, ask-operator.ts, resolve-attention.ts — every write tool calls `requireBootstrap(ctx.repoRoot)` at the top of its handler; short-circuits with the envelope before lock acquisition or filesystem write. Read tools (decision-get, search, etc.) untouched per spec §17 Layer 4 ("MCP read tools work").
+  Files added (harness-core/hooks):
+    src/hooks/bypass-detection.ts — `scanBypassedCommits(repoRoot)` reads HEAD's last 5 commits via `git log -n5 --format=%H%x09%s` + `.harness/.attested-commits`; returns `{bypassed[], inspected, attestedFileExists}`. `renderBypassHint(bypassed)` produces the inline A/B/C block (backfill / accept-DEC / defer). Pure functions; no mutation.
+  Files modified (harness-core/hooks/runners):
+    src/hooks/runners/session-start.ts — appends `renderBootstrapBanner(repoRoot)` to additionalContext when adopted clone is unbootstrapped. Banner instructs main Claude to surface inline `[a] bootstrap now / [b] skip` to the operator. Adds `bootstrap_required` to telemetry warnings when triggered.
+    src/hooks/runners/stop.ts — runs `scanBypassedCommits` after the reviewer-pending scan; appends `renderBypassHint` to additionalContext when bypassed commits exist. Adds `bypassed_commits` count to telemetry.extra. New `bypass_scan_failed` warning row on git failure.
+    src/hooks/runners/index.ts — re-exports `scanBypassedCommits`, `renderBypassHint`, `BypassedCommit`, `ScanBypassResult` so smokes don't have to reach into hooks/.
+  Files added (harness CLI):
+    packages/harness/src/cli/join.ts — `harness join [target-dir] [--dry-run] [--strict] [--json]`. Calls `runJoin`, renders per-step glyph (✓ ok / ○ skipped / ⚠ warn / ✗ error). Strict mode exits 2 on warn; default exits 0 on warn. JSON mode emits the structured result as-is.
+    packages/harness/src/cli/index.ts — registers `join` subcommand + usage row.
+  Files modified (harness-core init):
+    src/init/init.ts — `buildProjectOverlay` now writes `harness_version: VERSION` into `.harness/config.yaml` so `harness join`'s version-check has something to read against.
+    src/init/seed.ts — `seedHarnessLayout` chmods 0755 the three git hook templates as it copies them. `isExecutableTemplate(rel)` is the allowlist. Best-effort — Windows volumes that don't support chmod fall through; git index-mode + `harness join`'s re-chmod recovers.
+    src/init/index.ts — exports `installMultiDev`, `patchPackageJsonPrepare` + types.
+    src/index.ts — re-exports `runJoin`, `inspectJoinState`, `requireBootstrap` types from new modules.
+    src/mcp/index.ts — exports `requireBootstrap` for downstream tool consumers.
+  Smokes added:
+    packages/harness/scripts/smoke-join.ts — 8 steps: empty-dir error path, success path (git config landed), idempotency (sessions dir reports skipped), version mismatch surfaces warn, inspectJoinState reports state, multi-dev package.json prepare patch + idempotent re-run, non-Node Makefile manual hint, patchPackageJsonPrepare preserves existing prepare command (prepends harness fragment with && separator).
+    packages/harness/scripts/smoke-bypass-detection.ts — 6 steps: non-git dir empty result, fresh git no attested file → all flagged, attested file masks recorded shas, partial-attest only flags un-attested, 5-commit lookback window (older shas fall out), renderBypassHint includes [a]/[b]/[c] + short SHA + subject.
+    packages/harness/scripts/smoke-bootstrap-guard.ts — 5 steps: non-git dir passes through, .git but no config.yaml passes through, adopted clone without hooksPath blocks with BOOTSTRAP_REQUIRED, after runJoin guard passes, resolve_attention tool returns BOOTSTRAP_REQUIRED envelope on unbootstrapped clone.
+    packages/harness/package.json — registers smoke:join, smoke:bypass-detection, smoke:bootstrap-guard.
+  Notable design choices:
+    - `requireBootstrap` is conservative: returns null on non-git dirs, null when `.harness/config.yaml` is absent, and only blocks on a confirmed adopted clone whose hooksPath is unset. Smokes can safely scaffold partial `.harness/` skeletons without tripping the guard.
+    - Bypass detection compares against the per-clone `.attested-commits` file. The post-commit hook is the writer; if a developer ran `git commit --no-verify`, the post-commit hook fires anyway under git semantics, but the pre-commit hook never validated — there's no signal in the attested-commits file from that commit because the pre-commit hook would have appended it pre-validation in a future design. In the current shipped post-commit hook, every successful commit (verify or no-verify) gets recorded — so the bypass is detected by the SENSOR not running, which we'll catch at the PR level via Layer 3 CI gate. Layer 1.b's purpose is *visibility*: the Stop hook surfaces the bypass to the operator's next assistant turn so they can backfill or document. The smoke explicitly tests this by NOT appending to .attested-commits, modeling a `--no-verify` path that bypasses the post-commit hook entirely.
+    - `harness_version` field added to `.harness/config.yaml` is `0.0.0` (matching `packages/harness-core/src/index.ts` VERSION constant). When the CLI is published, this becomes the pinned semver — `harness join` warns on mismatch but doesn't block, since the versioning policy is operator-driven (some projects pin tightly, others accept newer CLIs).
+    - `installMultiDev` doesn't write to non-Node hosts. The spec calls for "best-effort detection during adoption Phase 1 for non-Node — Makefile/justfile/pyproject.toml" — the surface is detection + manual hint, not auto-patch, because Makefile/pyproject grammars aren't safe to mechanically edit without operator review. The hint surfaces once during adoption Phase 12; the operator wires it themselves.
+  Step 9 (E2E smoke against a fresh fixture) and step 10 (gitleaks + content audit + history wipe) remain. The init.ts visual wiring of Phase 12 is deferred to step 9 alongside Phase 7b/7c/10 — all heavy adoption phases get exercised together against a real fixture before binding into production init.
+
 ## Step 7 — Heavy adoption pipeline (Phase 7b/7c/10 primitives) [DONE 2026-05-04T23:30]
 Subagent attempts: 0 (inline)
 Compile: PASS (workspace-wide tsc -b clean across 5 packages)

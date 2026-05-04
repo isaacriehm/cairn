@@ -8,6 +8,7 @@
  */
 
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -48,6 +49,15 @@ export function seedHarnessLayout(opts: SeedOptions): SeedResult {
     const raw = readFileSync(absSrc, "utf8");
     const out = applyPlaceholders({ content: raw, projectSlug: opts.projectSlug, relPath: rel });
     writeFileSync(absDst, out, "utf8");
+    if (isExecutableTemplate(rel)) {
+      try {
+        chmodSync(absDst, 0o755);
+      } catch {
+        // Filesystems that don't support chmod (e.g. some Windows volumes)
+        // — git itself will set the executable bit on tracked content via
+        // the index, and `harness join` re-chmods on bootstrap.
+      }
+    }
     written.push(rel);
   });
   return { written_files: written, collisions };
@@ -101,4 +111,18 @@ function walk(dir: string, onFile: (abs: string) => void): void {
 /** Exposed for the smoke test — locate the templates root from runtime. */
 export function templatesRoot(): string {
   return TEMPLATES_ROOT;
+}
+
+/**
+ * Templates that must land with 0755 so git hooks fire on commit. Tracked
+ * separately from the placeholder substitution list — the executable bit
+ * is metadata the seed function owns, not file content.
+ */
+function isExecutableTemplate(rel: string): boolean {
+  const norm = rel.split("\\").join("/");
+  return (
+    norm === ".harness/git-hooks/pre-commit" ||
+    norm === ".harness/git-hooks/post-commit" ||
+    norm === ".harness/git-hooks/commit-msg"
+  );
 }

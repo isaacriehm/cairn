@@ -10,6 +10,7 @@ import { writeInvalidationEvent } from "../../events/index.js";
 import { decisionsDir } from "../../ground/index.js";
 import { DecisionAssertion } from "../../ground/index.js";
 import { withWriteLock } from "../../lock.js";
+import { requireBootstrap } from "../bootstrap-guard.js";
 import { mcpError } from "../errors.js";
 import { recordDecisionInput } from "../schemas.js";
 import type { ToolDef } from "./types.js";
@@ -27,6 +28,8 @@ interface Input {
 }
 
 async function handler(ctx: McpContext, input: Input): Promise<unknown> {
+  const block = requireBootstrap(ctx.repoRoot);
+  if (block !== null) return block;
   const dir = decisionsDir(ctx.repoRoot);
   const inboxDir = join(dir, "_inbox");
 

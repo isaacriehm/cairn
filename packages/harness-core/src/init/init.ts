@@ -29,6 +29,7 @@ import {
 } from "node:fs";
 import { join, relative } from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { VERSION } from "../index.js";
 import {
   scopeIndexPath,
   writeScopeIndex,
@@ -634,6 +635,7 @@ function buildProjectOverlay(args: {
 
   const overlay: Record<string, unknown> = {
     version: 1,
+    harness_version: VERSION,
     slug: args.decidedSlug,
     origin_url: args.detection.origin_url,
     stack_signatures: args.detection.stack_signatures.map((s) => s.kind),

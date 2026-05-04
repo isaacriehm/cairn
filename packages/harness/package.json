@@ -62,7 +62,10 @@
     "smoke:resolve-attention": "tsx scripts/smoke-resolve-attention.ts",
     "smoke:stop-hook": "tsx scripts/smoke-stop-hook.ts",
     "smoke:source-comments": "tsx scripts/smoke-source-comments.ts",
-    "smoke:rules-merge": "tsx scripts/smoke-rules-merge.ts"
+    "smoke:rules-merge": "tsx scripts/smoke-rules-merge.ts",
+    "smoke:join": "tsx scripts/smoke-join.ts",
+    "smoke:bypass-detection": "tsx scripts/smoke-bypass-detection.ts",
+    "smoke:bootstrap-guard": "tsx scripts/smoke-bootstrap-guard.ts"
   },
   "dependencies": {
     "@devplusllc/harness-core": "workspace:*",

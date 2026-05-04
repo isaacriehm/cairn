@@ -8,6 +8,14 @@ export { runSessionStartHook } from "./session-start.js";
 export { runSessionEndHook } from "./session-end.js";
 export { runStopHook } from "./stop.js";
 export {
+  renderBypassHint,
+  scanBypassedCommits,
+} from "../bypass-detection.js";
+export type {
+  BypassedCommit,
+  ScanBypassResult,
+} from "../bypass-detection.js";
+export {
   HARNESS_HOOK_VERSION,
   emitShapeB,
   parseHookPayload,
