@@ -95,6 +95,14 @@ interface PendingDialog {
   bundleId: string;
   choiceMap: Map<string, string>; // discord-buttonId → choiceId
   timeoutHandle: NodeJS.Timeout;
+  /**
+   * When true, on click strip buttons + annotate. When false, just
+   * `deferUpdate()` so a follow-on `replaceBundleId` dialog can
+   * overwrite the message without racing the compaction edit.
+   */
+  compactOnAnswer: boolean;
+  /** Map of choiceId → label so the annotation can include the choice text. */
+  choiceLabels: Map<string, string>;
 }
 
 /**
@@ -125,6 +133,14 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
 
   private pendingApprovals = new Map<string, PendingApproval>();
   private pendingDialogs = new Map<string, PendingDialog>();
+  /**
+   * §3.4 win 1 — bundleId → messageId for in-place dialog edit. When a
+   * follow-up DialogSpec arrives with `replaceBundleId` set, the adapter
+   * fetches that message and edits it (new prompt + new buttons) instead
+   * of posting a fresh one. Single edited message replaces the N+1
+   * scroll explosion.
+   */
+  private dialogMessageIds = new Map<string, string>();
   /**
    * In-memory map of taskId → live status messageId. The live status
    * message is one embed per task that gets edited in place on each
@@ -225,6 +241,7 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
       });
     }
     this.pendingDialogs.clear();
+    this.dialogMessageIds.clear();
     await this.client.destroy();
     this.started = false;
     log.info("discord adapter stopped");
@@ -270,19 +287,15 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
     const text = channel as TextChannel;
     const embed = buildPhaseEmbed(update);
 
-    // Try to edit the existing live status message; if it's gone (e.g.
-    // operator deleted it, or this is the first call for this taskId),
-    // create a new one and remember its id.
+    // §3.3 win 3 — single edited live-status embed; no secondary content
+    // post. body / activity / tools / recentEvents all render inside this
+    // one embed via fields. Long bodies are truncated to 1024 chars + a
+    // pointer to log.jsonl (operator can grep the full content there).
     const existingMsgId = this.liveStatusMessages.get(update.taskId);
     if (existingMsgId !== undefined) {
       try {
         const msg = await text.messages.fetch(existingMsgId);
         await msg.edit({ embeds: [embed] });
-        if (update.body && update.body.length > 0) {
-          for (const e of buildContentEmbed({ status: update.status, body: update.body })) {
-            await text.send({ embeds: [e] });
-          }
-        }
         return;
       } catch (err) {
         log.warn(
@@ -298,9 +311,6 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
       this.liveStatusMessages.set(update.taskId, sent.id);
     } catch (err) {
       log.warn({ err: String(err), taskId: update.taskId }, "live status send failed");
-    }
-    if (update.body && update.body.length > 0) {
-      await sendChunked(text, update.body);
     }
   }
 
@@ -416,10 +426,12 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
       throw new Error(`dialog target channel not text-based: ${channelId}`);
     }
     const choiceMap = new Map<string, string>();
+    const choiceLabels = new Map<string, string>();
     const builders: ButtonBuilder[] = [];
     for (const choice of spec.choices.slice(0, 5)) {
       const buttonId = `harness:dialog:${spec.bundleId}:${choice.id}`;
       choiceMap.set(buttonId, choice.id);
+      choiceLabels.set(choice.id, choice.label);
       builders.push(
         new ButtonBuilder()
           .setCustomId(buttonId)
@@ -444,7 +456,8 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
       embeds?: EmbedBuilder[];
       components: ActionRowBuilder<MessageActionRowComponentBuilder>[];
     } = { components: [row] };
-    if (spec.prompt.length > 1800) {
+    const useEmbed = spec.prompt.length > 1800;
+    if (useEmbed) {
       sendOpts.embeds = [
         new EmbedBuilder()
           .setDescription(spec.prompt.slice(0, 4096))
@@ -456,25 +469,60 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
     } else {
       sendOpts.content = pingPrefix + spec.prompt;
     }
-    const sentMessage = await (channel as TextChannel).send(sendOpts);
-    // Bot signals "we're waiting on you" with 👀 reaction.
-    try {
-      await sentMessage.react("👀");
-    } catch (err) {
-      log.warn({ err: String(err), bundleId: spec.bundleId }, "dialog 👀 react failed");
+
+    // §3.4 win 1 — try to edit the previous walk step's message in place.
+    let messageId: string | undefined;
+    if (spec.replaceBundleId !== undefined) {
+      const prevMsgId = this.dialogMessageIds.get(spec.replaceBundleId);
+      if (prevMsgId !== undefined) {
+        try {
+          const prevMsg = await (channel as TextChannel).messages.fetch(prevMsgId);
+          await prevMsg.edit({
+            content: sendOpts.content ?? "",
+            embeds: sendOpts.embeds ?? [],
+            components: sendOpts.components,
+          });
+          messageId = prevMsg.id;
+        } catch (err) {
+          log.warn(
+            { err: String(err), prev: spec.replaceBundleId },
+            "dialog edit-in-place failed; falling back to fresh send",
+          );
+        }
+      }
+    }
+    if (messageId === undefined) {
+      const sentMessage = await (channel as TextChannel).send(sendOpts);
+      messageId = sentMessage.id;
+      try {
+        await sentMessage.react("👀");
+      } catch (err) {
+        log.warn({ err: String(err), bundleId: spec.bundleId }, "dialog 👀 react failed");
+      }
+    }
+    this.dialogMessageIds.set(spec.bundleId, messageId);
+    if (
+      spec.replaceBundleId !== undefined &&
+      spec.replaceBundleId !== spec.bundleId
+    ) {
+      this.dialogMessageIds.delete(spec.replaceBundleId);
     }
 
     const timeoutMs = spec.timeoutMs ?? 5 * 60 * 1000;
+    const compactOnAnswer = spec.compactOnAnswer !== false;
     return new Promise<DialogResponse>((resolve) => {
       const timeoutHandle = setTimeout(() => {
         this.pendingDialogs.delete(spec.bundleId);
+        this.dialogMessageIds.delete(spec.bundleId);
         resolve({ bundleId: spec.bundleId, choiceId: "e_other", timedOut: true });
       }, timeoutMs);
       this.pendingDialogs.set(spec.bundleId, {
         bundleId: spec.bundleId,
         resolve,
         choiceMap,
+        choiceLabels,
         timeoutHandle,
+        compactOnAnswer,
       });
     });
   }
@@ -646,15 +694,10 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
           bodySlug,
         });
         createdChannelId = channel.id;
-        const dropEmbed = new EmbedBuilder()
-          .setTitle(`🆕 Task ${taskId}`)
-          .setColor(0x607d8b)
-          .setDescription(body.slice(0, 4000))
-          .setFooter({
-            text: "tightener → prep → agent → sensors → reviewer → UAT → backprop",
-          })
-          .setTimestamp(new Date());
-        await channel.send({ embeds: [dropEmbed] });
+        // §3.4 win — no standalone "🆕 Task" drop card. The orchestrator
+        // surfaces the body inside the live-status embed (PostUpdate.taskBody
+        // field) so the channel shows a single self-updating message per task
+        // instead of two.
       } catch (err) {
         log.error({ err: String(err) }, "failed to create task channel");
       }
@@ -763,9 +806,16 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
       const choiceId = parts[parts.length - 1] ?? "";
       const bundleId = parts.slice(2, -1).join(":");
       const pending = this.pendingDialogs.get(bundleId);
+      const compact = pending?.compactOnAnswer ?? true;
+      const choiceLabel =
+        pending?.choiceLabels.get(choiceId) ?? choiceId.toUpperCase();
       if (pending) {
         clearTimeout(pending.timeoutHandle);
         this.pendingDialogs.delete(bundleId);
+        // Don't drop the messageId here — the next walk step's
+        // requestDialog (with replaceBundleId=this) needs to fetch + edit
+        // it. The next requestDialog deletes the old entry once it
+        // claims the message.
         pending.resolve({ bundleId, choiceId });
       }
       const interactionEvent: InteractionEvent = {
@@ -785,24 +835,39 @@ export class DiscordFrontendAdapter implements FrontendAdapter {
         payload: { interaction: interactionEvent },
       });
       if (this.interactionHandler) await this.interactionHandler(interactionEvent);
-      // Update the original message: remove buttons, annotate the
-      // chosen letter so the channel scrollback shows what was answered.
-      try {
-        const original = interaction.message;
-        const annotated =
-          (original.content ?? "").trim() +
-          `\n\n_✅ Answered with **${choiceId.toUpperCase()}**_`;
-        await interaction.update({ content: annotated, components: [] });
-      } catch (err) {
-        log.warn(
-          { err: String(err), bundleId, choiceId },
-          "dialog message compact-update failed",
-        );
-        // Fall back to silent ack so the interaction doesn't error.
+      // Walk steps (compactOnAnswer=false) defer to the next dialog's
+      // edit-in-place; touching the message here would race the next
+      // step and either drop its content or its buttons. Only terminal
+      // dialogs (confirm, UAT, ad-hoc operator question) compact.
+      if (compact) {
+        try {
+          const original = interaction.message;
+          const annotated =
+            (original.content ?? "").trim() +
+            `\n\n> **Answered:** ${choiceId.toUpperCase()} — ${choiceLabel}`;
+          await interaction.update({
+            content: annotated.slice(0, 2000),
+            components: [],
+          });
+        } catch (err) {
+          log.warn(
+            { err: String(err), bundleId, choiceId },
+            "dialog message compact-update failed",
+          );
+          try {
+            await interaction.deferUpdate();
+          } catch {
+            /* noop */
+          }
+        }
+      } else {
         try {
           await interaction.deferUpdate();
-        } catch {
-          /* noop */
+        } catch (err) {
+          log.warn(
+            { err: String(err), bundleId, choiceId },
+            "dialog deferUpdate failed",
+          );
         }
       }
       await this.ackReact(interaction, choiceId);
@@ -1039,38 +1104,6 @@ function newTaskId(): string {
 }
 
 /**
- * Discord caps message content at 2000 chars. Bodies longer than that
- * are split on paragraph boundaries when possible, line boundaries
- * otherwise, char boundaries as last resort. Each chunk goes in its
- * own message so nothing is silently lost.
- */
-const DISCORD_CONTENT_CAP = 1990;
-
-async function sendChunked(channel: TextChannel, body: string): Promise<void> {
-  const chunks = splitForDiscord(body);
-  for (const chunk of chunks) {
-    if (chunk.length === 0) continue;
-    await channel.send({ content: chunk });
-  }
-}
-
-function splitForDiscord(body: string): string[] {
-  if (body.length <= DISCORD_CONTENT_CAP) return [body];
-  const out: string[] = [];
-  let remaining = body;
-  while (remaining.length > DISCORD_CONTENT_CAP) {
-    let cut = remaining.lastIndexOf("\n\n", DISCORD_CONTENT_CAP);
-    if (cut < DISCORD_CONTENT_CAP * 0.5) cut = remaining.lastIndexOf("\n", DISCORD_CONTENT_CAP);
-    if (cut < DISCORD_CONTENT_CAP * 0.5) cut = remaining.lastIndexOf(" ", DISCORD_CONTENT_CAP);
-    if (cut <= 0) cut = DISCORD_CONTENT_CAP;
-    out.push(remaining.slice(0, cut).trimEnd());
-    remaining = remaining.slice(cut).trimStart();
-  }
-  if (remaining.length > 0) out.push(remaining);
-  return out;
-}
-
-/**
  * True when the error is a discord.js DiscordAPIError with code 10003
  * (Unknown Channel). The harness flags the channel dead and silently
  * no-ops every subsequent post against it.
@@ -1084,11 +1117,14 @@ function isUnknownChannelError(err: unknown): boolean {
 /**
  * Map orchestrator phase names → embed colors. Mirrors the harness
  * pipeline: tighten → prep → run → sense → review → uat → done.
+ *
+ * `blocked` is cyan (waiting-on-operator), distinct from failure
+ * orange — operator should read the color as "your move", not "broken".
  */
 const PHASE_COLOR: Record<string, number> = {
   queued: 0x607d8b,
   tightening: 0x3498db,
-  blocked: 0xf39c12,
+  blocked: 0x4a90e2,
   prepping: 0x95a5a6,
   running: 0xf1c40f,
   sensing: 0xe67e22,
@@ -1102,7 +1138,7 @@ const PHASE_COLOR: Record<string, number> = {
 const PHASE_EMOJI: Record<string, string> = {
   queued: "🟦",
   tightening: "🪛",
-  blocked: "🟧",
+  blocked: "⏳",
   prepping: "🧰",
   running: "🟡",
   sensing: "🔎",
@@ -1113,20 +1149,128 @@ const PHASE_EMOJI: Record<string, string> = {
   failed: "🔴",
 };
 
+const PHASE_LABEL: Record<string, string> = {
+  queued: "queued",
+  tightening: "tightening spec",
+  blocked: "awaiting you",
+  prepping: "prepping workspace",
+  running: "agent running",
+  sensing: "sensors sweeping",
+  reviewing: "reviewer checking",
+  uat: "UAT in flight",
+  backpropping: "backprop",
+  succeeded: "shipped",
+  failed: "failed",
+};
+
+/** §3.4 win 3 — class-specific failure color so operator routes per class. */
+const FAILURE_COLOR: Record<string, number> = {
+  sensor: 0xff8c00, // orange — mechanical / structural fail; usually fixable
+  reviewer: 0x9b59b6, // purple — inferential reject; needs spec or code thinking
+  uat: 0x3498db, // blue — operator rejected the bundle
+  hard: 0xff0000, // red — process / infra error
+  halt: 0x2c2c2c, // dark grey — operator pulled the cord
+};
+
+const FAILURE_EMOJI: Record<string, string> = {
+  sensor: "🟧",
+  reviewer: "🟪",
+  uat: "🟦",
+  hard: "🟥",
+  halt: "⚫",
+};
+
 function buildPhaseEmbed(update: PostUpdate): EmbedBuilder {
-  const color = PHASE_COLOR[update.status] ?? 0x808080;
-  const emoji = PHASE_EMOJI[update.status] ?? "•";
+  const isFailure =
+    update.status === "failed" && update.failureClass !== undefined;
+  const color = isFailure
+    ? FAILURE_COLOR[update.failureClass!] ?? 0xff0000
+    : PHASE_COLOR[update.status] ?? 0x808080;
+  const emoji = isFailure
+    ? FAILURE_EMOJI[update.failureClass!] ?? "🔴"
+    : PHASE_EMOJI[update.status] ?? "•";
+  const titleSuffix = isFailure ? ` — failed: ${update.failureClass}` : "";
+  const phaseLabel = PHASE_LABEL[update.status] ?? update.status;
+  const descLines: string[] = [`**${phaseLabel}**`];
+  if (update.taskBody !== undefined && update.taskBody.length > 0) {
+    descLines.push("");
+    const trimmed = update.taskBody.trim();
+    const truncated =
+      trimmed.length > 1024
+        ? `${trimmed.slice(0, 1010)}…`
+        : trimmed;
+    // Quote-block so the spec stays visually distinct from status.
+    descLines.push(...truncated.split("\n").map((line) => `> ${line}`));
+  }
+  if (update.recentEvents !== undefined && update.recentEvents.length > 0) {
+    descLines.push("");
+    descLines.push("**recent**");
+    for (const ev of update.recentEvents) descLines.push(ev);
+  }
+  const description = descLines.join("\n").slice(0, 4000);
   const embed = new EmbedBuilder()
-    .setTitle(`${emoji} ${update.taskId}`)
+    .setTitle(`${emoji} ${update.taskId}${titleSuffix}`)
     .setColor(color)
-    .setDescription(`**phase:** \`${update.status}\``);
+    .setDescription(description);
   if (update.runId) {
     embed.addFields({ name: "run", value: `\`${update.runId}\``, inline: true });
   }
-  if (update.activity && update.activity.length > 0) {
+  if (update.activity !== undefined && update.activity.length > 0) {
     embed.addFields({
       name: "activity",
       value: update.activity.slice(0, 1024),
+      inline: false,
+    });
+  }
+  if (
+    update.tools?.files !== undefined &&
+    update.tools.files.length > 0
+  ) {
+    embed.addFields({
+      name: "files",
+      value: capFieldValue(update.tools.files.map((f) => `\`${f}\``).join("\n")),
+      inline: false,
+    });
+  }
+  if (update.tools?.bash !== undefined && update.tools.bash.length > 0) {
+    embed.addFields({
+      name: "shell",
+      value: capFieldValue(update.tools.bash.map((c) => `\`${c}\``).join("\n")),
+      inline: false,
+    });
+  }
+  if (
+    update.tools?.searches !== undefined &&
+    update.tools.searches.length > 0
+  ) {
+    embed.addFields({
+      name: "searches",
+      value: capFieldValue(
+        update.tools.searches.map((s) => `\`${s}\``).join("\n"),
+      ),
+      inline: false,
+    });
+  }
+  if (update.body !== undefined && update.body.length > 0) {
+    let value = update.body;
+    if (value.length > 1024) {
+      value = `${value.slice(0, 1010)}…\n_+${update.body.length - 1010} chars in log.jsonl_`;
+    }
+    embed.addFields({ name: "details", value, inline: false });
+  }
+  if (update.remediation !== undefined) {
+    const lines: string[] = [
+      `**reason:** ${update.remediation.reason.slice(0, 400)}`,
+    ];
+    if (update.remediation.suggestedActions.length > 0) {
+      lines.push("**next:**");
+      for (const a of update.remediation.suggestedActions.slice(0, 5)) {
+        lines.push(`• ${a}`);
+      }
+    }
+    embed.addFields({
+      name: "remediation",
+      value: capFieldValue(lines.join("\n")),
       inline: false,
     });
   }
@@ -1134,51 +1278,8 @@ function buildPhaseEmbed(update: PostUpdate): EmbedBuilder {
   return embed;
 }
 
-/**
- * Wrap a free-form body string in a quiet, content-color embed so
- * the per-task channel keeps a uniform embed-only look. Used by
- * postTaskUpdate when `body` is set (tightener feedback, sensor
- * remediation, reviewer rationale, etc.).
- */
-function buildContentEmbed(args: {
-  status: string;
-  body: string;
-}): EmbedBuilder[] {
-  const color = PHASE_COLOR[args.status] ?? 0x808080;
-  const chunks = splitForEmbedDescription(args.body);
-  return chunks.map((chunk, i) =>
-    new EmbedBuilder()
-      .setColor(color)
-      .setDescription(chunk)
-      .setFooter(
-        chunks.length > 1
-          ? { text: `${i + 1} / ${chunks.length}` }
-          : null,
-      ),
-  );
-}
-
-/**
- * Discord embed descriptions cap at 4096 chars. Split body bigger
- * than that on paragraph → line → space boundaries (same as the
- * 2000-char content splitter, just with a larger budget).
- */
-const EMBED_DESC_CAP = 4000;
-
-function splitForEmbedDescription(body: string): string[] {
-  if (body.length <= EMBED_DESC_CAP) return [body];
-  const out: string[] = [];
-  let remaining = body;
-  while (remaining.length > EMBED_DESC_CAP) {
-    let cut = remaining.lastIndexOf("\n\n", EMBED_DESC_CAP);
-    if (cut < EMBED_DESC_CAP * 0.5) cut = remaining.lastIndexOf("\n", EMBED_DESC_CAP);
-    if (cut < EMBED_DESC_CAP * 0.5) cut = remaining.lastIndexOf(" ", EMBED_DESC_CAP);
-    if (cut <= 0) cut = EMBED_DESC_CAP;
-    out.push(remaining.slice(0, cut).trimEnd());
-    remaining = remaining.slice(cut).trimStart();
-  }
-  if (remaining.length > 0) out.push(remaining);
-  return out;
+function capFieldValue(text: string): string {
+  return text.length > 1024 ? `${text.slice(0, 1018)}\n…` : text;
 }
 
 // re-export utilities for callers (orchestrator, smoke)

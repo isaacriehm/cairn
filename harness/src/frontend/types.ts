@@ -107,6 +107,27 @@ export interface DialogSpec {
    * (per-question walks, e2e setup) leave this false to avoid noise.
    */
   pingOperators?: boolean;
+  /**
+   * §3.4 win 1 — multi-step walks (per-question tightener resolution,
+   * /oops branches) edit one message in place instead of posting N+1
+   * messages. Set this to the previous step's `bundleId`; the adapter
+   * looks it up in its dialog-message map and edits that message
+   * (same channel, new prompt + buttons). When the bundleId is
+   * unknown (gone, never registered) the adapter falls back to a
+   * fresh send.
+   */
+  replaceBundleId?: string;
+  /**
+   * Terminal-dialog flag. When true (default), the adapter compacts
+   * the message on click — strips buttons, appends an "Answered" line
+   * — so the channel scrollback shows what was chosen. Walk steps
+   * that intend to be replaced by a follow-on dialog (per-Q tightener)
+   * MUST pass false: otherwise the compaction race-edits the message
+   * the next step is about to overwrite, and either the answer
+   * annotation or the next prompt loses depending on REST ordering.
+   * Adapter still fires `deferUpdate` so the click acknowledges.
+   */
+  compactOnAnswer?: boolean;
 }
 
 export interface DialogResponse {
@@ -148,7 +169,19 @@ export interface PostUpdate {
   taskId: string;
   runId?: string;
   status: string;
+  /**
+   * Free-form body. ≤1024 chars renders as inline embed `details` field
+   * (§3.3 win 3 — drops the live-status + content-message split). >1024
+   * chars falls back to the chunked secondary-embed path.
+   */
   body?: string;
+  /**
+   * Original task spec (the operator's verbatim ask). Replaces the
+   * standalone `🆕 Task` drop card — the body lives on the same live
+   * status embed as everything else, so the channel only ever shows
+   * one self-updating message per task. Truncated at 1024 chars.
+   */
+  taskBody?: string;
   channelId?: string;
   /**
    * Tier-0 (Ollama) summary of what the agent is doing right now —
@@ -159,6 +192,38 @@ export interface PostUpdate {
    * implementer phase.
    */
   activity?: string;
+  /**
+   * Second-source visibility (§3.3 win 2) — extracted from claude
+   * stream-json events. Independent of Ollama; renders even when the
+   * Tier-0 summary fails. Each list capped + deduped at the source.
+   */
+  tools?: {
+    files?: string[];
+    bash?: string[];
+    searches?: string[];
+  };
+  /**
+   * Curated narrative tail from `.harness/runs/active/<run_id>/log.jsonl`
+   * (§3.3 win 1) — last N transitions, pre-formatted. Renders inside the
+   * live status embed's description so operator sees actual progress
+   * instead of a static "phase: running" line.
+   */
+  recentEvents?: string[];
+  /**
+   * §3.4 win 3 — when status === "failed", the orchestrator classifies
+   * which gate eject the run so the embed renders class-colored title +
+   * emoji. Operator can route differently per class.
+   */
+  failureClass?: "sensor" | "reviewer" | "uat" | "hard" | "halt";
+  /**
+   * §3.4 win 2 — failure remediation guidance surfaced as a dedicated
+   * embed field. `reason` is a one-liner; `suggestedActions` are the
+   * operator's next moves (`/ship-anyway`, re-submit, open thread).
+   */
+  remediation?: {
+    reason: string;
+    suggestedActions: string[];
+  };
 }
 
 export type IngestHandler<T> = (item: T) => void | Promise<void>;
