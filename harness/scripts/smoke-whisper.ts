@@ -92,12 +92,13 @@ async function main(): Promise<void> {
   }
   // Defer the voice import until after the binding existence check, so the
   // smoke can SKIP cleanly instead of crashing on the eager .node load.
+  // voice/ moved to packages/harness-core in 9fe2b95.
   const {
     freeWhisper,
     transcribeBuffer,
     whisperModelExists,
     WHISPER_MODEL_PATH,
-  } = await import("../src/voice/index.js");
+  } = await import("@devplusllc/harness-core");
   if (!whisperModelExists()) {
     skip(`whisper model not found at ${WHISPER_MODEL_PATH} — see model.ts header for install`);
   }

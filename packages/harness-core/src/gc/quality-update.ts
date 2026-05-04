@@ -70,7 +70,7 @@ export function runQualityGradesUpdate(
     commit_message:
       `chore(gc): refresh quality-grades.yaml (${grades.modules.length} modules)\n\n` +
       `GC quality-grades pass — recomputed from .harness/runs/terminal/.\n` +
-      `Auto-applied as safe-class per L16 (PRIMER §12.2).\n`,
+      `Auto-applied as safe-class per PRIMER §12.2.\n`,
     findings: [finding],
   });
 

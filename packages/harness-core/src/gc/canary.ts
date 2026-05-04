@@ -1,7 +1,7 @@
 /**
  * Batch canary — verifies a multi-commit GC batch hasn't broken anything that
- * shows only when the commits are taken together. Per L46 (Codex audit
- * must-fix): "individually safe, collectively broken."
+ * shows only when the commits are taken together: "individually safe,
+ * collectively broken."
  *
  * Two checks run after the batch lands locally and BEFORE any push:
  *

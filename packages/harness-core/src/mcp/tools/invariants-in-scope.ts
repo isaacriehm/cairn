@@ -1,6 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { parse as parseYaml } from "yaml";
 import type { McpContext } from "../context.js";
 import { decisionsDir, invariantsDir, matchAnyGlob, parseFrontmatter } from "../../ground/index.js";
 import { DecisionFrontmatter, InvariantFrontmatter } from "../../ground/index.js";
@@ -65,8 +64,6 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     });
   }
   out.sort((a, b) => a.id.localeCompare(b.id));
-  // Reference yaml so import isn't dropped (used by symbol-tools that import via barrel).
-  void parseYaml;
   return out;
 }
 

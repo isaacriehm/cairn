@@ -15,7 +15,7 @@
  * rebuild). The sweep composer produces a `GcSweepResult` that the CLI / cron
  * decides how to apply.
  *
- * Auto-merge classes per L16/L17/L18 (PRIMER §12.2):
+ * Auto-merge classes per PRIMER §12.2:
  *   safe        — formatting, doc regen, frontmatter refresh, generated content,
  *                 archive moves, stub-catalog additions. Push, no UAT.
  *   code        — touches *.ts outside generator-managed files. Sensors +

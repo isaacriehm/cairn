@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "harness": {
+      "command": "npx",
+      "args": ["-y", "@devplusllc/harness", "mcp", "serve"]
+    }
+  }
+}

@@ -17,7 +17,6 @@
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { stringify as stringifyYaml } from "yaml";
 import { evaluateFreshness, parseFrontmatter } from "../ground/frontmatter.js";
 import { walkCanonical } from "../ground/walk.js";
 import type { GcCommitProposal, GcFinding } from "./types.js";
@@ -75,7 +74,7 @@ export function runFrontmatterFreshness(
     });
 
     if (opts.forceRefresh) {
-      const refreshed = bumpVerifiedAt(source, parsed.raw, now);
+      const refreshed = bumpVerifiedAt(source, now);
       refreshes.push({ path: rel, content: refreshed });
     }
   }
@@ -103,7 +102,7 @@ export function runFrontmatterFreshness(
  * key order by replacing only the `verified-at:` line (or inserting it
  * directly after `generated:` when missing).
  */
-function bumpVerifiedAt(source: string, rawBlock: string, now: Date): string {
+function bumpVerifiedAt(source: string, now: Date): string {
   const iso = now.toISOString();
   // Frontmatter is fenced by `---` lines at the top of the file; replace the
   // first `verified-at:` line in the fence region. If none, insert it after
@@ -122,11 +121,6 @@ function bumpVerifiedAt(source: string, rawBlock: string, now: Date): string {
   if (generatedRe.test(fenceText)) {
     return fenceText.replace(generatedRe, `$1\nverified-at: ${iso}`) + restText;
   }
-  // Fallback: append before fence close.
-  // rawBlock parsing is unused beyond detection; keep stringifyYaml import for
-  // future "rewrite the whole block" mode.
-  void stringifyYaml;
-  void rawBlock;
   return fenceText + `\nverified-at: ${iso}` + restText;
 }
 

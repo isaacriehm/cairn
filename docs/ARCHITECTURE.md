@@ -1,25 +1,24 @@
 ---
 type: architecture
-status: draft-v1
+status: draft-v2
 audience: dual
 generated: 2026-05-04
-supersedes-framing: docs/PRIMER.md §3, docs/INTEGRATION_PLAN.md §1
-purpose: Lock the new mental model — Harness is a state + context-loading layer, not a bundled agent orchestrator. Splits today's single `harness/` package into four workspace packages with clean boundaries.
+supersedes: docs/_history/INTEGRATION_PLAN.md
 ---
 
 # Harness — Architecture (layered model)
 
-This doc supersedes the earlier framing that treated Harness as one monolithic "agent orchestrator with Discord UX bolted on". The actual product is **state management + context loading for AI orchestration**. Orchestration runtime, sensor sweeps, mirror checkouts, UAT pipelines, and Discord adapters are *consumers* of the Harness state layer — not part of its core.
+Harness is **state management + context loading for AI coding agents**. Orchestration runtime, sensor sweeps, mirror checkouts, UAT pipelines, and frontend adapters are *consumers* built on top of the state layer — not part of its core.
 
 ## 1. Three layers, four packages
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐
-│  FRONTEND (UX adapter)                                             │
-│    packages/harness-frontend-discord  — Discord bot + voice +      │
-│                                          channels + slash + buttons │
+│  FRONTEND (UX adapter — pluggable, opt-in)                         │
+│    packages/harness-frontend-discord  — Discord adapter            │
 │    packages/harness-frontend-stub     — In-memory test adapter     │
-│    (future: harness-frontend-cli, harness-frontend-notion, …)      │
+│    packages/harness-frontend-cli      — Terminal adapter (default) │
+│    (future: harness-frontend-notion, …)                            │
 └────────────────────────────────────────┬───────────────────────────┘
                                          │ FrontendAdapter contract
                                          │ (DialogSpec, PostUpdate,
@@ -28,61 +27,62 @@ This doc supersedes the earlier framing that treated Harness as one monolithic "
 ┌────────────────────────────────────────▼───────────────────────────┐
 │  RUNTIME (orchestration consumer)                                  │
 │    packages/harness-runtime — orchestrator, FIFO queue, mirror     │
-│                               checkout, claude subprocess          │
-│                               dispatcher, sensor sweep, reviewer,  │
-│                               UAT pipeline, watchdog, /halt etc.   │
-│                               Knows nothing about Discord.         │
+│                               checkout, Claude Code dispatcher,    │
+│                               sensor sweep, reviewer subagent,     │
+│                               UAT pipeline, backprop, watchdog.    │
+│                               Adapter-agnostic.                    │
 └────────────────────────────────────────┬───────────────────────────┘
                                          │ depends on harness-core
                                          │
 ┌────────────────────────────────────────▼───────────────────────────┐
 │  CORE (state + context)                                            │
 │    packages/harness-core   — `.harness/ground/` writers, MCP       │
-│                              server (read/write primitives over    │
-│                              ground), init mapper, GC drift sweep, │
-│                              decision-capture extractor, stub      │
-│                              catalog, decision-assertion           │
-│                              evaluator, provenance frontmatter,    │
-│                              two-zone separation enforcement,      │
-│                              spec tightener (context-load gate),   │
-│                              claude wrapper + tier0 classifier     │
-│                              (shared infra used by tightener +     │
-│                              mapper).                              │
+│                              server (15 tools), grounding daemon,  │
+│                              init wizard, GC drift sweep,          │
+│                              decision-capture, stub catalog,       │
+│                              decision-assertion evaluator,         │
+│                              provenance frontmatter, two-zone      │
+│                              separation, spec tightener,           │
+│                              claude wrapper + tier0 classifier.    │
 │                              The Harness.                          │
 └────────────────────────────────────────────────────────────────────┘
 ```
 
-**Each layer can be installed independently.** A team that just wants typed access to a curated state ledger installs `harness-core` and writes their own dispatcher. A team that wants the full claude-code orchestration loop installs `core + runtime`. The Discord UX is opt-in via `harness-frontend-discord`.
+**Each layer installs independently.** A project that just wants the state layer + Claude Code integration installs `harness-core` only. Adding `harness-runtime` enables the full GSD execution loop. Frontend adapters are installed via `harness install <adapter>`.
 
 ## 2. Why this split
 
-The old framing produced a 2000-line orchestrator that imported Discord, claude subprocess management, mirror state, UAT, sensors, reviewer, decision-capture, GC. Every adopter pulled the whole stack whether they wanted it or not. It made the operator feel like Harness was "the bot that does everything" — when the actual load-bearing thing is **the curated state layer underneath**.
+The load-bearing thing is the curated state layer. Orchestration, UAT, and frontend UX are consumers of it. Bundling them together forces every adopter to pull the full stack even if they only want Claude Code + ground state.
 
-Concrete wins of the split:
+Concrete wins:
 
-1. **Clearer purpose.** "Harness is the state + context-loading layer" is a sentence anyone can hold. "Harness is a Symphony-shaped agent orchestrator with voice + Discord + sensors + UAT" is not.
-2. **Adopters can pick what they want.** Use harness-core in a CLI workflow; use core+runtime with a custom CI driver; use the full stack with Discord. Each combination installs cleanly.
-3. **Frontend pluggability becomes real, not aspirational.** Adding a Notion adapter doesn't require touching the orchestrator; it implements the FrontendAdapter contract from harness-core.
-4. **Each package has its own smoke + typecheck + version cadence.** A change to the discord adapter doesn't force a re-typecheck of the GC.
-5. **The MCP surface is the public API.** harness-core's MCP server is what AI agents talk to; the rest of the harness is plumbing around that surface. Splitting makes this contract explicit.
+1. **Clearer purpose.** "Harness is the state + context-loading layer" is a sentence anyone can hold.
+2. **Adopters can pick what they want.** Core only for minimal Claude Code integration. Core + runtime for full GSD execution. Adapters are opt-in.
+3. **Frontend pluggability is real.** Adding a new adapter doesn't touch the orchestrator — it implements `FrontendAdapter` from core.
+4. **Each package has its own smoke + typecheck + version cadence.** Changes to one layer don't force re-typecheck of another.
+5. **The MCP surface is the public API.** What agents talk to is explicit and bounded.
 
 ## 3. Package contents
 
 ### 3.1 `harness-core` — the state + context layer
 
 What lives here:
-- `init/` — wizard, mapper (Tier-2 LLM walker), walker (gitignore-aware repo summarizer), workflow-block (round-trip the `<slug>:` extension block), seed (templates), prompts (inquirer), secrets (env file management), setup-runners (whisper/ollama/etc downloads)
-- `ground/` writers — append-only writes to `.harness/ground/{decisions,invariants,canonical-map,quality-grades}`. Mechanical; never LLM-writes here.
-- `mcp/` — the harness MCP server. 18+ typed tools: `decision_get`, `invariant_get`, `decisions_in_scope`, `canonical_for_topic`, `query_history`, `ask_operator`, etc.
-- `gc/` — garbage collection drift sweep. Frontmatter freshness, generator drift, dependency direction violations, doc-gardening. Auto-merge safe-class.
-- `decision-capture/` — Tier-1 extractor + refinement-proposer. Operator's `/direction` text → candidate ADR → confirmed → ground/decisions/.
-- `claude/` — subprocess wrapper for `claude --print --output-format json|stream-json`. Used by tightener, mapper, decision extractor.
-- `tier0/` — Ollama classifier (intent + activity-summary). `tier_assignment.intent_classifier=0` per workflow.md.
-- `tightener/` — spec quality gate. Tier-1 LLM call that scores incoming task body, surfaces ambiguities + acceptance gaps, proposes tightened spec. The "do we have enough context to start?" gate.
-- `stub-pattern/` (catalog evaluator) — runs the `.harness/config/stub-patterns.yaml` patterns over a diff. Layer A.
-- `decision-assertion/` (evaluator) — evaluates the machine-readable assertions on each accepted decision against a diff.
-- `provenance/` — frontmatter validation + verification helpers.
-- `types.ts` — shared types: `RunPhase`, `DialogSpec`, `PostUpdate`, `ProjectGlobs`, `MapperOutput`, etc.
+- `init/` — adoption wizard. `detect.ts` (mechanical stack signatures), `walker.ts` (gitignore-aware repo summary), `mapper.ts` (Tier-2 LLM proposing sensors, generators, `<slug>:` block), `seed.ts` (template copy + `{{var}}` substitution), `workflow-block.ts` (round-trip the `<slug>:` extension block), `prompts.ts` (`@inquirer/prompts` wrappers: `squareIntoSquareHole`, `freeTextWithDefault`, `secretInput`, `editYaml`).
+- `ground/` — `.harness/ground/` schema + writers. `walk.ts` (canonical-zone walker; hardcodes `.archive` + historical roots to SKIP_DIRS), `glob.ts`, `paths.ts`, `manifest.ts`, `ledgers.ts` (decisions + invariants ledger writers), `quality-grades.ts`, `drift.ts`, `frontmatter.ts` (provenance parsing + freshness eval), `schemas.ts` (zod for all 11 `DecisionAssertion` kinds + `DecisionFrontmatter` + `InvariantFrontmatter` + `ManifestEntry` + `QualityGrade`).
+- `mcp/` — MCP server. 15 typed tools (see `MCP_SURFACE.md`). Subdir `mcp/history/` houses the `query_history` summarizer.
+- `daemon/` — grounding daemon. File watcher (chokidar), generator runner, manifest rebuilder, docs-index maintainer, GC cron. See `DAEMON_SPEC.md`.
+- `gc/` — five-pass GC sweep. `sweep.ts` composes passes; `apply.ts` commits via `simple-git`; `canary.ts` post-batch integrity check; `classify.ts` (safe / code / high-stakes per project globs); `profiles/` (stack-profile generator registry).
+- `decision-capture/` — operator direction text → typed candidate decision. `extractor.ts` (Tier-1) + `refinement.ts` (assertion proposer) + `writer.ts` (draft → accepted) + `capture.ts` (end-to-end) + `id.ts` (monotonic DEC-id allocator).
+- `sensors/` — Layers A, B, D, decision-assertions, runner, remediation. `catalog.ts`, `stub-catalog.ts` (Layer A), `attestation.ts` (Layer B), `structural.ts` (Layer D — project-agnostic), `decisions.ts` (11-kind evaluator), `diff.ts`, `runner.ts`, `remediation.ts`.
+- `session-start/` — `buildSessionStartContext()` composes the SessionStart hook payload. Priority-ordered truncation to token budget. See `SESSIONSTART_SPEC.md`.
+- `tightener/` — spec quality gate. Tier-1 LLM call; scores task body, surfaces ambiguities, proposes tightened spec.
+- `claude/` — subprocess wrapper for `claude --print --output-format json --json-schema`. Used by tightener, mapper, decision-capture, history summarizer.
+- `tier0/` — Ollama local classifier (intent + activity-summary).
+- `mirror/` — parallel git clone management at `~/.local/harness/repos/<slug>/`. Clone + sync + push + dirty-overlap pre-check.
+- `profiles/` — stack-profile registry for GC generator-drift detection.
+- `frontend-types.ts` — `FrontendAdapter` contract + shared types. Imported by both runtime and all frontend adapters.
+- `inbox.ts` — `writeInboxRow()` appends normalized events to `.harness/inbox/`. Adapter ingress drops here; runtime tails.
+- `prompt.ts` — minimal template renderer for `workflow.md` prompt body (`{{var}}`, `{{#each}}`).
 - `logger.ts` — pino setup.
 
 ### 3.2 `harness-runtime` — orchestration consumer
@@ -101,12 +101,11 @@ What lives here:
 ### 3.3 `harness-frontend-discord` — Discord adapter
 
 What lives here:
-- `adapter.ts` — the `DiscordFrontendAdapter` class implementing FrontendAdapter from core.
-- `channels/` — channel-per-task lifecycle (📋 backlog / 🟢 active / 📦 archive).
+- `adapter.ts` — `DiscordFrontendAdapter` implementing `FrontendAdapter` from core.
+- `channels/` — channel-per-task lifecycle.
 - `slash/` — slash command builder + registration.
 - `acl/` — owner-id ACL.
-- `voice/` — Whisper transcription pipeline (whisper.cpp via smart-whisper). Lives here because it's only used by Discord today; if a future adapter wants voice, factor a sub-package.
-- `embed/` — phase color/emoji map, embed builder, taskBody render, recent-events feed.
+- `embed/` — embed builder, taskBody render, recent-events feed.
 
 ### 3.4 `harness-frontend-stub` — test adapter
 
@@ -154,32 +153,14 @@ The harness MCP server (in harness-core) is what agents talk to during a run. Fr
 - `harness_invariant_get(id)` — §V invariant + linked sensor
 - `harness_canonical_for_topic(topic)` — canonical doc path + verified-at
 - `harness_query_history(scope, question)` — the only path into `.archive/`
-- `harness_ask_operator(question, options[])` — pause + ask mid-run
-- … (18 total today)
+- `harness_record_decision(...)` — drop a decision draft to `_inbox/`
+- `harness_query_history(scope)` — the only path into `.archive/`
+- … (15 total — see `MCP_SURFACE.md`)
 
-Adopters who want only the state layer install `harness-core` and register the MCP server with their own claude-code or codex setup. They don't need the runtime or the Discord bot.
+Adopters who want only the state layer install `harness-core` and register the MCP server. They don't need runtime or any frontend adapter.
 
-## 6. Migration path (single → multi-package)
+## 6. Open boundary question — `voice/`
 
-The current `harness/` package contains everything. The migration is mechanical:
+`voice/` (Whisper transcription) currently lives in `harness-core` on the argument that runtime can't depend on a frontend. The cleaner model: voice input is a frontend adapter concern — the adapter receives audio, transcribes it, and emits a `FreeTextEvent` to the runtime. The transcription pipeline moves to the Discord adapter (and any future voice-capable adapter). `harness-core` stops owning Whisper.
 
-1. **Skeleton packages** — create `packages/{harness-core, harness-runtime, harness-frontend-discord, harness-frontend-stub}/{package.json, tsconfig.json, src/index.ts}`.
-2. **Update workspace** — `pnpm-workspace.yaml` adds `packages/*`.
-3. **Move directories** — git mv the contents per the §3 layout above.
-4. **Rewrite imports** — `from "../foo/bar.js"` → `from "@devplusllc/harness-core"` etc.
-5. **Update top-level `harness/` package.json** — depend on the four sub-packages.
-6. **Re-typecheck + re-smoke** — fix the inevitable circular-import gotchas.
-7. **Bump versions** — each sub-package gets its own semver. Initial release is 0.0.0 across the board.
-
-The git-mv approach preserves blame across the move. Don't rewrite history.
-
-## 7. Open questions for next session
-
-1. **Where does `inbox.ts` live?** It's used by both frontends (writes) and runtime (reads). Probably harness-core (it's a state-layer concern) — or its own tiny `harness-inbox` package.
-2. **Where does `voice/` live?** Currently only Discord uses Whisper, but it's pure-deterministic transformation. Leave in `harness-frontend-discord` for now; extract if a second adapter wants it.
-3. **Smoke split.** Per-package smokes are cleaner but add ceremony. For phase 1 keep all smokes in `harness/scripts/`.
-4. **Versioning.** Each sub-package independent semver, OR lockstep at 0.0.0 until the first ship?
-5. **`@devplusllc/` scope.** Today the package.json reads `@devplusllc/harness` for the umbrella. Sub-packages should follow: `@devplusllc/harness-core`, `@devplusllc/harness-runtime`, etc.
-6. **CLI bin location.** Stay in `harness/` umbrella, OR extract to `harness-cli`?
-
-These are decisions to lock before running the migration commands.
+This is deferred but flagged: the current placement is a forced compromise, not a design choice.

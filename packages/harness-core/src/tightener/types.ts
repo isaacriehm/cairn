@@ -1,6 +1,6 @@
 /**
- * Spec tightener (Layer F) per `docs/PRIMER.md` §10 + `docs/INTEGRATION_PLAN.md`
- * §5 Phase 7. Single Tier-1 (Haiku) call before any code is written.
+ * Spec tightener (Layer F) per `docs/PRIMER.md` §10. Single Tier-1 (Haiku)
+ * call before any code is written.
  */
 
 export interface Ambiguity {

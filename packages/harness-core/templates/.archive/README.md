@@ -38,13 +38,19 @@ This directory holds files that were once canonical but are no longer current. *
 
 ## Reading from `.archive/`
 
-Agents do **not** read this directory directly. The `.claude/settings.json` PreToolUse hook denies `Read | Grep | Glob` calls whose paths match `.archive/**`. The only sanctioned read path is the MCP tool:
+Agents do **not** read this directory directly. Soft enforcement, three layers:
+
+1. The `harness hook session-start` SessionStart hook injects a reminder instructing the agent that historical paths are off-default.
+2. Harness walkers (manifest build, GC sweep, sensor scans) exclude `.archive/` from canonical-zone reads.
+3. The only sanctioned read path is the MCP tool:
 
 ```
 harness_query_history(scope, question)
 ```
 
-The harness daemon reads, an LLM summarizes, the agent receives the summary — never the raw stale doc. This is what keeps stale content out of agent context windows.
+`harness_query_history` walks `.archive/` (matched by `path_hint` + `since`/`until`), runs a Tier-1 Haiku summarizer, and returns structured per-claim records with source citations and supersedes-pointers. The agent receives only the summary — raw stale content never enters its context.
+
+PreToolUse-style interception is **not** used (operator decision 2026-05-04). The combination of SessionStart instruction + walker exclusion + `harness_query_history` is sufficient and avoids the brittleness of a hot-path tool-call hook.
 
 ## Writing to `.archive/`
 

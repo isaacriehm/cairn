@@ -2,8 +2,8 @@
  * Minimal glob matcher (no external dep). Supports `**`, `*`, `?`, and literal
  * segments. Patterns are POSIX-style; segments separator is forward slash.
  *
- * Mirror of `compileGlob` from src/mirror/dirty-overlap.ts — unified here so
- * both modules share the same matching semantics.
+ * Single home for glob matching across the package — walker, GC sweep,
+ * sensors, mirror dirty-overlap, and MCP tools all import from here.
  */
 export function matchGlob(path: string, glob: string): boolean {
   return compileGlob(glob).test(path);
