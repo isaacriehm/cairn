@@ -127,6 +127,11 @@ Subagent attempts: 0 (inline)
 Compile: PASS (whole workspace); vsce package PASS (267 KB vsix produced)
 Notes: Added esbuild + @vscode/vsce as devDeps. New `bundle` script (esbuild → dist/extension.cjs, CJS, externals: vscode + fsevents) and `package` script (clean + bundle + vsce package --no-dependencies). Renamed package from @devplusllc/harness-lens to harness-lens (vsce rejects scoped names; lens isn't depended on by other workspace packages). main → dist/extension.cjs. Added .vscodeignore (excludes src/, scripts/, loose tsc dist files) and README.md. devplusllc-harness-lens-0.0.0.vsix produced; 1.4 MB extension.cjs bundles harness-core + transitive deps (yaml, simple-git, zod, pino, etc.). 3 esbuild warnings about `import.meta.url` in harness-core init/* paths are cosmetic — those code paths never execute from the Lens runtime.
 
+## Task A — Submodule detection + init prompt [DONE 2026-05-04T05:55]
+Subagent attempts: 0 (inline)
+Compile: PASS (both packages); smoke-init PASS — Phase 1 noop on temp dir without .gitmodules
+Notes: New init/submodules.ts — scanSubmodules() reads .gitmodules + parses `git submodule status` (head char `-` = uninitialized). runGitSubmoduleUpdate() spawns `git submodule update --init --recursive --progress`, streams onProgress events (registered/checkout/info), returns {ok, errorSummary}. init.ts gains preflightSubmodules() that runs after `header()` and BEFORE detectAll/walk. RunInitArgs gains skipSubmoduleCheck + autoSubmodule ("init"|"skip"). InitResult.submodules: { detected_uninitialized[], initialized, success } | null. yesNo prompt with defaultYes — interactive Enter = init. On init failure: warning pushed, init continues with partial codebase (no hard exit per acceptance criterion). Compile clean both packages.
+
 ## Closing summary [2026-05-04T05:40]
 Tasks E, B, A, C, D, F: all DONE.
 Final compile: PASS for packages/harness-core, harness, packages/harness-lens.

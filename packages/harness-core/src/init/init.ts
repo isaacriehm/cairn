@@ -48,6 +48,11 @@ import {
 } from "./daemon-autostart.js";
 import { detectAll } from "./detect.js";
 import {
+  runGitSubmoduleUpdate,
+  scanSubmodules,
+  type SubmoduleInfo,
+} from "./submodules.js";
+import {
   runMapper,
   validateMapperOutput,
   type MapperOutput,
@@ -117,6 +122,18 @@ export interface RunInitArgs {
    * since the daemon isn't installed in the test environment.
    */
   skipDaemonAutostart?: boolean;
+  /**
+   * Skip the submodule detection + init prompt (Phase 1). Smokes set this so
+   * temp dir fixtures don't trip on git submodule lookups.
+   */
+  skipSubmoduleCheck?: boolean;
+  /**
+   * When mode === "auto", how to answer the submodule init prompt.
+   *   "init"  — run `git submodule update --init --recursive`
+   *   "skip"  — leave uninitialized, accept partial mapper visibility
+   * Default `"init"` matches the interactive default.
+   */
+  autoSubmodule?: "init" | "skip";
 }
 
 export interface InitResult {
@@ -141,6 +158,15 @@ export interface InitResult {
   } | null;
   /** Daemon autostart outcome (Phase 5c). null when skipped. */
   daemon_autostart: DaemonAutostartResult | null;
+  /** Submodule check outcome (Phase 1). null when skipped or no .gitmodules. */
+  submodules: {
+    /** Submodule paths that were uninitialized when init started. */
+    detected_uninitialized: string[];
+    /** True when the operator opted to run `git submodule update`. */
+    initialized: boolean;
+    /** True when the init succeeded; false when skipped or failed. */
+    success: boolean;
+  } | null;
   warnings: string[];
 }
 
@@ -171,6 +197,15 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
       "no .git directory — mirror init will be skipped; the harness expects a git-tracked working tree",
     );
   }
+
+  // ── Phase 1: submodule pre-flight ──────────────────────────────────
+  const submoduleSummary = await preflightSubmodules({
+    repoRoot,
+    mode,
+    skip: args.skipSubmoduleCheck === true,
+    autoSubmodule: args.autoSubmodule ?? "init",
+    warnings,
+  });
 
   const detection = await detectAll(repoRoot);
   const decidedSlug =
@@ -206,6 +241,7 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
       mapper_applied_to_config: false,
       brand_setup: null,
       daemon_autostart: null,
+      submodules: submoduleSummary,
       warnings,
     };
   }
@@ -465,6 +501,7 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     mapper_applied_to_config: mapperAppliedToConfig,
     brand_setup: brandSetup,
     daemon_autostart: daemonAutostart,
+    submodules: submoduleSummary,
     warnings,
   };
 
@@ -858,6 +895,98 @@ function printGlobs(label: string, globs: string[]): void {
 function truncateOneLine(s: string, max: number): string {
   const collapsed = s.replace(/\s+/g, " ").trim();
   return collapsed.length > max ? `${collapsed.slice(0, max - 1)}…` : collapsed;
+}
+
+interface PreflightSubmodulesArgs {
+  repoRoot: string;
+  mode: PromptMode;
+  skip: boolean;
+  autoSubmodule: "init" | "skip";
+  warnings: string[];
+}
+
+type SubmoduleSummary = NonNullable<InitResult["submodules"]>;
+
+async function preflightSubmodules(
+  args: PreflightSubmodulesArgs,
+): Promise<SubmoduleSummary | null> {
+  if (args.skip) return null;
+  const scan = await scanSubmodules(args.repoRoot);
+  if (!scan.hasGitmodules) return null;
+
+  const uninitialized: SubmoduleInfo[] = scan.submodules.filter(
+    (s) => s.uninitialized,
+  );
+  if (uninitialized.length === 0) {
+    // All submodules already initialized — no prompt, no warning.
+    return {
+      detected_uninitialized: [],
+      initialized: false,
+      success: true,
+    };
+  }
+
+  info("");
+  info("Git submodules detected — not initialized");
+  const widest = Math.max(
+    ...uninitialized.map((s) => s.path.length),
+    1,
+  );
+  for (const s of uninitialized) {
+    info(`  ${s.path.padEnd(widest + 2)}(uninitialized)`);
+  }
+  info("");
+
+  const initFlag =
+    args.mode === "auto"
+      ? args.autoSubmodule !== "skip"
+      : await yesNo({
+          mode: args.mode,
+          prompt: "Initialize submodules now? Required for full codebase analysis.",
+          defaultYes: true,
+        });
+
+  if (!initFlag) {
+    args.warnings.push(
+      `submodules left uninitialized — mapper has partial visibility on: ${uninitialized
+        .map((s) => s.path)
+        .join(", ")}. Re-run \`git submodule update --init --recursive\` then \`harness scope rebuild\`.`,
+    );
+    info(`  ⚠ submodule init skipped — mapper will see partial codebase`);
+    return {
+      detected_uninitialized: uninitialized.map((s) => s.path),
+      initialized: false,
+      success: false,
+    };
+  }
+
+  info("  ↻ initializing submodules…");
+  const result = await runGitSubmoduleUpdate({
+    repoRoot: args.repoRoot,
+    onProgress: (event) => {
+      const m = event.line.match(/Submodule path '([^']+)':/);
+      if (m && typeof m[1] === "string") {
+        info(`    ✓ ${m[1]}`);
+      }
+    },
+  });
+  if (!result.ok) {
+    args.warnings.push(
+      `submodule init failed (${result.errorSummary ?? "unknown"}) — mapper has partial visibility. Re-run \`git submodule update --init --recursive\` manually then \`harness scope rebuild\`.`,
+    );
+    info(`  ✗ submodule init failed — continuing with partial codebase`);
+    return {
+      detected_uninitialized: uninitialized.map((s) => s.path),
+      initialized: true,
+      success: false,
+    };
+  }
+  info("  ✓ submodules ready");
+  return {
+    detected_uninitialized: uninitialized.map((s) => s.path),
+    initialized: true,
+    success: true,
+  };
 }
 
 interface CompletionSummaryArgs {
