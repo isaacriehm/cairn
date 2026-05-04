@@ -27,3 +27,6 @@ npm-debug.log*
 # Exception: cairn ships a .claude/ template that init copies into adopted repos
 !packages/cairn-core/templates/.claude/
 !packages/cairn-core/templates/.claude/**
+
+# Operator-only release recipe — never published.
+PUBLISH.md
