@@ -1,0 +1,8 @@
+{
+  "name": "cairn",
+  "version": "0.1.0",
+  "description": "Cairn — state + context-loading layer for AI coding agents.",
+  "author": { "name": "Isaac Riehm" },
+  "repository": "https://github.com/isaacriehm/cairn",
+  "license": "MIT"
+}

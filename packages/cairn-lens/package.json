@@ -1,0 +1,84 @@
+{
+  "name": "@isaacriehm/cairn-lens",
+  "displayName": "Cairn Lens",
+  "description": "Inline citation context for §V invariants and TODO(TSK-) tokens. Hovers, gutter icons, code lens — resolved from .cairn/ground/ ledgers.",
+  "version": "0.1.0",
+  "publisher": "isaacriehm",
+  "type": "module",
+  "engines": {
+    "node": ">=22",
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.cjs",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "configuration": {
+      "title": "Cairn Lens",
+      "properties": {
+        "cairn.lens.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Master switch for Cairn Lens features."
+        },
+        "cairn.lens.inlineDecorations": {
+          "type": "boolean",
+          "default": true,
+          "description": "Render ghost text after §V<N> tokens with the resolved invariant title."
+        },
+        "cairn.lens.gutterIcons": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show citation health icons in the gutter (active / superseded / not found)."
+        },
+        "cairn.lens.codeLens": {
+          "type": "boolean",
+          "default": true,
+          "description": "Render a Code Lens line above functions whose file matches a decision's scope_globs."
+        },
+        "cairn.lens.decExplorer": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show the DEC Explorer sidebar tree view."
+        }
+      }
+    },
+    "views": {
+      "explorer": [
+        {
+          "id": "cairnLens.decExplorer",
+          "name": "Cairn DEC Explorer",
+          "when": "config.cairn.lens.decExplorer && config.cairn.lens.enabled"
+        }
+      ]
+    }
+  },
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/isaacriehm/cairn.git"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo *.vsix",
+    "bundle": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node22 --outfile=dist/extension.cjs --external:vscode --external:fsevents",
+    "package": "pnpm clean && pnpm bundle && vsce package --no-dependencies --out isaacriehm-cairn-lens-0.0.0.vsix",
+    "smoke:resolver": "tsx scripts/smoke-resolver.ts"
+  },
+  "dependencies": {
+    "@isaacriehm/cairn-core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.6.0",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
+  }
+}

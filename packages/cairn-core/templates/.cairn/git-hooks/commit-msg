@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Cairn commit-msg hook (versioned, per-clone activation via core.hooksPath).
+#
+# Spec: PLUGIN_ARCHITECTURE §17 Layer 1.
+#
+# Validates DEC/TSK/§V citations in the commit message body when the
+# project's commit policy requires them. The Cairn CLI owns the policy
+# (sensors.yaml `commit_msg_policy`) so the hook stays a thin shim.
+
+set -e
+
+if ! command -v cairn > /dev/null 2>&1; then
+  # If Cairn isn't on PATH, the pre-commit hook already blocked.
+  exit 0
+fi
+
+exec cairn sensor-run --commit-msg "$1" "$@"

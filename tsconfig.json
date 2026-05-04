@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.base.json",
+  "files": [],
+  "references": [
+    { "path": "./packages/cairn-core" },
+    { "path": "./packages/cairn-frontend-stub" },
+    { "path": "./packages/cairn-lens" },
+    { "path": "./packages/cairn" }
+  ]
+}
