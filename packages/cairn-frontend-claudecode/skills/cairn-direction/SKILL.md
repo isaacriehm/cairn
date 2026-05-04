@@ -1,5 +1,5 @@
 ---
-name: harness-direction
+name: cairn-direction
 description: |
   Use when the operator's user message looks like a task — verbs like
   "build", "add", "fix", "refactor", "implement", "change", "rip out",
@@ -12,9 +12,9 @@ description: |
   operations the operator has already detailed.
 ---
 
-# Skill: harness-direction
+# Skill: cairn-direction
 
-You are the harness direction pipeline. Your job is to convert a
+You are the Cairn direction pipeline. Your job is to convert a
 loose operator prompt into a tightened spec and dispatch
 implementation as Claude Code subagents. Reference
 `docs/PLUGIN_ARCHITECTURE.md` §8 (daily flow) and §14 (question-asker
@@ -26,19 +26,19 @@ Skip this skill when:
 
 - The operator's message is a question ("what does X do", "why is Y
   this way") — those route to read tools, not direction.
-- An active task already exists at `.harness/tasks/active/<id>/` and
+- An active task already exists at `.cairn/tasks/active/<id>/` and
   has `status: tightening` or `running`. Direction does not stack.
-- The operator explicitly opted out: message includes "skip harness"
+- The operator explicitly opted out: message includes "skip cairn"
   or "no tightening".
 
 ## Step 1 — gather in-scope context
 
 Call these MCP tools in parallel before deciding anything:
 
-- `harness_decisions_in_scope({globs: <heuristic glob list from prompt>})`
-- `harness_invariants_in_scope({globs: same})`
-- `harness_canonical_for_topic({topic: <main topic keyword from prompt>})`
-- `harness_search({query: <prompt nouns>})` — for fuzzy lookups when
+- `cairn_decisions_in_scope({globs: <heuristic glob list from prompt>})`
+- `cairn_invariants_in_scope({globs: same})`
+- `cairn_canonical_for_topic({topic: <main topic keyword from prompt>})`
+- `cairn_search({query: <prompt nouns>})` — for fuzzy lookups when
   the prompt names a symbol or feature
 
 Read the last 5 commits via `Bash: git log --oneline -5` so you have
@@ -71,8 +71,8 @@ After answers, loop Step 1+2 until ready.
 When ready, allocate a task id and write the tightened spec:
 
 1. Generate `task_id = TSK-YYYY-MM-DD-<slug>-<5-digit-ms>`.
-2. `mkdir -p .harness/tasks/active/<task_id>/`.
-3. Write `.harness/tasks/active/<task_id>/spec.tightened.md` with
+2. `mkdir -p .cairn/tasks/active/<task_id>/`.
+3. Write `.cairn/tasks/active/<task_id>/spec.tightened.md` with
    frontmatter:
    ```yaml
    ---
@@ -103,7 +103,7 @@ touches a single top-level dir or service.
   operator. Skip Step 5's plan review.
 - **≥2 chunks** → render an inline plan review:
   > Plan: 3 subagents — `[auth]` `[billing]` `[tests]`. `[a]` dispatch all  `[b]` modify  `[c]` cancel
-  > Tightened spec: `.harness/tasks/active/<task_id>/spec.tightened.md`
+  > Tightened spec: `.cairn/tasks/active/<task_id>/spec.tightened.md`
 
   `[a]` → continue to Step 5. `[b]` → loop Step 4 with operator
   feedback. `[c]` → archive the task, end the turn.
@@ -116,13 +116,13 @@ runtime above this skill) parses it and issues `Task` calls:
 ````markdown
 ## Dispatch plan
 
-Tightened spec: `.harness/tasks/active/<task_id>/spec.tightened.md`
+Tightened spec: `.cairn/tasks/active/<task_id>/spec.tightened.md`
 Reviewer: spawn LAST after all dispatched subagents complete.
 
 ```dispatch
 - subagent: general-purpose
   brief: |
-    Read .harness/tasks/active/<task_id>/spec.tightened.md.
+    Read .cairn/tasks/active/<task_id>/spec.tightened.md.
     Implement the auth middleware portion (files: services/auth/*.ts).
     Cite §V42, §V43 in any new code. Write attestation.yaml on completion.
 - subagent: general-purpose
@@ -135,7 +135,7 @@ Reviewer: spawn LAST after all dispatched subagents complete.
 
 For a 1-chunk task, omit the `dispatch` block and instead say:
 
-> Tightened spec at `.harness/tasks/active/<task_id>/spec.tightened.md`. Implementing directly.
+> Tightened spec at `.cairn/tasks/active/<task_id>/spec.tightened.md`. Implementing directly.
 
 Then implement inline.
 
@@ -145,8 +145,8 @@ Then implement inline.
   over-prompting (memory: `feedback_decide_dont_overprompt.md`).
 - Cite existing constraints in every question option — never ask
   context-free.
-- Spec file lives under `.harness/tasks/active/`; never under
-  `.harness/ground/`.
+- Spec file lives under `.cairn/tasks/active/`; never under
+  `.cairn/ground/`.
 - Reviewer subagent is always spawned LAST when there are 2+ chunks
   (step 6 implements the reviewer; for now leave a "reviewer: pending"
   note in the dispatch block until `agents/reviewer.md` lands).

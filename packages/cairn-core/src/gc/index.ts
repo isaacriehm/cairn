@@ -10,8 +10,8 @@
  *   - runFrontmatterFreshness, runGeneratorDrift, runStubCatalogHits,
  *     runDocGardening, runQualityGradesUpdate — direct pass entry points
  *
- * Used by the CLI (`harness gc run`) and the smoke test
- * (`harness/scripts/smoke-gc.ts`). Future cron / `/loop` integration consumes
+ * Used by the CLI (`cairn gc run`) and the smoke test
+ * (`cairn/scripts/smoke-gc.ts`). Future cron / `/loop` integration consumes
  * the same surface.
  */
 

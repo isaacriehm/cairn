@@ -10,7 +10,7 @@ generated: 2026-05-05
 Cairn is **state management + context loading for AI coding agents**. The
 Claude Code plugin is the primary surface that adopters interact with; the
 CLI provides bootstrap and debug entrypoints. Everything else is built on
-top of a curated, queryable ground state at `.harness/ground/`.
+top of a curated, queryable ground state at `.cairn/ground/`.
 
 ## §1 Three layers, four packages
 
@@ -32,7 +32,7 @@ top of a curated, queryable ground state at `.harness/ground/`.
                                          │
 ┌────────────────────────────────────────▼───────────────────────────┐
 │  CORE (state + context)                                            │
-│    cairn-core — `.harness/ground/` writers, MCP server, sensors,   │
+│    cairn-core — `.cairn/ground/` writers, MCP server, sensors,     │
 │                 hook runners, init wizard, GC drift sweep,         │
 │                 decision-capture, source-comment + rules-merge     │
 │                 ingestion, multi-dev install, claude wrapper +     │
@@ -43,7 +43,7 @@ top of a curated, queryable ground state at `.harness/ground/`.
 Each layer installs independently. The minimum useful install is
 `cairn-core` + the Claude Code plugin — adopters point Claude Code at the
 plugin, the plugin invokes the CLI for hook runners and the MCP server, and
-ground state lives in `.harness/`.
+ground state lives in `.cairn/`.
 
 ## §2 Why this split
 
@@ -75,7 +75,7 @@ What lives here:
   source-comment ingestion (Phase 7b), rules merge (Phase 7c), strip-replace
   primitives (Phase 10), multi-dev install (Phase 12). Visual rendering
   helpers + the four-question brand setup.
-- `ground/` — `.harness/ground/` schema + writers. Decisions ledger,
+- `ground/` — `.cairn/ground/` schema + writers. Decisions ledger,
   invariants ledger, manifest, canonical-map, scope-index, drift events,
   frontmatter parsing, glob matching.
 - `mcp/` — MCP server. 19 typed tools (read, write-locked write,
@@ -88,7 +88,7 @@ What lives here:
 - `gc/` — GC sweep with five passes (drift / completion-integrity /
   scope-coverage / quality-grades / staleness). `apply.ts` commits via
   `simple-git`; `canary.ts` post-batch integrity check.
-- `decision-capture/` — DEC id allocator + scanner. The `harness_record_decision`
+- `decision-capture/` — DEC id allocator + scanner. The `cairn_record_decision`
   MCP tool composes a draft on top of these.
 - `sensors/` — Layer A (stub catalog), Layer B (attestation), Layer D
   (structural project-agnostic), decision-assertions, runner, remediation
@@ -106,7 +106,7 @@ What lives here:
   --json-schema`. Used by tightener, mapper, classifiers.
 - `tier0/` — fast Haiku classifier (intent + activity-summary).
 - `join/` — per-clone bootstrap orchestrator. `runJoin` + `inspectJoinState`.
-- `lock.ts` — per-write `flock` on `.harness/.write-lock` for global writes.
+- `lock.ts` — per-write `flock` on `.cairn/.write-lock` for global writes.
 - `frontend-types.ts` — `FrontendAdapter` contract for the test stub.
 - `logger.ts` — pino setup.
 
@@ -142,15 +142,15 @@ The MCP server (in `cairn-core`) is what agents talk to during a session.
 From the agent's perspective, **the MCP is what Cairn IS**. Tools group
 into:
 
-- **Read** — `harness_decision_get`, `harness_decisions_in_scope`,
-  `harness_decisions_for_symbol`, `harness_invariant_get`,
-  `harness_invariants_in_scope`, `harness_canonical_for_topic`,
-  `harness_ground_get`, `harness_supersedes_chain`, `harness_search`,
-  `harness_timeline`, `harness_get_full`, `harness_query_history`.
-- **Write** (per-write `flock`) — `harness_record_decision`,
-  `harness_record_run_event`, `harness_drop_task`, `harness_archive`,
-  `harness_append`, `harness_ask_operator`.
-- **Plugin-era resolution** — `harness_resolve_attention` resolves the
+- **Read** — `cairn_decision_get`, `cairn_decisions_in_scope`,
+  `cairn_decisions_for_symbol`, `cairn_invariant_get`,
+  `cairn_invariants_in_scope`, `cairn_canonical_for_topic`,
+  `cairn_ground_get`, `cairn_supersedes_chain`, `cairn_search`,
+  `cairn_timeline`, `cairn_get_full`, `cairn_query_history`.
+- **Write** (per-write `flock`) — `cairn_record_decision`,
+  `cairn_record_run_event`, `cairn_drop_task`, `cairn_archive`,
+  `cairn_append`, `cairn_ask_operator`.
+- **Plugin-era resolution** — `cairn_resolve_attention` resolves the
   inline A/B/C surface for DEC-draft accept / reject / edit, baseline-
   finding triage / suppress / defer, invalidation-event refresh /
   continue-under-old / abort.
@@ -168,7 +168,7 @@ Plugin entrypoints reduce to two surfaces:
 Plus three skills that auto-invoke under the right conditions:
 
 - `cairn-adopt` — first-time adoption walk. SessionStart triggers it when
-  `.harness/` is missing.
+  `.cairn/` is missing.
 - `cairn-direction` — daily flow. Auto-invokes on user message in an
   adopted project.
 - `cairn-attention` — drains the pending-decisions queue. Auto-invokes

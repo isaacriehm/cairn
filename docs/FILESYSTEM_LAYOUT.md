@@ -9,7 +9,7 @@ depends-on:
   - docs/orchestration/MCP_SURFACE.md (read/write tool surface)
 ---
 
-# Filesystem Layout — Disk-only state for the harness
+# Filesystem Layout — Disk-only state for Cairn
 
 Replaces the prior Postgres design. Everything lives on disk. Two-zone canonical/historical separation. Hook-enforced. Portable to any project via `npx @isaacriehm/cairn init`.
 
@@ -20,7 +20,7 @@ Replaces the prior Postgres design. Everything lives on disk. Two-zone canonical
 | Primary state | Filesystem only — markdown + YAML + JSONL |
 | Database | None |
 | Frontend adapter | Claude Code plugin is the primary operator surface; CLI is bootstrap + debug; VS Code / Cursor extension is a parallel read-only consumer |
-| Concurrency model | Per-write `flock` on `.harness/.write-lock`; per-session state partition under `.harness/sessions/<id>/` |
+| Concurrency model | Per-write `flock` on `.cairn/.write-lock`; per-session state partition under `.cairn/sessions/<id>/` |
 | Branching | None — direct commits to main, gated by sensors at pre-commit + CI |
 | Two zones | `canonical` (default agent visible) / `historical` (`.archive/` — only via explicit MCP) |
 | Provenance | YAML frontmatter required on every load-bearing markdown |
@@ -28,9 +28,9 @@ Replaces the prior Postgres design. Everything lives on disk. Two-zone canonical
 
 ---
 
-## 1. Top-level layout in any harness-adopted repo
+## 1. Top-level layout in any Cairn-adopted repo
 
-The layout below is **stack-agnostic**. Subdirectories under `.harness/ground/{schema,routes,events}/` are populated only when the operator's project has a generator that produces them — the init mapper proposes generators per detected stack signature (Drizzle / Prisma / SQLAlchemy → schema dump; OpenAPI / NestJS / FastAPI → routes table; project-defined event registry → events). Projects without those concerns simply have empty/missing directories; the layout itself doesn't change. Likewise `tasks/active/<id>/spec.md` is populated by the active frontend adapter (Claude Code plugin in v0.1.0); the layout stores no adapter-specific structure.
+The layout below is **stack-agnostic**. Subdirectories under `.cairn/ground/{schema,routes,events}/` are populated only when the operator's project has a generator that produces them — the init mapper proposes generators per detected stack signature (Drizzle / Prisma / SQLAlchemy → schema dump; OpenAPI / NestJS / FastAPI → routes table; project-defined event registry → events). Projects without those concerns simply have empty/missing directories; the layout itself doesn't change. Likewise `tasks/active/<id>/spec.md` is populated by the active frontend adapter (Claude Code plugin in v0.1.0); the layout stores no adapter-specific structure.
 
 ```
 <repo-root>/
@@ -44,7 +44,7 @@ The layout below is **stack-agnostic**. Subdirectories under `.harness/ground/{s
 │   └── rules/*.md                                                         CANONICAL
 ├── docs/                           ← authored docs (operator-owned)       CANONICAL
 │   └── ...                         ← whatever structure the project already uses
-├── .harness/                       ← the harness's own state              MIXED
+├── .cairn/                         ← Cairn's own state                  MIXED
 │   ├── config/
 │   │   ├── workflow.md             ← per-task prompt template + YAML cfg  CANONICAL
 │   │   ├── sensors.yaml            ← sensor registry                      CANONICAL
@@ -75,7 +75,7 @@ The layout below is **stack-agnostic**. Subdirectories under `.harness/ground/{s
 │   │   │   ├── spec.md             ← original task spec (frontend-adapter ingested)
 │   │   │   ├── spec.tightened.md   ← post-tightener; agent reads this
 │   │   │   ├── status.yaml
-│   │   │   ├── notes.md            ← agent free-text notes (append-only via harness_append_run_note)
+│   │   │   ├── notes.md            ← agent free-text notes (append-only via cairn_append_run_note)
 │   │   │   └── uat.md              ← persistent UAT state
 │   │   ├── done/<task-id>/         ← terminal state, kept for history    HISTORICAL
 │   │   └── archived/<task-id>/     ← user-archived (not auto)            HISTORICAL
@@ -111,9 +111,9 @@ The layout below is **stack-agnostic**. Subdirectories under `.harness/ground/{s
 Mirror checkout (separate, not in repo):
 
 ```
-~/.local/harness/repos/<project-slug>/      ← parallel git clone, harness operates here
-~/.local/harness/state/<project-slug>/      ← non-portable runtime state (PIDs, sockets)
-~/.local/harness/models/                    ← optional model files (reserved for future cache use)
+~/.local/cairn/repos/<project-slug>/        ← parallel git clone, Cairn operates here
+~/.local/cairn/state/<project-slug>/        ← non-portable runtime state (PIDs, sockets)
+~/.local/cairn/models/                      ← optional model files (reserved for future cache use)
 ```
 
 ---
@@ -127,36 +127,36 @@ Paths agents may grep/glob/find without restriction:
 - `<repo>/AGENTS.md`, `<repo>/CLAUDE.md`
 - `<repo>/.claude/{settings.json, agents/, skills/, rules/}`
 - `<repo>/docs/**`
-- `<repo>/.harness/config/**`
-- `<repo>/.harness/ground/**` (excluding `_inbox/`)
-- `<repo>/.harness/tasks/active/**`
+- `<repo>/.cairn/config/**`
+- `<repo>/.cairn/ground/**` (excluding `_inbox/`)
+- `<repo>/.cairn/tasks/active/**`
 
 ### 2.2 Historical zone (excluded from default reads)
 
 - `<repo>/.archive/**`
-- `<repo>/.harness/runs/terminal/**`
-- `<repo>/.harness/tasks/done/**`
-- `<repo>/.harness/tasks/archived/**`
-- `<repo>/.harness/ground/decisions/_inbox/**`
-- `<repo>/.harness/runs/` (gitignored entirely; not even committed)
+- `<repo>/.cairn/runs/terminal/**`
+- `<repo>/.cairn/tasks/done/**`
+- `<repo>/.cairn/tasks/archived/**`
+- `<repo>/.cairn/ground/decisions/_inbox/**`
+- `<repo>/.cairn/runs/` (gitignored entirely; not even committed)
 
 ### 2.3 Enforcement — soft, three-layer (no PreToolUse)
 
 PreToolUse-style tool-call interception is **rejected** (operator decision 2026-05-04 — see PRIMER §11). Two-zone separation is enforced softly through three composing layers:
 
-1. **SessionStart instruction.** `.claude/settings.json` registers `harness hook session-start`. The hook reads the SessionStart payload from stdin and emits an `additionalContext` block that names the historical paths and tells the agent default reads/grep/glob do not hit them. Spec at `docs/SESSIONSTART_SPEC.md`; implementation in `packages/harness-core/src/session-start/`.
-2. **Walker exclusion.** Every harness-internal walker (`ground/walk.ts` `walkCanonical`, `gc/stub-hits.ts` `walkSourceTree`) hardcodes `.archive` and other historical roots into SKIP_DIRS. The harness-mediated reads (manifest build, GC, sensor sweeps) never see archive content. The agent's own `Read`/`Grep`/`Glob` tools are not interposed.
-3. **`harness_query_history` MCP tool.** The only sanctioned path to consult archive content. Walks `.archive/` matched by `path_hint` + `since`/`until`, runs a Tier-1 (Haiku) summarizer over the matched files, returns structured per-claim records with source citations and supersedes-pointers (resolved against the decisions ledger). Raw stale content never enters the agent's context — only the summary does. Implementation in `packages/harness-core/src/mcp/history/`.
+1. **SessionStart instruction.** `.claude/settings.json` registers `cairn hook session-start`. The hook reads the SessionStart payload from stdin and emits an `additionalContext` block that names the historical paths and tells the agent default reads/grep/glob do not hit them. Spec at `docs/SESSIONSTART_SPEC.md`; implementation in `packages/cairn-core/src/session-start/`.
+2. **Walker exclusion.** Every Cairn-internal walker (`ground/walk.ts` `walkCanonical`, `gc/stub-hits.ts` `walkSourceTree`) hardcodes `.archive` and other historical roots into SKIP_DIRS. The Cairn-mediated reads (manifest build, GC, sensor sweeps) never see archive content. The agent's own `Read`/`Grep`/`Glob` tools are not interposed.
+3. **`cairn_query_history` MCP tool.** The only sanctioned path to consult archive content. Walks `.archive/` matched by `path_hint` + `since`/`until`, runs a Tier-1 (Haiku) summarizer over the matched files, returns structured per-claim records with source citations and supersedes-pointers (resolved against the decisions ledger). Raw stale content never enters the agent's context — only the summary does. Implementation in `packages/cairn-core/src/mcp/history/`.
 
-Why no PreToolUse: the hook runs on every tool call; a buggy hook bricks the session, false positives block legit work, and the failure mode is hard to debug. Soft enforcement is sufficient because (a) agents naturally land in the canonical zone via the harness's curated walkers, and (b) `harness_query_history` covers the legitimate "I need to consult history" path without an interception layer.
+Why no PreToolUse: the hook runs on every tool call; a buggy hook bricks the session, false positives block legit work, and the failure mode is hard to debug. Soft enforcement is sufficient because (a) agents naturally land in the canonical zone via Cairn's curated walkers, and (b) `cairn_query_history` covers the legitimate "I need to consult history" path without an interception layer.
 
 ### 2.4 What agents CAN do in historical zone
 
 | Operation | Allowed? | Mechanism |
 |-----------|----------|-----------|
-| Direct `Read`/`Grep`/`Glob` of `.archive/` | Tool-permitted, but harness walkers don't surface these paths and the SessionStart instruction tells the agent not to. Soft enforcement — convention plus tooling, not interception. |
-| `harness_query_history(scope, question)` | Yes — Tier-1 summarizer, returns structured claims with supersedes-pointers; raw stale content never enters context |
-| `harness_archive(path, reason)` | Yes — moves canonical → archive (one-way) |
+| Direct `Read`/`Grep`/`Glob` of `.archive/` | Tool-permitted, but Cairn walkers don't surface these paths and the SessionStart instruction tells the agent not to. Soft enforcement — convention plus tooling, not interception. |
+| `cairn_query_history(scope, question)` | Yes — Tier-1 summarizer, returns structured claims with supersedes-pointers; raw stale content never enters context |
+| `cairn_archive(path, reason)` | Yes — moves canonical → archive (one-way) |
 
 ---
 
@@ -177,7 +177,7 @@ supersedes: <id-or-path or null>
 ---
 ```
 
-CI gate (and harness sensor):
+CI gate (and cairn sensor):
 
 ```
 load-bearing markdown in canonical zone WITHOUT frontmatter → fail
@@ -194,7 +194,7 @@ This means simple "doc still right" checks don't require a human; the daemon doe
 
 ---
 
-## 4. Decision file shape (`.harness/ground/decisions/DEC-NNNN.md`)
+## 4. Decision file shape (`.cairn/ground/decisions/DEC-NNNN.md`)
 
 ```yaml
 ---
@@ -275,7 +275,7 @@ related_invariants: [V0042]
 (...)
 ```
 
-Compact ledger at `.harness/ground/decisions/decisions.ledger.yaml`:
+Compact ledger at `.cairn/ground/decisions/decisions.ledger.yaml`:
 
 ```yaml
 # Always-loaded into agent system prompt (~50 lines for 100 decisions)
@@ -290,7 +290,7 @@ Compact ledger at `.harness/ground/decisions/decisions.ledger.yaml`:
 
 ---
 
-## 5. Invariant file shape (`.harness/ground/invariants/V<N>.md`)
+## 5. Invariant file shape (`.cairn/ground/invariants/V<N>.md`)
 
 ```yaml
 ---
@@ -304,7 +304,7 @@ verified-at: 2026-05-02T03:14:00Z
 source-run: run-abc123
 source-decision: DEC-0042
 introduced_for_bug: "Found in run-abc103: dashboard query used JSONB filter on commandPayload->>'userId', causing full-table scan."
-sensor: harness/scripts/check-v0042-no-jsonb-userid-filter.ts
+sensor: cairn/scripts/check-v0042-no-jsonb-userid-filter.ts
 e2e: e2e/V0042_actor_user_id_denorm.spec.ts
 naming_convention: "Tests must cite invariant ID — e.g., TestV0042_RefundIdempotent."
 ---
@@ -314,11 +314,11 @@ naming_convention: "Tests must cite invariant ID — e.g., TestV0042_RefundIdemp
 (invariant body — full text)
 ```
 
-Compact ledger at `.harness/ground/invariants/invariants.ledger.yaml` — same shape as decisions ledger.
+Compact ledger at `.cairn/ground/invariants/invariants.ledger.yaml` — same shape as decisions ledger.
 
 ---
 
-## 6. Task file shape (`.harness/tasks/active/<task-id>/`)
+## 6. Task file shape (`.cairn/tasks/active/<task-id>/`)
 
 ### 6.1 `spec.md` (raw operator input)
 
@@ -427,7 +427,7 @@ generated: 2026-05-02T05:31:30Z
 
 ---
 
-## 7. Run file shape (`.harness/runs/active/<run-id>/`)
+## 7. Run file shape (`.cairn/runs/active/<run-id>/`)
 
 Gitignored. Per-run scratch + outputs.
 
@@ -445,7 +445,7 @@ Gitignored. Per-run scratch + outputs.
   "phase": "streaming_turn",
   "sha_pin": "9e3f4a2",
   "branch_pin": "main",
-  "mirror_path": "/Users/user/.local/harness/repos/<project-slug>",
+  "mirror_path": "~/.local/cairn/repos/<project-slug>",
   "adapter_channel_id": "...",
   "adapter_thread_id": "...",
   "tokens_input": 0,
@@ -456,7 +456,7 @@ Gitignored. Per-run scratch + outputs.
 
 ### 7.2 `events.jsonl`
 
-One JSON object per line. Append-only via `harness_record_run_event` MCP. Shape:
+One JSON object per line. Append-only via `cairn_record_run_event` MCP. Shape:
 
 ```json
 { "ts": "2026-05-02T05:32:01Z", "seq": 1, "kind": "phase_transition", "from": "preparing_workspace", "to": "building_prompt" }
@@ -524,12 +524,12 @@ lines_removed: 0
 
 ---
 
-## 8. Manifest (`.harness/ground/manifest.yaml`)
+## 8. Manifest (`.cairn/ground/manifest.yaml`)
 
 The grounding daemon's continuously-updated index of canonical files.
 
 ```yaml
-# regenerated by `harness watch` on file change
+# regenerated by `cairn watch` on file change
 # READ-ONLY for agents — they query MCP, not this file directly
 generated: 2026-05-02T03:14:00Z
 files:
@@ -543,7 +543,7 @@ files:
     classification: rule
     audience: dual
     verified_at: 2026-05-02T03:00:00Z
-  - path: .harness/ground/decisions/DEC-0042.md
+  - path: .cairn/ground/decisions/DEC-0042.md
     sha256: ...
     classification: decision
     audience: dual
@@ -562,99 +562,99 @@ files:
 
 ## 9. Gitignore policy
 
-`.gitignore` additions on harness adoption:
+`.gitignore` additions on Cairn adoption:
 
 ```
-# harness runtime state
-.harness/runs/
-.harness/inbox/
-.harness/transcripts/
-.harness/staleness/log.jsonl
-.harness/staleness/current.json
-.harness/ground/decisions/_inbox/
+# Cairn runtime state
+.cairn/runs/
+.cairn/inbox/
+.cairn/transcripts/
+.cairn/staleness/log.jsonl
+.cairn/staleness/current.json
+.cairn/ground/decisions/_inbox/
 ```
 
 `.archive/` is NOT gitignored — it's committed history.
 
 ---
 
-## 9a. Harness directory protection
+## 9a. Cairn directory protection
 
-`.harness/` and `.archive/` are owned exclusively by the Harness system. AI sessions not running through Harness must not write to them directly. This is enforced at three layers:
+`.cairn/` and `.archive/` are owned exclusively by the Cairn system. AI sessions not running through Cairn must not write to them directly. This is enforced at three layers:
 
-### Layer 1 — Instruction (`.claude/rules/harness-protection.md`)
+### Layer 1 — Instruction (`.claude/rules/cairn-protection.md`)
 
-Written by `harness init`. Auto-loaded by Claude Code in every session in this project. Content:
+Written by `cairn init`. Auto-loaded by Claude Code in every session in this project. Content:
 
 ```markdown
-# Harness directory protection
+# Cairn directory protection
 
-.harness/ and .archive/ are managed exclusively by the Harness system.
+.cairn/ and .archive/ are managed exclusively by the Cairn system.
 
-NEVER write files directly to .harness/ or .archive/ — not to any subdirectory,
+NEVER write files directly to .cairn/ or .archive/ — not to any subdirectory,
 not for any reason. This includes:
-- Creating files in .harness/ground/, .harness/tasks/, .harness/config/
+- Creating files in .cairn/ground/, .cairn/tasks/, .cairn/config/
 - Creating files in .archive/ or any subdirectory
 - Moving files into either directory
 - Editing any file inside either directory directly
 
-To record a decision: use the harness_record_decision MCP tool.
-To archive a file: use the harness_archive MCP tool or `harness archive <path>` CLI.
-To create a task: use the harness_drop_task runtime tool or `harness task` CLI.
+To record a decision: use the cairn_record_decision MCP tool.
+To archive a file: use the cairn_archive MCP tool or `cairn archive <path>` CLI.
+To create a task: use the cairn_drop_task runtime tool or `cairn task` CLI.
 
 If you are unsure where to put something, ask. Do not create ad-hoc folders
 or files outside of the project's source tree.
 ```
 
-This catches the common case: an AI session without Harness sees `.harness/` and starts putting things in it.
+This catches the common case: an AI session without Cairn sees `.cairn/` and starts putting things in it.
 
 ### Layer 2 — Pre-commit hook (`.git/hooks/pre-commit`)
 
-Written by `harness init`. Rejects any direct write to `.harness/ground/` or `.archive/` that doesn't come from the Harness CLI:
+Written by `cairn init`. Rejects any direct write to `.cairn/ground/` or `.archive/` that doesn't come from the Cairn CLI:
 
 ```bash
 #!/bin/sh
-# Harness directory protection — do not remove or modify
+# Cairn directory protection — do not remove or modify
 
-PROTECTED="^\.(harness/ground|harness/config|harness/tasks|archive)/"
+PROTECTED="^\.(cairn/ground|cairn/config|cairn/tasks|archive)/"
 
 if git diff --cached --name-only | grep -qE "$PROTECTED"; then
-  if [ -z "$HARNESS_COMMIT" ]; then
+  if [ -z "$CAIRN_COMMIT" ]; then
     echo ""
-    echo "  ✗ Harness protection: direct writes to .harness/ or .archive/ are not allowed."
-    echo "    Use the Harness CLI or MCP tools to modify these directories."
-    echo "    If you are the Harness system, set HARNESS_COMMIT=1."
+    echo "  ✗ Cairn protection: direct writes to .cairn/ or .archive/ are not allowed."
+    echo "    Use the Cairn CLI or MCP tools to modify these directories."
+    echo "    If you are the Cairn system, set CAIRN_COMMIT=1."
     echo ""
     exit 1
   fi
 fi
 ```
 
-`HARNESS_COMMIT=1` is set by the harness process on all its commits. Regular git commits from any other source — including AI agents using the Write/Edit tools directly — are blocked.
+`CAIRN_COMMIT=1` is set by the Cairn process on all its commits. Regular git commits from any other source — including AI agents using the Write/Edit tools directly — are blocked.
 
-`.harness/runs/` and `.harness/inbox/` are gitignored so they never reach commit stage.
+`.cairn/runs/` and `.cairn/inbox/` are gitignored so they never reach commit stage.
 
 ### Layer 3 — GC orphan detection
 
-GC's orphan pass scans for state-tracking files created outside `.harness/`:
+GC's orphan pass scans for state-tracking files created outside `.cairn/`:
 - Patterns: `REMEDIATION*.md`, `TODO*.md`, `PROGRESS*.md`, `FIXES*.md`, `PLANNING*.md`, `*.planning`, `.planning/`
-- If found outside `.harness/`: moves to `.archive/<today>/rogue-artifacts/`, commits, logs to attention queue
+- If found outside `.cairn/`: moves to `.archive/<today>/rogue-artifacts/`, commits, logs to attention queue
 
 This is the cleanup net. Layers 1 and 2 prevent; Layer 3 cleans up what slips through.
 
 ### What the hook does NOT protect
 
-`.harness/runs/` (gitignored — agents can write here freely, runtime concern) and any files in the project source tree. Protection is scoped to the ground state directories only.
+`.cairn/runs/` (gitignored — agents can write here freely, runtime concern) and any files in the project source tree. Protection is scoped to the ground state directories only.
 
 ---
 
 ## 9b. Existing `docs/` folder adoption
 
-When the project has an existing `docs/` folder, Harness adopts it in place — no files move, nothing is deleted. Harness takes ownership of its health.
+When the project has an existing `docs/` folder, Cairn adopts it in place — no files move, nothing is deleted. Cairn takes ownership of its health.
 
 ### What "adoption" means
 
-1. **Catalogued**: every file in `docs/` is added to the docs-index during `harness init`
+1. **Catalogued**: every file in `docs/` is added to the docs-index during `cairn init`
 2. **Frontmatter added**: files without provenance frontmatter get a minimal header added by the daemon (`type`, `status: draft`, `audience: dual`, `generated: <today>`, `verified-at: <today>`)
 3. **Canonical-map seeded**: the init mapper proposes canonical-map entries for docs that look like authoritative references (architecture docs, rule docs, guides)
 4. **Staleness flagged**: files that reference deleted symbols or paths are marked `needs-reverification` in the docs-index
@@ -679,17 +679,17 @@ When the project has an existing `docs/` folder, Harness adopts it in place — 
     ⚠ MOBILE_FLOWS.md      — references deleted paths (src/mobile/) — flagged for review
     ✓ 8 other files        — catalogued, frontmatter added
 
-  All files remain in docs/. Harness now tracks their health.
-  Run `harness attention` to review the flagged file.
+  All files remain in docs/. Cairn now tracks their health.
+  Run `cairn attention` to review the flagged file.
 ```
 
 ### Ongoing control
 
-After adoption, Harness controls the `docs/` folder the same way it controls `.harness/ground/`:
+After adoption, Cairn controls the `docs/` folder the same way it controls `.cairn/ground/`:
 - GC keeps files fresh and honest
 - New docs created by agents in `docs/` are automatically picked up by the daemon
 - Stale or orphaned docs are surfaced and archived on operator confirm
-- The harness protection rule (§9a) does NOT apply to `docs/` — agents can write there freely, because that's where docs are supposed to go. Harness just owns the health audit.
+- The Cairn protection rule (§9a) does NOT apply to `docs/` — agents can write there freely, because that's where docs are supposed to go. Cairn just owns the health audit.
 
 ---
 
@@ -699,33 +699,33 @@ Locked direction (operator decision 2026-05-04): **no PreToolUse hooks.** Soft e
 
 | Hook | Matcher | Purpose |
 |------|---------|---------|
-| `SessionStart` | always | Inject curated state context per `docs/SESSIONSTART_SPEC.md`: two-zone reminder, decisions in scope, §V invariants, current task, weakest modules from quality grades, pending decision drafts, MCP tool quick-reference. Implementation: `harness hook session-start`. |
-| `UserPromptSubmit` (planned, Phase 2) | always | Route operator's `/direction <text>` and free-text directives into `harness-core`'s decision-capture pipeline. Not yet implemented. |
+| `SessionStart` | always | Inject curated state context per `docs/SESSIONSTART_SPEC.md`: two-zone reminder, decisions in scope, §V invariants, current task, weakest modules from quality grades, pending decision drafts, MCP tool quick-reference. Implementation: `cairn hook session-start`. |
+| `UserPromptSubmit` (planned, Phase 2) | always | Route operator's `/direction <text>` and free-text directives into `cairn-core`'s decision-capture pipeline. Not yet implemented. |
 | `Stop` (planned, Phase 3) | always | Backprop trigger candidate on session end; defer until SessionStart + UserPromptSubmit are stable. |
-| `PreToolUse` | — | **Rejected.** Two-zone separation is enforced via SessionStart instruction + walker exclusion + `harness_query_history` MCP escape. See PRIMER §11 anti-pattern entry. |
+| `PreToolUse` | — | **Rejected.** Two-zone separation is enforced via SessionStart instruction + walker exclusion + `cairn_query_history` MCP escape. See PRIMER §11 anti-pattern entry. |
 | `PostToolUse` | — | Not currently used. Frontmatter `verified-at` bumps happen via the GC sweep, not on every write. |
 
 ---
 
 ## 11. Init script — `npx @isaacriehm/cairn init <repo-dir>`
 
-Implementation lives in `packages/harness-core/src/init/`. Key outputs:
+Implementation lives in `packages/cairn-core/src/init/`. Key outputs:
 
-- Creates the directory tree above (templates/.harness/, templates/.archive/, templates/.claude/, templates/.mcp.json copied via `seedHarnessLayout`)
+- Creates the directory tree above (templates/.cairn/, templates/.archive/, templates/.claude/, templates/.mcp.json copied via `seedCairnLayout`)
 - Mechanical stack-signature detection (`detect.ts`) proposes initial sensor list, awaits operator confirm per sensor
-- Init mapper (Tier 2) reads the repo summary and proposes `pilot_module` + `route_handler_globs` + `dto_globs` + `generator_source_globs` + `high_stakes_globs` + `off_limits_globs` + per-project sensor candidates; output applied to the `<slug>:` extension block in `workflow.md` and to `.harness/config.yaml`
-- Mechanical pass populates `.harness/ground/manifest.yaml` and category extracts where generators apply
-- Writes `.mcp.json` registering the harness MCP server (`harness mcp serve`) and `.claude/settings.json` registering the SessionStart hook (`harness hook session-start`)
+- Init mapper (Tier 2) reads the repo summary and proposes `pilot_module` + `route_handler_globs` + `dto_globs` + `generator_source_globs` + `high_stakes_globs` + `off_limits_globs` + per-project sensor candidates; output applied to the `<slug>:` extension block in `workflow.md` and to `.cairn/config.yaml`
+- Mechanical pass populates `.cairn/ground/manifest.yaml` and category extracts where generators apply
+- Writes `.mcp.json` registering the Cairn MCP server (`cairn mcp serve`) and `.claude/settings.json` registering the SessionStart hook (`cairn hook session-start`)
 - Phase 7b/7c source-comment + rules-merge ingestion (Haiku-classified, deterministic walker + replacement)
 - Phase 12 multi-dev install patches `package.json` `prepare` script for Node projects + emits hints for non-Node hosts
 
-Result: a fresh `cairn adopted` state with canonical surfaces marked, the MCP server registered, all hooks live, and the per-clone bootstrap recorded. **No PreToolUse hook is registered** — two-zone enforcement is soft (see §2.3).
+Result: a fresh `Cairn adopted` state with canonical surfaces marked, the MCP server registered, all hooks live, and the per-clone bootstrap recorded. **No PreToolUse hook is registered** — two-zone enforcement is soft (see §2.3).
 
 ---
 
 ## 12. Collaboration mode (per Codex audit Finding #13)
 
-The "no branches, direct commits to main" stance is calibrated to a solo founder. To remain honest about portability, the harness supports an explicit `collaboration_mode` setting in `.harness/config/workflow.md`:
+The "no branches, direct commits to main" stance is calibrated to a solo founder. To remain honest about portability, Cairn supports an explicit `collaboration_mode` setting in `.cairn/config/workflow.md`:
 
 ```yaml
 ---
@@ -736,13 +736,13 @@ collaboration_mode: solo  # solo | team
 | Mode | Push policy | Auto-merge classes |
 |------|-------------|--------------------|
 | `solo` (default) | Direct commit to `main`; mirror checkout isolates the user's working tree | Per PRIMER §12.2 — safe-class auto, code-class operator-confirmed, high-stakes E2E-gated |
-| `team` | Harness opens PRs against `main` from a per-run branch (`harness/run-<id>`); CI runs as gate; required reviewer can be the harness's own reviewer subagent OR a real human (configurable) | Auto-merge only on safe-class + protected-branch admins approve via existing GitHub branch protection |
+| `team` | Cairn opens PRs against `main` from a per-run branch (`cairn/run-<id>`); CI runs as gate; required reviewer can be Cairn's own reviewer subagent OR a real human (configurable) | Auto-merge only on safe-class + protected-branch admins approve via existing GitHub branch protection |
 
 Operator MUST flip to `team` if they:
 
 - Add a second collaborator
 - Need protected-branch CI gating
-- Want code review on harness-produced commits
+- Want code review on Cairn-produced commits
 
 Init script asks once at adoption; defaults to `solo` with a one-line warning on profile mismatch (e.g., a project with multiple committers in `git log --format=%aE | sort -u | wc -l > 1` defaults to `team`).
 
@@ -751,7 +751,7 @@ Init script asks once at adoption; defaults to `solo` with a one-line warning on
 ## 13. What this layout deliberately omits
 
 - **Database** — no Drizzle, no SQLite, no Notion. All state on disk.
-- **Per-tenant scoping** — harness is operator-side; no `organization_id` semantics.
+- **Per-tenant scoping** — Cairn is operator-side; no `organization_id` semantics.
 - **Multi-user identity** — operator-allowlist is the entire auth model (whichever frontend adapter is active).
 - **Branches / PRs in `solo` mode** — direct commit workflow (see PRIMER.md §10 anti-patterns). Branches re-enable in `team` mode per §12 above.
 - **Multi-concurrent code-runs** — concurrency = 1 by design (single-task pipeline) regardless of mode.

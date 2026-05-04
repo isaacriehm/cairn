@@ -3,8 +3,8 @@
  *
  * Runs every sensor that can operate without an LLM call or an external
  * command against a synthetic "every file added at SHA-zero" diff. Each
- * finding is pre-Harness debt, not a hard failure: the audit yaml is
- * surfaced through `harness attention` later.
+ * finding is pre-Cairn debt, not a hard failure: the audit yaml is
+ * surfaced through `cairn attention` later.
  */
 
 import {
@@ -60,7 +60,7 @@ const SKIP_DIR_SEGMENTS = new Set([
   ".turbo",
   ".cache",
   "coverage",
-  ".harness",
+  ".cairn",
   ".archive",
   ".git",
 ]);
@@ -355,7 +355,7 @@ export async function runBaselineAudit(
   }
 
   const runAt = new Date().toISOString();
-  const auditRelPath = `.harness/baseline/sensor-audit-${runAt
+  const auditRelPath = `.cairn/baseline/sensor-audit-${runAt
     .replace(/[:.]/g, "-")
     .slice(0, 19)}.yaml`;
   const auditPath = join(args.repoRoot, auditRelPath);
@@ -430,7 +430,7 @@ export function findLatestBaselineAudit(repoRoot: string): {
   path: string;
   runAt: string | null;
 } | null {
-  const dir = join(repoRoot, ".harness", "baseline");
+  const dir = join(repoRoot, ".cairn", "baseline");
   if (!existsSync(dir)) return null;
   let entries: string[];
   try {
@@ -454,7 +454,7 @@ export function findLatestBaselineAudit(repoRoot: string): {
   return { path: abs, runAt };
 }
 
-/** Internal helper exposed for smoke harness — language list from project. */
+/** Internal helper exposed for smoke cairn — language list from project. */
 export function defaultBaselineLanguages(
   stackKinds: string[] | undefined,
 ): SensorLanguage[] {

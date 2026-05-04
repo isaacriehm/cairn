@@ -4,10 +4,10 @@
  * Stages:
  *   1. Detect → print summary
  *   2. Proceed dialog (cancel exits cleanly, no writes)
- *   3. Seed `.harness/` + `.archive/` from templates with `<project_name>`
- *      substituted; write `.harness/config.yaml` (including `harness_version`).
+ *   3. Seed `.cairn/` + `.archive/` from templates with `<project_name>`
+ *      substituted; write `.cairn/config.yaml` (including `cairn_version`).
  *   4. Mapper (Tier-2 chunked Sonnet) → seed `<slug>:` workflow.md block +
- *      `.harness/config.yaml` project_globs.
+ *      `.cairn/config.yaml` project_globs.
  *   5. Brand setup (4-question wizard).
  *   6. Phase 6 docs ingestion + baseline sensor sweep.
  *   7. Phase 7b source-comment ingestion + 7c rules merge (mock-friendly
@@ -69,7 +69,7 @@ import type { RuleSection, RuleSourceFile } from "./rules-merge/index.js";
 import {
   detectMonorepoContext,
   findGitRoot,
-  isHarnessSourceRepo,
+  isCairnSourceRepo,
   type MonorepoContext,
 } from "./preflight-guards.js";
 import { detectAll } from "./detect.js";
@@ -99,7 +99,7 @@ import {
   yesNo,
   type PromptMode,
 } from "./prompts.js";
-import { seedHarnessLayout } from "./seed.js";
+import { seedCairnLayout } from "./seed.js";
 import type { DetectionResult } from "./types.js";
 import { buildRepoSummary, type RepoSummary } from "./walker.js";
 import { updateWorkflowSlugBlock } from "./workflow-block.js";
@@ -109,11 +109,11 @@ const log = logger("init");
 export interface RunInitArgs {
   /** Repo root the operator wants to adopt. Default = process.cwd(). */
   repoRoot?: string;
-  /** Override the detected slug. Useful for `harness init . --slug foo`. */
+  /** Override the detected slug. Useful for `cairn init . --slug foo`. */
   slugOverride?: string;
   /** auto = no prompts (smoke / scripted adoption). interactive = real wizard. */
   mode?: PromptMode;
-  /** Force-overwrite existing `.harness/` files. Default false. */
+  /** Force-overwrite existing `.cairn/` files. Default false. */
   force?: boolean;
   /** Auto-pick proceed? when mode=auto. */
   autoProceed?: "a" | "b";
@@ -156,7 +156,7 @@ export interface RunInitArgs {
   autoSubmodule?: "init" | "skip";
   /**
    * Skip the self-adoption hard-stop (Phase -1). Smokes set this so they
-   * can run init against the harness source repo for development.
+   * can run init against the cairn source repo for development.
    */
   skipSelfAdoptionGuard?: boolean;
   /**
@@ -214,7 +214,7 @@ export interface InitResult {
   mapper_output: MapperOutput | null;
   /** Whether mapper output reached the workflow.md slug block. */
   mapper_applied_to_workflow: boolean;
-  /** Whether mapper output reached the new .harness/config.yaml. */
+  /** Whether mapper output reached the new .cairn/config.yaml. */
   mapper_applied_to_config: boolean;
   /** Brand-setup outcome (Phase 5b). null when skipped. */
   brand_setup: {
@@ -269,16 +269,16 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   const warnings: string[] = [];
 
   // ── Phase -1: self-adoption hard stop ──────────────────────────────
-  // If repoRoot or cwd looks like the Harness source repo itself, refuse —
-  // running init here would overwrite harness internals.
+  // If repoRoot or cwd looks like the Cairn source repo itself, refuse —
+  // running init here would overwrite cairn internals.
   if (args.skipSelfAdoptionGuard !== true) {
-    if (isHarnessSourceRepo(repoRoot) || isHarnessSourceRepo(cwd)) {
+    if (isCairnSourceRepo(repoRoot) || isCairnSourceRepo(cwd)) {
       info("");
-      info("  ✗  This looks like the Harness source repository.");
-      info("     Running init here would overwrite harness internals.");
+      info("  ✗  This looks like the Cairn source repository.");
+      info("     Running init here would overwrite cairn internals.");
       info("");
-      info("  harness init is for projects that USE Harness, not for Harness itself.");
-      info("  If you're developing Harness, you don't need to run init.");
+      info("  cairn init is for projects that USE Cairn, not for Cairn itself.");
+      info("  If you're developing Cairn, you don't need to run init.");
       info("");
       process.exit(1);
     }
@@ -292,11 +292,11 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   }
   const logFilePath = redirectInitLogs();
 
-  header(`Harness init — ${repoRoot}`);
+  header(`Cairn init — ${repoRoot}`);
 
   if (!existsSync(join(repoRoot, ".git"))) {
     warnings.push(
-      "no .git directory — mirror init will be skipped; the harness expects a git-tracked working tree",
+      "no .git directory — mirror init will be skipped; the cairn expects a git-tracked working tree",
     );
   }
 
@@ -400,8 +400,8 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     mapperRunResult === null ? [] : mapperRunResult.fallbackSlugs;
 
   // ── Step 2: seed templates ─────────────────────────────────────────
-  header("Seeding .harness/ + .archive/");
-  const seed = seedHarnessLayout({
+  header("Seeding .cairn/ + .archive/");
+  const seed = seedCairnLayout({
     repoRoot,
     projectSlug: decidedSlug,
     ...(args.force === true ? { force: true } : {}),
@@ -415,7 +415,7 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   // ── Step 2b: apply mapper output to workflow.md `<slug>:` block.
   // Only when workflow.md was just seeded (or --force re-seeded). Re-runs that
   // kept the existing workflow.md skip this so operator edits aren't clobbered.
-  const wfRelPath = ".harness/config/workflow.md";
+  const wfRelPath = ".cairn/config/workflow.md";
   const wfWasSeeded = seed.written_files.includes(wfRelPath);
   let mapperAppliedToWorkflow = false;
   if (mapperOutput !== null && wfWasSeeded) {
@@ -447,16 +447,16 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   }
 
   // ── Step 3: write project-overlay config.yaml ──────────────────────
-  header("Writing .harness/config.yaml");
-  const configPath = join(repoRoot, ".harness", "config.yaml");
-  mkdirSync(join(repoRoot, ".harness"), { recursive: true });
+  header("Writing .cairn/config.yaml");
+  const configPath = join(repoRoot, ".cairn", "config.yaml");
+  mkdirSync(join(repoRoot, ".cairn"), { recursive: true });
   let mapperAppliedToConfig = false;
   if (existsSync(configPath) && args.force !== true) {
-    warnings.push(`.harness/config.yaml already exists — kept existing (use --force to overwrite)`);
-    done(`= .harness/config.yaml (kept)`);
+    warnings.push(`.cairn/config.yaml already exists — kept existing (use --force to overwrite)`);
+    done(`= .cairn/config.yaml (kept)`);
     if (mapperOutput !== null) {
       warnings.push(
-        `mapper output NOT applied to .harness/config.yaml — kept existing; project_globs may be stale`,
+        `mapper output NOT applied to .cairn/config.yaml — kept existing; project_globs may be stale`,
       );
     }
   } else {
@@ -466,18 +466,18 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
       ...(mapperOutput !== null ? { mapperOutput } : {}),
     });
     writeFileSync(configPath, stringifyYaml(config), "utf8");
-    done(`+ .harness/config.yaml`);
+    done(`+ .cairn/config.yaml`);
     if (mapperOutput !== null) mapperAppliedToConfig = true;
   }
 
   // ── Step 3b: scope-index.yaml ──────────────────────────────────────
-  header("Writing .harness/ground/scope-index.yaml");
+  header("Writing .cairn/ground/scope-index.yaml");
   const scopeIndexFile = scopeIndexPath(repoRoot);
   if (existsSync(scopeIndexFile) && args.force !== true) {
     warnings.push(
-      ".harness/ground/scope-index.yaml already exists — kept existing (use --force to overwrite)",
+      ".cairn/ground/scope-index.yaml already exists — kept existing (use --force to overwrite)",
     );
-    done(`= .harness/ground/scope-index.yaml (kept)`);
+    done(`= .cairn/ground/scope-index.yaml (kept)`);
   } else {
     const seedFiles: Record<string, ScopeIndexEntry> = {};
     const mapperFiles = mapperOutput?.scope_index?.files ?? {};
@@ -494,7 +494,7 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
       files: seedFiles,
     };
     writeScopeIndex(repoRoot, seed);
-    done(`+ .harness/ground/scope-index.yaml`);
+    done(`+ .cairn/ground/scope-index.yaml`);
   }
 
   // ── Step 5b: brand setup (interactive 4-question wizard) ───────────
@@ -524,7 +524,7 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   // ── Phase 6: ingestion sweep + baseline audit ──────────────────────
   // Populates project brain from docs that already exist in the repo, then
   // runs every runnable sensor against the full codebase to surface pre-
-  // Harness debt. Both pieces are best-effort; failures degrade to empty
+  // Cairn debt. Both pieces are best-effort; failures degrade to empty
   // result, never block the init.
   const phase6 = await runPhaseSix({
     repoRoot,
@@ -538,7 +538,7 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   // ── Phase 7b: source-comment ingestion ─────────────────────────────
   // Walks every source file, batches block-comments through Haiku, files
   // DEC drafts + invariant proposals + canonical citations into
-  // `.harness/baseline/`. Skipped under the same condition as Phase 6
+  // `.cairn/baseline/`. Skipped under the same condition as Phase 6
   // unless a `mockSourceCommentClassify` is supplied (smokes).
   let sourceComments: IngestSourceCommentsResult | null = null;
   const skip7b =
@@ -620,10 +620,10 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
 
   // ── Phase 12: multi-developer enforcement install ──────────────────
   // Idempotent + deterministic. Patches `package.json` `scripts.prepare`
-  // for Node projects so every clone runs `harness join` on install.
-  // Surfaces manual hints for non-Node hosts. Templates (.harness/
-  // git-hooks/*, JOIN.md, .github/workflows/harness-check.yml) were
-  // landed by `seedHarnessLayout` in Phase 4.
+  // for Node projects so every clone runs `cairn join` on install.
+  // Surfaces manual hints for non-Node hosts. Templates (.cairn/
+  // git-hooks/*, JOIN.md, .github/workflows/cairn-check.yml) were
+  // landed by `seedCairnLayout` in Phase 4.
   let multiDev: MultiDevInstallResult | null = null;
   if (args.skipPhase12 !== true) {
     process.stdout.write("\n");
@@ -693,7 +693,7 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     proceed: true,
     seeded_files: seed.written_files,
     collisions: seed.collisions,
-    config_path: ".harness/config.yaml",
+    config_path: ".cairn/config.yaml",
     mapper_output: mapperOutput,
     mapper_applied_to_workflow: mapperAppliedToWorkflow,
     mapper_applied_to_config: mapperAppliedToConfig,
@@ -733,7 +733,7 @@ function buildProjectOverlay(args: {
 
   const overlay: Record<string, unknown> = {
     version: 1,
-    harness_version: VERSION,
+    cairn_version: VERSION,
     slug: args.decidedSlug,
     origin_url: args.detection.origin_url,
     stack_signatures: args.detection.stack_signatures.map((s) => s.kind),
@@ -875,7 +875,7 @@ async function maybeRunMapper(
       : mapperResult.module_proposals.filter((p) => p.failed).map((p) => p.moduleSlug);
   if (fallbackSlugs.length > 0) {
     args.warnings.push(
-      `mapper fallback used for: ${fallbackSlugs.join(", ")} — rerun \`harness scope rebuild\` for full classification`,
+      `mapper fallback used for: ${fallbackSlugs.join(", ")} — rerun \`cairn scope rebuild\` for full classification`,
     );
   }
   return { output: mapperResult.output, fallbackSlugs };
@@ -922,7 +922,7 @@ function printMapperProposal(
   // Pilot line
   const pilotNote =
     opts.partialModules !== undefined && opts.partialModules.length > 0
-      ? `  ${visualC.dim(`(only fully-visible module — run harness scope rebuild after submodules initialize)`)}`
+      ? `  ${visualC.dim(`(only fully-visible module — run cairn scope rebuild after submodules initialize)`)}`
       : "";
   process.stdout.write(`  ${visualC.bold("Pilot")}      ${o.pilot_module}${pilotNote}\n`);
 }
@@ -939,7 +939,7 @@ function redirectInitLogs(): string {
   const path = join(
     homedir(),
     ".local",
-    "harness",
+    "cairn",
     "logs",
     `init-${stamp}.log`,
   );
@@ -999,7 +999,7 @@ async function preflightMonorepoGuard(
   if (!choice) {
     info("");
     info(`  Aborted. To run from the workspace root:`);
-    info(`    cd ${ctx.workspaceRoot} && harness init`);
+    info(`    cd ${ctx.workspaceRoot} && cairn init`);
     info("");
     process.exit(1);
   }
@@ -1063,7 +1063,7 @@ async function preflightSubmodules(
     args.warnings.push(
       `submodules left uninitialized — mapper has partial visibility on: ${uninitialized
         .map((s) => s.path)
-        .join(", ")}. Re-run \`git submodule update --init --recursive\` then \`harness scope rebuild\`.`,
+        .join(", ")}. Re-run \`git submodule update --init --recursive\` then \`cairn scope rebuild\`.`,
     );
     info(`  ⚠ submodule init skipped — mapper will see partial codebase`);
     return {
@@ -1085,7 +1085,7 @@ async function preflightSubmodules(
   });
   if (!result.ok) {
     args.warnings.push(
-      `submodule init failed (${result.errorSummary ?? "unknown"}) — mapper has partial visibility. Re-run \`git submodule update --init --recursive\` manually then \`harness scope rebuild\`.`,
+      `submodule init failed (${result.errorSummary ?? "unknown"}) — mapper has partial visibility. Re-run \`git submodule update --init --recursive\` manually then \`cairn scope rebuild\`.`,
     );
     info(`  ✗ submodule init failed — continuing with partial codebase`);
     return {
@@ -1133,9 +1133,9 @@ function printCompletionSummary(args: CompletionSummaryArgs): void {
   const mcpReport = describeMcpRegistration(args.repoRoot);
 
   info("");
-  info(`  ✓ Harness ready — ${args.projectName}`);
+  info(`  ✓ Cairn ready — ${args.projectName}`);
   info("");
-  info(`  Ground state      .harness/ground/ (${groundCount} files)`);
+  info(`  Ground state      .cairn/ground/ (${groundCount} files)`);
   info(`  MCP server        ${mcpReport}`);
   info(`  Hooks             ${hookReport}`);
   info(`  Sensors           ${sensorCount} active`);
@@ -1146,7 +1146,7 @@ function printCompletionSummary(args: CompletionSummaryArgs): void {
         ? ` +${args.mapperFallbackSlugs.length - 3} more`
         : "";
     info(
-      `                    ${head}${more} used fallback — rerun harness scope rebuild`,
+      `                    ${head}${more} used fallback — rerun cairn scope rebuild`,
     );
   }
   info(`  Brand             ${brandReport}`);
@@ -1181,11 +1181,11 @@ function printCompletionSummary(args: CompletionSummaryArgs): void {
   }
 
   info("");
-  info("  Open Claude Code in this directory. Harness is live immediately.");
+  info("  Open Claude Code in this directory. Cairn is live immediately.");
   info("");
-  info("  Next: harness attention        see pending items");
-  info("        harness doctor           verify everything is working");
-  info("        harness configure brand  fill in brand guidelines");
+  info("  Next: cairn attention        see pending items");
+  info("        cairn doctor           verify everything is working");
+  info("        cairn configure brand  fill in brand guidelines");
 
   if (args.warnings.length > 0) {
     info("");
@@ -1201,7 +1201,7 @@ function shortenHomePath(abs: string): string {
 }
 
 function countGroundFiles(repoRoot: string): number {
-  const groundDir = join(repoRoot, ".harness", "ground");
+  const groundDir = join(repoRoot, ".cairn", "ground");
   if (!existsSync(groundDir)) return 0;
   let count = 0;
   const stack: string[] = [groundDir];
@@ -1228,7 +1228,7 @@ function countGroundFiles(repoRoot: string): number {
 }
 
 function countSensorEntries(repoRoot: string): number {
-  const path = join(repoRoot, ".harness", "config", "sensors.yaml");
+  const path = join(repoRoot, ".cairn", "config", "sensors.yaml");
   if (!existsSync(path)) return 0;
   try {
     const parsed = parseYaml(readFileSync(path, "utf8")) as unknown;
@@ -1251,17 +1251,17 @@ function describeScopeIndex(
   submodules: SubmoduleSummary | null,
   scanTruncated: boolean,
 ): ScopeReport {
-  const path = join(repoRoot, ".harness", "ground", "scope-index.yaml");
+  const path = join(repoRoot, ".cairn", "ground", "scope-index.yaml");
   const submoduleNoteJustInitialized =
     submodules !== null &&
     submodules.initialized &&
     submodules.success;
   const truncationFollowUp =
-    "Run harness scope rebuild for full classification";
+    "Run cairn scope rebuild for full classification";
 
   if (!existsSync(path)) {
     return {
-      line: "missing — run harness scope rebuild",
+      line: "missing — run cairn scope rebuild",
       followUp: null,
     };
   }
@@ -1269,14 +1269,14 @@ function describeScopeIndex(
     const parsed = parseYaml(readFileSync(path, "utf8")) as unknown;
     if (typeof parsed !== "object" || parsed === null) {
       return {
-        line: "empty — run harness scope rebuild",
+        line: "empty — run cairn scope rebuild",
         followUp: null,
       };
     }
     const filesRaw = (parsed as Record<string, unknown>)["files"];
     if (typeof filesRaw !== "object" || filesRaw === null) {
       return {
-        line: "empty — run harness scope rebuild",
+        line: "empty — run cairn scope rebuild",
         followUp: null,
       };
     }
@@ -1290,8 +1290,8 @@ function describeScopeIndex(
       }
       return {
         line: submoduleNoteJustInitialized
-          ? "empty — submodules now initialized, run harness scope rebuild"
-          : "empty — run harness scope rebuild",
+          ? "empty — submodules now initialized, run cairn scope rebuild"
+          : "empty — run cairn scope rebuild",
         followUp: null,
       };
     }
@@ -1313,22 +1313,22 @@ function describeScopeIndex(
     };
   } catch {
     return {
-      line: "unreadable — run harness scope rebuild",
+      line: "unreadable — run cairn scope rebuild",
       followUp: null,
     };
   }
 }
 
 function describeBrandStatus(repoRoot: string): string {
-  const overview = join(repoRoot, ".harness", "ground", "brand", "overview.md");
+  const overview = join(repoRoot, ".cairn", "ground", "brand", "overview.md");
   const positioning = join(
     repoRoot,
-    ".harness",
+    ".cairn",
     "ground",
     "product",
     "positioning.md",
   );
-  const voice = join(repoRoot, ".harness", "ground", "brand", "voice.md");
+  const voice = join(repoRoot, ".cairn", "ground", "brand", "voice.md");
   const all = [overview, positioning, voice];
   let currentCount = 0;
   let total = 0;
@@ -1337,10 +1337,10 @@ function describeBrandStatus(repoRoot: string): string {
     total++;
     if (readFrontmatterStatus(p) === "current") currentCount++;
   }
-  if (total === 0) return "missing — re-run harness init";
+  if (total === 0) return "missing — re-run cairn init";
   if (currentCount === total) return "ready";
-  if (currentCount === 0) return "draft — run harness configure brand";
-  return `partial (${currentCount}/${total} current) — run harness configure brand`;
+  if (currentCount === 0) return "draft — run cairn configure brand";
+  return `partial (${currentCount}/${total} current) — run cairn configure brand`;
 }
 
 function readFrontmatterStatus(path: string): string | null {
@@ -1385,12 +1385,12 @@ function describeMcpRegistration(repoRoot: string): string {
     const parsed = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
     const servers = parsed["mcpServers"];
     if (typeof servers !== "object" || servers === null) {
-      return ".mcp.json · missing harness entry";
+      return ".mcp.json · missing cairn entry";
     }
-    if ((servers as Record<string, unknown>)["harness"] !== undefined) {
+    if ((servers as Record<string, unknown>)["cairn"] !== undefined) {
       return ".mcp.json · ready";
     }
-    return ".mcp.json · missing harness entry";
+    return ".mcp.json · missing cairn entry";
   } catch {
     return ".mcp.json · unreadable";
   }
@@ -1436,7 +1436,7 @@ function printDiscovery(
   });
 
   // codebase scan — surfaces walker truncation so a degraded mapper input
-  // can be acted on (run `harness scope rebuild` after init).
+  // can be acted on (run `cairn scope rebuild` after init).
   if (summary.truncated_at_file_cap) {
     discoveryRow({
       status: "warn",
@@ -1447,7 +1447,7 @@ function printDiscovery(
       `       ${visualC.dim("some source trees may be missing from analysis")}\n`,
     );
     process.stdout.write(
-      `       ${visualC.dim("run: harness scope rebuild  after init for full classification")}\n`,
+      `       ${visualC.dim("run: cairn scope rebuild  after init for full classification")}\n`,
     );
   } else if (summary.truncated_at_depth_cap) {
     discoveryRow({
@@ -1456,7 +1456,7 @@ function printDiscovery(
       value: visualC.dim("incomplete — depth cap reached"),
     });
     process.stdout.write(
-      `       ${visualC.dim("run: harness scope rebuild  after init for full classification")}\n`,
+      `       ${visualC.dim("run: cairn scope rebuild  after init for full classification")}\n`,
     );
   } else {
     discoveryRow({
@@ -1584,7 +1584,7 @@ function describeIngestion(ingestion: IngestionResult | null): string | null {
   }
   const parts: string[] = [];
   parts.push(
-    `${draftCount} proposed${draftCount > 0 ? "  (run harness attention to review)" : ""}`,
+    `${draftCount} proposed${draftCount > 0 ? "  (run cairn attention to review)" : ""}`,
   );
   if (ingestion.voiceUpdated) {
     parts.push("brand/voice.md filled from existing doc");
@@ -1607,7 +1607,7 @@ function describeBaseline(audit: BaselineAuditResult | null): string | null {
     }
     return `0 findings  (run on ${audit.filesScanned} files)`;
   }
-  return `${audit.totalFindings} existing sensor finding${audit.totalFindings === 1 ? "" : "s"}  (run harness attention)`;
+  return `${audit.totalFindings} existing sensor finding${audit.totalFindings === 1 ? "" : "s"}  (run cairn attention)`;
 }
 
 function remoteShorthand(url: string): string {

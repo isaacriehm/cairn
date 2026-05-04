@@ -1,24 +1,24 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
-const HARNESS_HOME_ROOT = ".local/harness";
+const CAIRN_HOME_ROOT = ".local/cairn";
 
 export type ProjectName = string;
 
-export function harnessHome(): string {
-  return resolve(homedir(), HARNESS_HOME_ROOT);
+export function cairnHome(): string {
+  return resolve(homedir(), CAIRN_HOME_ROOT);
 }
 
 export function modelsRoot(): string {
-  return join(harnessHome(), "models");
+  return join(cairnHome(), "models");
 }
 
-/** `.harness/sessions/` — per-session state root inside an adopted project. */
+/** `.cairn/sessions/` — per-session state root inside an adopted project. */
 export function sessionsDir(repoRoot: string): string {
-  return join(repoRoot, ".harness", "sessions");
+  return join(repoRoot, ".cairn", "sessions");
 }
 
-/** `.harness/sessions/<id>/` — directory owned by one session for the duration of that session. */
+/** `.cairn/sessions/<id>/` — directory owned by one session for the duration of that session. */
 export function sessionStateDir(repoRoot: string, sessionId: string): string {
   return join(sessionsDir(repoRoot), sanitizeSessionId(sessionId));
 }

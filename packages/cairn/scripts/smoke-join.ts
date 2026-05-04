@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * smoke-join — verifies `harness join` per-clone bootstrap.
+ * smoke-join — verifies `cairn join` per-clone bootstrap.
  *
  * Spec: PLUGIN_ARCHITECTURE §17 Layer 2.
  */
@@ -21,7 +21,7 @@ import {
   installMultiDev,
   patchPackageJsonPrepare,
   runJoin,
-  seedHarnessLayout,
+  seedCairnLayout,
 } from "@isaacriehm/cairn-core";
 
 const cleanups: string[] = [];
@@ -45,7 +45,7 @@ function cleanup(): void {
 }
 
 function mkRepoRoot(): string {
-  const dir = mkdtempSync(join(tmpdir(), "harness-smoke-join-"));
+  const dir = mkdtempSync(join(tmpdir(), "cairn-smoke-join-"));
   cleanups.push(dir);
   return dir;
 }
@@ -61,7 +61,7 @@ function step(label: string): void {
 }
 
 async function main(): Promise<void> {
-  step("Step 1 — runJoin without .harness/ → locate-repo error");
+  step("Step 1 — runJoin without .cairn/ → locate-repo error");
   const empty = mkRepoRoot();
   gitInit(empty);
   const empt = runJoin({ cwd: empty });
@@ -74,12 +74,12 @@ async function main(): Promise<void> {
   step("Step 2 — runJoin success path");
   const repoRoot = mkRepoRoot();
   gitInit(repoRoot);
-  // Seed the harness layout so .harness/git-hooks/ + config exists.
-  seedHarnessLayout({ repoRoot, projectSlug: "smoke-join" });
-  // Write a minimal config.yaml with harness_version pinned to "0.0.0".
+  // Seed the cairn layout so .cairn/git-hooks/ + config exists.
+  seedCairnLayout({ repoRoot, projectSlug: "smoke-join" });
+  // Write a minimal config.yaml with cairn_version pinned to "0.0.0".
   writeFileSync(
-    join(repoRoot, ".harness", "config.yaml"),
-    "version: 1\nharness_version: 0.0.0\nslug: smoke-join\n",
+    join(repoRoot, ".cairn", "config.yaml"),
+    "version: 1\ncairn_version: 0.0.0\nslug: smoke-join\n",
     "utf8",
   );
 
@@ -93,7 +93,7 @@ async function main(): Promise<void> {
     cwd: repoRoot,
     encoding: "utf8",
   }).trim();
-  assert(hooksPathOut === ".harness/git-hooks", "git config core.hooksPath set");
+  assert(hooksPathOut === ".cairn/git-hooks", "git config core.hooksPath set");
   console.log("  ✓ Step 2 — success path");
 
   step("Step 3 — runJoin idempotency");
@@ -106,8 +106,8 @@ async function main(): Promise<void> {
   step("Step 4 — version mismatch surfaces warn");
   // Bump the project's pinned version above the CLI VERSION.
   writeFileSync(
-    join(repoRoot, ".harness", "config.yaml"),
-    "version: 1\nharness_version: 9.9.9\nslug: smoke-join\n",
+    join(repoRoot, ".cairn", "config.yaml"),
+    "version: 1\ncairn_version: 9.9.9\nslug: smoke-join\n",
     "utf8",
   );
   const mismatch = runJoin({ cwd: repoRoot });
@@ -120,7 +120,7 @@ async function main(): Promise<void> {
   const state = inspectJoinState({ repoRoot });
   assert(state.hooksPathSet === true, "hooks path set");
   assert(state.sessionsDirReady === true, "sessions dir ready");
-  assert(state.projectHarnessVersion === "9.9.9", "version reported");
+  assert(state.projectCairnVersion === "9.9.9", "version reported");
   console.log("  ✓ Step 5 — inspectJoinState");
 
   step("Step 6 — multi-dev: package.json prepare patch");
@@ -137,8 +137,8 @@ async function main(): Promise<void> {
   ) as { scripts?: Record<string, string> };
   assert(
     typeof patched.scripts?.["prepare"] === "string" &&
-      patched.scripts?.["prepare"].includes("harness join || true"),
-    "prepare contains harness join",
+      patched.scripts?.["prepare"].includes("cairn join || true"),
+    "prepare contains cairn join",
   );
   // Re-run — should detect existing fragment and skip.
   const mres2 = installMultiDev({ repoRoot: repoRoot2 });
@@ -171,7 +171,7 @@ async function main(): Promise<void> {
   const after = JSON.parse(
     readFileSync(pkgPath, "utf8"),
   ) as { scripts: { prepare: string } };
-  assert(after.scripts.prepare.startsWith("harness join || true"), "harness fragment first");
+  assert(after.scripts.prepare.startsWith("cairn join || true"), "cairn fragment first");
   assert(after.scripts.prepare.includes("husky install"), "existing husky preserved");
   console.log("  ✓ Step 8 — preserves existing prepare command");
 

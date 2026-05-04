@@ -79,7 +79,7 @@ const SKIP_DIRS = new Set<string>([
   ".gradle",
   ".idea",
   ".vscode",
-  ".harness",
+  ".cairn",
   ".archive",
 ]);
 

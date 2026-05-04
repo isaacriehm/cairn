@@ -1,4 +1,4 @@
-name: harness-check
+name: cairn-check
 
 on:
   pull_request:
@@ -8,7 +8,7 @@ on:
       - master
 
 jobs:
-  harness:
+  cairn:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -22,10 +22,10 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Install harness CLI
+      - name: Install Cairn CLI
         run: npm install -g @isaacriehm/cairn
 
-      - name: Run harness sensors against PR diff
+      - name: Run Cairn sensors against PR diff
         run: |
           base="${GITHUB_BASE_REF:-main}"
-          harness sensor-run --diff "origin/${base}..HEAD" --strict
+          cairn sensor-run --diff "origin/${base}..HEAD" --strict

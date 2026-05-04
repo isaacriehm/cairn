@@ -1,9 +1,9 @@
 /**
- * Lens resolver — thin wrapper over `harness-core` ledger readers.
+ * Lens resolver — thin wrapper over `cairn-core` ledger readers.
  *
  * The Lens reuses the same on-disk sources as the PostToolUse hooks: the
  * invariants ledger, the decisions ledger, the scope-index, and the per-task
- * directories under `.harness/tasks/{active,done}/`. This module exposes a
+ * directories under `.cairn/tasks/{active,done}/`. This module exposes a
  * single `LensResolver` that accepts a workspace folder root and answers
  * citation queries directly from disk — no MCP, no subprocess.
  *
@@ -48,13 +48,13 @@ export class LensResolver {
   constructor(public readonly repoRoot: string) {}
 
   /**
-   * Walks up from `cwd` looking for `.harness/`. Returns the dir containing
-   * it, or null when the file is not under a harness-adopted repo.
+   * Walks up from `cwd` looking for `.cairn/`. Returns the dir containing
+   * it, or null when the file is not under a cairn-adopted repo.
    */
   static resolveRepoRoot(cwd: string): string | null {
     let dir = resolve(cwd);
     for (let i = 0; i < 12; i++) {
-      const probe = join(dir, ".harness");
+      const probe = join(dir, ".cairn");
       if (existsSync(probe)) {
         try {
           if (statSync(probe).isDirectory()) return dir;
@@ -72,7 +72,7 @@ export class LensResolver {
   /**
    * Resolve a §V<N> citation to a structured result.
    *
-   * The cached `getInvariantsLedger` reader from harness-core only carries
+   * The cached `getInvariantsLedger` reader from cairn-core only carries
    * active entries; superseded ids appear ONLY when the daemon-written ledger
    * file lists them. For Lens purposes that means: if `getInvariantsLedger`
    * has the id with `superseded_by` set → superseded; absent → unknown.
@@ -185,7 +185,7 @@ export class LensResolver {
   invariantsLedgerFilePath(): string {
     return join(
       this.repoRoot,
-      ".harness",
+      ".cairn",
       "ground",
       "invariants",
       "invariants.ledger.yaml",
@@ -196,7 +196,7 @@ export class LensResolver {
   decisionsLedgerFilePath(): string {
     return join(
       this.repoRoot,
-      ".harness",
+      ".cairn",
       "ground",
       "decisions",
       "decisions.ledger.yaml",
@@ -207,7 +207,7 @@ export class LensResolver {
    * Convenience wrapper: returns the parsed scope-index (or null).
    * Uncached read — Lens callers that need the full index typically iterate
    * over its files for the DEC explorer and don't benefit from the
-   * mtime-keyed cache the hook layer relies on.
+   * mtime-keyed cache the cairn layer relies on.
    */
   loadScopeIndex(): ScopeIndex | null {
     return readScopeIndex(this.repoRoot);

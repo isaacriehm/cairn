@@ -13,7 +13,7 @@ import type { StatusJson } from "./index.js";
  *   else         → ●
  */
 export function formatStatus(s: StatusJson): string {
-  const parts: string[] = ["⬡ harness"];
+  const parts: string[] = ["⬡ cairn"];
 
   parts.push(`ctx:${s.ctx_tokens_used}/${s.ctx_tokens_budget}`);
   parts.push(`decisions:${s.decisions_in_scope}`);

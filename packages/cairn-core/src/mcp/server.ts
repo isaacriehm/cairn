@@ -21,7 +21,7 @@ export async function startMcpServer(opts: StartServerOptions): Promise<{
   close: () => Promise<void>;
 }> {
   const { ctx } = opts;
-  const server = new McpServer({ name: "harness-mcp", version: VERSION });
+  const server = new McpServer({ name: "cairn-mcp", version: VERSION });
 
   for (const tool of allTools) {
     server.registerTool(

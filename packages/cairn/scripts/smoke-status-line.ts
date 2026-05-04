@@ -39,7 +39,7 @@ function cleanup(): void {
 }
 
 function mkFixture(): string {
-  const dir = mkdtempSync(join(tmpdir(), "harness-smoke-status-line-"));
+  const dir = mkdtempSync(join(tmpdir(), "cairn-smoke-status-line-"));
   cleanups.push(dir);
   return dir;
 }
@@ -88,7 +88,7 @@ function runSmoke(): void {
     const repoRoot = mkFixture();
     writeStatusJson(repoRoot, "session-a", syntheticStatus());
     const out = readStatusForCLI(repoRoot, "session-a");
-    assert(out.startsWith("⬡ harness"), `Step 3: should start with ⬡ harness, got ${out}`);
+    assert(out.startsWith("⬡ cairn"), `Step 3: should start with ⬡ cairn, got ${out}`);
     assert(out.includes("ctx:847/4000"), `Step 3: ctx fragment missing, got ${out}`);
     assert(out.includes("task:idle"), `Step 3: task:idle fragment missing, got ${out}`);
     console.log("  ✓ Step 3 — round-trip + format");

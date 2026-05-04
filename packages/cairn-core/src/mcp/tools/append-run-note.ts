@@ -1,5 +1,5 @@
 /**
- * `harness_append_run_note` — append a phase-tagged note to a task's notes.md.
+ * `cairn_append_run_note` — append a phase-tagged note to a task's notes.md.
  *
  * The handoff builder (CONTEXT_CONTINUITY_SPEC §2.2) reads notes.md when it
  * resumes an in-flight run, so notes survive context compaction by virtue of
@@ -33,7 +33,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     );
   }
 
-  const rel = `.harness/tasks/active/${input.run_id}/notes.md`;
+  const rel = `.cairn/tasks/active/${input.run_id}/notes.md`;
   const abs = safeJoin(ctx.repoRoot, rel);
   if (typeof abs !== "string") return abs; // error envelope
 
@@ -45,11 +45,11 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     );
   }
 
-  const taskDir = join(ctx.repoRoot, ".harness", "tasks", "active", input.run_id);
+  const taskDir = join(ctx.repoRoot, ".cairn", "tasks", "active", input.run_id);
   if (!existsSync(taskDir)) {
     return mcpError(
       "RUN_NOT_FOUND",
-      `No active task dir at .harness/tasks/active/${input.run_id}/`,
+      `No active task dir at .cairn/tasks/active/${input.run_id}/`,
     );
   }
 
@@ -63,9 +63,9 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
 }
 
 export const appendRunNoteTool: ToolDef<Input> = {
-  name: "harness_append_run_note",
+  name: "cairn_append_run_note",
   description:
-    "Append a phase-tagged note to .harness/tasks/active/<run_id>/notes.md. The handoff builder reads notes.md so notes survive across sessions / context compaction. The run_id field must match the active task dir id (path-safe chars only).",
+    "Append a phase-tagged note to .cairn/tasks/active/<run_id>/notes.md. The handoff builder reads notes.md so notes survive across sessions / context compaction. The run_id field must match the active task dir id (path-safe chars only).",
   inputSchema: appendRunNoteInput,
   handler,
 };

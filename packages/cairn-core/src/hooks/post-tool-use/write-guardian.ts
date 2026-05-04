@@ -1,8 +1,8 @@
 /**
- * `harness hook write-guard` — PostToolUse hook on the Write/Edit tool.
+ * `cairn hook write-guard` — PostToolUse hook on the Write/Edit tool.
  *
  * Scans the just-written content for internal-only copy patterns
- * leaking into a user-facing surface (TODO/FIXME comments, harness
+ * leaking into a user-facing surface (TODO/FIXME comments, cairn
  * citations, snake_case identifiers in display strings, internal repo
  * paths). Independent of the copy-safety glob, also looks up the
  * file's scope-index entry and renders a "decisions/invariants in
@@ -120,7 +120,7 @@ function renderCopySafetySection(
 ): string {
   const lines: string[] = [];
   lines.push(
-    `⚠ harness:copy-safety — ${issues.length} potential internal copy issue(s) in ${fileName}:`,
+    `⚠ cairn:copy-safety — ${issues.length} potential internal copy issue(s) in ${fileName}:`,
   );
   for (const issue of issues) {
     lines.push(
@@ -132,7 +132,7 @@ function renderCopySafetySection(
 
 function renderScopeSection(scopeHint: ScopeIndexHint): string {
   const lines: string[] = [];
-  lines.push("ℹ harness:scope — this file has rules in scope:");
+  lines.push("ℹ cairn:scope — this file has rules in scope:");
   if (scopeHint.decisions.length > 0) {
     lines.push(`  decisions: ${scopeHint.decisions.join(", ")}`);
   }

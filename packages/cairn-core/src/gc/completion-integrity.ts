@@ -1,7 +1,7 @@
 /**
  * GC pass — completion integrity.
  *
- * For every task in `.harness/tasks/done/`, validate that:
+ * For every task in `.cairn/tasks/done/`, validate that:
  *   - status.yaml indicates phase: succeeded
  *   - related_run_ids has at least one entry (last entry is "the run")
  *   - the linked run dir exists in either runs/active/ or runs/terminal/
@@ -33,7 +33,7 @@ export async function runCompletionIntegrity(
   opts: CompletionIntegrityOptions,
 ): Promise<CompletionIntegrityResult> {
   const findings: GcFinding[] = [];
-  const doneDir = join(opts.repoRoot, ".harness", "tasks", "done");
+  const doneDir = join(opts.repoRoot, ".cairn", "tasks", "done");
   if (!existsSync(doneDir)) return { findings };
 
   let dirents: Dirent[];
@@ -97,8 +97,8 @@ export async function runCompletionIntegrity(
 
     // Look in runs/terminal/ first (succeeded runs typically end up here),
     // then fall back to runs/active/.
-    const terminalDir = join(opts.repoRoot, ".harness", "runs", "terminal", runId);
-    const activeDir = join(opts.repoRoot, ".harness", "runs", "active", runId);
+    const terminalDir = join(opts.repoRoot, ".cairn", "runs", "terminal", runId);
+    const activeDir = join(opts.repoRoot, ".cairn", "runs", "active", runId);
     let runDir: string | null = null;
     if (existsSync(terminalDir)) runDir = terminalDir;
     else if (existsSync(activeDir)) runDir = activeDir;
@@ -189,7 +189,7 @@ function makeFinding(taskId: string, detail: string): GcFinding {
   return {
     pass: PASS_ID,
     kind: "task_integrity_error",
-    path: `.harness/tasks/done/${taskId}/`,
+    path: `.cairn/tasks/done/${taskId}/`,
     detail,
     severity: "warn",
   };

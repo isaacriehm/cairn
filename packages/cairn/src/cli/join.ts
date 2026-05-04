@@ -30,7 +30,7 @@ function parseArgs(argv: string[]): ParsedFlags {
 
 function usage(): never {
   console.error(
-    "Usage: harness join [target-dir] [options]\n" +
+    "Usage: cairn join [target-dir] [options]\n" +
       "  [target-dir]      directory to bootstrap (default: cwd)\n" +
       "  --dry-run         report detection only — no fs / git side-effects\n" +
       "  --strict          exit non-zero on any warning (e.g. version mismatch)\n" +
@@ -68,9 +68,9 @@ export async function joinCli(argv: string[]): Promise<void> {
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   } else {
     if (result.repoRoot !== null) {
-      console.log(`harness join — ${result.repoRoot}`);
+      console.log(`cairn join — ${result.repoRoot}`);
       console.log(
-        `  cli=${result.cliVersion} project=${result.projectHarnessVersion ?? "(unset)"}`,
+        `  cli=${result.cliVersion} project=${result.projectCairnVersion ?? "(unset)"}`,
       );
     }
     for (const step of result.steps) {
@@ -78,9 +78,9 @@ export async function joinCli(argv: string[]): Promise<void> {
       console.log(`  ${glyph} ${step.step.padEnd(20)}  ${step.detail}`);
     }
     if (result.bootstrapped) {
-      console.log("\nharness join: bootstrapped");
+      console.log("\ncairn join: bootstrapped");
     } else {
-      console.log("\nharness join: incomplete — see errors above");
+      console.log("\ncairn join: incomplete — see errors above");
     }
   }
 

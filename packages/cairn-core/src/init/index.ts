@@ -129,7 +129,7 @@ export type {
 } from "./mapper-parallel.js";
 export { mergeModuleProposals, mechanicalMerge } from "./mapper-merge.js";
 export type { MergeArgs } from "./mapper-merge.js";
-export { seedHarnessLayout, templatesRoot } from "./seed.js";
+export { seedCairnLayout, templatesRoot } from "./seed.js";
 export type { SeedOptions, SeedResult } from "./seed.js";
 export {
   editYaml,

@@ -1,14 +1,14 @@
 # Canonical-map — topic → canonical-doc-path.
 #
-# Curated registry. Agents call `harness_canonical_for_topic(<topic>)` to get
+# Curated registry. Agents call `cairn_canonical_for_topic(<topic>)` to get
 # the authoritative path for a topic — no fuzzy match, no hallucinated paths.
 #
 # Adopters extend this registry as their codebase grows. Unknown topics
 # return TOPIC_NOT_REGISTERED — agents must NOT invent topics. Add via
 # /direction confirmation when an operator references a recurring topic
-# the harness agents should know about.
+# the Cairn agents should know about.
 #
-# Below is a baseline that ships with `harness init` so every adoption
+# Below is a baseline that ships with `cairn init` so every adoption
 # has a non-empty registry on day one. Trim or extend per project.
 
 version: 1
@@ -19,25 +19,25 @@ topics:
   - topic: claude-md
     canonical_path: CLAUDE.md
     audience: dual
-  - topic: harness-architecture
+  - topic: cairn-architecture
     canonical_path: docs/ARCHITECTURE.md
     audience: dual
-  - topic: harness-primer
+  - topic: cairn-primer
     canonical_path: docs/PRIMER.md
     audience: dual
-  - topic: harness-mcp-surface
+  - topic: cairn-mcp-surface
     canonical_path: docs/MCP_SURFACE.md
     audience: dual
-  - topic: harness-filesystem-layout
+  - topic: cairn-filesystem-layout
     canonical_path: docs/FILESYSTEM_LAYOUT.md
     audience: dual
-  - topic: harness-workflow-guide
+  - topic: cairn-workflow-guide
     canonical_path: docs/WORKFLOW_GUIDE.md
     audience: dual
-  - topic: harness-uat-pipeline
+  - topic: cairn-uat-pipeline
     canonical_path: docs/UAT_PIPELINE.md
     audience: dual
-  - topic: harness-sessionstart-spec
+  - topic: cairn-sessionstart-spec
     canonical_path: docs/SESSIONSTART_SPEC.md
     audience: dual
   - topic: two-zone-separation

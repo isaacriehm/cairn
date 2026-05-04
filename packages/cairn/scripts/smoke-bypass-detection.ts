@@ -41,7 +41,7 @@ function cleanup(): void {
 }
 
 function mkRepo(): string {
-  const dir = mkdtempSync(join(tmpdir(), "harness-smoke-bypass-"));
+  const dir = mkdtempSync(join(tmpdir(), "cairn-smoke-bypass-"));
   cleanups.push(dir);
   execFileSync("git", ["init", "-q", "--initial-branch=main"], { cwd: dir });
   execFileSync("git", ["config", "user.email", "smoke@example.com"], { cwd: dir });
@@ -69,7 +69,7 @@ function step(label: string): void {
 
 async function main(): Promise<void> {
   step("Step 1 — non-git dir → no bypassed");
-  const tmp = mkdtempSync(join(tmpdir(), "harness-smoke-bypass-empty-"));
+  const tmp = mkdtempSync(join(tmpdir(), "cairn-smoke-bypass-empty-"));
   cleanups.push(tmp);
   const r1 = scanBypassedCommits(tmp);
   assert(r1.bypassed.length === 0, "no bypassed in non-git dir");
@@ -88,8 +88,8 @@ async function main(): Promise<void> {
   console.log("  ✓ Step 2 — all flagged when no attested file");
 
   step("Step 3 — attested file masks recorded shas");
-  mkdirSync(join(repoRoot, ".harness"), { recursive: true });
-  writeFileSync(join(repoRoot, ".harness", ".attested-commits"), `${sha1}\n${sha2}\n`, "utf8");
+  mkdirSync(join(repoRoot, ".cairn"), { recursive: true });
+  writeFileSync(join(repoRoot, ".cairn", ".attested-commits"), `${sha1}\n${sha2}\n`, "utf8");
   const r3 = scanBypassedCommits(repoRoot);
   assert(r3.bypassed.length === 0, "no bypassed when both attested");
   assert(r3.attestedFileExists === true, "attested file detected");
@@ -109,7 +109,7 @@ async function main(): Promise<void> {
   // Add 5 more attested commits — sha3 should fall out of the 5-commit window.
   for (let i = 0; i < 5; i++) {
     const sha = commit(repoRoot, `attested-${i}`);
-    appendFileSync(join(repoRoot, ".harness", ".attested-commits"), `${sha}\n`, "utf8");
+    appendFileSync(join(repoRoot, ".cairn", ".attested-commits"), `${sha}\n`, "utf8");
   }
   const r5 = scanBypassedCommits(repoRoot);
   assert(r5.inspected === 5, "inspected = 5");

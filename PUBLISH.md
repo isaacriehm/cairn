@@ -26,15 +26,17 @@ All 22 smokes must pass. Build must be clean.
 
 ## 2. Push to the public GitHub repo
 
-The current repo (`github.com/...your-private-mirror`) becomes the dev
-backup. Push the clean working tree as the initial commit of the public
-repo:
+Push the clean working tree as the initial commit of the public repo. Run
+from the repo root of this dev tree:
 
 ```bash
-# In a fresh clone of the working tree (don't carry git history):
-cp -R "/Users/user/Documents/DevPlus LLC/06 - Projects/Harness" ~/cairn-public
-cd ~/cairn-public
-rm -rf .git node_modules packages/*/node_modules packages/*/dist packages/*/*.tsbuildinfo
+# Copy the working tree to a fresh path; drop git history + build artifacts.
+DEST="$HOME/cairn-public"
+rsync -a --exclude=".git" --exclude="node_modules" \
+         --exclude="packages/*/node_modules" \
+         --exclude="packages/*/dist" --exclude="packages/*/*.tsbuildinfo" \
+         ./ "$DEST/"
+cd "$DEST"
 git init
 git add -A
 git commit -m "feat: initial release of Cairn v0.1.0"
@@ -45,8 +47,8 @@ git tag -a v0.1.0 -m "Cairn v0.1.0"
 git push origin v0.1.0
 ```
 
-The private mirror's git history retains the build sequence + BUILD_LOG —
-useful for forensics but never pushed public.
+The private dev tree retains its commit history; the public repo starts
+fresh at v0.1.0.
 
 ## 3. Publish to npm
 

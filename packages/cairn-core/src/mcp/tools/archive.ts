@@ -53,13 +53,13 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
 
     try {
       const refs: InvalidationEventRef[] = [{ kind: "path", id: rel }];
-      const decMatch = rel.match(/^\.harness\/ground\/decisions\/(?:_inbox\/)?(DEC-\d+)/);
+      const decMatch = rel.match(/^\.cairn\/ground\/decisions\/(?:_inbox\/)?(DEC-\d+)/);
       if (decMatch) refs.unshift({ kind: "decision", id: decMatch[1]! });
       writeInvalidationEvent(ctx.repoRoot, {
         kind: "path_archived",
         refs,
         path: rel,
-        source: { session_id: ctx.sessionId ?? null, tool: "harness_archive" },
+        source: { session_id: ctx.sessionId ?? null, tool: "cairn_archive" },
       });
     } catch {
       // Event emission must never roll back the rename.
@@ -75,7 +75,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
 }
 
 export const archiveTool: ToolDef<Input> = {
-  name: "harness_archive",
+  name: "cairn_archive",
   description:
     "Move a canonical-zone file to .archive/<archive_dir or today>/<original_path>. Idempotent. Records a staleness/log.jsonl event. Refuses sacred paths (AGENTS.md, .claude/**, decisions/, brand/).",
   inputSchema: archiveInput,

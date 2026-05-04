@@ -2,12 +2,12 @@
 /**
  * smoke-session-start — buildSessionStartContext acceptance sensor.
  *
- * Pure-mechanical (no LLM burn). Builds a temp `.harness/` fixture with
+ * Pure-mechanical (no LLM burn). Builds a temp `.cairn/` fixture with
  * seeded decisions, invariants, quality-grades, an active task, and a
  * pending draft, then invokes `buildSessionStartContext` and asserts:
  *
  *   1. resolveRepoRoot finds the fixture from a nested cwd.
- *   2. Empty `.harness/` (no ground/) returns the static sections only.
+ *   2. Empty `.cairn/` (no ground/) returns the static sections only.
  *   3. Full fixture renders all 7 sections including each seeded id.
  *   4. Truncation kicks in past the maxChars cap; sectionsDropped is
  *      correctly populated; sectionsRendered reflects what's present.
@@ -45,17 +45,17 @@ function cleanup(): void {
 }
 
 function mkFixture(): string {
-  const dir = mkdtempSync(join(tmpdir(), "harness-smoke-session-start-"));
+  const dir = mkdtempSync(join(tmpdir(), "cairn-smoke-session-start-"));
   cleanups.push(dir);
   return dir;
 }
 
 function seedFullFixture(repoRoot: string): void {
-  const groundDir = join(repoRoot, ".harness", "ground");
+  const groundDir = join(repoRoot, ".cairn", "ground");
   const decisionsDir = join(groundDir, "decisions");
   const inboxDir = join(decisionsDir, "_inbox");
   const invariantsDir = join(groundDir, "invariants");
-  const tasksDir = join(repoRoot, ".harness", "tasks", "active", "TSK-2026-05-04-feature-1");
+  const tasksDir = join(repoRoot, ".cairn", "tasks", "active", "TSK-2026-05-04-feature-1");
 
   mkdirSync(decisionsDir, { recursive: true });
   mkdirSync(inboxDir, { recursive: true });
@@ -219,22 +219,22 @@ async function runSmoke(): Promise<void> {
   // ── Step 1 — resolveRepoRoot finds the fixture from nested cwd ───
   {
     const repoRoot = mkFixture();
-    mkdirSync(join(repoRoot, ".harness"), { recursive: true });
+    mkdirSync(join(repoRoot, ".cairn"), { recursive: true });
     const nested = join(repoRoot, "src", "deep", "nested");
     mkdirSync(nested, { recursive: true });
     const resolved = resolveRepoRoot(nested);
     assert(resolved === repoRoot, `resolveRepoRoot from nested cwd: expected ${repoRoot}, got ${resolved}`);
-    const noHarness = mkdtempSync(join(tmpdir(), "harness-smoke-session-start-bare-"));
-    cleanups.push(noHarness);
-    const resolvedNone = resolveRepoRoot(noHarness);
+    const noCairn = mkdtempSync(join(tmpdir(), "cairn-smoke-session-start-bare-"));
+    cleanups.push(noCairn);
+    const resolvedNone = resolveRepoRoot(noCairn);
     assert(resolvedNone === null, `resolveRepoRoot for non-adopted dir: expected null, got ${resolvedNone}`);
     console.log("  ✓ Step 1 — resolveRepoRoot");
   }
 
-  // ── Step 2 — empty .harness/ returns static sections only ────────
+  // ── Step 2 — empty .cairn/ returns static sections only ────────
   {
     const repoRoot = mkFixture();
-    mkdirSync(join(repoRoot, ".harness"), { recursive: true });
+    mkdirSync(join(repoRoot, ".cairn"), { recursive: true });
     const result = await buildSessionStartContext({ repoRoot });
     assert(result.sectionsRendered.includes("header"), "Step 2: header missing");
     assert(result.sectionsRendered.includes("two_zone_reminder"), "Step 2: two_zone_reminder missing");
@@ -244,7 +244,7 @@ async function runSmoke(): Promise<void> {
     assert(!result.sectionsRendered.includes("current_task"), "Step 2: current_task should be absent");
     assert(result.counts.decisions === 0, `Step 2: counts.decisions expected 0, got ${result.counts.decisions}`);
     assert(result.counts.invariants === 0, `Step 2: counts.invariants expected 0, got ${result.counts.invariants}`);
-    console.log("  ✓ Step 2 — empty .harness");
+    console.log("  ✓ Step 2 — empty .cairn");
   }
 
   // ── Step 3 — full fixture renders all 7 sections ─────────────────
@@ -279,8 +279,8 @@ async function runSmoke(): Promise<void> {
     assert(ctx.includes("TSK-2026-05-04-feature-1"), "Step 3: task id missing from context");
     assert(ctx.includes("DEC-0003"), "Step 3: pending draft id missing from context");
     assert(ctx.includes("core/src/integrations"), "Step 3: weakest module missing from context");
-    assert(ctx.includes("harness_query_history"), "Step 3: two-zone reminder missing query_history reference");
-    assert(ctx.includes("harness_decision_get"), "Step 3: tool quick-reference missing");
+    assert(ctx.includes("cairn_query_history"), "Step 3: two-zone reminder missing query_history reference");
+    assert(ctx.includes("cairn_decision_get"), "Step 3: tool quick-reference missing");
     assert(result.warnings.length === 0, `Step 3: unexpected warnings ${JSON.stringify(result.warnings)}`);
     console.log("  ✓ Step 3 — full fixture");
   }
@@ -319,7 +319,7 @@ async function runSmoke(): Promise<void> {
     const repoRoot = mkFixture();
     seedFullFixture(repoRoot);
     // Append a draft with invalid YAML.
-    const inboxDir = join(repoRoot, ".harness", "ground", "decisions", "_inbox");
+    const inboxDir = join(repoRoot, ".cairn", "ground", "decisions", "_inbox");
     writeFileSync(
       join(inboxDir, "DEC-9999.draft.md"),
       `---
@@ -344,7 +344,7 @@ unbalanced: [
   // ── Step 7 — brand_and_positioning injection ─────────────────────
   {
     const repoRoot = mkFixture();
-    const groundDir = join(repoRoot, ".harness", "ground");
+    const groundDir = join(repoRoot, ".cairn", "ground");
     mkdirSync(join(groundDir, "brand"), { recursive: true });
     mkdirSync(join(groundDir, "product"), { recursive: true });
     writeFileSync(
@@ -380,7 +380,7 @@ unbalanced: [
   // ── Step 8 — absent files: no section, no warnings ───────────────
   {
     const repoRoot = mkFixture();
-    mkdirSync(join(repoRoot, ".harness"), { recursive: true });
+    mkdirSync(join(repoRoot, ".cairn"), { recursive: true });
     const result = await buildSessionStartContext({ repoRoot });
     assert(
       !result.sectionsRendered.includes("brand_and_positioning"),

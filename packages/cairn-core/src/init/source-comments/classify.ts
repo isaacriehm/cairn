@@ -104,7 +104,7 @@ const BATCH_SCHEMA = {
   },
 } as const;
 
-const SYSTEM_PROMPT = `You classify source-code comment blocks for Harness adoption.
+const SYSTEM_PROMPT = `You classify source-code comment blocks for Cairn adoption.
 
 Each comment block in the batch has:
   - block_id   — the stable identifier you must echo back

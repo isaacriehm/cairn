@@ -44,7 +44,7 @@ function write(absPath: string, body: string): void {
 }
 
 function mkFixture(): string {
-  const dir = mkdtempSync(join(tmpdir(), "harness-smoke-ingest-"));
+  const dir = mkdtempSync(join(tmpdir(), "cairn-smoke-ingest-"));
   cleanups.push(dir);
   execSync("git init -q", { cwd: dir });
   execSync("git config user.email smoke@example.com", { cwd: dir });
@@ -59,11 +59,11 @@ async function runSmoke(): Promise<void> {
 
   // Seed ground state — voice.md with placeholder, canonical-map with 1 entry.
   write(
-    join(repoRoot, ".harness", "ground", "canonical-map", "topics.yaml"),
+    join(repoRoot, ".cairn", "ground", "canonical-map", "topics.yaml"),
     `version: 1\ntopics:\n  - topic: agents-md\n    canonical_path: AGENTS.md\n    audience: dual\n`,
   );
   write(
-    join(repoRoot, ".harness", "ground", "brand", "voice.md"),
+    join(repoRoot, ".cairn", "ground", "brand", "voice.md"),
     `---\ntype: rule\nstatus: draft\naudience: dual\n---\n\n# Brand voice\n\n(operator: replace this paragraph with how Claude should communicate)\n`,
   );
 
@@ -82,7 +82,7 @@ async function runSmoke(): Promise<void> {
   );
   write(
     join(repoRoot, "AGENTS.md"),
-    `# AGENTS.md\n\nThis project follows the Harness adoption protocol.\n`,
+    `# AGENTS.md\n\nThis project follows the Cairn adoption protocol.\n`,
   );
 
   // ── Step 1 — runDocsIngestion writes DEC drafts + canonical + voice ─
@@ -154,7 +154,7 @@ async function runSmoke(): Promise<void> {
       `Step 1: expected 3 canonical topics added, got ${result.canonicalTopicsAdded.length}`,
     );
     const topicsContent = readFileSync(
-      join(repoRoot, ".harness", "ground", "canonical-map", "topics.yaml"),
+      join(repoRoot, ".cairn", "ground", "canonical-map", "topics.yaml"),
       "utf8",
     );
     assert(
@@ -166,7 +166,7 @@ async function runSmoke(): Promise<void> {
 
     assert(result.voiceUpdated, "Step 1: voice.md should have been rewritten");
     const voiceContent = readFileSync(
-      join(repoRoot, ".harness", "ground", "brand", "voice.md"),
+      join(repoRoot, ".cairn", "ground", "brand", "voice.md"),
       "utf8",
     );
     assert(
@@ -228,7 +228,7 @@ async function runSmoke(): Promise<void> {
       `Step 3: onboarding section missing — rendered: ${ctx.sectionsRendered.join(",")}`,
     );
     assert(
-      ctx.additionalContext.includes("⬡ Harness active"),
+      ctx.additionalContext.includes("⬡ Cairn active"),
       "Step 3: onboarding header missing",
     );
     assert(
@@ -241,7 +241,7 @@ async function runSmoke(): Promise<void> {
   // ── Step 4 — onboarding disappears once a DEC is accepted ──────────
   {
     write(
-      join(repoRoot, ".harness", "ground", "decisions", "DEC-0042.md"),
+      join(repoRoot, ".cairn", "ground", "decisions", "DEC-0042.md"),
       `---\nid: DEC-0042\ntitle: First real decision\ntype: adr\nstatus: accepted\naudience: dual\ngenerated: 2026-05-04T00:00:00Z\nverified-at: 2026-05-04T00:00:00Z\n---\n\n# DEC-0042 — First real decision\n\nBody.\n`,
     );
     const ctx = await buildSessionStartContext({

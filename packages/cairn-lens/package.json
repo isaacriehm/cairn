@@ -1,7 +1,7 @@
 {
   "name": "@isaacriehm/cairn-lens",
-  "displayName": "Harness Lens",
-  "description": "Inline citation context for §V invariants and TODO(TSK-) tokens. Hovers, gutter icons, code lens — resolved from .harness/ground/ ledgers.",
+  "displayName": "Cairn Lens",
+  "description": "Inline citation context for §V invariants and TODO(TSK-) tokens. Hovers, gutter icons, code lens — resolved from .cairn/ground/ ledgers.",
   "version": "0.1.0",
   "publisher": "isaacriehm",
   "type": "module",
@@ -18,29 +18,29 @@
   ],
   "contributes": {
     "configuration": {
-      "title": "Harness Lens",
+      "title": "Cairn Lens",
       "properties": {
-        "harness.lens.enabled": {
+        "cairn.lens.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Master switch for Harness Lens features."
+          "description": "Master switch for Cairn Lens features."
         },
-        "harness.lens.inlineDecorations": {
+        "cairn.lens.inlineDecorations": {
           "type": "boolean",
           "default": true,
           "description": "Render ghost text after §V<N> tokens with the resolved invariant title."
         },
-        "harness.lens.gutterIcons": {
+        "cairn.lens.gutterIcons": {
           "type": "boolean",
           "default": true,
           "description": "Show citation health icons in the gutter (active / superseded / not found)."
         },
-        "harness.lens.codeLens": {
+        "cairn.lens.codeLens": {
           "type": "boolean",
           "default": true,
           "description": "Render a Code Lens line above functions whose file matches a decision's scope_globs."
         },
-        "harness.lens.decExplorer": {
+        "cairn.lens.decExplorer": {
           "type": "boolean",
           "default": false,
           "description": "Show the DEC Explorer sidebar tree view."
@@ -50,9 +50,9 @@
     "views": {
       "explorer": [
         {
-          "id": "harnessLens.decExplorer",
-          "name": "Harness DEC Explorer",
-          "when": "config.harness.lens.decExplorer && config.harness.lens.enabled"
+          "id": "cairnLens.decExplorer",
+          "name": "Cairn DEC Explorer",
+          "when": "config.cairn.lens.decExplorer && config.cairn.lens.enabled"
         }
       ]
     }

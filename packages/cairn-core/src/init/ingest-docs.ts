@@ -50,8 +50,8 @@ const DISCOVER_TOP_FILES = ["AGENTS.md", "README.md", "CLAUDE.md"];
 
 /** Subdirs we never descend into. */
 const SKIP_DIRS = new Set([
-  ".harness",
-  ".harness-build",
+  ".cairn",
+  ".cairn-build",
   "node_modules",
   ".git",
   "dist",
@@ -225,7 +225,7 @@ const CLASSIFY_SCHEMA = {
   required: ["kind", "proposedTitle", "proposedRationale", "topicSlug"],
 } as const;
 
-const CLASSIFY_SYSTEM = `You classify project documentation files for Harness adoption.
+const CLASSIFY_SYSTEM = `You classify project documentation files for Cairn adoption.
 
 Return JSON matching the supplied schema.
 
@@ -234,7 +234,7 @@ Return JSON matching the supplied schema.
   - "domain-rule"       file describes a domain rule or constraint
   - "voice-guidelines"  file is user-facing copy / tone / brand voice guidance
   - "api-docs"          file documents an API surface or schema
-  - "other"             nothing actionable for the harness state layer
+  - "other"             nothing actionable for the cairn state layer
 
 \`proposedTitle\`     5-10 words, imperative voice, empty for "other"
 \`proposedRationale\` 2-3 sentences summarising the binding content, empty for "other"
@@ -353,7 +353,7 @@ function writeDecDraftFromDoc(args: {
   mkdirSync(inboxDir, { recursive: true });
   const filename = `${args.id}.draft.md`;
   const abs = join(inboxDir, filename);
-  const rel = `.harness/ground/decisions/_inbox/${filename}`;
+  const rel = `.cairn/ground/decisions/_inbox/${filename}`;
   const now = new Date().toISOString();
   const fm: Record<string, unknown> = {
     id: args.id,
@@ -364,7 +364,7 @@ function writeDecDraftFromDoc(args: {
     generated: now,
     "verified-at": now,
     decided_at: now,
-    decided_by: "harness-init",
+    decided_by: "cairn-init",
     capture_source: "init-docs",
     capture_confidence: "medium",
     sourceFile: args.sourceFile,
@@ -379,13 +379,13 @@ function writeDecDraftFromDoc(args: {
   lines.push(`# ${args.id} — ${fm["title"] as string}`);
   lines.push("");
   lines.push("## Source");
-  lines.push(`Captured from \`${args.sourceFile}\` during \`harness init\`.`);
+  lines.push(`Captured from \`${args.sourceFile}\` during \`cairn init\`.`);
   lines.push("");
   lines.push("## Proposed rationale");
   lines.push(args.classification.proposedRationale.trim() || "(none extracted)");
   lines.push("");
   lines.push(
-    "Operator: confirm via `harness attention`, edit, or discard. Until confirmed, this draft is not binding.",
+    "Operator: confirm via `cairn attention`, edit, or discard. Until confirmed, this draft is not binding.",
   );
   lines.push("");
   writeFileSync(abs, lines.join("\n"), "utf8");
@@ -406,7 +406,7 @@ function appendCanonicalTopics(args: {
   if (args.entries.length === 0) return { added: [] };
   const path = join(
     args.repoRoot,
-    ".harness",
+    ".cairn",
     "ground",
     "canonical-map",
     "topics.yaml",
@@ -422,7 +422,7 @@ function appendCanonicalTopics(args: {
   // Preserve original file by appending; keep operator's hand-curated comments.
   lines.push(text.trimEnd());
   lines.push("");
-  lines.push("# ── Added by harness init Phase 6 — adoption ingestion ──");
+  lines.push("# ── Added by cairn init Phase 6 — adoption ingestion ──");
   for (const entry of args.entries) {
     if (existing.has(entry.topic)) continue;
     if (entry.topic.length === 0) continue;
@@ -467,7 +467,7 @@ function maybeUpdateVoiceFromDoc(args: {
   repoRoot: string;
   voiceDoc: ClassifiedDoc;
 }): boolean {
-  const path = join(args.repoRoot, ".harness", "ground", "brand", "voice.md");
+  const path = join(args.repoRoot, ".cairn", "ground", "brand", "voice.md");
   if (!existsSync(path)) return false;
   let text: string;
   try {
@@ -495,7 +495,7 @@ function maybeUpdateVoiceFromDoc(args: {
   out.push("");
   out.push("# Brand voice");
   out.push("");
-  out.push(`<!-- Imported from \`${args.voiceDoc.candidate.path}\` during \`harness init\`. -->`);
+  out.push(`<!-- Imported from \`${args.voiceDoc.candidate.path}\` during \`cairn init\`. -->`);
   out.push("");
   out.push(sourceBody.trim());
   out.push("");

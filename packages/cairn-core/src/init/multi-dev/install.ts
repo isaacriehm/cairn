@@ -3,11 +3,11 @@
  *
  * Spec: PLUGIN_ARCHITECTURE §17 + §6 Phase 12.
  *
- * Idempotent. Runs once during `harness init` after the .harness/ skeleton
+ * Idempotent. Runs once during `cairn init` after the .cairn/ skeleton
  * is seeded. Wires up the per-package-manager bootstrap hook so every clone
- * runs `harness join` automatically:
+ * runs `cairn join` automatically:
  *
- *   - Node projects: `package.json` `scripts.prepare` += "harness join || true"
+ *   - Node projects: `package.json` `scripts.prepare` += "cairn join || true"
  *   - Python (pyproject.toml): emits a JOIN-extension hint for the operator
  *   - Rust / Go / generic: emits the same hint — these toolchains don't
  *     have an install-time hook surface, so JOIN.md is the path
@@ -19,7 +19,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-const PREPARE_SCRIPT_FRAGMENT = "harness join || true";
+const PREPARE_SCRIPT_FRAGMENT = "cairn join || true";
 
 export type MultiDevHostKind =
   | "node-package-json"
@@ -65,31 +65,31 @@ export function installMultiDev(args: InstallMultiDevArgs): MultiDevInstallResul
   if (existsSync(pyproject)) {
     hostKinds.push("pyproject-toml");
     manualHints.push(
-      "pyproject.toml detected — add a hatch / poetry hook that runs `harness join` after env install (no automatic patch)",
+      "pyproject.toml detected — add a hatch / poetry hook that runs `cairn join` after env install (no automatic patch)",
     );
   }
   if (existsSync(join(repoRoot, "Makefile"))) {
     hostKinds.push("makefile");
     manualHints.push(
-      "Makefile detected — add `harness join || true` to your `setup` / `install` target so contributors bootstrap on first build",
+      "Makefile detected — add `cairn join || true` to your `setup` / `install` target so contributors bootstrap on first build",
     );
   }
   if (existsSync(join(repoRoot, "justfile"))) {
     hostKinds.push("justfile");
     manualHints.push(
-      "justfile detected — add `harness join || true` to your `setup` recipe",
+      "justfile detected — add `cairn join || true` to your `setup` recipe",
     );
   }
   if (existsSync(join(repoRoot, "Cargo.toml"))) {
     hostKinds.push("cargo-toml");
     manualHints.push(
-      "Cargo.toml detected — Cargo has no install-time hook; rely on .harness/JOIN.md for new contributors",
+      "Cargo.toml detected — Cargo has no install-time hook; rely on .cairn/JOIN.md for new contributors",
     );
   }
   if (existsSync(join(repoRoot, "go.mod"))) {
     hostKinds.push("go-mod");
     manualHints.push(
-      "go.mod detected — Go has no install-time hook; rely on .harness/JOIN.md for new contributors",
+      "go.mod detected — Go has no install-time hook; rely on .cairn/JOIN.md for new contributors",
     );
   }
   if (hostKinds.length === 0) {
@@ -151,7 +151,7 @@ export function patchPackageJsonPrepare(pkgPath: string, dryRun: boolean): Patch
       step: {
         step: "patch-package-prepare",
         status: "skipped",
-        detail: "prepare script already runs `harness join`",
+        detail: "prepare script already runs `cairn join`",
       },
     };
   }

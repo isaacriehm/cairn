@@ -4,7 +4,7 @@
  *
  * Verifies:
  *   - requireBootstrap returns null on non-git dirs (no false positive)
- *   - requireBootstrap returns null when .harness/config.yaml is absent
+ *   - requireBootstrap returns null when .cairn/config.yaml is absent
  *   - requireBootstrap returns null when core.hooksPath is set
  *   - requireBootstrap returns BOOTSTRAP_REQUIRED envelope when adopted clone
  *     is unbootstrapped
@@ -51,7 +51,7 @@ function cleanup(): void {
 }
 
 function mkdir(): string {
-  const dir = mkdtempSync(join(tmpdir(), "harness-smoke-guard-"));
+  const dir = mkdtempSync(join(tmpdir(), "cairn-smoke-guard-"));
   cleanups.push(dir);
   return dir;
 }
@@ -77,10 +77,10 @@ function step(label: string): void {
 async function main(): Promise<void> {
   step("Step 1 — non-git dir passes through guard");
   const noGit = mkdir();
-  mkdirSync(join(noGit, ".harness"), { recursive: true });
+  mkdirSync(join(noGit, ".cairn"), { recursive: true });
   writeFileSync(
-    join(noGit, ".harness", "config.yaml"),
-    "version: 1\nharness_version: 0.0.0\nslug: x\n",
+    join(noGit, ".cairn", "config.yaml"),
+    "version: 1\ncairn_version: 0.0.0\nslug: x\n",
     "utf8",
   );
   const r1 = requireBootstrap(noGit);
@@ -90,7 +90,7 @@ async function main(): Promise<void> {
   step("Step 2 — .git but no config.yaml passes through");
   const noConfig = mkdir();
   gitInit(noConfig);
-  mkdirSync(join(noConfig, ".harness"), { recursive: true });
+  mkdirSync(join(noConfig, ".cairn"), { recursive: true });
   const r2 = requireBootstrap(noConfig);
   assert(r2 === null, "missing config.yaml not blocked");
   console.log("  ✓ Step 2 — no config.yaml passes");
@@ -98,10 +98,10 @@ async function main(): Promise<void> {
   step("Step 3 — adopted clone without core.hooksPath blocks");
   const blocked = mkdir();
   gitInit(blocked);
-  mkdirSync(join(blocked, ".harness"), { recursive: true });
+  mkdirSync(join(blocked, ".cairn"), { recursive: true });
   writeFileSync(
-    join(blocked, ".harness", "config.yaml"),
-    "version: 1\nharness_version: 0.0.0\nslug: x\n",
+    join(blocked, ".cairn", "config.yaml"),
+    "version: 1\ncairn_version: 0.0.0\nslug: x\n",
     "utf8",
   );
   const r3 = requireBootstrap(blocked);
@@ -109,15 +109,15 @@ async function main(): Promise<void> {
   assert(isMcpError(r3), "blocked result is mcpError");
   if (isMcpError(r3)) {
     assert(r3.error.code === "BOOTSTRAP_REQUIRED", "code = BOOTSTRAP_REQUIRED");
-    assert(r3.error.message.includes("harness join"), "message cites harness join");
+    assert(r3.error.message.includes("cairn join"), "message cites cairn join");
   }
   console.log("  ✓ Step 3 — adopted clone blocked");
 
   step("Step 4 — after runJoin sets hooksPath, guard passes");
   // runJoin will fail because git-hooks dir is missing — seed minimal one.
-  mkdirSync(join(blocked, ".harness", "git-hooks"), { recursive: true });
+  mkdirSync(join(blocked, ".cairn", "git-hooks"), { recursive: true });
   writeFileSync(
-    join(blocked, ".harness", "git-hooks", "pre-commit"),
+    join(blocked, ".cairn", "git-hooks", "pre-commit"),
     "#!/usr/bin/env bash\nexit 0\n",
     "utf8",
   );
@@ -129,15 +129,15 @@ async function main(): Promise<void> {
 
   step("Step 5 — resolve_attention returns BOOTSTRAP_REQUIRED on unbootstrapped clone");
   const tool = (allTools as ToolDef<unknown>[]).find(
-    (t) => t.name === "harness_resolve_attention",
+    (t) => t.name === "cairn_resolve_attention",
   );
   assert(tool !== undefined, "resolve_attention registered");
   const repoRoot2 = mkdir();
   gitInit(repoRoot2);
-  mkdirSync(join(repoRoot2, ".harness"), { recursive: true });
+  mkdirSync(join(repoRoot2, ".cairn"), { recursive: true });
   writeFileSync(
-    join(repoRoot2, ".harness", "config.yaml"),
-    "version: 1\nharness_version: 0.0.0\nslug: x\n",
+    join(repoRoot2, ".cairn", "config.yaml"),
+    "version: 1\ncairn_version: 0.0.0\nslug: x\n",
     "utf8",
   );
   const ctx: McpContext = { repoRoot: repoRoot2, sessionId: "smoke" };

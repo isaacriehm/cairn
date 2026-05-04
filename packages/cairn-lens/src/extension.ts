@@ -1,5 +1,5 @@
 /**
- * Harness Lens — VS Code extension entry point.
+ * Cairn Lens — VS Code extension entry point.
  *
  * Wires up:
  *   - Hover provider for §V / TSK tokens
@@ -22,7 +22,7 @@ const SOURCE_LANG_SELECTOR: vscode.DocumentSelector = [
 ];
 
 export function activate(context: vscode.ExtensionContext): void {
-  const config = vscode.workspace.getConfiguration("harness");
+  const config = vscode.workspace.getConfiguration("cairn");
   if (config.get<boolean>("lens.enabled") !== true) {
     return;
   }
@@ -32,7 +32,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const repoRoot = LensResolver.resolveRepoRoot(folder.uri.fsPath);
   if (repoRoot === null) {
-    // Not a harness-adopted workspace; the extension stays inert.
+    // Not a cairn-adopted workspace; the extension stays inert.
     return;
   }
   const resolver = new LensResolver(repoRoot);
@@ -58,7 +58,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const explorer = new DecExplorerProvider(resolver);
     context.subscriptions.push(
       vscode.window.registerTreeDataProvider(
-        "harnessLens.decExplorer",
+        "cairnLens.decExplorer",
         explorer,
       ),
     );
@@ -70,14 +70,14 @@ export function activate(context: vscode.ExtensionContext): void {
   }
 
   // ── File watchers — ledgers + scope-index drive cache invalidation ─
-  // The harness-core ledger-cache module already keys on mtime, so the only
+  // The cairn-core ledger-cache module already keys on mtime, so the only
   // visible-side concern is forcing the editor's decoration / lens views to
   // re-render. The cheapest signal is `onDidChangeTextDocument` plus a
   // workspace file watcher fire on the ledger files.
   const watcher = vscode.workspace.createFileSystemWatcher(
     new vscode.RelativePattern(
       folder,
-      ".harness/ground/{invariants/invariants.ledger.yaml,decisions/decisions.ledger.yaml,scope-index.yaml}",
+      ".cairn/ground/{invariants/invariants.ledger.yaml,decisions/decisions.ledger.yaml,scope-index.yaml}",
     ),
   );
   const onLedgerChange = (): void => {

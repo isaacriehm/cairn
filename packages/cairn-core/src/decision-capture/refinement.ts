@@ -275,7 +275,7 @@ function readAcceptedDecision(args: {
   repoRoot: string;
   decisionId: string;
 }): AcceptedDecisionRead {
-  const relPath = `.harness/ground/decisions/${args.decisionId}.md`;
+  const relPath = `.cairn/ground/decisions/${args.decisionId}.md`;
   const abs = join(args.repoRoot, relPath);
   const raw = readFileSync(abs, "utf8");
   // parseFrontmatter validates with ProvenanceFrontmatter zod which is a

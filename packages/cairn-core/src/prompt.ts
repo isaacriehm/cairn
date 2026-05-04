@@ -9,7 +9,7 @@ import { join } from "node:path";
  *                                   for object items, {{this.field}} works.
  *
  * Anything not matched is left literal. No conditionals, no nested blocks
- * beyond {{#each}}. The harness's prompt template (`templates/.harness/
+ * beyond {{#each}}. The cairn's prompt template (`templates/.cairn/
  * config/workflow.md`) was authored to fit this surface.
  */
 
@@ -54,12 +54,12 @@ export function renderTemplate(template: string, ctx: TemplateContext): string {
 }
 
 /**
- * Read the workflow.md template from `<repoRoot>/.harness/config/workflow.md`,
+ * Read the workflow.md template from `<repoRoot>/.cairn/config/workflow.md`,
  * strip the YAML frontmatter, and return only the prompt body (everything
  * after the second `---`).
  */
 export function loadWorkflowTemplate(repoRoot: string): string {
-  const path = join(repoRoot, ".harness", "config", "workflow.md");
+  const path = join(repoRoot, ".cairn", "config", "workflow.md");
   const raw = readFileSync(path, "utf8");
   // Frontmatter ends at the second `---` line.
   const match = raw.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/);

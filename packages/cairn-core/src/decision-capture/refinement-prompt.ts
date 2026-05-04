@@ -25,11 +25,11 @@ import type { RefinerInput } from "./types.js";
 
 const PER_DECISION_CHAR_CAP = 4_000;
 
-export const REFINEMENT_PROPOSER_SYSTEM_PROMPT = `You are the **assertion-refiner** for an agent harness. The operator just confirmed a binding decision; the decision-extractor proposed N loose candidate assertions to enforce it. Your job is to lift each candidate into the STRICT shape used by the harness's mechanical sensors, OR demote / skip it.
+export const REFINEMENT_PROPOSER_SYSTEM_PROMPT = `You are the **assertion-refiner** for an agent cairn. The operator just confirmed a binding decision; the decision-extractor proposed N loose candidate assertions to enforce it. Your job is to lift each candidate into the STRICT shape used by the cairn's mechanical sensors, OR demote / skip it.
 
 ## The eleven assertion kinds
 
-Each kind requires specific fields. The harness's zod re-validates at apply time; a malformed \`strict_assertion\` is auto-demoted, so don't fudge — when you don't have a confident value for a required field, set status="demote" or status="skip" instead.
+Each kind requires specific fields. The cairn's zod re-validates at apply time; a malformed \`strict_assertion\` is auto-demoted, so don't fudge — when you don't have a confident value for a required field, set status="demote" or status="skip" instead.
 
 - **schema_must_contain** — { table: string, column: string, column_type?: string, nullable?: boolean }
   Migration / schema rule. Example: "tokens table must have user_id column NOT NULL".

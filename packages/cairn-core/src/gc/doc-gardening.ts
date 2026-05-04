@@ -26,10 +26,10 @@ const ORPHAN_ROOT_EXCLUDES = [
   "CLAUDE.md",
   "README.md",
   "RESUME_PROMPT.md",
-  ".harness/config/workflow.md",
-  ".harness/config/sensors.yaml",
-  ".harness/config/stub-patterns.yaml",
-  ".harness/config/trust-policy.yaml",
+  ".cairn/config/workflow.md",
+  ".cairn/config/sensors.yaml",
+  ".cairn/config/stub-patterns.yaml",
+  ".cairn/config/trust-policy.yaml",
 ];
 
 export interface DocGardeningOptions {

@@ -1,6 +1,6 @@
 import { join } from "node:path";
 
-/** `.harness/events/` — invalidation event log directory. */
+/** `.cairn/events/` — invalidation event log directory. */
 export function eventsDir(repoRoot: string): string {
-  return join(repoRoot, ".harness", "events");
+  return join(repoRoot, ".cairn", "events");
 }

@@ -1,8 +1,8 @@
 /**
  * Status-line module.
  *
- * The plugin's SessionStart hook writes `.harness/sessions/<id>/status.json`
- * and Claude Code's status_line hook invokes `harness status-line` (which
+ * The plugin's SessionStart hook writes `.cairn/sessions/<id>/status.json`
+ * and Claude Code's status_line hook invokes `cairn status-line` (which
  * reads the same file via `readStatusForCLI`).
  *
  * Spec: PLUGIN_ARCHITECTURE §7 (per-session state partition);

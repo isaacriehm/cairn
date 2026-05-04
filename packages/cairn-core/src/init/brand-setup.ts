@@ -1,7 +1,7 @@
 /**
  * Phase 5b — interactive brand setup.
  *
- * After seedHarnessLayout writes the templates with `status: draft`, ask the
+ * After seedCairnLayout writes the templates with `status: draft`, ask the
  * operator 4 quick questions and flip the answered files to `status: current`.
  *
  * Skipped questions stay draft. Ctrl+C / EOF anywhere mid-flow exits gracefully
@@ -58,7 +58,7 @@ export async function runBrandSetup(
 
   stdout.write("\n  ✓ Files written.\n\n");
   stdout.write("  Fill in your project brain — 4 quick questions.\n");
-  stdout.write("  Press Enter to skip any. Fill the rest later with: harness configure\n\n");
+  stdout.write("  Press Enter to skip any. Fill the rest later with: cairn configure\n\n");
 
   const rl = createInterface({
     input: stdin,
@@ -113,7 +113,7 @@ export function applyBrandAnswers(
   const warnings: string[] = [];
 
   if (answers.whatItDoes.length > 0) {
-    const rel = ".harness/ground/product/positioning.md";
+    const rel = ".cairn/ground/product/positioning.md";
     const ok = rewriteWithBody(
       join(repoRoot, rel),
       answers.whatItDoes,
@@ -124,13 +124,13 @@ export function applyBrandAnswers(
   }
 
   if (answers.mainUsers.length > 0) {
-    const rel = ".harness/ground/product/personas.yaml";
+    const rel = ".cairn/ground/product/personas.yaml";
     const ok = rewritePersonas(join(repoRoot, rel), answers.mainUsers, warnings, rel);
     if (ok) updated.push(rel);
   }
 
   if (answers.voice.length > 0 || answers.avoid.length > 0) {
-    const rel = ".harness/ground/brand/voice.md";
+    const rel = ".cairn/ground/brand/voice.md";
     const ok = rewriteVoice(
       join(repoRoot, rel),
       answers.voice,

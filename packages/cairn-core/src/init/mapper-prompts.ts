@@ -2,7 +2,7 @@
  * Mapper schema + system prompt + user-prompt builder.
  *
  * The chunked parallel mapper (`mapper-parallel.ts`) operates per-module on a
- * subset of these inputs; the `harness scope rebuild` CLI consumes the full
+ * subset of these inputs; the `cairn scope rebuild` CLI consumes the full
  * surface to regenerate `scope_index.yaml` against an existing project. Both
  * paths share the same JSON schema + system prompt to guarantee identical
  * output shape.
@@ -88,24 +88,24 @@ export const MAPPER_OUTPUT_SCHEMA = {
 } as const;
 
 export const MAPPER_SYSTEM_PROMPT = [
-  "You are the INIT MAPPER for a code-agent harness adopting a new project.",
+  "You are the INIT MAPPER for a code-agent cairn adopting a new project.",
   "",
-  "Your job: read a structural inventory of an unknown project (top-level dirs, package manifests, framework signals, file-extension breakdown, notable files and dirs) and produce a structured proposal that lets the harness run useful sensors against the project's diffs.",
+  "Your job: read a structural inventory of an unknown project (top-level dirs, package manifests, framework signals, file-extension breakdown, notable files and dirs) and produce a structured proposal that lets the cairn run useful sensors against the project's diffs.",
   "",
   "You DO NOT execute code. You DO NOT modify files. You produce one JSON object.",
   "",
   "Required outputs:",
   "",
-  "- `pilot_module` — a glob like `core/src/integrations/**` for the initial scope where the harness should focus, OR the literal `ALL` if the project is small enough to harness end-to-end on day one. Bias toward a focused module — operators add scope as confidence grows.",
+  "- `pilot_module` — a glob like `core/src/integrations/**` for the initial scope where the cairn should focus, OR the literal `ALL` if the project is small enough to cairn end-to-end on day one. Bias toward a focused module — operators add scope as confidence grows.",
   "- `domain_summary` — one paragraph (~80-200 words). What does this codebase appear to do? Inferred from package name, README contents (when in a manifest preview), top-level dirs, and manifest deps. State only what the inventory supports; if uncertain, say so.",
-  "- `key_modules` — 3-8 modules the harness should know about. Each `{ name, path, purpose }`. `path` is a directory path that EXISTS in the inventory (no glob); `purpose` is one short sentence.",
+  "- `key_modules` — 3-8 modules the cairn should know about. Each `{ name, path, purpose }`. `path` is a directory path that EXISTS in the inventory (no glob); `purpose` is one short sentence.",
   "- `route_handler_globs` — file glob patterns matching HTTP / CLI / RPC / route handlers. Examples: `core/src/**/*.controller.ts` (NestJS), `app/controllers/**/*.rb` (Rails), `apps/api/routes/**/*.py` (FastAPI), `internal/handlers/**/*.go`. EMPTY array if no handlers detected.",
   "- `dto_globs` — globs matching DTO / schema / form-input / request-validator definitions. Examples: `**/*.dto.ts`, `apps/api/schemas/**/*.py`, `core/src/**/zod.ts`, `app/forms/**/*.rb`.",
   "- `generator_source_globs` — globs whose changes mean a generator must re-run. Examples: `core/openapi.json`, `core/src/db/schema.ts` (Drizzle), `**/*.proto`, `prisma/schema.prisma`, `db/structure.sql`. EMPTY if no generators apparent.",
   "- `high_stakes_globs` — globs for high-risk surfaces (auth, billing, multi-tenant boundaries, payments, integrations storing tokens, telephony, anything where a regression leaks user data or charges money). Be conservative; over-flagging dilutes the gate. EMPTY if not clear.",
-  "- `off_limits_globs` — globs the harness MUST NOT touch beyond the generic defaults already in place (`node_modules/**`, `dist/**`, `.git/**`, `.harness/**`, `.archive/**`, generated artifact dirs are already excluded). Add things like vendored third-party code, copied snapshots, large binary fixtures, anything under a directory the operator should not let an agent rewrite. EMPTY if nothing extra.",
-  "- `proposed_sensors` — project-specific sensors beyond the generic harness Layer A/B/C/D. Each `{ id, description, applies_to_globs }`. Examples: `event-emit-coverage` (every emit() has a label), `migration-naming-convention`, `auth-guard-on-controllers`, `dto-discriminator-coverage`. EMPTY if nothing project-specific is obvious.",
-  "- `notes` — anything notable that didn't fit a structured field — e.g., \"truncated at file cap; pilot scope conservative\", \"no test infra detected\", \"monorepo with pnpm-workspace; harness should adopt one package at a time\".",
+  "- `off_limits_globs` — globs the cairn MUST NOT touch beyond the generic defaults already in place (`node_modules/**`, `dist/**`, `.git/**`, `.cairn/**`, `.archive/**`, generated artifact dirs are already excluded). Add things like vendored third-party code, copied snapshots, large binary fixtures, anything under a directory the operator should not let an agent rewrite. EMPTY if nothing extra.",
+  "- `proposed_sensors` — project-specific sensors beyond the generic cairn Layer A/B/C/D. Each `{ id, description, applies_to_globs }`. Examples: `event-emit-coverage` (every emit() has a label), `migration-naming-convention`, `auth-guard-on-controllers`, `dto-discriminator-coverage`. EMPTY if nothing project-specific is obvious.",
+  "- `notes` — anything notable that didn't fit a structured field — e.g., \"truncated at file cap; pilot scope conservative\", \"no test infra detected\", \"monorepo with pnpm-workspace; cairn should adopt one package at a time\".",
   "- `scope_index` — forward map from repo-relative file paths to the decisions and invariants whose `scope_globs` apply, keyed by file. Shape: `{ files: { \"<repo-relative-path>\": { decisions: [\"DEC-NNNN\"], invariants: [\"V-NNNN\"], unscoped?: true } } }`. The user prompt provides a list of in-scope decisions + invariants when ground state already exists; classify which apply to each meaningful source file. Use `unscoped: true` for files that should never carry rules (lockfiles, generated, vendored, dotfile config) so the GC scope-coverage pass doesn't re-flag them. EMPTY `{ files: {} }` is acceptable on first-run adopters with no decisions yet.",
   "",
   "Rules:",
@@ -113,7 +113,7 @@ export const MAPPER_SYSTEM_PROMPT = [
   "- Use forward slashes only (`/`), never backslashes.",
   "- Use `**` for any-depth wildcards, `*` for single-segment.",
   "- Do not invent paths that aren't in the inventory.",
-  "- Prefer EMPTY arrays over guessed entries. The harness propagates empty fields to operator review; guessed entries silently mislead and the operator may not catch them at adoption time.",
+  "- Prefer EMPTY arrays over guessed entries. The cairn propagates empty fields to operator review; guessed entries silently mislead and the operator may not catch them at adoption time.",
   "- Avoid overly-broad globs like `**/*.ts` for `route_handler_globs` — narrow to the controller / route directory.",
   "- For `pilot_module`: if the repo has a clear modular layout (packages/, apps/, services/, core/src/<feature>/), name one. If it's a flat single-app codebase, use the literal `ALL` and let the operator narrow later.",
   "- `key_modules.path` MUST appear in the inventory's notable directories or the file-count breakdown.",

@@ -1,5 +1,5 @@
 /**
- * `harness gc` — garbage-collection CLI.
+ * `cairn gc` — garbage-collection CLI.
  *
  * Subcommands:
  *   sweep [--repo-root <path>] [--json]
@@ -9,7 +9,7 @@
  *         [--no-canary] [--no-quality] [--force-frontmatter-refresh] [--json]
  *     Sweep, then apply proposals whose class is in --apply-classes (default
  *     "safe"). Canary on by default. Push is NEVER done by this command —
- *     the operator pushes via `harness mirror push` after auditing the local
+ *     the operator pushes via `cairn mirror push` after auditing the local
  *     commits.
  */
 
@@ -51,7 +51,7 @@ function parseArgs(argv: string[]): ParsedFlags {
 
 function usage(): never {
   console.error(
-    "Usage: harness gc <subcommand> [options]\n" +
+    "Usage: cairn gc <subcommand> [options]\n" +
       "  sweep  [--repo-root <path>] [--json]\n" +
       "  run    [--repo-root <path>] [--apply-classes safe[,code[,high-stakes]]]\n" +
       "         [--no-canary] [--force-frontmatter-refresh] [--json]\n",

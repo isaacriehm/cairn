@@ -1,10 +1,10 @@
 /**
  * Phase 7c — regenerate CLAUDE.md and AGENTS.md from ground state.
  *
- * Per spec §6 Phase 7c: "post-adoption: harness regenerates CLAUDE.md and
- * AGENTS.md from ground state on each `harness sweep`; operator-written
- * sections preserved between `<!-- harness:keep-start -->` and
- * `<!-- harness:keep-end -->` markers".
+ * Per spec §6 Phase 7c: "post-adoption: cairn regenerates CLAUDE.md and
+ * AGENTS.md from ground state on each `cairn sweep`; operator-written
+ * sections preserved between `<!-- cairn:keep-start -->` and
+ * `<!-- cairn:keep-end -->` markers".
  *
  * This module owns the template rendering primitive. The sweep CLI (or skill
  * driving it) calls `regenerateRulesFiles({ repoRoot })` and writes the
@@ -109,9 +109,9 @@ function renderClaudeMd(a: RenderArgs): string {
   lines.push(heading);
   lines.push("");
   lines.push("<!--");
-  lines.push("  This file is regenerated from .harness/ground/ on each sweep.");
+  lines.push("  This file is regenerated from .cairn/ground/ on each sweep.");
   lines.push(`  Generated at: ${a.generatedAt}.`);
-  lines.push("  Operator content lives between <!-- harness:keep-start --> markers.");
+  lines.push("  Operator content lives between <!-- cairn:keep-start --> markers.");
   lines.push("-->");
   lines.push("");
   if (a.positioning !== undefined && a.positioning.length > 0) {
@@ -120,17 +120,17 @@ function renderClaudeMd(a: RenderArgs): string {
   }
   lines.push("## Authoritative state");
   lines.push("");
-  lines.push("- Decisions ledger: `.harness/ground/decisions/decisions.ledger.yaml`");
-  lines.push("- Invariants ledger: `.harness/ground/invariants/invariants.ledger.yaml`");
-  lines.push("- Brand + voice: `.harness/ground/brand/`");
-  lines.push("- Canonical map: `.harness/ground/canonical-map/topics.yaml`");
+  lines.push("- Decisions ledger: `.cairn/ground/decisions/decisions.ledger.yaml`");
+  lines.push("- Invariants ledger: `.cairn/ground/invariants/invariants.ledger.yaml`");
+  lines.push("- Brand + voice: `.cairn/ground/brand/`");
+  lines.push("- Canonical map: `.cairn/ground/canonical-map/topics.yaml`");
   lines.push("");
-  lines.push("Agents query the harness MCP surface, not these files directly.");
+  lines.push("Agents query the cairn MCP surface, not these files directly.");
   lines.push("");
   lines.push("## Active decisions");
   lines.push("");
   if (a.decisions.length === 0) {
-    lines.push("_(none yet — run `/harness-direction` to capture one)_");
+    lines.push("_(none yet — run `/cairn-direction` to capture one)_");
   } else {
     for (const d of a.decisions) {
       lines.push(`- **${d.id}** — ${escapeMd(d.title)}`);
@@ -150,11 +150,11 @@ function renderClaudeMd(a: RenderArgs): string {
   lines.push("## Operator sections");
   lines.push("");
   for (let i = 0; i < a.keepCount; i++) {
-    lines.push(`<!-- harness:keep-anchor:${i} -->`);
+    lines.push(`<!-- cairn:keep-anchor:${i} -->`);
     lines.push("");
   }
   if (a.keepCount === 0) {
-    lines.push("_(no operator-preserved sections — wrap content in `<!-- harness:keep-start --> … <!-- harness:keep-end -->` to preserve)_");
+    lines.push("_(no operator-preserved sections — wrap content in `<!-- cairn:keep-start --> … <!-- cairn:keep-end -->` to preserve)_");
     lines.push("");
   }
   lines.push("");
@@ -167,7 +167,7 @@ function renderAgentsMd(a: RenderArgs): string {
   lines.push(heading);
   lines.push("");
   lines.push("<!--");
-  lines.push("  Regenerated from .harness/ground/ on each sweep.");
+  lines.push("  Regenerated from .cairn/ground/ on each sweep.");
   lines.push(`  Generated at: ${a.generatedAt}.`);
   lines.push("-->");
   lines.push("");
@@ -175,11 +175,11 @@ function renderAgentsMd(a: RenderArgs): string {
   lines.push("");
   lines.push("| What | Where |");
   lines.push("|------|-------|");
-  lines.push("| Decisions | `.harness/ground/decisions/` |");
-  lines.push("| Invariants | `.harness/ground/invariants/` |");
-  lines.push("| Brand | `.harness/ground/brand/` |");
-  lines.push("| Canonical-map | `.harness/ground/canonical-map/` |");
-  lines.push("| Tasks (active) | `.harness/tasks/active/` |");
+  lines.push("| Decisions | `.cairn/ground/decisions/` |");
+  lines.push("| Invariants | `.cairn/ground/invariants/` |");
+  lines.push("| Brand | `.cairn/ground/brand/` |");
+  lines.push("| Canonical-map | `.cairn/ground/canonical-map/` |");
+  lines.push("| Tasks (active) | `.cairn/tasks/active/` |");
   lines.push("");
   lines.push(
     `Currently: ${a.decisions.length} active decision${a.decisions.length === 1 ? "" : "s"}, ` +
@@ -189,7 +189,7 @@ function renderAgentsMd(a: RenderArgs): string {
   lines.push("## Operator sections");
   lines.push("");
   for (let i = 0; i < a.keepCount; i++) {
-    lines.push(`<!-- harness:keep-anchor:${i} -->`);
+    lines.push(`<!-- cairn:keep-anchor:${i} -->`);
     lines.push("");
   }
   lines.push("");

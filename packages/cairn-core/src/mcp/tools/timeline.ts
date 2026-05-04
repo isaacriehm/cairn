@@ -80,7 +80,7 @@ function readJson<T>(path: string): T | null {
 }
 
 export const timelineTool: ToolDef<Input> = {
-  name: "harness_timeline",
+  name: "cairn_timeline",
   description:
     "Chronological run-event stream intersecting the scope window. Reads runs/terminal/. Useful for `what happened to <module> this week` without reading file bodies.",
   inputSchema: timelineInput,

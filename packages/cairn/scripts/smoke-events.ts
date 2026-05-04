@@ -3,14 +3,14 @@
  * smoke-events — invalidation events writer + reader + GC.
  *
  * Spec: PLUGIN_ARCHITECTURE §7. Verifies:
- *   1. writeInvalidationEvent emits a JSON file under `.harness/events/`
+ *   1. writeInvalidationEvent emits a JSON file under `.cairn/events/`
  *      with the expected payload + name shape.
  *   2. eventsSince filters by ts and sorts ascending; ignores malformed
  *      files without throwing.
  *   3. gcStaleEvents removes events older than maxAgeMs and keeps fresh.
  *   4. seedEventsMarker is idempotent and stampEventsPoll updates the
  *      poll cursor without resetting `ts`.
- *   5. End-to-end: harness_record_decision writes a draft AND emits a
+ *   5. End-to-end: cairn_record_decision writes a draft AND emits a
  *      `decision_drafted` event referencing the new DEC id.
  */
 
@@ -51,7 +51,7 @@ function cleanup(): void {
 }
 
 function mkRepoRoot(): string {
-  const dir = mkdtempSync(join(tmpdir(), "harness-smoke-events-"));
+  const dir = mkdtempSync(join(tmpdir(), "cairn-smoke-events-"));
   cleanups.push(dir);
   return dir;
 }
@@ -72,8 +72,8 @@ async function runSmoke(): Promise<void> {
     const result = writeInvalidationEvent(repoRoot, {
       kind: "decision_drafted",
       refs: [{ kind: "decision", id: "DEC-0042" }],
-      path: ".harness/ground/decisions/_inbox/DEC-0042.draft.md",
-      source: { session_id: "session-x", tool: "harness_record_decision" },
+      path: ".cairn/ground/decisions/_inbox/DEC-0042.draft.md",
+      source: { session_id: "session-x", tool: "cairn_record_decision" },
       ts: t0,
     });
     assert(existsSync(result.filePath), "Step 1: file should exist");
@@ -92,13 +92,13 @@ async function runSmoke(): Promise<void> {
     const a = writeInvalidationEvent(repoRoot, {
       kind: "decision_drafted",
       refs: [{ kind: "decision", id: "DEC-0001" }],
-      source: { session_id: null, tool: "harness_record_decision" },
+      source: { session_id: null, tool: "cairn_record_decision" },
       ts,
     });
     const b = writeInvalidationEvent(repoRoot, {
       kind: "decision_drafted",
       refs: [{ kind: "decision", id: "DEC-0002" }],
-      source: { session_id: null, tool: "harness_record_decision" },
+      source: { session_id: null, tool: "cairn_record_decision" },
       ts,
     });
     assert(a.filePath !== b.filePath, "Step 2: collision should produce distinct files");
@@ -167,7 +167,7 @@ async function runSmoke(): Promise<void> {
   {
     const repoRoot = mkRepoRoot();
     // ensure session dir exists so the marker has a home
-    mkdirSync(join(repoRoot, ".harness", "sessions", "abc"), { recursive: true });
+    mkdirSync(join(repoRoot, ".cairn", "sessions", "abc"), { recursive: true });
     const seeded = seedEventsMarker({ repoRoot, sessionId: "abc", ts: 5_000 });
     assert(seeded.ts === 5_000 && seeded.last_polled_ts === 5_000, "Step 5: seed should set both ts");
 
@@ -187,10 +187,10 @@ async function runSmoke(): Promise<void> {
   {
     const repoRoot = mkRepoRoot();
     const recordDecisionTool = (allTools as ToolDef<unknown>[]).find(
-      (t) => t.name === "harness_record_decision",
+      (t) => t.name === "cairn_record_decision",
     );
-    assert(recordDecisionTool !== undefined, "Step 6: harness_record_decision should be registered");
-    mkdirSync(join(repoRoot, ".harness", "ground", "decisions"), { recursive: true });
+    assert(recordDecisionTool !== undefined, "Step 6: cairn_record_decision should be registered");
+    mkdirSync(join(repoRoot, ".cairn", "ground", "decisions"), { recursive: true });
     const before = listEventFiles(repoRoot).length;
     const ctx: McpContext = { repoRoot, sessionId: "session-end-to-end" };
     const out = (await recordDecisionTool.handler(ctx, {

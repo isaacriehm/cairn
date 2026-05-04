@@ -1,12 +1,12 @@
 /**
- * harness_query_history — the only sanctioned read path into .archive/.
+ * cairn_query_history — the only sanctioned read path into .archive/.
  *
  * Walks .archive/ matching path_hint + date window, runs a Tier-1 (Haiku)
  * summarizer over the matched files, returns structured per-claim
  * records with source citations and supersedes-tags. The agent never
  * sees raw stale content — only the summary.
  *
- * Per MCP_SURFACE.md §"harness_query_history". Implementation lives in
+ * Per MCP_SURFACE.md §"cairn_query_history". Implementation lives in
  * src/mcp/history/.
  */
 
@@ -67,7 +67,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
 }
 
 export const queryHistoryTool: ToolDef<Input> = {
-  name: "harness_query_history",
+  name: "cairn_query_history",
   description:
     "Returns summarized historical claims from .archive/ via Tier-1 LLM. Walks the archive by path_hint + since/until, summarizes per-claim with source citations and supersedes-tags. Raw archive content never enters agent context — only the structured summary does. The only sanctioned path into .archive/.",
   inputSchema: queryHistoryInput,

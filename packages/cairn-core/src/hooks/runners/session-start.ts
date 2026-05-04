@@ -5,7 +5,7 @@
  * events.
  *
  * Spec: PLUGIN_ARCHITECTURE §7 + §10. Bin entrypoint at
- * `harness-core/src/hooks/session-start.ts` calls into this runner.
+ * `cairn-core/src/hooks/session-start.ts` calls into this runner.
  */
 
 import { existsSync } from "node:fs";
@@ -60,7 +60,7 @@ export async function runSessionStartHook(): Promise<void> {
       sessionId: payloadSessionId,
       source,
       durationMs: Date.now() - startedAt,
-      warnings: ["no_harness_dir_found"],
+      warnings: ["no_cairn_dir_found"],
       extra: {
         sections_rendered: [],
         sections_dropped: [],
@@ -156,42 +156,42 @@ export async function runSessionStartHook(): Promise<void> {
 }
 
 /**
- * Per PLUGIN_ARCHITECTURE §17 Layer 4: when a clone is harness-adopted
- * (`.harness/config.yaml` present + `.git/` present) but `core.hooksPath`
+ * Per PLUGIN_ARCHITECTURE §17 Layer 4: when a clone is cairn-adopted
+ * (`.cairn/config.yaml` present + `.git/` present) but `core.hooksPath`
  * is unset, the plugin enters degraded mode. The session opens — read
  * tools still work — but main Claude must surface the bootstrap prompt
- * inline before the operator engages with any harness write surface. The
+ * inline before the operator engages with any cairn write surface. The
  * banner is the only contract: if the surrounding skill / agent does not
  * gate on it, the MCP write tools' BOOTSTRAP_REQUIRED envelope is the
  * server-side backstop.
  */
 function renderBootstrapBanner(repoRoot: string): string | null {
   if (!existsSync(join(repoRoot, ".git"))) return null;
-  if (!existsSync(join(repoRoot, ".harness", "config.yaml"))) return null;
+  if (!existsSync(join(repoRoot, ".cairn", "config.yaml"))) return null;
   const state = inspectJoinState({ repoRoot });
   if (state.hooksPathSet) return null;
   const lines: string[] = [];
-  lines.push("## Harness — bootstrap required");
+  lines.push("## Cairn — bootstrap required");
   lines.push("");
   lines.push(
-    "This project is harness-adopted, but this clone is not bootstrapped. " +
-      "Without `harness join`, MCP write tools refuse, the harness-direction " +
+    "This project is cairn-adopted, but this clone is not bootstrapped. " +
+      "Without `cairn join`, MCP write tools refuse, the cairn-direction " +
       "skill blocks, and your local commits will fail at the pre-commit hook.",
   );
   lines.push("");
   lines.push(
-    `Project pinned to harness ${state.projectHarnessVersion ?? "(unset)"}.`,
+    `Project pinned to cairn ${state.projectCairnVersion ?? "(unset)"}.`,
   );
   lines.push("");
   lines.push("Surface this inline to the operator now:");
   lines.push("");
-  lines.push("> This project uses harness, but your clone isn't bootstrapped.");
-  lines.push("> `[a]` bootstrap now (run `harness join`, ~5s)");
-  lines.push("> `[b]` skip (harness write surface stays disabled)");
+  lines.push("> This project uses cairn, but your clone isn't bootstrapped.");
+  lines.push("> `[a]` bootstrap now (run `cairn join`, ~5s)");
+  lines.push("> `[b]` skip (cairn write surface stays disabled)");
   lines.push("");
   lines.push(
-    "On `[a]`, run `harness join` from this repo's working directory and " +
-      "wait for it to print `harness join: bootstrapped`. The next assistant " +
+    "On `[a]`, run `cairn join` from this repo's working directory and " +
+      "wait for it to print `cairn join: bootstrapped`. The next assistant " +
       "turn will pick up the unblocked surface.",
   );
   return lines.join("\n");

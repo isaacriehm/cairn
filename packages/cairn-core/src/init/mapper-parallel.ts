@@ -116,9 +116,9 @@ const MODULE_OUTPUT_SCHEMA = {
 } as const;
 
 const MODULE_SYSTEM_PROMPT = [
-  "You are the per-module INIT MAPPER for a code-agent harness adopting a project.",
+  "You are the per-module INIT MAPPER for a code-agent cairn adopting a project.",
   "",
-  "You see ONE module of a (possibly larger) repo. Your job: read this slice and produce a structured per-module proposal so the harness can run useful sensors against this module's diffs.",
+  "You see ONE module of a (possibly larger) repo. Your job: read this slice and produce a structured per-module proposal so the cairn can run useful sensors against this module's diffs.",
   "",
   "You DO NOT execute code. You DO NOT modify files. You produce one JSON object.",
   "",
@@ -138,7 +138,7 @@ const MODULE_SYSTEM_PROMPT = [
   "  - `dto_globs` — globs matching DTO / schema / form-input / request-validator definitions in this module.",
   "  - `generator_source_globs` — globs whose changes mean a generator must re-run. Examples: `core/openapi.json`, `core/src/db/schema.ts` (Drizzle), `**/*.proto`, `prisma/schema.prisma`.",
   "  - `high_stakes_globs` — globs for high-risk surfaces in this module (auth, billing, payments, multi-tenant, integrations storing tokens, telephony). Be conservative.",
-  "  - `off_limits_globs` — globs the harness MUST NOT touch beyond defaults. Vendored code, large fixtures, copied snapshots.",
+  "  - `off_limits_globs` — globs the cairn MUST NOT touch beyond defaults. Vendored code, large fixtures, copied snapshots.",
   "  - `sensor_proposals` — module-specific sensors. Each `{ id, description, applies_to_globs }`.",
   "  - `scope_index` — `{ files: { \"<repo-relative-path>\": { decisions: [], invariants: [], unscoped?: true } } }`. The user prompt provides the in-scope decisions + invariants list. Map only files within THIS module. Use `unscoped: true` for lockfiles, generated, vendored, or dotfile config.",
   "  - `notes` — anything notable that didn't fit a structured field.",
@@ -408,7 +408,7 @@ const FALLBACK_HIGH_STAKES_PATTERNS: RegExp[] = [
  * confidence: 0.1, derive high-stakes globs heuristically from path
  * segments, and stamp the slice's full directory tree into the scope index
  * as `unscoped: true` so PostToolUse hooks downstream don't re-flag the
- * files for missing scope. Operator can re-run `harness scope rebuild` to
+ * files for missing scope. Operator can re-run `cairn scope rebuild` to
  * upgrade the partial entry into a full proposal later.
  */
 function buildFailedProposal(slice: ModuleSlice, reason: string): ModuleProposal {
@@ -466,7 +466,7 @@ function buildFailedProposal(slice: ModuleSlice, reason: string): ModuleProposal
     moduleSlug: slice.moduleSlug,
     modulePath: slice.modulePath,
     moduleRel,
-    domain: `${slice.moduleSlug} module (analysis timed out — run harness scope rebuild)`,
+    domain: `${slice.moduleSlug} module (analysis timed out — run cairn scope rebuild)`,
     pilotModuleCandidate: false,
     confidence: 0.1,
     routeHandlerGlobs: [],

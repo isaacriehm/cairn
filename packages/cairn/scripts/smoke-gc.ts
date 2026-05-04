@@ -9,7 +9,7 @@
  *
  * Pure mechanical — burns zero claude quota. Steps:
  *
- *   1. Build an ephemeral git repo seeded with the harness templates and a
+ *   1. Build an ephemeral git repo seeded with the cairn templates and a
  *      synthetic doc whose `verified-at` is 90 days old.
  *   2. Run `runGcSweep` → assert frontmatter-freshness surfaces it.
  *   3. Run `runGcSweep` with forceRefresh → assert a safe-class proposal
@@ -81,18 +81,18 @@ function assert(cond: unknown, msg: string): void {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PKG_TEMPLATES = resolve(HERE, "..", "..", "cairn-core", "templates");
 
-/** Copy templates/.harness/config/* + .archive/README.md into repoRoot. */
-function seedHarnessConfig(repoRoot: string): void {
-  mkdirSync(join(repoRoot, ".harness", "config"), { recursive: true });
+/** Copy templates/.cairn/config/* + .archive/README.md into repoRoot. */
+function seedCairnConfig(repoRoot: string): void {
+  mkdirSync(join(repoRoot, ".cairn", "config"), { recursive: true });
   for (const file of ["workflow.md", "sensors.yaml", "stub-patterns.yaml", "trust-policy.yaml"]) {
     copyFileSync(
-      join(PKG_TEMPLATES, ".harness", "config", file),
-      join(repoRoot, ".harness", "config", file),
+      join(PKG_TEMPLATES, ".cairn", "config", file),
+      join(repoRoot, ".cairn", "config", file),
     );
   }
-  mkdirSync(join(repoRoot, ".harness", "ground"), { recursive: true });
+  mkdirSync(join(repoRoot, ".cairn", "ground"), { recursive: true });
   writeFileSync(
-    join(repoRoot, ".harness", "ground", "manifest.yaml"),
+    join(repoRoot, ".cairn", "ground", "manifest.yaml"),
     "version: 1\ngenerated: 2026-05-02T00:00:00.000Z\nfiles: []\n",
     "utf8",
   );
@@ -130,7 +130,7 @@ function seedStaleDoc(repoRoot: string): { rel: string; abs: string; verifiedAt:
 
 async function gitInit(repoRoot: string): Promise<void> {
   execSync("git init -b main", { cwd: repoRoot });
-  execSync("git config user.email smoke@harness.local", { cwd: repoRoot });
+  execSync("git config user.email smoke@cairn.local", { cwd: repoRoot });
   execSync("git config user.name smoke", { cwd: repoRoot });
   execSync("git add -A", { cwd: repoRoot });
   execSync('git commit -m "seed"', { cwd: repoRoot });
@@ -139,9 +139,9 @@ async function gitInit(repoRoot: string): Promise<void> {
 async function main(): Promise<void> {
   // ── Step 1: seed repo with templates + a stale doc.
   header("Step 1: seed ephemeral repo + stale doc (90d old)");
-  const root = mkdtempSync(join(tmpdir(), "harness-smoke-gc-"));
+  const root = mkdtempSync(join(tmpdir(), "cairn-smoke-gc-"));
   cleanups.push(root);
-  seedHarnessConfig(root);
+  seedCairnConfig(root);
   const stale = seedStaleDoc(root);
   await gitInit(root);
   console.log(`  repo=${root}`);
@@ -197,7 +197,7 @@ async function main(): Promise<void> {
     applyClasses: ["safe"],
     canary: true,
     frontmatter: { warnDays: 30, blockDays: 60, forceRefresh: true },
-    author: { name: "smoke", email: "smoke@harness.local" },
+    author: { name: "smoke", email: "smoke@cairn.local" },
   });
   assert(batch.applied.length >= 1, "expected at least one applied commit");
   assert(batch.canary_ok, `canary should pass on a clean repo (failures=${batch.canary_failures.join("; ")})`);
@@ -217,7 +217,7 @@ async function main(): Promise<void> {
 
   // ── Step 5: stub-catalog full-tree scan surfaces canonical-zone debt.
   header("Step 5: stub-catalog full-tree scan");
-  const stubRel = ".harness/config/stub-decoy.ts.txt"; // .txt suffix avoids accidental TS execution
+  const stubRel = ".cairn/config/stub-decoy.ts.txt"; // .txt suffix avoids accidental TS execution
   // Layer A's detectLanguage matches by extension; we want a real TS path.
   const realStubRel = ".claude/skills/stub-decoy.ts";
   const realStubAbs = join(root, realStubRel);
@@ -277,7 +277,7 @@ async function main(): Promise<void> {
 
   // ── Step 7: quality-grades pass writes a fresh yaml.
   header("Step 7: quality-grades writes fresh yaml + safe-class proposal");
-  const terminalRunDir = join(root, ".harness", "runs", "terminal", "run-smoke-1");
+  const terminalRunDir = join(root, ".cairn", "runs", "terminal", "run-smoke-1");
   mkdirSync(terminalRunDir, { recursive: true });
   writeFileSync(
     join(terminalRunDir, "meta.json"),
@@ -302,8 +302,8 @@ async function main(): Promise<void> {
     ]),
     "utf8",
   );
-  await git.add([".harness/runs/terminal/run-smoke-1"]);
-  // .harness/runs is gitignored in production; here, we add explicitly so the
+  await git.add([".cairn/runs/terminal/run-smoke-1"]);
+  // .cairn/runs is gitignored in production; here, we add explicitly so the
   // commit history reflects the seed. Smoke-gc's git history is throwaway.
   await git
     .commit("chore: seed terminal run for quality-grades", undefined, { "--allow-empty": null })
@@ -313,14 +313,14 @@ async function main(): Promise<void> {
   assert(qualityProposal !== undefined, "expected a quality-grades proposal");
   assert(qualityProposal!.class === "safe", "quality-grades proposals must be safe-class");
   assert(
-    qualityProposal!.paths.includes(".harness/ground/quality-grades.yaml"),
+    qualityProposal!.paths.includes(".cairn/ground/quality-grades.yaml"),
     "expected proposal to target quality-grades.yaml",
   );
   console.log(`  proposal paths=${qualityProposal!.paths.join(", ")}`);
 
   // ── Step 8: classifier escalates high-stakes hits.
   header("Step 8: classifier — high-stakes glob escalates to high-stakes");
-  const safe = classifyAutoMerge({ paths: ["docs/x.md", ".harness/ground/y.yaml"] });
+  const safe = classifyAutoMerge({ paths: ["docs/x.md", ".cairn/ground/y.yaml"] });
   assert(safe === "safe", `expected safe (got ${safe})`);
   const code = classifyAutoMerge({ paths: ["src/foo.ts"] });
   assert(code === "code", `expected code (got ${code})`);
@@ -334,9 +334,9 @@ async function main(): Promise<void> {
   // ── Step 9: canary detects broken workflow.md and rolls back batch.
   header("Step 9: canary detects broken workflow.md → rollback");
   // Create a fresh repo to keep prior steps intact for inspection.
-  const rollbackRoot = mkdtempSync(join(tmpdir(), "harness-smoke-gc-rollback-"));
+  const rollbackRoot = mkdtempSync(join(tmpdir(), "cairn-smoke-gc-rollback-"));
   cleanups.push(rollbackRoot);
-  seedHarnessConfig(rollbackRoot);
+  seedCairnConfig(rollbackRoot);
   mkdirSync(join(rollbackRoot, "docs"), { recursive: true });
   // Add ONE stale doc — produces frontmatter-refresh proposal.
   writeFileSync(
@@ -351,7 +351,7 @@ async function main(): Promise<void> {
   // the batch then has >= 2 commits and the canary check fires.
   const rbTerminalRunDir = join(
     rollbackRoot,
-    ".harness",
+    ".cairn",
     "runs",
     "terminal",
     "rb-run-1",
@@ -378,7 +378,7 @@ async function main(): Promise<void> {
   );
   // Truncate workflow.md to break canary — strip the prompt body entirely.
   writeFileSync(
-    join(rollbackRoot, ".harness", "config", "workflow.md"),
+    join(rollbackRoot, ".cairn", "config", "workflow.md"),
     "---\ntype: workflow-policy\nstatus: draft\n---\n",
     "utf8",
   );
@@ -397,7 +397,7 @@ async function main(): Promise<void> {
     applyClasses: ["safe"],
     canary: true,
     frontmatter: { warnDays: 30, blockDays: 60, forceRefresh: true },
-    author: { name: "smoke", email: "smoke@harness.local" },
+    author: { name: "smoke", email: "smoke@cairn.local" },
   });
   // Frontmatter pass aggregates ALL stale docs into one proposal, so the
   // batch typically applies a single commit. Canary only runs at >=2 applied

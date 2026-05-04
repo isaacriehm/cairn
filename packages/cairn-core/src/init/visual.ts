@@ -122,7 +122,7 @@ export function discoveryRow(opts: {
 }
 
 export function header(title: string): void {
-  process.stdout.write(`\n  ${chalk.bold("Harness")} ${chalk.dim("—")} ${title}\n\n`);
+  process.stdout.write(`\n  ${chalk.bold("Cairn")} ${chalk.dim("—")} ${title}\n\n`);
 }
 
 export function sectionTitle(label: string): void {

@@ -96,8 +96,8 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
 
     const relPath =
       target === "accepted"
-        ? `.harness/ground/decisions/${filename}`
-        : `.harness/ground/decisions/_inbox/${filename}`;
+        ? `.cairn/ground/decisions/${filename}`
+        : `.cairn/ground/decisions/_inbox/${filename}`;
     try {
       writeInvalidationEvent(ctx.repoRoot, {
         kind: target === "accepted" ? "decision_accepted" : "decision_drafted",
@@ -108,7 +108,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
             : []),
         ],
         path: relPath,
-        source: { session_id: ctx.sessionId ?? null, tool: "harness_record_decision" },
+        source: { session_id: ctx.sessionId ?? null, tool: "cairn_record_decision" },
       });
     } catch {
       // Event emission must never roll back the underlying write.
@@ -119,9 +119,9 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
 }
 
 export const recordDecisionTool: ToolDef<Input> = {
-  name: "harness_record_decision",
+  name: "cairn_record_decision",
   description:
-    "Drop a decision draft to .harness/ground/decisions/_inbox/ (target=inbox, default) or canonical (target=accepted; operator-only override). Validates assertion schemas. Allocates the next DEC-NNNN if id omitted.",
+    "Drop a decision draft to .cairn/ground/decisions/_inbox/ (target=inbox, default) or canonical (target=accepted; operator-only override). Validates assertion schemas. Allocates the next DEC-NNNN if id omitted.",
   inputSchema: recordDecisionInput,
   handler,
 };

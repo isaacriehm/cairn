@@ -12,7 +12,7 @@ import { relative, resolve } from "node:path";
 /** Directories the scan never descends into. */
 export const SOURCE_TREE_SKIP_DIRS = new Set([
   ".git",
-  ".harness",
+  ".cairn",
   "node_modules",
   ".pnpm-store",
   "dist",

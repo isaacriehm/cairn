@@ -6,13 +6,13 @@ supersedes-parts-of: ARCHITECTURE.md, INIT_SPEC.md, MCP_SURFACE.md, FILESYSTEM_L
 purpose: Lock the plugin form factor — adoption, daily flow, state, concurrency, distribution
 ---
 
-# Plugin Architecture — `harness-frontend-claudecode`
+# Plugin Architecture — `cairn-frontend-claudecode`
 
-The plugin pivot: harness is shipped as a Claude Code plugin. The operator installs once at user level. From then on, opening Claude Code in any project activates harness. After a one-time visual adoption pass, harness runs invisibly — surfacing only via inline A/B/C prompts when it needs operator input.
+The plugin pivot: Cairn is shipped as a Claude Code plugin. The operator installs once at user level. From then on, opening Claude Code in any project activates Cairn. After a one-time visual adoption pass, Cairn runs invisibly — surfacing only via inline A/B/C prompts when it needs operator input.
 
 ## §1 Vision
 
-Harness becomes the **project maintainer**. After install + adoption, the operator just uses Claude Code normally and harness:
+Cairn becomes the **project maintainer**. After install + adoption, the operator just uses Claude Code normally and Cairn:
 
 1. Intercepts vague prompts, asks **genuinely good questions** (not UX trivia) about forks that materially change the spec.
 2. Tightens the prompt into a structured spec via iterative dialogue.
@@ -22,11 +22,11 @@ Harness becomes the **project maintainer**. After install + adoption, the operat
 6. **Captures decisions** the reviewer surfaces from the diff, drafts to the inbox, surfaces inline next session.
 7. **Detects drift** between ground state and the working tree (GC sweep), surfaces remediation inline.
 
-Operator never types `harness <subcommand>` for ongoing work. Only `harness init` (terminal-side bootstrap) remains as a CLI surface; the in-Claude-Code path is the `/harness-init` slash command + the auto-invoked `harness-adopt` skill.
+Operator never types `cairn <subcommand>` for ongoing work. Only `cairn init` (terminal-side bootstrap) remains as a CLI surface; the in-Claude-Code path is the `/cairn-init` slash command + the auto-invoked `cairn-adopt` skill.
 
 ## §2 Form factor + agnosticism
 
-Claude Code is the **primary** frontend. The layered architecture preserves platform agnosticism: `harness-core` remains pure state + MCP server (any MCP client works). Frontends are sibling packages. Future Cursor / Copilot / Windsurf / etc. integrations become additional sibling packages — `harness-frontend-cursor`, `harness-frontend-copilot` — without rewriting the core.
+Claude Code is the **primary** frontend. The layered architecture preserves platform agnosticism: `cairn-core` remains pure state + MCP server (any MCP client works). Frontends are sibling packages. Future Cursor / Copilot / Windsurf / etc. integrations become additional sibling packages — `cairn-frontend-cursor`, `cairn-frontend-copilot` — without rewriting the core.
 
 Single-vendor lock-in is rejected at the architecture level even while we ship Claude Code as the only live frontend in v0.
 
@@ -50,24 +50,24 @@ the public repo.
 
 ## §4 Plugin manifest + components
 
-Lives at `packages/harness-frontend-claudecode/`:
+Lives at `packages/cairn-frontend-claudecode/`:
 
 ```
-packages/harness-frontend-claudecode/
+packages/cairn-frontend-claudecode/
 ├── .claude-plugin/
 │   └── plugin.json                   — manifest (name, version, repo, etc.)
-├── .mcp.json                         — registers harness-core MCP server (stdio)
+├── .mcp.json                         — registers cairn-core MCP server (stdio)
 ├── hooks/
 │   └── hooks.json                    — SessionStart, Stop, PostToolUse[read-enrich]
 ├── skills/
-│   ├── harness-adopt/SKILL.md        — first-time adoption flow
-│   ├── harness-direction/SKILL.md    — prompt → tier0 → tightener → dispatch
-│   └── harness-attention/SKILL.md    — surface pending DEC drafts + drift inline
+│   ├── cairn-adopt/SKILL.md          — first-time adoption flow
+│   ├── cairn-direction/SKILL.md      — prompt → tier0 → tightener → dispatch
+│   └── cairn-attention/SKILL.md      — surface pending DEC drafts + drift inline
 ├── commands/
-│   └── harness-init.md               — slash command equivalent of `harness init`
+│   └── cairn-init.md                 — slash command equivalent of `cairn init`
 ├── agents/
 │   └── reviewer.md                   — subagent definition for attestation + DEC capture
-└── package.json                      — workspace package, depends on harness-core
+└── package.json                      — workspace package, depends on cairn-core
 ```
 
 Component locations follow Claude Code's auto-discovery defaults (`skills/`, `commands/`, `agents/` at plugin root). MCP and hooks declared via dedicated files (`.mcp.json`, `hooks/hooks.json`) rather than inline in `plugin.json` for editability.
@@ -76,7 +76,7 @@ Component locations follow Claude Code's auto-discovery defaults (`skills/`, `co
 
 ```json
 {
-  "name": "harness",
+  "name": "cairn",
   "version": "0.1.0",
   "description": "Project-state + context-loading layer — the invisible project maintainer",
   "author": { "name": "Isaac Riehm" },
@@ -85,7 +85,7 @@ Component locations follow Claude Code's auto-discovery defaults (`skills/`, `co
 }
 ```
 
-`userConfig` field unused in v0. All operator config lives in `~/.local/harness/.env` (legacy) or per-project `.harness/config/` (preferred for new config).
+`userConfig` field unused in v0. All operator config lives in `~/.local/cairn/.env` (legacy) or per-project `.cairn/config/` (preferred for new config).
 
 ## §5 Distribution
 
@@ -103,10 +103,10 @@ Auto-update is OFF by default for github-distributed plugins. Operator can enabl
 
 Three trigger paths converge on the same pipeline:
 
-1. **Auto** — operator opens Claude Code in a project with no `.harness/`. Plugin's SessionStart hook detects, the `harness-adopt` skill auto-invokes and renders inline:
-   > Adopt this project with harness? `[a]` yes `[b]` not now `[c]` never (mark and skip on future opens)
-2. **Explicit slash command** — operator types `/harness-init`.
-3. **Terminal CLI** — operator runs `harness init` outside Claude Code. Same pipeline.
+1. **Auto** — operator opens Claude Code in a project with no `.cairn/`. Plugin's SessionStart hook detects, the `cairn-adopt` skill auto-invokes and renders inline:
+   > Adopt this project with Cairn? `[a]` yes `[b]` not now `[c]` never (mark and skip on future opens)
+2. **Explicit slash command** — operator types `/cairn-init`.
+3. **Terminal CLI** — operator runs `cairn init` outside Claude Code. Same pipeline.
 
 On `[a]`, the skill (or CLI) spawns the init pipeline as a subprocess and **streams its rich terminal output (chalk + ora + cli-progress) into the Claude Code conversation as a fenced code block** — the visual approach (α). Choices that need operator input surface as inline A/B/C via the skill calling Claude Code's AskUserQuestion tool.
 
@@ -119,18 +119,18 @@ On `[a]`, the skill (or CLI) spawns the init pipeline as a subprocess and **stre
 | 3 | Per-module Sonnet calls (chunked, parallel, fallback) | Per-module status icons (`↻`/`✓`/`⚠`) updating live |
 | 4 | Pilot module confirm | One A/B/C: pick pilot module from top 3 candidates |
 | 5 | Brand setup — 4 questions inline A/B/C | Brand name / positioning / voice tone / domain |
-| 6 | Writes `.harness/` skeleton, baseline `status.json` | "Writing .harness/" → file count |
+| 6 | Writes `.cairn/` skeleton, baseline `status.json` | "Writing .cairn/" → file count |
 | 7a | **Docs ingestion (Haiku/doc, parallel)** — every doc classified into DEC drafts / canonical-map / voice updates / consolidate-with-existing | Per-doc status icons; DEC draft count grows |
 | 7b | **Source comment ingestion (full repo, no cap)** — deterministic walker finds essay-style comment blocks (heuristic: block comment > 3 lines OR > 200 chars OR JSDoc with > 30 words of prose) across **every** source file. Haiku batch-classifies each block (20 blocks per batch call) into DEC draft / §V invariant proposal / canonical-map citation. Detection deterministic, classification LLM, replacement deterministic (see Phase 10). One-time spend acceptable per the "fully processes once" mandate. | Per-batch status; DEC + §V counts grow; total Haiku tokens displayed |
-| 7c | **Existing project rules merge** — `CLAUDE.md`, `AGENTS.md`, `.claude/CLAUDE.md`, `.claude/rules/` ingested and reconciled with harness state. Post-adoption: harness regenerates `CLAUDE.md` and `AGENTS.md` from ground state on each `harness sweep`; operator-written sections preserved between `<!-- harness:keep-start -->` and `<!-- harness:keep-end -->` markers | "Merging project rules…" → diff summary |
-| 8 | Baseline sensor audit — every sensor runs against full repo, findings to `.harness/baseline/sensor-audit-<ISO>.yaml` | Per-sensor status; finding counts |
+| 7c | **Existing project rules merge** — `CLAUDE.md`, `AGENTS.md`, `.claude/CLAUDE.md`, `.claude/rules/` ingested and reconciled with Cairn state. Post-adoption: Cairn regenerates `CLAUDE.md` and `AGENTS.md` from ground state on each `cairn sweep`; operator-written sections preserved between `<!-- cairn:keep-start -->` and `<!-- cairn:keep-end -->` markers | "Merging project rules…" → diff summary |
+| 8 | Baseline sensor audit — every sensor runs against full repo, findings to `.cairn/baseline/sensor-audit-<ISO>.yaml` | Per-sensor status; finding counts |
 | 9 | **Inconsistency detection** — hard conflicts (factual contradictions across decisions/docs) block + A/B/C inline; soft (scope/phrasing) deferred to attention | "Conflict: DEC-0019 says X; docs/auth.md says Y. `[a]` …" |
-| 10 | **Comment policy enforcement** — strip essay comments, replace with `// §V<N>` cites. **Detection + replacement deterministic (no LLM).** Pre-check: skip files with uncommitted changes; surface "stash and process / skip / overwrite" inline. Originals backed up to `.harness/backups/source/<rel-path>.original`. Consent-gated per module: A/B/C with full diff preview before any write. | Per-module preview + A/B/C "strip all `[a]` / review per-file `[b]` / skip `[c]`" |
-| 11 | **Project rules write** — plugin enabling auto-merges harness's hooks/MCP/skills into user-level `~/.claude/settings.json` `enabledPlugins`. No project-level config touched | "Plugin enabled at user scope" |
-| 12 | **Multi-dev enforcement install** — versioned git hooks at `.harness/git-hooks/`, `core.hooksPath` configured, CI workflow `.github/workflows/harness-check.yml` written, `package.json` `prepare` script added (Node projects), `.harness/JOIN.md` written for new contributors. See §17. | "Installed git hooks + CI gate" |
-| 13 | Final summary + `harness attention` count | Markdown summary table; pending counts |
+| 10 | **Comment policy enforcement** — strip essay comments, replace with `// §V<N>` cites. **Detection + replacement deterministic (no LLM).** Pre-check: skip files with uncommitted changes; surface "stash and process / skip / overwrite" inline. Originals backed up to `.cairn/backups/source/<rel-path>.original`. Consent-gated per module: A/B/C with full diff preview before any write. | Per-module preview + A/B/C "strip all `[a]` / review per-file `[b]` / skip `[c]`" |
+| 11 | **Project rules write** — plugin enabling auto-merges Cairn's hooks/MCP/skills into user-level `~/.claude/settings.json` `enabledPlugins`. No project-level config touched | "Plugin enabled at user scope" |
+| 12 | **Multi-dev enforcement install** — versioned git hooks at `.cairn/git-hooks/`, `core.hooksPath` configured, CI workflow `.github/workflows/cairn-check.yml` written, `package.json` `prepare` script added (Node projects), `.cairn/JOIN.md` written for new contributors. See §17. | "Installed git hooks + CI gate" |
+| 13 | Final summary + `cairn attention` count | Markdown summary table; pending counts |
 
-After this single pass, harness IS the project maintainer. Source files are clean (only `// §V<N>` and `// TODO(TSK-)` cites). All prior decisions are canonicalized. Existing rules are merged. Sensors are baselined. Inconsistencies are resolved or queued.
+After this single pass, Cairn IS the project maintainer. Source files are clean (only `// §V<N>` and `// TODO(TSK-)` cites). All prior decisions are canonicalized. Existing rules are merged. Sensors are baselined. Inconsistencies are resolved or queued.
 
 ## §7 State model
 
@@ -138,18 +138,18 @@ Three storage zones:
 
 | Zone | Location | Owner | Lock |
 |------|----------|-------|------|
-| **Global** | `.harness/ground/` (decisions, invariants, canonical-map, brand, quality-grades), `.harness/baseline/`, `.harness/inbox/` | shared across sessions | per-write `flock` on `.harness/.write-lock` |
-| **Per-session** | `.harness/sessions/<session-id>/` (status.json, current task, run notes) | one session | none — owned by session |
+| **Global** | `.cairn/ground/` (decisions, invariants, canonical-map, brand, quality-grades), `.cairn/baseline/`, `.cairn/inbox/` | shared across sessions | per-write `flock` on `.cairn/.write-lock` |
+| **Per-session** | `.cairn/sessions/<session-id>/` (status.json, current task, run notes) | one session | none — owned by session |
 | **Plugin-internal** | `${CLAUDE_PLUGIN_DATA}/` (cache, telemetry, adopted-projects index) | plugin | none |
 
 Session ID generated at plugin SessionStart (Claude Code session id if exposed, else uuid). Cleanup at SessionEnd. Stale sessions (> 24h, no live PID) GC'd by next SessionStart in any session.
 
 ### Concurrency
 
-- **Per-write `flock`** on `.harness/.write-lock` for any global-state write. OS-level — auto-release on process crash. Reads unlocked.
-- **Whole-operation locks** on `.harness/.gc-lock` and `.harness/.audit-lock` for sweep operations. Second concurrent sweep bails fast with "another in progress".
-- **DEC ID allocation** atomic under the per-write lock. Two sessions calling `harness_record_decision` get distinct DEC-NNNN values.
-- **Invalidation events**: when a global write completes, harness writes `.harness/events/<ts>-<event>.json`. Plugin instances poll the events directory at Stop hook (chokidar file watcher armed, debounced). If an event touches a DEC/§V in the current session's in-scope set → surface inline:
+- **Per-write `flock`** on `.cairn/.write-lock` for any global-state write. OS-level — auto-release on process crash. Reads unlocked.
+- **Whole-operation locks** on `.cairn/.gc-lock` and `.cairn/.audit-lock` for sweep operations. Second concurrent sweep bails fast with "another in progress".
+- **DEC ID allocation** atomic under the per-write lock. Two sessions calling `cairn_record_decision` get distinct DEC-NNNN values.
+- **Invalidation events**: when a global write completes, Cairn writes `.cairn/events/<ts>-<event>.json`. Plugin instances poll the events directory at Stop hook (chokidar file watcher armed, debounced). If an event touches a DEC/§V in the current session's in-scope set → surface inline:
   > A modified DEC-0042 (which you're using). `[a]` refresh in-scope `[b]` continue under old `[c]` abort
 
 Default `[a]`. Event log retention: last 7 days, GC'd by sweep.
@@ -171,7 +171,7 @@ Operator types prompt
         │
         ▼
 ┌─────────────────────────────────────────────────────────┐
-│ harness-direction skill (auto-invoked on user message)  │
+│ cairn-direction skill (auto-invoked on user message)    │
 │   1. tier0 (Haiku via Claude binary, escalate to Sonnet │
 │      for complexity) — checks readiness                 │
 │         Inputs: prompt + in-scope decisions/invariants  │
@@ -180,7 +180,7 @@ Operator types prompt
 │   2. If ready=false → render inline A/B/C questions     │
 │      via AskUserQuestion. After answers, loop.          │
 │   3. If ready=true → tightener (Sonnet) produces        │
-│      .harness/tasks/active/<id>/spec.tightened.md       │
+│      .cairn/tasks/active/<id>/spec.tightened.md         │
 │   4. Tightener proposes chunks:                         │
 │         1 chunk → silent dispatch (no prompt)           │
 │         ≥2 chunks → A/B/C plan review:                  │
@@ -190,7 +190,7 @@ Operator types prompt
         │
         ▼
 Main Claude spawns subagents via Task tool
-   - Each subagent inherits harness MCP tools
+   - Each subagent inherits Cairn MCP tools
    - Reads spec.tightened.md + queries decisions_in_scope
    - Works in main repo (no mirror, no runtime checkout)
         │
@@ -222,23 +222,23 @@ Per-session stdio MCP server. `.mcp.json` registration:
 ```json
 {
   "mcpServers": {
-    "harness": {
+    "cairn": {
       "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/../harness-core/dist/mcp/server.js"]
+      "args": ["${CLAUDE_PLUGIN_ROOT}/../cairn-core/dist/mcp/server.js"]
     }
   }
 }
 ```
 
-The MCP server detects the project root at startup by walking up from `process.cwd()` until it finds either `.harness/` or `.git/`. No env var dependency. Works in any project Claude Code opens.
+The MCP server detects the project root at startup by walking up from `process.cwd()` until it finds either `.cairn/` or `.git/`. No env var dependency. Works in any project Claude Code opens.
 
 Tools (18 current, see `MCP_SURFACE.md` for full schema):
 
-- **Read**: `harness_decision_get`, `harness_decisions_in_scope`, `harness_decisions_for_symbol`, `harness_invariant_get`, `harness_invariants_in_scope`, `harness_canonical_for_topic`, `harness_ground_get`, `harness_supersedes_chain`, `harness_search`, `harness_timeline`, `harness_get_full`, `harness_query_history`
-- **Write** (locked): `harness_record_decision`, `harness_record_run_event`, `harness_drop_task`, `harness_archive`, `harness_append`, `harness_ask_operator`
-- **NEW (plugin-era)**: `harness_resolve_attention(item_id, choice)` — the inline-A/B/C resolution endpoint. Skill calls this after operator picks a/b/c.
+- **Read**: `cairn_decision_get`, `cairn_decisions_in_scope`, `cairn_decisions_for_symbol`, `cairn_invariant_get`, `cairn_invariants_in_scope`, `cairn_canonical_for_topic`, `cairn_ground_get`, `cairn_supersedes_chain`, `cairn_search`, `cairn_timeline`, `cairn_get_full`, `cairn_query_history`
+- **Write** (locked): `cairn_record_decision`, `cairn_record_run_event`, `cairn_drop_task`, `cairn_archive`, `cairn_append`, `cairn_ask_operator`
+- **NEW (plugin-era)**: `cairn_resolve_attention(item_id, choice)` — the inline-A/B/C resolution endpoint. Skill calls this after operator picks a/b/c.
 
-Write tools wrap their work in the per-write flock helper from `harness-core/src/lock.ts` (new module).
+Write tools wrap their work in the per-write flock helper from `cairn-core/src/lock.ts` (new module).
 
 ## §10 Hooks
 
@@ -251,7 +251,7 @@ Write tools wrap their work in the per-write flock helper from `harness-core/src
       "hooks": [
         {
           "type": "command",
-          "command": "node ${CLAUDE_PLUGIN_ROOT}/../harness-core/dist/hooks/session-start.js"
+          "command": "node ${CLAUDE_PLUGIN_ROOT}/../cairn-core/dist/hooks/session-start.js"
         }
       ]
     }
@@ -261,7 +261,7 @@ Write tools wrap their work in the per-write flock helper from `harness-core/src
       "hooks": [
         {
           "type": "command",
-          "command": "node ${CLAUDE_PLUGIN_ROOT}/../harness-core/dist/hooks/stop.js"
+          "command": "node ${CLAUDE_PLUGIN_ROOT}/../cairn-core/dist/hooks/stop.js"
         }
       ]
     }
@@ -272,7 +272,7 @@ Write tools wrap their work in the per-write flock helper from `harness-core/src
       "hooks": [
         {
           "type": "command",
-          "command": "node ${CLAUDE_PLUGIN_ROOT}/../harness-core/dist/hooks/post-tool-use/read-enricher.js"
+          "command": "node ${CLAUDE_PLUGIN_ROOT}/../cairn-core/dist/hooks/post-tool-use/read-enricher.js"
         }
       ]
     }
@@ -282,8 +282,8 @@ Write tools wrap their work in the per-write flock helper from `harness-core/src
 
 | Hook | Job |
 |------|-----|
-| `SessionStart` | Build handoff context (git diff since last session, in-scope decisions/invariants, brand/positioning); detect adoption state (has `.harness/`?); detect attention (pending DEC drafts, baseline findings, drift) and stage the session to auto-invoke `harness-attention` skill if non-zero; clean up stale per-session state directories |
-| `Stop` | (1) Run sensors on staged + unstaged diff; surface findings inline. (2) Poll `.harness/events/` for invalidation events touching session's in-scope; surface refresh prompt if any. (3) Scan `.harness/tasks/active/<id>/` for tasks created this session without `attestation.yaml`; if any → spawn reviewer subagent to attest. (4) Compare HEAD's last 5 commits against `.harness/.attested-commits` marker file; surface backfill prompt for any commit that bypassed pre-commit hook (i.e. `--no-verify`). (5) Update per-session `status.json` |
+| `SessionStart` | Build handoff context (git diff since last session, in-scope decisions/invariants, brand/positioning); detect adoption state (has `.cairn/`?); detect attention (pending DEC drafts, baseline findings, drift) and stage the session to auto-invoke `cairn-attention` skill if non-zero; clean up stale per-session state directories |
+| `Stop` | (1) Run sensors on staged + unstaged diff; surface findings inline. (2) Poll `.cairn/events/` for invalidation events touching session's in-scope; surface refresh prompt if any. (3) Scan `.cairn/tasks/active/<id>/` for tasks created this session without `attestation.yaml`; if any → spawn reviewer subagent to attest. (4) Compare HEAD's last 5 commits against `.cairn/.attested-commits` marker file; surface backfill prompt for any commit that bypassed pre-commit hook (i.e. `--no-verify`). (5) Update per-session `status.json` |
 | `PostToolUse` (Read/Grep/Glob) | Citation enrichment — inject §V references + decision summaries into the tool result text |
 | `PreToolUse` | **BANNED** — bricks the session if the hook fails. Never use. |
 
@@ -291,14 +291,14 @@ Write tools wrap their work in the per-write flock helper from `harness-core/src
 
 | Surface | Path | Trigger | Job |
 |---------|------|---------|-----|
-| Skill | `skills/harness-adopt/SKILL.md` | SessionStart sees no `.harness/` | Walks operator through adoption inline; orchestrates init pipeline subprocess |
-| Skill | `skills/harness-direction/SKILL.md` | Auto-invoked when operator's user message looks like a task ("build…", "add…", "fix…", "refactor…") and there's no active task | Runs tier0 → tightener → dispatch chunks via Task tool |
-| Skill | `skills/harness-attention/SKILL.md` | SessionStart context flagged `attention_count > 0` | Surfaces pending DEC drafts + drift + baseline findings as inline A/B/C; calls `harness_resolve_attention` after each pick |
+| Skill | `skills/cairn-adopt/SKILL.md` | SessionStart sees no `.cairn/` | Walks operator through adoption inline; orchestrates init pipeline subprocess |
+| Skill | `skills/cairn-direction/SKILL.md` | Auto-invoked when operator's user message looks like a task ("build…", "add…", "fix…", "refactor…") and there's no active task | Runs tier0 → tightener → dispatch chunks via Task tool |
+| Skill | `skills/cairn-attention/SKILL.md` | SessionStart context flagged `attention_count > 0` | Surfaces pending DEC drafts + drift + baseline findings as inline A/B/C; calls `cairn_resolve_attention` after each pick |
 | Subagent | `agents/reviewer.md` | Spawned by main Claude as the LAST step of any non-trivial task | Reads diff + sensor outputs + attestation files; extracts non-obvious DECs; returns attestation summary |
-| Slash command | `commands/harness-init.md` | Operator types `/harness-init` | Same as auto-adopt skill but explicitly invoked |
-| Slash command | `commands/harness-direction.md` | Operator types `/harness-direction <prompt>` | Manual invocation of the direction skill — escape hatch when auto-invoke misses (conversational message wrongly classified, or operator wants to force the question-asker on a borderline prompt) |
+| Slash command | `commands/cairn-init.md` | Operator types `/cairn-init` | Same as auto-adopt skill but explicitly invoked |
+| Slash command | `commands/cairn-direction.md` | Operator types `/cairn-direction <prompt>` | Manual invocation of the direction skill — escape hatch when auto-invoke misses (conversational message wrongly classified, or operator wants to force the question-asker on a borderline prompt) |
 
-Skill `description` frontmatter is what triggers auto-invocation. Example for `harness-direction`:
+Skill `description` frontmatter is what triggers auto-invocation. Example for `cairn-direction`:
 
 ```yaml
 ---
@@ -312,18 +312,18 @@ description: |
 
 ### Subagent dispatch protocol
 
-The `harness-direction` skill produces a structured **dispatch block** that main Claude reads and turns into Task-tool calls. Skill output ends with:
+The `cairn-direction` skill produces a structured **dispatch block** that main Claude reads and turns into Task-tool calls. Skill output ends with:
 
 ````markdown
 ## Dispatch plan
 
-Tightened spec: `.harness/tasks/active/<task-id>/spec.tightened.md`
+Tightened spec: `.cairn/tasks/active/<task-id>/spec.tightened.md`
 Reviewer: spawn LAST after all dispatched subagents complete.
 
 ```dispatch
 - subagent: general-purpose
   brief: |
-    Read .harness/tasks/active/<task-id>/spec.tightened.md.
+    Read .cairn/tasks/active/<task-id>/spec.tightened.md.
     Implement the auth middleware portion (files: services/auth/*.ts).
     Cite §V42, §V43 in any new code. Write attestation.yaml on completion.
 - subagent: general-purpose
@@ -342,8 +342,8 @@ For 1-chunk dispatches, the skill omits the `dispatch` block and just hands the 
 
 | Surface | Plugin authority |
 |---------|------------------|
-| `.harness/ground/` (own state) | Full auto |
-| `.harness/sessions/<id>/` (own per-session state) | Full auto |
+| `.cairn/ground/` (own state) | Full auto |
+| `.cairn/sessions/<id>/` (own per-session state) | Full auto |
 | Source files (comment strips, §V cites) | A/B/C per module-batch with per-file escalation on reject |
 | Existing docs (consolidation, rewrites) | A/B/C per doc or batch |
 | `~/.claude/settings.json` (`enabledPlugins` map only) | Auto on `/plugin install` |
@@ -360,7 +360,7 @@ For 1-chunk dispatches, the skill omits the `dispatch` block and just hands the 
 > Conflict: JWT expiry. `docs/auth.md` says 24h. `services/auth.ts:42` comment says 7d. Which is canonical?
 > `[a]` 24h (file: docs/auth.md) `[b]` 7d (file: services/auth.ts) `[c]` neither — capture as new DEC
 
-**Soft conflicts** — scope/phrasing differences, possibly intentional layering. Adoption completes. Conflicts written to `.harness/inbox/conflicts/<id>.yaml`. First post-adoption attention pass surfaces them.
+**Soft conflicts** — scope/phrasing differences, possibly intentional layering. Adoption completes. Conflicts written to `.cairn/inbox/conflicts/<id>.yaml`. First post-adoption attention pass surfaces them.
 
 ## §14 Question-asker quality
 
@@ -409,7 +409,7 @@ Before any source file is modified during Phase 10:
 
 1. **Uncommitted-changes check** — `git status --porcelain` on the file. If dirty:
    > `services/auth.ts` has uncommitted changes. Replacing comments would mix into your work-in-progress. `[a]` stash and process `[b]` skip this file `[c]` overwrite (lose uncommitted changes — destructive)
-2. **Backup** — copy `services/auth.ts` → `.harness/backups/source/services/auth.ts.original` (preserves directory structure). One backup per file, single snapshot. Used by `harness uninstall --full` to restore.
+2. **Backup** — copy `services/auth.ts` → `.cairn/backups/source/services/auth.ts.original` (preserves directory structure). One backup per file, single snapshot. Used by `cairn uninstall --full` to restore.
 3. **Diff preview** — generate the proposed diff and show in the per-module batch consent prompt before any write.
 
 ### Consent flow
@@ -436,78 +436,78 @@ Two operations, distinct intents:
 
 | Command | What it does | Reversible? |
 |---------|--------------|-------------|
-| `cairn uninstall` | Stops active enforcement only: removes `core.hooksPath` config, removes `.github/workflows/harness-check.yml`, removes `package.json` `prepare` script entry. Leaves `.harness/` directory + stripped comments + `.harness/git-hooks/` intact. | **Yes** — re-enable via `cairn join` or plugin re-adopt |
-| `cairn uninstall --full` | Full de-adoption: above + restores all stripped source comments from `.harness/backups/source/*.original` (verified file-by-file; warns on missing or modified backups), deletes `.harness/`, removes `.harness/git-hooks/`, removes `JOIN.md`, removes plugin's project entry from `${CLAUDE_PLUGIN_DATA}/projects.json`. Asks confirmation: "this is irreversible. proceed?" `[a]` yes `[b]` no | **No** — fresh adoption required to re-enable |
+| `cairn uninstall` | Stops active enforcement only: removes `core.hooksPath` config, removes `.github/workflows/cairn-check.yml`, removes `package.json` `prepare` script entry. Leaves `.cairn/` directory + stripped comments + `.cairn/git-hooks/` intact. | **Yes** — re-enable via `cairn join` or plugin re-adopt |
+| `cairn uninstall --full` | Full de-adoption: above + restores all stripped source comments from `.cairn/backups/source/*.original` (verified file-by-file; warns on missing or modified backups), deletes `.cairn/`, removes `.cairn/git-hooks/`, removes `JOIN.md`, removes plugin's project entry from `${CLAUDE_PLUGIN_DATA}/projects.json`. Asks confirmation: "this is irreversible. proceed?" `[a]` yes `[b]` no | **No** — fresh adoption required to re-enable |
 
 The split mirrors how plugin disable (`/plugin disable cairn`) is per-user (just stops the plugin) vs full plugin uninstall (`/plugin uninstall cairn`) which removes user-level state. `cairn uninstall` is per-project light; `cairn uninstall --full` is per-project complete.
 
 ## §17 Multi-developer enforcement
 
-Once a project is harness-adopted, every developer who touches it must be running harness — locally and at PR time. A second developer cloning the repo without harness installed must be **blocked from contributing** until they bootstrap. Defense in depth across four layers:
+Once a project is Cairn-adopted, every developer who touches it must be running Cairn — locally and at PR time. A second developer cloning the repo without Cairn installed must be **blocked from contributing** until they bootstrap. Defense in depth across four layers:
 
 ### Layer 1 — Versioned git hooks (catches local commits)
 
-Adoption commits the pre-commit hook to the repo at `.harness/git-hooks/pre-commit` (versioned, reviewable, diff-able). The hook is **not** placed in `.git/hooks/` directly — that path is per-clone and not versioned, so dev2's clone wouldn't get it.
+Adoption commits the pre-commit hook to the repo at `.cairn/git-hooks/pre-commit` (versioned, reviewable, diff-able). The hook is **not** placed in `.git/hooks/` directly — that path is per-clone and not versioned, so dev2's clone wouldn't get it.
 
-Instead, adoption configures `git config core.hooksPath .harness/git-hooks` so git uses the versioned hook dir. This config IS per-clone (lives in `.git/config`), so it must be set on every clone via the bootstrap step (Layer 2).
+Instead, adoption configures `git config core.hooksPath .cairn/git-hooks` so git uses the versioned hook dir. This config IS per-clone (lives in `.git/config`), so it must be set on every clone via the bootstrap step (Layer 2).
 
 The hook script itself is short and resilient:
 
 ```sh
 #!/usr/bin/env bash
 set -e
-if ! command -v harness > /dev/null 2>&1; then
-  echo "✗ harness CLI not on PATH"
-  echo "  This project requires harness. Install:"
+if ! command -v cairn > /dev/null 2>&1; then
+  echo "✗ Cairn CLI not on PATH"
+  echo "  This project requires Cairn. Install:"
   echo "    /plugin install cairn@isaacriehm-cairn   (Claude Code)"
   echo "    npm install -g @isaacriehm/cairn            (CLI)"
-  echo "  Or: rm .harness/  to opt the project out (irreversible)"
+  echo "  Or: rm .cairn/  to opt the project out (irreversible)"
   exit 1
 fi
-exec harness sensor-run --staged "$@"
+exec cairn sensor-run --staged "$@"
 ```
 
-So if harness CLI is missing, commit fails with clear instructions. No silent bypass.
+So if Cairn CLI is missing, commit fails with clear instructions. No silent bypass.
 
-**Bypass tracking** — when the hook completes successfully, it appends the about-to-be-committed SHA (from `git rev-parse --verify HEAD@{0}` post-commit, via a paired `post-commit` hook) to `.harness/.attested-commits` (gitignored, per-clone). The Stop hook compares HEAD's last 5 commit SHAs against this file; any commit not in the attested set is a bypass candidate. Surfaces inline:
-> Commit `abc1234` ("…") was not attested by harness (likely `git commit --no-verify`). Run `harness sweep` to backfill sensor results, or accept divergence?
+**Bypass tracking** — when the hook completes successfully, it appends the about-to-be-committed SHA (from `git rev-parse --verify HEAD@{0}` post-commit, via a paired `post-commit` hook) to `.cairn/.attested-commits` (gitignored, per-clone). The Stop hook compares HEAD's last 5 commit SHAs against this file; any commit not in the attested set is a bypass candidate. Surfaces inline:
+> Commit `abc1234` ("…") was not attested by Cairn (likely `git commit --no-verify`). Run `cairn sweep` to backfill sensor results, or accept divergence?
 > `[a]` backfill `[b]` accept (record as DEC: "intentional bypass — reason?") `[c]` defer
 
 ### Layer 2 — Per-clone bootstrap
 
 When dev2 clones the repo for the first time, they need a one-time bootstrap to:
 
-1. Verify harness CLI is installed (and its version is compatible with the project's harness state)
-2. Set `core.hooksPath = .harness/git-hooks` on the local clone
-3. Optionally install local harness session state directory
+1. Verify Cairn CLI is installed (and its version is compatible with the project's Cairn state)
+2. Set `core.hooksPath = .cairn/git-hooks` on the local clone
+3. Optionally install local Cairn session state directory
 
 Three trigger paths:
 
-- **Plugin auto-detect**: dev2 opens project in Claude Code with the harness plugin enabled. Plugin's SessionStart sees `.harness/` exists but `core.hooksPath` is unset (or harness CLI version mismatch). Auto-renders inline blocking A/B/C:
-  > This project uses harness, but your clone isn't bootstrapped. Without it, your commits will fail. `[a]` bootstrap now (one-time, ~5s) `[b]` skip (commits will fail until you bootstrap)
+- **Plugin auto-detect**: dev2 opens project in Claude Code with the Cairn plugin enabled. Plugin's SessionStart sees `.cairn/` exists but `core.hooksPath` is unset (or Cairn CLI version mismatch). Auto-renders inline blocking A/B/C:
+  > This project uses Cairn, but your clone isn't bootstrapped. Without it, your commits will fail. `[a]` bootstrap now (one-time, ~5s) `[b]` skip (commits will fail until you bootstrap)
 - **Package-manager `prepare` hook**: for Node projects, adoption adds to `package.json`:
   ```json
-  { "scripts": { "prepare": "harness join || true" } }
+  { "scripts": { "prepare": "cairn join || true" } }
   ```
-  Runs on every `npm install` / `pnpm install`. `harness join` checks state, runs bootstrap, idempotent. Fails soft (`|| true`) so missing harness during install doesn't break the install — the failure surfaces at first commit attempt instead.
-- **Manual**: `harness join` CLI command. Documented in the auto-generated `.harness/JOIN.md` that adoption writes (visible at repo root, instructs new contributors).
+  Runs on every `npm install` / `pnpm install`. `cairn join` checks state, runs bootstrap, idempotent. Fails soft (`|| true`) so missing Cairn during install doesn't break the install — the failure surfaces at first commit attempt instead.
+- **Manual**: `cairn join` CLI command. Documented in the auto-generated `.cairn/JOIN.md` that adoption writes (visible at repo root, instructs new contributors).
 
 For non-Node projects (Python, Go, Rust), adoption writes equivalent into `Makefile`, `justfile`, `pyproject.toml` `[tool.poetry] scripts`, etc. — best-effort detection during adoption Phase 1.
 
 ### Layer 3 — CI / server-side gate (non-bypassable)
 
-Adoption ships a CI workflow (`.github/workflows/harness-check.yml` for GitHub-hosted repos, equivalent for GitLab/Bitbucket). Workflow runs on every PR:
+Adoption ships a CI workflow (`.github/workflows/cairn-check.yml` for GitHub-hosted repos, equivalent for GitLab/Bitbucket). Workflow runs on every PR:
 
 ```yaml
-name: harness-check
+name: cairn-check
 on: [pull_request, push]
 jobs:
-  harness:
+  cairn:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: npm install -g @isaacriehm/cairn
-      - run: harness sensor-run --diff origin/main..HEAD --strict
+      - run: cairn sensor-run --diff origin/main..HEAD --strict
 ```
 
 Fails the PR if any sensors fail or attestation is missing. **Non-bypassable** — even if dev2 used `git commit --no-verify` to skip the local hook, the CI gate catches it at PR time and the PR can't merge.
@@ -516,24 +516,24 @@ This is the canonical enforcement layer. Layers 1 and 2 are conveniences (fail f
 
 ### Layer 4 — Plugin SessionStart bootstrap-required block (Claude Code users)
 
-Beyond just commit blocking: if dev2 opens the harness-adopted project in Claude Code with the harness plugin and tries to use harness features (skills, MCP) without bootstrapping, the plugin enters **degraded mode**:
+Beyond just commit blocking: if dev2 opens the Cairn-adopted project in Claude Code with the Cairn plugin and tries to use Cairn features (skills, MCP) without bootstrapping, the plugin enters **degraded mode**:
 
 - MCP read tools work (read-only access to ground state)
 - MCP write tools return `BOOTSTRAP_REQUIRED` envelope
-- harness-direction skill blocks: "bootstrap required before harness can drive task work for this clone"
-- harness-attention shows but can't resolve
+- cairn-direction skill blocks: "bootstrap required before Cairn can drive task work for this clone"
+- cairn-attention shows but can't resolve
 
-Forces dev2 through the bootstrap before any harness feature engages.
+Forces dev2 through the bootstrap before any Cairn feature engages.
 
 ### Adoption commits
 
 Phase 12 (pre-commit hook install) becomes "git hooks + CI workflow + bootstrap docs". Files committed:
 
 ```
-.harness/git-hooks/pre-commit          — sensor runner
-.harness/git-hooks/commit-msg          — optional: validates DEC/TSK refs in commit msg
-.harness/JOIN.md                       — instructions for new contributors
-.github/workflows/harness-check.yml    — CI gate (or equivalent for non-GitHub)
+.cairn/git-hooks/pre-commit            — sensor runner
+.cairn/git-hooks/commit-msg            — optional: validates DEC/TSK refs in commit msg
+.cairn/JOIN.md                         — instructions for new contributors
+.github/workflows/cairn-check.yml      — CI gate (or equivalent for non-GitHub)
 package.json prepare script            — auto-bootstrap on install (Node projects)
 ```
 
@@ -549,18 +549,18 @@ The following decisions were made during drafting and folded into the relevant s
 |-------|------------|---------|
 | Source-comment detection threshold | Block > 3 lines OR > 200 chars OR JSDoc with > 30 words of prose; deterministic (no LLM); 20 blocks/Haiku batch for classification | §6 Phase 7b, §15 |
 | Comment replacement | Mechanical string substitution, never LLM-rewritten | §15 |
-| Pre-write safety | Skip dirty files (offer stash/skip/overwrite); backup originals to `.harness/backups/source/<rel>.original` | §15 |
+| Pre-write safety | Skip dirty files (offer stash/skip/overwrite); backup originals to `.cairn/backups/source/<rel>.original` | §15 |
 | Subagent output | Each subagent's output streams verbatim; reviewer produces final attestation summary | §8, §11 |
-| Adoption tracking | `${CLAUDE_PLUGIN_DATA}/projects.json` keyed by abs-path; `decline-temp` re-prompts after 7 days; `decline-never` requires explicit `/harness-init` to re-prompt | §11 (skills) |
-| Existing rules merge | Adoption ingests; post-adoption regenerates `CLAUDE.md` + `AGENTS.md` from ground state with `<!-- harness:keep-start -->` operator sections preserved | §6 Phase 7c |
-| Reviewer last-detection | Stop hook scans `.harness/tasks/active/<id>/` for missing `attestation.yaml`; spawns reviewer if any | §10 |
-| `--no-verify` bypass detection | Pre-commit hook (paired with post-commit) appends attested SHAs to `.harness/.attested-commits`; Stop hook diffs against HEAD's last 5; surfaces backfill prompt | §17 Layer 1 |
-| Uninstall vs full uninstall | `harness uninstall` light (stops enforcement, keeps state); `harness uninstall --full` restores original comments from backups, deletes `.harness/`, removes hooks + CI workflow | §16 |
-| MCP project-root detection | cwd-based walker (look for `.harness/` or `.git/`); no env var dependency | §9 |
+| Adoption tracking | `${CLAUDE_PLUGIN_DATA}/projects.json` keyed by abs-path; `decline-temp` re-prompts after 7 days; `decline-never` requires explicit `/cairn-init` to re-prompt | §11 (skills) |
+| Existing rules merge | Adoption ingests; post-adoption regenerates `CLAUDE.md` + `AGENTS.md` from ground state with `<!-- cairn:keep-start -->` operator sections preserved | §6 Phase 7c |
+| Reviewer last-detection | Stop hook scans `.cairn/tasks/active/<id>/` for missing `attestation.yaml`; spawns reviewer if any | §10 |
+| `--no-verify` bypass detection | Pre-commit hook (paired with post-commit) appends attested SHAs to `.cairn/.attested-commits`; Stop hook diffs against HEAD's last 5; surfaces backfill prompt | §17 Layer 1 |
+| Uninstall vs full uninstall | `cairn uninstall` light (stops enforcement, keeps state); `cairn uninstall --full` restores original comments from backups, deletes `.cairn/`, removes hooks + CI workflow | §16 |
+| MCP project-root detection | cwd-based walker (look for `.cairn/` or `.git/`); no env var dependency | §9 |
 | Subagent dispatch protocol | Skill emits structured ```dispatch``` fenced block; main Claude parses and issues Task calls | §11 |
 | Claude binary requirement | **Hard requirement** — no degraded mode. Adoption preflight detects missing `claude`, bails with install instructions | §6 Phase 1 |
 | Source-comment scan scope | **No cap** — every source file processed during adoption, accept the one-time Haiku spend per "fully processes once" mandate | §6 Phase 7b |
-| `harness-direction` skill triggering | Auto-invoke via fuzzy `description` matcher + slash command `/harness-direction <prompt>` as escape hatch when auto-invoke misses | §11 |
+| `cairn-direction` skill triggering | Auto-invoke via fuzzy `description` matcher + slash command `/cairn-direction <prompt>` as escape hatch when auto-invoke misses | §11 |
 
 ## §19 Build history
 
@@ -568,10 +568,10 @@ The plugin pivot landed across ten steps. Per-step deliverables:
 
 1. **Repo unification** — five workspace packages live under `packages/*`.
 2. **Tier0 Haiku** — replace pre-pivot local-classifier backend with `claude --model haiku` subprocess + JSON-schema output.
-3. **Flock + per-session state partition + invalidation events** — `cairn-core/src/lock.ts`, `.harness/sessions/<id>/`, `.harness/events/`. Every write tool wraps in flock; per-session marker + Stop-hook poll cursor.
+3. **Flock + per-session state partition + invalidation events** — `cairn-core/src/lock.ts`, `.cairn/sessions/<id>/`, `.cairn/events/`. Every write tool wraps in flock; per-session marker + Stop-hook poll cursor.
 4. **Plugin scaffold** — `cairn-frontend-claudecode/` manifest, `.mcp.json`, `hooks/hooks.json`, hook bin entrypoints under `cairn-core/dist/hooks/`.
 5. **Skills + slash commands** — cairn-adopt, cairn-direction, cairn-attention; `/cairn-init`, `/cairn-direction`.
-6. **Reviewer subagent + `harness_resolve_attention` + Stop scan** — `agents/reviewer.md`, MCP tool for inline A/B/C resolution, Stop hook scans for tasks pending review.
+6. **Reviewer subagent + `cairn_resolve_attention` + Stop scan** — `agents/reviewer.md`, MCP tool for inline A/B/C resolution, Stop hook scans for tasks pending review.
 7. **Heavy adoption pipeline** — Phase 7b source-comment ingestion, 7c rules merge, Phase 10 strip-replace primitives.
 8. **Multi-developer enforcement** — versioned git hooks, `cairn join` bootstrap, CI gate, plugin degraded mode, Stop-hook bypass detection.
 9. **End-to-end smoke + visual init wiring** — adopted-fixture E2E smoke, daily-flow E2E smoke, Phase 7b/7c/12 wired into the init.ts visual pipeline.

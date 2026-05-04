@@ -44,7 +44,7 @@ export interface WalkArchiveResult {
 
 export interface WalkArchiveOptions {
   repoRoot: string;
-  /** Optional repo-relative glob (e.g. ".archive/2026-05-pre-harness/**"). */
+  /** Optional repo-relative glob (e.g. ".archive/2026-05-pre-cairn/**"). */
   pathHint?: string;
   /** ISO 8601 lower bound (inclusive). Compared to archiveDate. */
   since?: string;

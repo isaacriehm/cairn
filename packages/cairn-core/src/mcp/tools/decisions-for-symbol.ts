@@ -37,7 +37,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
 }
 
 export const decisionsForSymbolTool: ToolDef<Input> = {
-  name: "harness_decisions_for_symbol",
+  name: "cairn_decisions_for_symbol",
   description:
     "Decisions whose scope_globs cover `file` AND whose body explicitly mentions `symbol`. Smaller result than path-glob alone.",
   inputSchema: decisionsForSymbolInput,

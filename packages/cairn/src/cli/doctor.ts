@@ -1,8 +1,8 @@
 /**
- * `harness doctor` — verify the adoption is healthy.
- * `harness fix`    — auto-resolve the warnings doctor flags where we can.
+ * `cairn doctor` — verify the adoption is healthy.
+ * `cairn fix`    — auto-resolve the warnings doctor flags where we can.
  *
- * Spec: BUILD_REPORT.md "Task D — harness doctor command".
+ * Spec: BUILD_REPORT.md "Task D — cairn doctor command".
  */
 
 import { existsSync } from "node:fs";
@@ -28,12 +28,12 @@ function parseRepoFlag(argv: string[]): string {
 
 function ensureAdopted(repoRoot: string): void {
   if (!existsSync(repoRoot)) {
-    console.error(`harness: repo root does not exist: ${repoRoot}`);
+    console.error(`cairn: repo root does not exist: ${repoRoot}`);
     process.exit(2);
   }
-  if (!existsSync(`${repoRoot}/.harness`)) {
+  if (!existsSync(`${repoRoot}/.cairn`)) {
     console.error(
-      `harness: ${repoRoot} is not harness-adopted (no .harness/). Run \`harness init\` first.`,
+      `cairn: ${repoRoot} is not cairn-adopted (no .cairn/). Run \`cairn init\` first.`,
     );
     process.exit(2);
   }
@@ -58,7 +58,7 @@ function pad(label: string, width: number): string {
 }
 
 function renderReport(report: DoctorReport): void {
-  process.stdout.write(`  ⬡ Harness — ${report.projectName}\n`);
+  process.stdout.write(`  ⬡ Cairn — ${report.projectName}\n`);
   process.stdout.write("\n");
   process.stdout.write("  Core\n");
   for (const c of report.checks.filter((c) => c.group === "core")) {
@@ -89,7 +89,7 @@ function renderReport(report: DoctorReport): void {
     process.stdout.write("  All checks passed.\n");
   } else {
     process.stdout.write(
-      `  ${report.warnings} warning${report.warnings === 1 ? "" : "s"}, ${report.errors} error${report.errors === 1 ? "" : "s"}. Run \`harness fix\` to resolve automatically where possible.\n`,
+      `  ${report.warnings} warning${report.warnings === 1 ? "" : "s"}, ${report.errors} error${report.errors === 1 ? "" : "s"}. Run \`cairn fix\` to resolve automatically where possible.\n`,
     );
   }
 }
@@ -108,7 +108,7 @@ export async function fixCli(argv: string[]): Promise<void> {
   const repoRoot = parseRepoFlag(argv);
   ensureAdopted(repoRoot);
 
-  process.stdout.write("⬡ harness fix — running auto-resolutions…\n");
+  process.stdout.write("⬡ cairn fix — running auto-resolutions…\n");
   const result = await runFix({
     repoRoot,
     rebuildScopeIndexFn: async (root) => {

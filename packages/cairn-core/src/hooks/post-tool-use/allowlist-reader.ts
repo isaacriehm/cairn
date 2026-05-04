@@ -1,6 +1,6 @@
 /**
  * Reads `copy_safety` configuration from
- * `.harness/config/sensors.yaml`. Consumed by the PostToolUse Write
+ * `.cairn/config/sensors.yaml`. Consumed by the PostToolUse Write
  * guardian and (later) by the Layer D copy-safety sensor.
  *
  * Falls back to hardcoded defaults if the file is missing or
@@ -49,7 +49,7 @@ function asStringArray(value: unknown): string[] | null {
 }
 
 export function readCopySafetyConfig(repoRoot: string): CopySafetyConfig {
-  const path = join(repoRoot, ".harness", "config", "sensors.yaml");
+  const path = join(repoRoot, ".cairn", "config", "sensors.yaml");
   if (!existsSync(path)) return defaultsCopy();
 
   let parsed: unknown;

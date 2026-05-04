@@ -9,7 +9,7 @@ import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
-export const HARNESS_HOOK_VERSION = "0.0.0";
+export const CAIRN_HOOK_VERSION = "0.0.0";
 
 export interface ClaudeHookPayload {
   session_id?: string;
@@ -64,17 +64,17 @@ export interface HookTelemetryRow {
 }
 
 /**
- * Append a telemetry row to `~/.local/harness/state/<hook>.jsonl`.
+ * Append a telemetry row to `~/.local/cairn/state/<hook>.jsonl`.
  * Telemetry must never throw — failures are swallowed.
  */
 export function recordHookTelemetry(row: HookTelemetryRow): void {
   try {
-    const dir = resolve(homedir(), ".local", "harness", "state");
+    const dir = resolve(homedir(), ".local", "cairn", "state");
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     const path = join(dir, `${row.hook}.jsonl`);
     const body = {
       ts: new Date().toISOString(),
-      hook_version: HARNESS_HOOK_VERSION,
+      hook_version: CAIRN_HOOK_VERSION,
       hook: row.hook,
       ...(row.sessionId !== null ? { session_id: row.sessionId } : {}),
       ...(row.source !== null ? { source: row.source } : {}),

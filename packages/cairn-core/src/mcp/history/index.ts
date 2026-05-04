@@ -3,8 +3,8 @@ export type { ArchiveFile, WalkArchiveOptions, WalkArchiveResult } from "./walke
 export {
   HISTORY_SUMMARIZER_SYSTEM_PROMPT,
   buildHistorySummarizerUserPrompt,
-  HARNESS_HISTORY_SUMMARIZE_PROMPT_ID,
-  HARNESS_HISTORY_SUMMARIZE_VERSION,
+  CAIRN_HISTORY_SUMMARIZE_PROMPT_ID,
+  CAIRN_HISTORY_SUMMARIZE_VERSION,
 } from "./prompt.js";
 export { HISTORY_SUMMARIZER_OUTPUT_SCHEMA } from "./schema.js";
 export {

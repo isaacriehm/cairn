@@ -32,8 +32,8 @@ function parseArgs(argv: string[]): ParsedFlags {
 
 function usage(): never {
   console.error(
-    "Usage: harness mcp serve [options]\n" +
-      "  --repo-root <path>   adopted-project repo root (default: HARNESS_REPO_ROOT or cwd)\n" +
+    "Usage: cairn mcp serve [options]\n" +
+      "  --repo-root <path>   adopted-project repo root (default: CAIRN_REPO_ROOT or cwd)\n" +
       "  --run-id <id>        scope telemetry to a run id (default: top-level)\n" +
       "\n" +
       "Speaks MCP over stdio. Register in .claude/settings.json mcpServers block.",
@@ -48,8 +48,8 @@ export async function mcpCli(argv: string[]): Promise<void> {
   const repoRoot =
     typeof flags["repo-root"] === "string"
       ? resolve(flags["repo-root"])
-      : process.env["HARNESS_REPO_ROOT"]
-        ? resolve(process.env["HARNESS_REPO_ROOT"])
+      : process.env["CAIRN_REPO_ROOT"]
+        ? resolve(process.env["CAIRN_REPO_ROOT"])
         : process.cwd();
   const runId = typeof flags["run-id"] === "string" ? flags["run-id"] : undefined;
 

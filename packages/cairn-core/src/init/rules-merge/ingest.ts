@@ -4,13 +4,13 @@
  * Ingests CLAUDE.md, AGENTS.md, .claude/CLAUDE.md, and `.claude/rules/**.md`
  * during init. Each H2/H3 section is classified by Haiku as:
  *
- *   - "rule-net-new"  — section states a rule harness doesn't have yet (DEC draft to inbox)
- *   - "rule-conflict" — section conflicts with existing harness state (soft-conflict to attention)
+ *   - "rule-net-new"  — section states a rule cairn doesn't have yet (DEC draft to inbox)
+ *   - "rule-conflict" — section conflicts with existing cairn state (soft-conflict to attention)
  *   - "informational" — TOC, history, walkthrough — no action
  *   - "operator-keep" — already inside keep-marker block (skipped pre-classification)
  *
- * Net-new rules become DEC drafts in `.harness/ground/decisions/_inbox/`.
- * Soft conflicts append to `.harness/baseline/rule-conflicts-<ISO>.yaml`.
+ * Net-new rules become DEC drafts in `.cairn/ground/decisions/_inbox/`.
+ * Soft conflicts append to `.cairn/baseline/rule-conflicts-<ISO>.yaml`.
  *
  * Resilient: a single Haiku failure marks the section "informational" and
  * continues. All output paths captured in the result so the skill can surface
@@ -96,13 +96,13 @@ const CLASSIFY_SCHEMA = {
   },
 } as const;
 
-const CLASSIFY_SYSTEM = `You classify markdown sections of project-rule files for Harness adoption.
+const CLASSIFY_SYSTEM = `You classify markdown sections of project-rule files for Cairn adoption.
 
 Each section comes from one of: CLAUDE.md, AGENTS.md, .claude/CLAUDE.md, or a .claude/rules/*.md file.
 
 Return JSON matching the schema. \`kind\` must be exactly one of:
-  - "rule-net-new"   the section states a binding rule harness doesn't yet have
-  - "rule-conflict"  the section contradicts an existing harness rule (provide conflicts_with id when known)
+  - "rule-net-new"   the section states a binding rule cairn doesn't yet have
+  - "rule-conflict"  the section contradicts an existing cairn rule (provide conflicts_with id when known)
   - "informational"  TOC, walkthrough, history, formatting notes — nothing to ingest
   - "operator-keep"  the section is wrapped in keep-markers (rare — caller usually filters first)
 
@@ -201,7 +201,7 @@ export async function runRulesMerge(args: RunRulesMergeArgs): Promise<RunRulesMe
       } else {
         decDraftsWritten.push({
           id,
-          path: `.harness/ground/decisions/_inbox/${id}.draft.md`,
+          path: `.cairn/ground/decisions/_inbox/${id}.draft.md`,
           sourceFile: cls.source,
         });
       }
@@ -216,7 +216,7 @@ export async function runRulesMerge(args: RunRulesMergeArgs): Promise<RunRulesMe
     }
   }
 
-  const auditRelPath = `.harness/baseline/rules-merge-${tsSlug}.yaml`;
+  const auditRelPath = `.cairn/baseline/rules-merge-${tsSlug}.yaml`;
   const auditPath = join(repoRoot, auditRelPath);
   let conflictsPath: string | null = null;
 
@@ -250,7 +250,7 @@ export async function runRulesMerge(args: RunRulesMergeArgs): Promise<RunRulesMe
       })),
     });
     if (conflictRows.length > 0) {
-      const rel = `.harness/baseline/rule-conflicts-${tsSlug}.yaml`;
+      const rel = `.cairn/baseline/rule-conflicts-${tsSlug}.yaml`;
       conflictsPath = join(repoRoot, rel);
       writeYaml(conflictsPath, {
         run_at: nowIso,
@@ -393,7 +393,7 @@ function writeDecDraft(args: {
   mkdirSync(inboxDir, { recursive: true });
   const filename = `${args.id}.draft.md`;
   const abs = join(inboxDir, filename);
-  const rel = `.harness/ground/decisions/_inbox/${filename}`;
+  const rel = `.cairn/ground/decisions/_inbox/${filename}`;
   const fm: Record<string, unknown> = {
     id: args.id,
     title: args.classification.proposedDecTitle || `(untitled — from ${args.classification.source})`,
@@ -403,7 +403,7 @@ function writeDecDraft(args: {
     generated: args.generatedAt,
     "verified-at": args.generatedAt,
     decided_at: args.generatedAt,
-    decided_by: "harness-init",
+    decided_by: "cairn-init",
     capture_source: "init-rules-merge",
     capture_confidence: "medium",
     sourceFile: args.classification.source,

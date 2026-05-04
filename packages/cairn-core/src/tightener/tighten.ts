@@ -9,7 +9,7 @@ const log = logger("tightener");
 /** Word-count cutoff at which we auto-escalate from Haiku → Sonnet. */
 const ESCALATE_WORDS = 500;
 
-/** Default `spec_quality_floor` per templates/.harness/config/workflow.md. */
+/** Default `spec_quality_floor` per templates/.cairn/config/workflow.md. */
 const DEFAULT_QUALITY_FLOOR = 7;
 
 function chooseTier(input: TightenerInput): "haiku" | "sonnet" {

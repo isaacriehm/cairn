@@ -24,7 +24,7 @@ function fail(reason: string): never {
 }
 
 async function main(): Promise<void> {
-  const root = mkdtempSync(join(tmpdir(), "harness-smoke-lock-"));
+  const root = mkdtempSync(join(tmpdir(), "cairn-smoke-lock-"));
   try {
     console.log("── Step 1: serialized concurrent writes");
     const out = join(root, "log.txt");
@@ -46,7 +46,7 @@ async function main(): Promise<void> {
     if (lines.length !== N) fail(`expected ${N} lines, got ${lines.length}: ${lines.join(",")}`);
     const set = new Set(lines);
     if (set.size !== N) fail(`expected ${N} unique entries, got ${set.size}`);
-    if (existsSync(join(root, ".harness", ".write-lock"))) {
+    if (existsSync(join(root, ".cairn", ".write-lock"))) {
       fail("lock file should be released after use");
     }
 
@@ -72,7 +72,7 @@ async function main(): Promise<void> {
     void release;
     await outer;
     if (inner !== null) await inner;
-    if (existsSync(join(root, ".harness", ".gc-lock"))) {
+    if (existsSync(join(root, ".cairn", ".gc-lock"))) {
       fail("operation lock should be released after use");
     }
 

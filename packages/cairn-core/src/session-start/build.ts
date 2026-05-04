@@ -1,6 +1,6 @@
 /**
  * `buildSessionStartContext` — composes the SessionStart payload from
- * a harness-adopted repo's state. Read-only; no side effects beyond
+ * a cairn-adopted repo's state. Read-only; no side effects beyond
  * filesystem reads.
  */
 
@@ -36,7 +36,7 @@ export type SessionStartSection =
   | "tool_quick_reference";
 
 export interface BuildSessionStartContextArgs {
-  /** Resolved repo root (the dir containing `.harness/`). */
+  /** Resolved repo root (the dir containing `.cairn/`). */
   repoRoot: string;
   /** Optional cwd-relative subdir for narrowing decisions/invariants scope. */
   scopeRelPath?: string;
@@ -48,7 +48,7 @@ export interface BuildSessionStartContextArgs {
   includeToolReference?: boolean;
   /**
    * When true (default), the two-zone reminder cites
-   * harness_query_history as the escape valve for archive reads. Set
+   * cairn_query_history as the escape valve for archive reads. Set
    * false to omit the reminder line about query_history (e.g. for
    * adopters who haven't enabled the MCP server).
    */
@@ -84,14 +84,14 @@ const QUALITY_TAIL_CAP = 3;
 const TASK_BODY_CAP = 800;
 
 /**
- * Walk up from `cwd` looking for a `.harness/` directory. Returns the
+ * Walk up from `cwd` looking for a `.cairn/` directory. Returns the
  * dir containing it (the repo root) or null if none found within 12
  * ancestors.
  */
 export function resolveRepoRoot(cwd: string): string | null {
   let dir = resolve(cwd);
   for (let i = 0; i < 12; i++) {
-    if (existsSync(join(dir, ".harness")) && statSync(join(dir, ".harness")).isDirectory()) {
+    if (existsSync(join(dir, ".cairn")) && statSync(join(dir, ".cairn")).isDirectory()) {
       return dir;
     }
     const parent = dirname(dir);
@@ -283,14 +283,14 @@ function composeTwoZoneReminder(queryHistoryAvailable: boolean): string {
   if (queryHistoryAvailable) return TWO_ZONE_REMINDER_BASE;
   return `${TWO_ZONE_REMINDER_BASE}
 
-NOTE: harness_query_history is not registered in this project's MCP
-configuration; archive reads are unreachable. Use harness_decision_get
-or harness_canonical_for_topic for current-canonical access only.`;
+NOTE: cairn_query_history is not registered in this project's MCP
+configuration; archive reads are unreachable. Use cairn_decision_get
+or cairn_canonical_for_topic for current-canonical access only.`;
 }
 
 function readBrandAndPositioning(repoRoot: string, warnings: string[]): string | null {
-  const brandPath = join(repoRoot, ".harness", "ground", "brand", "overview.md");
-  const positioningPath = join(repoRoot, ".harness", "ground", "product", "positioning.md");
+  const brandPath = join(repoRoot, ".cairn", "ground", "brand", "overview.md");
+  const positioningPath = join(repoRoot, ".cairn", "ground", "product", "positioning.md");
   const parts: string[] = [];
   for (const [label, path] of [
     ["Brand overview", brandPath] as const,
@@ -413,7 +413,7 @@ function renderDecisionsSection(decisions: DecisionEntry[]): string | null {
   }
   if (decisions.length > DECISIONS_CAP) {
     lines.push(
-      `…${decisions.length - DECISIONS_CAP} additional decision${decisions.length - DECISIONS_CAP === 1 ? "" : "s"} — call \`harness_decisions_in_scope(globs[])\` for the rest.`,
+      `…${decisions.length - DECISIONS_CAP} additional decision${decisions.length - DECISIONS_CAP === 1 ? "" : "s"} — call \`cairn_decisions_in_scope(globs[])\` for the rest.`,
     );
   }
   return lines.join("\n");
@@ -432,7 +432,7 @@ function renderInvariantsSection(invariants: InvariantEntry[]): string | null {
   }
   if (invariants.length > INVARIANTS_CAP) {
     lines.push(
-      `…${invariants.length - INVARIANTS_CAP} additional — call \`harness_invariants_in_scope(globs[])\`.`,
+      `…${invariants.length - INVARIANTS_CAP} additional — call \`cairn_invariants_in_scope(globs[])\`.`,
     );
   }
   return lines.join("\n");
@@ -447,7 +447,7 @@ interface ActiveTask {
 }
 
 function listActiveTasks(repoRoot: string): ActiveTask[] {
-  const dir = join(repoRoot, ".harness", "tasks", "active");
+  const dir = join(repoRoot, ".cairn", "tasks", "active");
   if (!existsSync(dir)) return [];
   let entries: Dirent[];
   try {
@@ -508,7 +508,7 @@ function renderCurrentTaskSection(_repoRoot: string, tasks: ActiveTask[]): strin
     const body = t.specBody.trim();
     const cap =
       body.length > TASK_BODY_CAP
-        ? `${body.slice(0, TASK_BODY_CAP).trimEnd()}\n…[truncated; full spec via harness_get_full({id, kind:"task"})]`
+        ? `${body.slice(0, TASK_BODY_CAP).trimEnd()}\n…[truncated; full spec via cairn_get_full({id, kind:"task"})]`
         : body;
     lines.push(cap);
     return lines.join("\n");
@@ -522,7 +522,7 @@ function renderCurrentTaskSection(_repoRoot: string, tasks: ActiveTask[]): strin
   }
   if (tasks.length > 8) lines.push(`…${tasks.length - 8} more.`);
   lines.push("");
-  lines.push("Multiple active tasks; call `harness_get_full({id, kind:\"task\"})` to read any.");
+  lines.push("Multiple active tasks; call `cairn_get_full({id, kind:\"task\"})` to read any.");
   return lines.join("\n");
 }
 
@@ -534,7 +534,7 @@ interface QualityGrade {
 }
 
 function readQualityGrades(repoRoot: string, warnings: string[]): QualityGrade[] {
-  const path = join(repoRoot, ".harness", "ground", "quality-grades.yaml");
+  const path = join(repoRoot, ".cairn", "ground", "quality-grades.yaml");
   if (!existsSync(path)) return [];
   let parsed: unknown;
   try {
@@ -585,7 +585,7 @@ interface DraftEntry {
 }
 
 function listPendingDrafts(repoRoot: string, warnings: string[]): DraftEntry[] {
-  const dir = join(repoRoot, ".harness", "ground", "decisions", "_inbox");
+  const dir = join(repoRoot, ".cairn", "ground", "decisions", "_inbox");
   if (!existsSync(dir)) return [];
   let entries: Dirent[];
   try {
@@ -632,7 +632,7 @@ function renderFirstSessionOnboarding(args: OnboardingArgs): string | null {
   const sensorIds = readActiveSensorIds(args.repoRoot, args.warnings);
 
   const lines: string[] = [];
-  lines.push(`⬡ Harness active — ${projectName}`);
+  lines.push(`⬡ Cairn active — ${projectName}`);
   lines.push("");
   if (minutesAgo !== null) {
     lines.push(
@@ -658,13 +658,13 @@ function renderFirstSessionOnboarding(args: OnboardingArgs): string | null {
 
   if (audit.totalFindings > 0) {
     lines.push(
-      `  Baseline debt: ${audit.totalFindings} pre-Harness violation${audit.totalFindings === 1 ? "" : "s"} found in existing code.`,
+      `  Baseline debt: ${audit.totalFindings} pre-Cairn violation${audit.totalFindings === 1 ? "" : "s"} found in existing code.`,
     );
-    lines.push("  Run `harness attention` to review before starting work.");
+    lines.push("  Run `cairn attention` to review before starting work.");
     lines.push("");
   } else {
     lines.push(
-      `  Baseline scan ran clean — no pre-Harness violations on ${audit.filesScanned} source file${audit.filesScanned === 1 ? "" : "s"}.`,
+      `  Baseline scan ran clean — no pre-Cairn violations on ${audit.filesScanned} source file${audit.filesScanned === 1 ? "" : "s"}.`,
     );
     lines.push("");
   }
@@ -673,7 +673,7 @@ function renderFirstSessionOnboarding(args: OnboardingArgs): string | null {
     lines.push(
       `  DEC drafts awaiting review: ${args.pendingDrafts}`,
     );
-    lines.push("  Run `harness attention` to confirm or discard.");
+    lines.push("  Run `cairn attention` to confirm or discard.");
     lines.push("");
   }
 
@@ -691,7 +691,7 @@ function readLatestBaselineAudit(
   repoRoot: string,
   warnings: string[],
 ): BaselineSummary | null {
-  const dir = join(repoRoot, ".harness", "baseline");
+  const dir = join(repoRoot, ".cairn", "baseline");
   if (!existsSync(dir)) return null;
   let entries: string[];
   try {
@@ -746,7 +746,7 @@ function readActiveSensorIds(repoRoot: string, warnings: string[]): string[] {
 }
 
 function readProjectSlug(repoRoot: string): string | null {
-  const path = join(repoRoot, ".harness", "config.yaml");
+  const path = join(repoRoot, ".cairn", "config.yaml");
   if (!existsSync(path)) return null;
   try {
     const parsed = parseYaml(readFileSync(path, "utf8")) as Record<string, unknown>;

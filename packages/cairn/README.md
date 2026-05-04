@@ -1,52 +1,37 @@
 # @isaacriehm/cairn
 
-Portable agent harness for solo developers. Runtime workspace package.
+The `cairn` CLI binary. Bootstrap + debug entrypoint for the Cairn state +
+context-loading layer.
 
-> **Status:** Phase 0 scaffold. No functionality yet. See `../docs/INTEGRATION_PLAN.md` for the phased build.
+## Install
 
-## Two long-lived processes
-
-| Process | Command | Role |
-|---------|---------|------|
-| Grounding daemon | `harness watch` | File watcher; mechanically regenerates `.harness/ground/` on change. No LLM in hot path. |
-| Orchestrator | `harness run` | Frontend adapter ingress (Discord/Notion/CLI), spec tightener, FIFO queue, agent runner, sensor runners, UAT pipeline, garbage collector. |
-
-Both operate against a parallel mirror checkout at `~/.local/harness/repos/<project>/` — never the user's working tree.
-
-## Adoption
-
-```sh
-npx @isaacriehm/cairn init <repo-dir>
+```bash
+npm install -g @isaacriehm/cairn
 ```
 
-Detects stack profile (TypeScript/Python/Rails/Go/Rust/unknown), proposes sensors, scaffolds `.harness/` directory, registers MCP server, prompts for frontend adapter setup. See `../docs/INTEGRATION_PLAN.md` Phase 16.
+## Subcommands
 
-## Trust posture
+| Subcommand | What |
+|------------|------|
+| `cairn init` | One-time adoption walk for a new repo. Seeds `.cairn/`, runs the mapper, ingests existing docs + source comments + rules. |
+| `cairn join` | Per-clone bootstrap. Sets `core.hooksPath = .cairn/git-hooks`, ensures sessions dir. Idempotent. |
+| `cairn hook <event>` | Hook runners (SessionStart / SessionEnd / Stop / PostToolUse). Called by the Claude Code plugin. |
+| `cairn mcp serve` | Stdio MCP server. Registered in the plugin's `.mcp.json`. |
+| `cairn doctor` | Verify the local install is healthy. |
+| `cairn fix` | Auto-resolve doctor warnings where possible. |
+| `cairn attention` | List pending DEC drafts + baseline findings. |
+| `cairn gc` | Garbage-collection sweep against canonical zone. |
+| `cairn scope` | Scope-index commands (rebuild, etc.). |
+| `cairn status-line` | Format the per-session Claude Code status line. |
 
-| Class | Default |
-|-------|---------|
-| `harness watch` | Read-only on user's working tree; read-write on mirror only. |
-| `harness run` | Read-write on mirror only. Pushes to `origin/main` after sensor + reviewer + UAT pass. |
-| `harness init` | Write-only inside the adopting repo, scoped to `.harness/` and adapter config files. |
+The Claude Code plugin (`@isaacriehm/cairn-frontend-claudecode`) is the
+primary operator surface; this CLI is what the plugin shells out to and
+what new contributors run when bootstrapping a clone.
 
-## Off-limits (default)
-
-`.git/`, `.archive/`, `.env`, `node_modules/`. Adopting projects extend via `.harness/config/workflow.md`.
-
-## Dependencies
-
-| Dep | Why |
-|-----|-----|
-| `discord.js` | Default frontend adapter |
-| `smart-whisper` | Local Whisper voice transcription (audio never written to disk) |
-| `chokidar` | Filesystem watcher for grounding daemon |
-| `simple-git` | Mirror checkout operations |
-| `fastify` | Local HTTP for status surface + harness-mcp |
-| `pino` | Structured logging |
-| `dotenv` | Secrets-only env loading |
-| `zod` | Runtime validation at boundaries (env, MCP schemas, adapter contracts) |
-| `ws` | WebSocket (Discord gateway helpers) |
+See the repo root [`README.md`](../../README.md) and
+[`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) for the broader
+picture.
 
 ## License
 
-TBD.
+MIT — see [`../../LICENSE`](../../LICENSE).

@@ -34,7 +34,7 @@ function cleanup(): void {
 }
 
 function mkFixture(): string {
-  const dir = mkdtempSync(join(tmpdir(), "harness-smoke-scope-index-"));
+  const dir = mkdtempSync(join(tmpdir(), "cairn-smoke-scope-index-"));
   cleanups.push(dir);
   return dir;
 }
@@ -43,7 +43,7 @@ function runSmoke(): void {
   console.log("smoke-scope-index — start");
 
   const repoRoot = mkFixture();
-  mkdirSync(join(repoRoot, ".harness", "ground"), { recursive: true });
+  mkdirSync(join(repoRoot, ".cairn", "ground"), { recursive: true });
 
   // ── Step 1 — read absent index → null ────────────────────────────
   {

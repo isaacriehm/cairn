@@ -6,21 +6,21 @@ import { mcpError, type McpErrorPayload } from "./errors.js";
  * Append-write allowlist. Server-side, NOT agent-controllable.
  *
  * Per MCP_SURFACE.md §"Write tools — append-only":
- *   - .harness/runs/active/<run-id>/events.jsonl
- *   - .harness/runs/active/<run-id>/commands.jsonl
- *   - .harness/staleness/log.jsonl
- *   - .harness/inbox/**         (system-only; rarely used by agents)
+ *   - .cairn/runs/active/<run-id>/events.jsonl
+ *   - .cairn/runs/active/<run-id>/commands.jsonl
+ *   - .cairn/staleness/log.jsonl
+ *   - .cairn/inbox/**         (system-only; rarely used by agents)
  *
  * Per CONTEXT_CONTINUITY_SPEC §2.3:
- *   - .harness/tasks/active/<task-id>/notes.md  — agent-authored run notes
+ *   - .cairn/tasks/active/<task-id>/notes.md  — agent-authored run notes
  *     (consumed by handoff builder; persists across sessions)
  */
 export const APPEND_ALLOWLIST: readonly string[] = [
-  ".harness/runs/active/*/events.jsonl",
-  ".harness/runs/active/*/commands.jsonl",
-  ".harness/staleness/log.jsonl",
-  ".harness/inbox/**",
-  ".harness/tasks/active/*/notes.md",
+  ".cairn/runs/active/*/events.jsonl",
+  ".cairn/runs/active/*/commands.jsonl",
+  ".cairn/staleness/log.jsonl",
+  ".cairn/inbox/**",
+  ".cairn/tasks/active/*/notes.md",
 ];
 
 /**
@@ -32,19 +32,19 @@ export const ARCHIVE_DENY: readonly string[] = [
   "CLAUDE.md",
   ".claude/**",
   "docs/decisions/**",
-  ".harness/ground/decisions/**",
-  ".harness/ground/invariants/**",
-  ".harness/config/**",
+  ".cairn/ground/decisions/**",
+  ".cairn/ground/invariants/**",
+  ".cairn/config/**",
   "docs/design/brand/**",
 ];
 
 /** Historical-zone globs — read tools refuse these; query_history is the ONE escape. */
 export const HISTORICAL_ZONE: readonly string[] = [
   ".archive/**",
-  ".harness/runs/terminal/**",
-  ".harness/tasks/done/**",
-  ".harness/tasks/archived/**",
-  ".harness/ground/decisions/_inbox/**",
+  ".cairn/runs/terminal/**",
+  ".cairn/tasks/done/**",
+  ".cairn/tasks/archived/**",
+  ".cairn/ground/decisions/_inbox/**",
 ];
 
 /** Resolves a relative path against repoRoot and rejects escapes. */

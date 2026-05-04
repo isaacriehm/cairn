@@ -9,7 +9,7 @@
  *
  *   1. dirty-check — `git status --porcelain` per file. Caller picks
  *      stash / skip / overwrite per the inline prompt; we honor the decision.
- *   2. backup — copy original to `.harness/backups/source/<rel>.original`
+ *   2. backup — copy original to `.cairn/backups/source/<rel>.original`
  *      before any edit (one snapshot per file, never overwritten).
  *   3. replace — mechanical string substitution at the recorded byte range,
  *      preserving leading indentation by default.
@@ -316,7 +316,7 @@ function leadingIndent(body: string, offset: number): string {
 }
 
 function backupOriginal(repoRoot: string, relFile: string): string {
-  const backupRel = join(".harness", "backups", "source", `${relFile}.original`);
+  const backupRel = join(".cairn", "backups", "source", `${relFile}.original`);
   const abs = join(repoRoot, backupRel);
   if (existsSync(abs)) {
     log.debug({ file: relFile, backup: backupRel }, "backup exists — skipping copy");
@@ -360,7 +360,7 @@ function stashFile(repoRoot: string, relFile: string, dryRun: boolean): boolean 
   try {
     execFileSync(
       "git",
-      ["stash", "push", "--keep-index", "-m", `harness-strip-replace ${relFile}`, "--", relFile],
+      ["stash", "push", "--keep-index", "-m", `cairn-strip-replace ${relFile}`, "--", relFile],
       { cwd: repoRoot, encoding: "utf8" },
     );
     return true;

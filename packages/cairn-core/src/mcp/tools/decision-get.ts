@@ -46,7 +46,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
 }
 
 export const decisionGetTool: ToolDef<Input> = {
-  name: "harness_decision_get",
+  name: "cairn_decision_get",
   description: "Returns full ADR + assertions block for a decision id.",
   inputSchema: decisionGetInput,
   handler,

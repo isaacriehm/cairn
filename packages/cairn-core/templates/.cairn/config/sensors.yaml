@@ -1,13 +1,13 @@
-# Harness sensor registry.
+# Cairn sensor registry.
 #
 # Sensors are mechanical checks the orchestrator runs against an agent's diff.
-# Listed here are the GENERIC kinds that ship with the harness package. Stack
+# Listed here are the GENERIC kinds that ship with the Cairn package. Stack
 # profiles (typescript-next-nest, python-fastapi, rails, go, rust, unknown — see
 # INTEGRATION_PLAN.md §16.1) propose profile-specific sensors at adoption; the
 # operator confirms each one. Project-specific sensors live in the adopting
 # project's extension block (see workflow.md).
 #
-# Per operator answer S1: harness package code does NOT hardcode any specific
+# Per operator answer S1: Cairn package code does NOT hardcode any specific
 # project's sensor names. All concrete sensor identifiers below are
 # stack-profile-agnostic primitives.
 
@@ -23,8 +23,8 @@ sensors:
   - id: stub-pattern-catalog
     layer: A
     kind: regex_catalog
-    description: "Mechanical scan of diff against .harness/config/stub-patterns.yaml. Layer A of the honest-agent invariants stack."
-    catalog: .harness/config/stub-patterns.yaml
+    description: "Mechanical scan of diff against .cairn/config/stub-patterns.yaml. Layer A of the honest-agent invariants stack."
+    catalog: .cairn/config/stub-patterns.yaml
     triggers:
       - every_run
     fail_severity: hard
@@ -88,7 +88,7 @@ sensors:
     triggers:
       - every_run
     sources:
-      - .harness/ground/invariants/
+      - .cairn/ground/invariants/
     fail_severity: hard
 
   # ── Reviewer subagent (Layer C) ───────────────────────────────────────────

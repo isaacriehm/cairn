@@ -1,19 +1,19 @@
 /**
- * harness_ask_operator — agent-initiated operator dialog mid-run.
+ * cairn_ask_operator — agent-initiated operator dialog mid-run.
  *
  * The implementer agent calls this when it hits an ambiguity, needs
  * permission for a non-recoverable action, gets stuck, or wants to
  * verify its interpretation. The flow:
  *
  *   1. Tool writes a question file under
- *      `.harness/runs/active/<run_id>/questions/<question_id>.q.json`.
+ *      `.cairn/runs/active/<run_id>/questions/<question_id>.q.json`.
  *   2. The orchestrator's question-watcher (chokidar) picks it up,
  *      fires `adapter.requestDialog()` with the active operator
  *      pinged (so they see it on mobile push).
  *   3. Operator answers via Discord button (or free-form follow-up
  *      if no `options` were provided).
  *   4. The orchestrator writes the answer to
- *      `.harness/runs/active/<run_id>/questions/<question_id>.a.json`.
+ *      `.cairn/runs/active/<run_id>/questions/<question_id>.a.json`.
  *   5. This tool polls for the answer file and returns its contents to
  *      the agent.
  *
@@ -62,7 +62,7 @@ async function handler(
   if (block !== null) return block;
   const runDir = join(
     ctx.repoRoot,
-    ".harness",
+    ".cairn",
     "runs",
     "active",
     input.run_id,
@@ -132,7 +132,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 export const askOperatorTool: ToolDef<Input> = {
-  name: "harness_ask_operator",
+  name: "cairn_ask_operator",
   description:
     "Stop and ask the operator a question. Use when the spec is genuinely ambiguous, you need permission for a non-recoverable action, you're stuck, or you want the operator to verify your interpretation. Provide 2-4 short option strings if the answer fits a closed set; omit `options` to invite a free-form reply. The tool blocks until the operator answers or `timeout_ms` (default 10 minutes) elapses.",
   inputSchema: askOperatorInput,

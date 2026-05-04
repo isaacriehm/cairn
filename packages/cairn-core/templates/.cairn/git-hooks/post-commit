@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Harness post-commit hook (versioned, per-clone activation via core.hooksPath).
+# Cairn post-commit hook (versioned, per-clone activation via core.hooksPath).
 #
 # Spec: PLUGIN_ARCHITECTURE §17 Layer 1 (bypass tracking).
 #
 # Records the SHA of the commit that just succeeded into
-# `.harness/.attested-commits`. The Stop hook uses this list to detect
+# `.cairn/.attested-commits`. The Stop hook uses this list to detect
 # `--no-verify` bypasses and surface them inline.
 
 set -e
@@ -23,6 +23,6 @@ if [ -z "$SHA" ]; then
   exit 0
 fi
 
-mkdir -p "$REPO_ROOT/.harness"
-echo "$SHA" >> "$REPO_ROOT/.harness/.attested-commits"
+mkdir -p "$REPO_ROOT/.cairn"
+echo "$SHA" >> "$REPO_ROOT/.cairn/.attested-commits"
 exit 0

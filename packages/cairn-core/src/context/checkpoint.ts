@@ -1,6 +1,6 @@
 /**
  * Daemon-driven checkpoint writer — emits a snapshot of the same handoff
- * block content to `.harness/tasks/active/<taskId>/checkpoint-<ISO>.md`.
+ * block content to `.cairn/tasks/active/<taskId>/checkpoint-<ISO>.md`.
  *
  * Spec: docs/CONTEXT_CONTINUITY_SPEC.md §2.2.
  *
@@ -17,7 +17,7 @@ export async function writeCheckpoint(
   taskId: string,
   _runId: string,
 ): Promise<string> {
-  const taskDir = join(repoRoot, ".harness", "tasks", "active", taskId);
+  const taskDir = join(repoRoot, ".cairn", "tasks", "active", taskId);
   if (!existsSync(taskDir)) {
     throw new Error(`writeCheckpoint: task directory not found: ${taskDir}`);
   }

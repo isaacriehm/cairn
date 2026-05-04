@@ -1,5 +1,5 @@
 /**
- * Tier-1 (Haiku) summarizer prompts for harness_query_history.
+ * Tier-1 (Haiku) summarizer prompts for cairn_query_history.
  *
  * Constraint: the LLM emits ONLY structured claims; raw historical
  * content never reaches the agent's context. Each claim cites a
@@ -13,10 +13,10 @@
 
 import type { ArchiveFile } from "./walker.js";
 
-export const HARNESS_HISTORY_SUMMARIZE_PROMPT_ID = "harness.history_summarize.v1";
-export const HARNESS_HISTORY_SUMMARIZE_VERSION = "v1";
+export const CAIRN_HISTORY_SUMMARIZE_PROMPT_ID = "cairn.history_summarize.v1";
+export const CAIRN_HISTORY_SUMMARIZE_VERSION = "v1";
 
-export const HISTORY_SUMMARIZER_SYSTEM_PROMPT = `You are the **history summarizer** for an agent harness's two-zone read separation. The agent calling you cannot read .archive/ files directly — by design. You read those files on its behalf and emit a structured response with cited claims. Only your structured response reaches the agent's context.
+export const HISTORY_SUMMARIZER_SYSTEM_PROMPT = `You are the **history summarizer** for an agent cairn's two-zone read separation. The agent calling you cannot read .archive/ files directly — by design. You read those files on its behalf and emit a structured response with cited claims. Only your structured response reaches the agent's context.
 
 Your job: read N historical files and the operator's scope question. Produce per-claim records that capture what the historical files said, with full citation, dates, and supersedes-tags pointing at currently-canonical decisions when they exist.
 
@@ -25,14 +25,14 @@ Your job: read N historical files and the operator's scope question. Produce per
 Every claim you emit MUST include:
 
 - \`claim\` — one-sentence factual statement of what the historical content said. Past-tense. Imperative voice avoided. Example: "The project considered using a JSONB expression index on commandPayload->>'userId' for dashboard queries." NOT "The project should use a JSONB index" — that is current-tense and reads as canon.
-- \`as_of\` — ISO date when the source content was authored / valid. Use the file's frontmatter \`generated\` or \`verified-at\`, the bucket date in the path (\`.archive/2026-05-pre-harness/\`), or the most explicit date you can find in the body. If genuinely unknown, set the bucket date.
+- \`as_of\` — ISO date when the source content was authored / valid. Use the file's frontmatter \`generated\` or \`verified-at\`, the bucket date in the path (\`.archive/2026-05-pre-cairn/\`), or the most explicit date you can find in the body. If genuinely unknown, set the bucket date.
 - \`source_path\` — the repo-relative path EXACTLY as given in the file headers. Do not invent a path or a hash.
 - \`source_lines\` — line range like "320-410" or a single line "47". Required so the operator can audit your summary by opening the original file.
 - \`superseded_by\` — when an accepted decision in the supplied "Currently-accepted decisions" list directly relates to the historical claim, set the DEC-NNNN id. Otherwise set null. Do NOT invent decision ids.
 
 ## When you should set \`no_relevant_history: true\`
 
-The supplied files don't contain anything relevant to the operator's scope question. Better to short-circuit than to fabricate a summary. The harness returns an empty claims array with a one-line caveat.
+The supplied files don't contain anything relevant to the operator's scope question. Better to short-circuit than to fabricate a summary. The cairn returns an empty claims array with a one-line caveat.
 
 ## When you should set \`summary_caveat\`
 

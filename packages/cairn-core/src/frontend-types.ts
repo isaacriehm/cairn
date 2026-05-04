@@ -5,10 +5,10 @@
  * The operator console is a swappable adapter that consumes a uniform
  * task/run/UAT bundle and renders/listens via its native primitive.
  *
- * Adapters live in `harness/src/frontend/<name>/`. Each implements
- * `FrontendAdapter`. The `harness run --frontend <name>` CLI loads + starts
+ * Adapters live in `cairn/src/frontend/<name>/`. Each implements
+ * `FrontendAdapter`. The `cairn run --frontend <name>` CLI loads + starts
  * registered adapters; on operator events, adapters drop normalized JSON rows
- * to `.harness/inbox/<ts>-<source>-<slug>.json`. The orchestrator (Phase 8)
+ * to `.cairn/inbox/<ts>-<source>-<slug>.json`. The orchestrator (Phase 8)
  * picks them up. Phase 5 lands ingress-only — no orchestrator yet.
  */
 
@@ -16,7 +16,7 @@ export type NotifyLevel = "info" | "warn" | "error";
 
 /**
  * A normalized inbox entry kind. Adapters drop one of these to
- * `.harness/inbox/`. The orchestrator multiplexes on `kind`.
+ * `.cairn/inbox/`. The orchestrator multiplexes on `kind`.
  */
 export type InboxKind =
   | "task" // operator submitted a new task (slash `/task` or free text routed)
@@ -102,7 +102,7 @@ export interface DialogSpec {
   /**
    * When true, the adapter notifies authorized operators (push, mention,
    * etc. — adapter-defined) so they see the run is paused. Used for
-   * agent-initiated `harness_ask_operator`; routine confirmations leave
+   * agent-initiated `cairn_ask_operator`; routine confirmations leave
    * this false to avoid noise.
    */
   pingOperators?: boolean;
@@ -202,7 +202,7 @@ export interface PostUpdate {
     searches?: string[];
   };
   /**
-   * Curated narrative tail from `.harness/runs/active/<run_id>/log.jsonl`
+   * Curated narrative tail from `.cairn/runs/active/<run_id>/log.jsonl`
    * (§3.3 win 1) — last N transitions, pre-formatted. Renders inside the
    * live status embed's description so operator sees actual progress
    * instead of a static "phase: running" line.

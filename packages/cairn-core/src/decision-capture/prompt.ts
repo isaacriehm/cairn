@@ -3,11 +3,11 @@
  *
  * Operator submits a direction (slash arg or free-text classified as
  * `direction`). The extractor distills it into a typed candidate the
- * harness materializes into a draft decision.
+ * cairn materializes into a draft decision.
  *
  * Anti-fabrication framing: when the input isn't actually a direction
  * (rambling, off-topic, a question), the extractor sets
- * `not_a_decision=true` and the harness short-circuits without writing a
+ * `not_a_decision=true` and the cairn short-circuits without writing a
  * draft. This keeps the decisions ledger free of noise.
  */
 
@@ -15,7 +15,7 @@ import type { DecisionExtractorInput } from "./types.js";
 
 const PER_DIRECTION_CHAR_CAP = 6_000;
 
-export const DECISION_EXTRACTOR_SYSTEM_PROMPT = `You are the **decision-extractor** for an agent harness. The operator just spoke a direction — a binding course-change like "from now on, X" or "scrap that, go with Y" or "user_id always required on integration tables". Your job is to capture it as a typed candidate decision so the harness can present it for confirmation.
+export const DECISION_EXTRACTOR_SYSTEM_PROMPT = `You are the **decision-extractor** for an agent cairn. The operator just spoke a direction — a binding course-change like "from now on, X" or "scrap that, go with Y" or "user_id always required on integration tables". Your job is to capture it as a typed candidate decision so the cairn can present it for confirmation.
 
 You read three things:
 1. The raw direction text the operator submitted.
@@ -30,7 +30,7 @@ You emit a single JSON object matching the supplied schema. Required fields:
 - \`supersedes\`: if the input EXPLICITLY revokes a previously-accepted decision (\`scrap DEC-0042\`, \`undo the FK denorm rule\`), set the DEC-id. Otherwise null/omit.
 - \`candidate_assertions\`: 0-3 mechanical-sensor checks that would enforce the decision going forward. Pick the kind from the schema enum that fits. ZERO is a valid answer when the rule is purely conceptual — better than fabricating an assertion that can't actually be verified.
 - \`confidence_signal\`: \`high\` when the direction is unambiguous + scope is obvious; \`medium\` when one of those is shaky; \`low\` when both are.
-- \`not_a_decision\`: set TRUE if the input is rambling, off-topic, a question rather than a directive, or otherwise lacks a binding rule. The harness will short-circuit without writing a draft. When in doubt, set true — false-positive drafts pollute the ledger; false-negatives are recoverable via re-submission.
+- \`not_a_decision\`: set TRUE if the input is rambling, off-topic, a question rather than a directive, or otherwise lacks a binding rule. The cairn will short-circuit without writing a draft. When in doubt, set true — false-positive drafts pollute the ledger; false-negatives are recoverable via re-submission.
 
 Examples of inputs that should map to \`not_a_decision: true\`:
 - "what's the status?"

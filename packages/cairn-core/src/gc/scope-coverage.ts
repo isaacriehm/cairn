@@ -1,7 +1,7 @@
 /**
  * GC pass — scope-coverage.
  *
- * Surfaces drift between the source tree and `.harness/ground/scope-index.yaml`:
+ * Surfaces drift between the source tree and `.cairn/ground/scope-index.yaml`:
  *   1. Source files with no scope-index entry → `scope_uncovered`.
  *   2. Index entries pointing at paths that no longer exist → `scope_drift_orphan`.
  *
@@ -37,9 +37,9 @@ export function runScopeCoverage(
     findings.push({
       pass: PASS_ID,
       kind: "scope_index_missing",
-      path: ".harness/ground/scope-index.yaml",
+      path: ".cairn/ground/scope-index.yaml",
       detail:
-        "scope-index.yaml not found — run `harness scope rebuild` to populate",
+        "scope-index.yaml not found — run `cairn scope rebuild` to populate",
       severity: "warn",
     });
     return { findings };

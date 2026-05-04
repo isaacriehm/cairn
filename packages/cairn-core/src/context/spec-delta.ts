@@ -59,10 +59,10 @@ interface InvariantLedgerEntryLike {
 
 /** Brand/product paths the daemon should stat for mtime newer than cutoff. */
 const BRAND_FILES = [
-  ".harness/ground/brand/overview.md",
-  ".harness/ground/brand/voice.md",
-  ".harness/ground/product/positioning.md",
-  ".harness/ground/product/personas.yaml",
+  ".cairn/ground/brand/overview.md",
+  ".cairn/ground/brand/voice.md",
+  ".cairn/ground/product/positioning.md",
+  ".cairn/ground/product/personas.yaml",
 ];
 
 export async function buildSpecDelta(
@@ -119,12 +119,12 @@ export async function buildSpecDelta(
   const cutoffDecisions = await readLedgerAtSha<DecisionLedgerEntryLike>(
     git,
     cutoffFullSha,
-    ".harness/ground/decisions/decisions.ledger.yaml",
+    ".cairn/ground/decisions/decisions.ledger.yaml",
   );
   const cutoffInvariants = await readLedgerAtSha<InvariantLedgerEntryLike>(
     git,
     cutoffFullSha,
-    ".harness/ground/invariants/invariants.ledger.yaml",
+    ".cairn/ground/invariants/invariants.ledger.yaml",
   );
 
   // Build lookup map of HEAD decisions for invariant scope resolution.

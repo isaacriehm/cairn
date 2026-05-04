@@ -77,11 +77,11 @@ function classify(rel: string): string {
   if (rel.startsWith(".claude/agents/")) return "agent-def";
   if (rel.startsWith(".claude/skills/")) return "skill";
   if (rel === ".claude/settings.json") return "config";
-  if (rel.startsWith(".harness/ground/decisions/")) return "decision";
-  if (rel.startsWith(".harness/ground/invariants/")) return "invariant";
-  if (rel.startsWith(".harness/config/")) return "harness-config";
-  if (rel.startsWith(".harness/ground/")) return "ground";
-  if (rel.startsWith(".harness/tasks/")) return "task";
+  if (rel.startsWith(".cairn/ground/decisions/")) return "decision";
+  if (rel.startsWith(".cairn/ground/invariants/")) return "invariant";
+  if (rel.startsWith(".cairn/config/")) return "cairn-config";
+  if (rel.startsWith(".cairn/ground/")) return "ground";
+  if (rel.startsWith(".cairn/tasks/")) return "task";
   if (rel.startsWith("docs/decisions/")) return "decision";
   if (rel.startsWith("docs/")) return "doc";
   return "other";

@@ -14,7 +14,7 @@ interface Input {
 async function handler(ctx: McpContext, input: Input): Promise<unknown> {
   const block = requireBootstrap(ctx.repoRoot);
   if (block !== null) return block;
-  const runDir = join(ctx.repoRoot, ".harness", "runs", "active", input.run_id);
+  const runDir = join(ctx.repoRoot, ".cairn", "runs", "active", input.run_id);
   if (!existsSync(runDir)) {
     return mcpError("RUN_NOT_FOUND", `No active run dir at ${runDir}`);
   }
@@ -32,9 +32,9 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
 }
 
 export const recordRunEventTool: ToolDef<Input> = {
-  name: "harness_record_run_event",
+  name: "cairn_record_run_event",
   description:
-    "Append a structured event to .harness/runs/active/<run_id>/events.jsonl. Server fills `ts`; sequence is renumbered in post-run materialization.",
+    "Append a structured event to .cairn/runs/active/<run_id>/events.jsonl. Server fills `ts`; sequence is renumbered in post-run materialization.",
   inputSchema: recordRunEventInput,
   handler,
 };

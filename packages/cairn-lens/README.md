@@ -1,8 +1,8 @@
-# Harness Lens
+# Cairn Lens
 
-VS Code extension that delivers harness citation context to human developers
+VS Code extension that delivers cairn citation context to human developers
 the same way the Read enricher delivers it to Claude Code: by reading
-`.harness/ground/` ledgers at resolution time, not by embedding anything in
+`.cairn/ground/` ledgers at resolution time, not by embedding anything in
 the source file.
 
 ## Features
@@ -23,20 +23,20 @@ the source file.
 
 ```json
 {
-  "harness.lens.enabled": true,
-  "harness.lens.inlineDecorations": true,
-  "harness.lens.gutterIcons": true,
-  "harness.lens.codeLens": true,
-  "harness.lens.decExplorer": false
+  "cairn.lens.enabled": true,
+  "cairn.lens.inlineDecorations": true,
+  "cairn.lens.gutterIcons": true,
+  "cairn.lens.codeLens": true,
+  "cairn.lens.decExplorer": false
 }
 ```
 
 ## Activation
 
 The extension activates on `onStartupFinished` and inspects the workspace
-for a `.harness/` directory. If one is not present, the extension stays
+for a `.cairn/` directory. If one is not present, the extension stays
 inert — no decorations, no providers registered.
 
 ## Spec
 
-See `docs/LENS_SPEC.md` in the harness monorepo.
+See `docs/LENS_SPEC.md` in the cairn monorepo.

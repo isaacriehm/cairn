@@ -69,7 +69,7 @@ function writeFile(repoRoot: string, rel: string, body: string): void {
 
 async function main(): Promise<void> {
   step("Build synthetic fixture");
-  const repoRoot = mkdtempSync(join(tmpdir(), "harness-smoke-e2e-adopt-"));
+  const repoRoot = mkdtempSync(join(tmpdir(), "cairn-smoke-e2e-adopt-"));
   cleanups.push(repoRoot);
 
   // Initialize a real git repo so Phase 12 + bypass detection mechanics work.
@@ -237,28 +237,28 @@ async function main(): Promise<void> {
   assert(result.proceed === true, "init proceeded");
   assert(result.seeded_files.length > 0, "files seeded");
 
-  step("Step 1 — .harness/ skeleton landed");
+  step("Step 1 — .cairn/ skeleton landed");
   for (const p of [
-    ".harness/config.yaml",
-    ".harness/config/workflow.md",
-    ".harness/config/sensors.yaml",
-    ".harness/ground/manifest.yaml",
-    ".harness/git-hooks/pre-commit",
-    ".harness/git-hooks/post-commit",
-    ".harness/git-hooks/commit-msg",
-    ".harness/JOIN.md",
-    ".github/workflows/harness-check.yml",
+    ".cairn/config.yaml",
+    ".cairn/config/workflow.md",
+    ".cairn/config/sensors.yaml",
+    ".cairn/ground/manifest.yaml",
+    ".cairn/git-hooks/pre-commit",
+    ".cairn/git-hooks/post-commit",
+    ".cairn/git-hooks/commit-msg",
+    ".cairn/JOIN.md",
+    ".github/workflows/cairn-check.yml",
   ]) {
     assert(existsSync(join(repoRoot, p)), `expected file ${p}`);
   }
   console.log("  ✓ Step 1 — full template + multi-dev artifacts seeded");
 
-  step("Step 2 — config.yaml carries harness_version");
+  step("Step 2 — config.yaml carries cairn_version");
   const config = parseYaml(
-    readFileSync(join(repoRoot, ".harness", "config.yaml"), "utf8"),
+    readFileSync(join(repoRoot, ".cairn", "config.yaml"), "utf8"),
   ) as Record<string, unknown>;
-  assert(typeof config["harness_version"] === "string", "harness_version present");
-  console.log(`  ✓ Step 2 — harness_version=${String(config["harness_version"])}`);
+  assert(typeof config["cairn_version"] === "string", "cairn_version present");
+  console.log(`  ✓ Step 2 — cairn_version=${String(config["cairn_version"])}`);
 
   step("Step 3 — Phase 7b: source-comments audit + DEC drafts written");
   assert(result.source_comments !== null, "source_comments result populated");
@@ -301,7 +301,7 @@ async function main(): Promise<void> {
   );
 
   step("Step 5 — DEC drafts in inbox total");
-  const inboxDir = join(repoRoot, ".harness/ground/decisions/_inbox");
+  const inboxDir = join(repoRoot, ".cairn/ground/decisions/_inbox");
   assert(existsSync(inboxDir), "_inbox dir exists");
   const drafts = readFileSync(
     join(inboxDir, `${result.source_comments!.decDraftsWritten[0]?.id}.draft.md`),
@@ -321,7 +321,7 @@ async function main(): Promise<void> {
     readFileSync(join(repoRoot, "package.json"), "utf8"),
   ) as { scripts: { prepare: string } };
   assert(
-    pkg.scripts.prepare.startsWith("harness join || true"),
+    pkg.scripts.prepare.startsWith("cairn join || true"),
     "prepare prepended",
   );
   assert(
@@ -332,15 +332,15 @@ async function main(): Promise<void> {
 
   step("Step 7 — git hooks executable + .attested-commits gitignored");
   for (const hook of ["pre-commit", "post-commit", "commit-msg"]) {
-    const abs = join(repoRoot, ".harness/git-hooks", hook);
+    const abs = join(repoRoot, ".cairn/git-hooks", hook);
     const mode = statSync(abs).mode;
     assert((mode & 0o100) !== 0, `${hook} owner-executable`);
   }
-  const gitignore = readFileSync(join(repoRoot, ".harness/.gitignore"), "utf8");
+  const gitignore = readFileSync(join(repoRoot, ".cairn/.gitignore"), "utf8");
   assert(gitignore.includes(".attested-commits"), "attested-commits gitignored");
   console.log("  ✓ Step 7 — hooks 0755 + .attested-commits gitignored");
 
-  step("Step 8 — adopted clone is unbootstrapped → harness join works");
+  step("Step 8 — adopted clone is unbootstrapped → cairn join works");
   // Pre-bootstrap: inspectJoinState reports hooks NOT set.
   const pre = inspectJoinState({ repoRoot });
   assert(pre.hooksPathSet === false, "hooks not yet set pre-join");
@@ -349,8 +349,8 @@ async function main(): Promise<void> {
   assert(joined.bootstrapped === true, "join bootstrapped");
   const post = inspectJoinState({ repoRoot });
   assert(post.hooksPathSet === true, "hooks set after join");
-  assert(post.versionMatches === true, "harness_version matches CLI VERSION");
-  console.log("  ✓ Step 8 — harness join successful + state consistent");
+  assert(post.versionMatches === true, "cairn_version matches CLI VERSION");
+  console.log("  ✓ Step 8 — cairn join successful + state consistent");
 
   step("Cleanup");
   cleanup();

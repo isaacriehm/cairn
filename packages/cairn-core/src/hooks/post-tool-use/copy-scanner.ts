@@ -3,7 +3,7 @@
  *
  * Given a file path and its (post-Write/Edit) content, locate strings
  * that look like internal-only copy leaking into a user-facing surface
- * (TODO/FIXME comments inside JSX text, harness citations, snake_case
+ * (TODO/FIXME comments inside JSX text, cairn citations, snake_case
  * identifiers in display strings, internal repo paths, etc.).
  *
  * Implementation is intentionally regex-only — NOT a full AST. For
@@ -17,19 +17,19 @@
 
 const PATTERNS: ReadonlyArray<{ regex: RegExp; label: string }> = [
   { regex: /\b(TODO|FIXME|HACK|XXX|TEMP|WIP)\b/g, label: "comment-marker" },
-  { regex: /§V\d+/g, label: "harness-citation-§V" },
-  { regex: /\bTSK-[a-z0-9-]+\b/g, label: "harness-citation-TSK" },
+  { regex: /§V\d+/g, label: "cairn-citation-§V" },
+  { regex: /\bTSK-[a-z0-9-]+\b/g, label: "cairn-citation-TSK" },
   { regex: /\[(PLACEHOLDER|TODO|DRAFT)\]/g, label: "draft-marker" },
   {
     regex: /\b[a-z][a-z0-9]*(?:_[a-z0-9]+){2,}\b/g,
     label: "multi-underscore-identifier",
   },
   // Internal path: matches a leading separator (start, whitespace, quote, or
-  // backtick) followed by `src/` | `packages/` | `.harness/`. The whole
+  // backtick) followed by `src/` | `packages/` | `.cairn/`. The whole
   // match is recorded verbatim (including the leading char) so allowlist
   // authoring is consistent — see scanForCopyLeakage callers.
   {
-    regex: /(?:^|[\s"'`])(src\/|packages\/|\.harness\/)/g,
+    regex: /(?:^|[\s"'`])(src\/|packages\/|\.cairn\/)/g,
     label: "internal-path",
   },
 ];

@@ -1,5 +1,5 @@
 /**
- * Seed an adopted project's .harness/ + .archive/ from harness/templates/.
+ * Seed an adopted project's .cairn/ + .archive/ from cairn/templates/.
  *
  * Walks the templates dir, copies every file to the target preserving
  * directory layout. Files where the `<project_name>` YAML key needs
@@ -35,7 +35,7 @@ export interface SeedResult {
   collisions: string[];
 }
 
-export function seedHarnessLayout(opts: SeedOptions): SeedResult {
+export function seedCairnLayout(opts: SeedOptions): SeedResult {
   const written: string[] = [];
   const collisions: string[] = [];
   walk(TEMPLATES_ROOT, (absSrc) => {
@@ -55,7 +55,7 @@ export function seedHarnessLayout(opts: SeedOptions): SeedResult {
       } catch {
         // Filesystems that don't support chmod (e.g. some Windows volumes)
         // — git itself will set the executable bit on tracked content via
-        // the index, and `harness join` re-chmods on bootstrap.
+        // the index, and `cairn join` re-chmods on bootstrap.
       }
     }
     written.push(rel);
@@ -65,7 +65,7 @@ export function seedHarnessLayout(opts: SeedOptions): SeedResult {
 
 /**
  * Substitute the `<project_name>` placeholder in shipped templates.
- * Only `.harness/config/workflow.md` and `.harness/config/sensors.yaml`
+ * Only `.cairn/config/workflow.md` and `.cairn/config/sensors.yaml`
  * carry it today; the function is broad enough to safely no-op on other
  * files.
  *
@@ -85,8 +85,8 @@ function applyPlaceholders(args: {
   // Only mutate workflow.md / sensors.yaml; other files pass through.
   const norm = args.relPath.split("\\").join("/");
   if (
-    norm !== ".harness/config/workflow.md" &&
-    norm !== ".harness/config/sensors.yaml"
+    norm !== ".cairn/config/workflow.md" &&
+    norm !== ".cairn/config/sensors.yaml"
   ) {
     return args.content;
   }
@@ -121,8 +121,8 @@ export function templatesRoot(): string {
 function isExecutableTemplate(rel: string): boolean {
   const norm = rel.split("\\").join("/");
   return (
-    norm === ".harness/git-hooks/pre-commit" ||
-    norm === ".harness/git-hooks/post-commit" ||
-    norm === ".harness/git-hooks/commit-msg"
+    norm === ".cairn/git-hooks/pre-commit" ||
+    norm === ".cairn/git-hooks/post-commit" ||
+    norm === ".cairn/git-hooks/commit-msg"
   );
 }

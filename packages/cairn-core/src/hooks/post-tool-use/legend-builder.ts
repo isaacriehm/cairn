@@ -15,7 +15,7 @@ export interface ScopeIndexHint {
   invariants: string[];
 }
 
-const TOP_BORDER = "┌─ harness citations ────────────────────────────┐";
+const TOP_BORDER = "┌─ cairn citations ────────────────────────────┐";
 const BOTTOM_BORDER = "└───────────────────────────────────────────┘";
 const SIDE = "│";
 

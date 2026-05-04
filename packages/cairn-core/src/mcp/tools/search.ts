@@ -88,7 +88,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
   }
 
   if (wantKinds.has("task")) {
-    const tasksDir = join(ctx.repoRoot, ".harness", "tasks", "active");
+    const tasksDir = join(ctx.repoRoot, ".cairn", "tasks", "active");
     if (existsSync(tasksDir)) {
       for (const e of readdirSync(tasksDir, { withFileTypes: true, encoding: "utf8" })) {
         if (!e.isDirectory()) continue;
@@ -175,7 +175,7 @@ function walkDocs(dir: string, repoRoot: string, q: string, out: ResultRecord[])
 }
 
 export const searchTool: ToolDef<Input> = {
-  name: "harness_search",
+  name: "cairn_search",
   description:
     "Naive substring search over decisions, invariants, tasks, docs, and manifest. Returns compact records (~50 tokens each) sorted by score. Phase 4 baseline; FTS uplift later.",
   inputSchema: searchInput,

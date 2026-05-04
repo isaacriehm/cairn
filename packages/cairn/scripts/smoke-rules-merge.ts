@@ -52,7 +52,7 @@ function cleanup(): void {
 }
 
 function mkRepoRoot(): string {
-  const dir = mkdtempSync(join(tmpdir(), "harness-smoke-rulesmerge-"));
+  const dir = mkdtempSync(join(tmpdir(), "cairn-smoke-rulesmerge-"));
   cleanups.push(dir);
   return dir;
 }
@@ -102,7 +102,7 @@ async function main(): Promise<void> {
   assert(keep[0]?.body.trim() === "This is operator content.", "keep body preserved");
 
   // Regenerate-style template with anchors.
-  const template = `# Title\n\n## Operator sections\n\n<!-- harness:keep-anchor:0 -->\n\n## H2\n\nbody\n`;
+  const template = `# Title\n\n## Operator sections\n\n<!-- cairn:keep-anchor:0 -->\n\n## H2\n\nbody\n`;
   const reapplied = reapplyKeepBlocks(template, keep);
   assert(reapplied.includes(KEEP_START_MARKER), "reapplied has start marker");
   assert(reapplied.includes("This is operator content."), "reapplied content present");
@@ -115,7 +115,7 @@ async function main(): Promise<void> {
   assert(blocks[0]?.label === "alpha", "label alpha");
   assert(blocks[1]?.label === "beta", "label beta");
   // Template has only one anchor — second should land in orphan appendix.
-  const partialTemplate = `# T\n\n<!-- harness:keep-anchor:0 -->\n`;
+  const partialTemplate = `# T\n\n<!-- cairn:keep-anchor:0 -->\n`;
   const reapplied2 = reapplyKeepBlocks(partialTemplate, blocks);
   assert(reapplied2.includes("First"), "first block placed at anchor");
   assert(reapplied2.includes("Second"), "second block placed (orphan appendix)");
@@ -199,7 +199,7 @@ async function main(): Promise<void> {
   // Seed a decision file directly so buildDecisionsLedger picks it up.
   writeFile(
     repoRoot3,
-    ".harness/ground/decisions/DEC-0001.md",
+    ".cairn/ground/decisions/DEC-0001.md",
     [
       "---",
       "id: DEC-0001",
@@ -219,7 +219,7 @@ async function main(): Promise<void> {
   );
   const regen = regenerateRulesFiles({
     repoRoot: repoRoot3,
-    brandName: "Harness",
+    brandName: "Cairn",
     positioning: "State + context for AI orchestration.",
     nowIso: "2026-05-04T00:00:00Z",
   });

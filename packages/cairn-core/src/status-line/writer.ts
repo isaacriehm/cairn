@@ -6,7 +6,7 @@ import type { StatusJson } from "./index.js";
 /**
  * Resolve the absolute path to `status.json` for a session inside the
  * adopted repo at `repoRoot`. Per PLUGIN_ARCHITECTURE §7, status lives
- * under `.harness/sessions/<session-id>/status.json` and is owned by
+ * under `.cairn/sessions/<session-id>/status.json` and is owned by
  * exactly one session for that session's lifetime.
  */
 export function statusJsonPath(repoRoot: string, sessionId: string): string {

@@ -1,9 +1,9 @@
 /**
- * Mutate the `<slug>:` extension block inside `.harness/config/workflow.md`.
+ * Mutate the `<slug>:` extension block inside `.cairn/config/workflow.md`.
  *
  * The init mapper proposes per-project globs that have to land in TWO places:
- *   1. `.harness/config.yaml` — the project overlay (built by `init.ts` directly)
- *   2. `.harness/config/workflow.md` — the `<slug>:` block in YAML frontmatter
+ *   1. `.cairn/config.yaml` — the project overlay (built by `init.ts` directly)
+ *   2. `.cairn/config/workflow.md` — the `<slug>:` block in YAML frontmatter
  *
  * (2) is shipped as a template with placeholder values (pilot_module: ALL,
  * empty arrays). After seed substitutes `<project_name>:` → `<slug>:`, this

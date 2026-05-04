@@ -5,23 +5,23 @@
  *
  *   /direction <text>  OR  free-text Tier-0 classified as `direction`
  *   → Tier-1 decision-extractor produces structured candidate
- *   → harness writes draft to .harness/ground/decisions/_inbox/DEC-NNNN.draft.md
+ *   → cairn writes draft to .cairn/ground/decisions/_inbox/DEC-NNNN.draft.md
  *   → Discord prompt: 🟢 commit | 🟡 edit | 🔴 not-a-decision
- *   → on 🟢: status:accepted, move to .harness/ground/decisions/DEC-NNNN.md,
+ *   → on 🟢: status:accepted, move to .cairn/ground/decisions/DEC-NNNN.md,
  *            regenerate decisions.ledger.yaml; assertions become live
  *   → on 🟡: leave draft + post correction prompt (re-run extractor on follow-up)
  *   → on 🔴: discard draft (no record)
  *
  * The extractor is read-only (no file-write tools). The draft writer + the
  * confirm flow are pure-mechanical. The only LLM call is the extractor;
- * everything else is the harness assembling state from the typed payload.
+ * everything else is the cairn assembling state from the typed payload.
  */
 
 import type { ClaudeTier } from "../claude/index.js";
 
 /** Assertion shape the extractor proposes — superset of DecisionAssertion kinds. */
 export interface CandidateAssertion {
-  /** Optional id; harness fills in `<DEC-id>-A<N>` if absent. */
+  /** Optional id; cairn fills in `<DEC-id>-A<N>` if absent. */
   id?: string;
   kind:
     | "schema_must_contain"
@@ -58,7 +58,7 @@ export interface DecisionExtractorOutput {
    * applicable.
    */
   supersedes?: string | null;
-  /** 0-3 candidate assertions; harness materializes them into the draft. */
+  /** 0-3 candidate assertions; cairn materializes them into the draft. */
   candidate_assertions: CandidateAssertion[];
   /** Extractor's confidence the input was a real direction. */
   confidence_signal: "high" | "medium" | "low";

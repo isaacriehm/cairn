@@ -26,9 +26,9 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     );
   }
   // For runs/active/<id>/* paths, the run id segment must exist as a directory.
-  const runMatch = rel.match(/^\.harness\/runs\/active\/([^/]+)\//);
+  const runMatch = rel.match(/^\.cairn\/runs\/active\/([^/]+)\//);
   if (runMatch) {
-    const runDir = `${ctx.repoRoot}/.harness/runs/active/${runMatch[1]}`;
+    const runDir = `${ctx.repoRoot}/.cairn/runs/active/${runMatch[1]}`;
     if (!existsSync(runDir)) {
       return mcpError("RUN_NOT_FOUND", `No active run dir at ${runDir}`);
     }
@@ -40,7 +40,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
 }
 
 export const appendTool: ToolDef<Input> = {
-  name: "harness_append",
+  name: "cairn_append",
   description:
     "Append-only write to a path-allowlisted file. No read required. Allowlist: runs/active/<id>/{events,commands}.jsonl, staleness/log.jsonl, inbox/**.",
   inputSchema: appendInput,

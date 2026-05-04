@@ -1,5 +1,5 @@
 /**
- * Scans the visible body of a Read tool's content for harness citation
+ * Scans the visible body of a Read tool's content for cairn citation
  * patterns: §V invariants, TODO(TSK-...) linked todos, and (banned)
  * DEC-id references.
  *

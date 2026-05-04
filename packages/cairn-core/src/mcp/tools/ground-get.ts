@@ -23,7 +23,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
       if (!existsSync(path)) {
         return mcpError("FILE_NOT_FOUND", "manifest.yaml not present (daemon not run yet?)");
       }
-      return { path: ".harness/ground/manifest.yaml", content: readFileSync(path, "utf8") };
+      return { path: ".cairn/ground/manifest.yaml", content: readFileSync(path, "utf8") };
     }
     case "quality_grades": {
       const path = qualityGradesPath(ctx.repoRoot);
@@ -33,14 +33,14 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
           "quality-grades.yaml not present (daemon not run yet?)",
         );
       }
-      return { path: ".harness/ground/quality-grades.yaml", content: readFileSync(path, "utf8") };
+      return { path: ".cairn/ground/quality-grades.yaml", content: readFileSync(path, "utf8") };
     }
     case "glossary": {
       const path = join(root, "glossary.md");
       if (!existsSync(path)) {
         return mcpError("FILE_NOT_FOUND", "glossary.md not present");
       }
-      return { path: ".harness/ground/glossary.md", content: readFileSync(path, "utf8") };
+      return { path: ".cairn/ground/glossary.md", content: readFileSync(path, "utf8") };
     }
     case "schema":
     case "routes":
@@ -67,13 +67,13 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
           );
         }
         return {
-          path: `.harness/ground/${input.category}/${input.key}${target.endsWith(".yaml") ? ".yaml" : ".md"}`,
+          path: `.cairn/ground/${input.category}/${input.key}${target.endsWith(".yaml") ? ".yaml" : ".md"}`,
           content: readFileSync(target, "utf8"),
         };
       }
       // No key — return the directory listing.
       return {
-        path: `.harness/ground/${input.category}/`,
+        path: `.cairn/ground/${input.category}/`,
         listing: readDirShallow(dir),
       };
     }
@@ -91,7 +91,7 @@ function readDirShallow(dir: string): string[] {
 }
 
 export const groundGetTool: ToolDef<Input> = {
-  name: "harness_ground_get",
+  name: "cairn_ground_get",
   description:
     "Read a generated ground extract. Categories: schema | routes | events | quality_grades | glossary | manifest. `key` narrows within a category (e.g., schema → table name).",
   inputSchema: groundGetInput,

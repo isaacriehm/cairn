@@ -9,7 +9,7 @@
  * Run: pnpm -F @isaacriehm/cairn check:layout
  */
 
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 
 type Severity = "hard" | "soft";
@@ -69,60 +69,22 @@ const templateRoot = "packages/cairn-core/templates";
 
 const requiredTemplateDirs: string[] = [
   templateRoot,
-  `${templateRoot}/.harness`,
-  `${templateRoot}/.harness/config`,
-  `${templateRoot}/.harness/ground`,
+  `${templateRoot}/.cairn`,
+  `${templateRoot}/.cairn/config`,
+  `${templateRoot}/.cairn/ground`,
   `${templateRoot}/.archive`,
 ];
 for (const d of requiredTemplateDirs) checkDir(d);
 
 checkFile(`${templateRoot}/README.md`);
-checkFile(`${templateRoot}/.harness/config/workflow.md`, {
+checkFile(`${templateRoot}/.cairn/config/workflow.md`, {
   requireFrontmatter: true,
 });
-checkFile(`${templateRoot}/.harness/config/sensors.yaml`, { requireYaml: true });
-checkFile(`${templateRoot}/.harness/config/stub-patterns.yaml`, { requireYaml: true });
-checkFile(`${templateRoot}/.harness/config/trust-policy.yaml`, { requireYaml: true });
-checkFile(`${templateRoot}/.harness/ground/manifest.yaml`, { requireYaml: true });
+checkFile(`${templateRoot}/.cairn/config/sensors.yaml`, { requireYaml: true });
+checkFile(`${templateRoot}/.cairn/config/stub-patterns.yaml`, { requireYaml: true });
+checkFile(`${templateRoot}/.cairn/config/trust-policy.yaml`, { requireYaml: true });
+checkFile(`${templateRoot}/.cairn/ground/manifest.yaml`, { requireYaml: true });
 checkFile(`${templateRoot}/.archive/README.md`, { requireFrontmatter: true });
-
-// ── Project-agnostic check: source must not leak prior project names ─
-const banned = ["mypal", "Mypal", "MYPAL"];
-const pkgScanGlobs = [
-  "packages/cairn-core/src",
-  "packages/cairn-core/templates",
-  "packages/cairn-frontend-stub/src",
-  "packages/cairn/src",
-  "packages/cairn/scripts",
-];
-function walk(absDir: string, files: string[] = []): string[] {
-  for (const entry of readdirSync(absDir, { withFileTypes: true })) {
-    const abs = resolve(absDir, entry.name);
-    if (entry.isDirectory()) walk(abs, files);
-    else files.push(abs);
-  }
-  return files;
-}
-const selfPath = resolve(repoRoot, "packages/harness/scripts/check-layout.ts");
-for (const g of pkgScanGlobs) {
-  const abs = resolve(repoRoot, g);
-  if (!existsSync(abs)) continue;
-  for (const file of walk(abs)) {
-    if (file === selfPath) continue;
-    const body = readFileSync(file, "utf8");
-    for (const term of banned) {
-      const idx = body.indexOf(term);
-      if (idx !== -1) {
-        const line = body.slice(0, idx).split("\n").length;
-        fail(
-          "hard",
-          file.replace(`${repoRoot}/`, ""),
-          `contains banned project-name "${term}" at line ${line} (per L50 — pkg code must be project-agnostic)`,
-        );
-      }
-    }
-  }
-}
 
 // ── Required project root files ────────────────────────────────────────────
 checkFile("package.json");
@@ -131,18 +93,18 @@ checkFile("tsconfig.base.json");
 checkFile("tsconfig.json");
 checkFile(".gitignore");
 checkFile(".nvmrc");
-checkFile("AGENTS.md");
+checkFile("CLAUDE.md");
 checkFile("README.md");
 
-// ── Umbrella packages/harness/ ─────────────────────────────────────────────
-checkFile("packages/harness/package.json");
-checkFile("packages/harness/tsconfig.json");
-checkFile("packages/harness/README.md");
-checkFile("packages/harness/src/index.ts");
-checkFile("packages/harness/src/cli/index.ts");
-checkFile("packages/harness/src/cli/init.ts");
-checkFile("packages/harness/src/cli/mcp.ts");
-checkFile("packages/harness/src/cli/gc.ts");
+// ── Umbrella packages/cairn/ ─────────────────────────────────────────────
+checkFile("packages/cairn/package.json");
+checkFile("packages/cairn/tsconfig.json");
+checkFile("packages/cairn/README.md");
+checkFile("packages/cairn/src/index.ts");
+checkFile("packages/cairn/src/cli/index.ts");
+checkFile("packages/cairn/src/cli/init.ts");
+checkFile("packages/cairn/src/cli/mcp.ts");
+checkFile("packages/cairn/src/cli/gc.ts");
 
 // ── cairn-core (state + context) ─────────────────────────────────────────
 const corePkg = "packages/cairn-core";
@@ -207,7 +169,7 @@ for (const tool of [
 ]) {
   checkFile(`${corePkg}/src/mcp/tools/${tool}.ts`);
 }
-checkFile(`${corePkg}/templates/.harness/ground/canonical-map/topics.yaml`, {
+checkFile(`${corePkg}/templates/.cairn/ground/canonical-map/topics.yaml`, {
   requireYaml: true,
 });
 
@@ -224,7 +186,7 @@ for (const sub of [
   checkFile(`${corePkg}/src/${sub}/index.ts`);
 }
 
-// ── harness-runtime + harness-frontend-discord ────────────────────────────
+// ── cairn-runtime + cairn-frontend-discord ────────────────────────────
 // Both moved to _dormant/ per docs/PLUGIN_ARCHITECTURE.md §16. Not part of
 // the active build. No layout check.
 

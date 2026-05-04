@@ -1,5 +1,5 @@
 /**
- * Profile-free stack detection for `harness init`.
+ * Profile-free stack detection for `cairn init`.
  *
  * Each detection function returns plain data; the wizard composes them.
  * No prompts, no side effects, no stdout writes. Detection is mechanical:

@@ -1,9 +1,9 @@
 /**
- * Phase 16 — `harness init` adoption wizard.
+ * Phase 16 — `cairn init` adoption wizard.
  *
  * Detection-driven, no stack profiles. Per operator decision 2026-05-02:
  * "should be agnostic, why are we shipping with profiles." Profiles bake
- * stack assumptions into the harness pkg; detection treats every project
+ * stack assumptions into the cairn pkg; detection treats every project
  * generically and proposes per-sensor approval at adoption.
  */
 
@@ -23,7 +23,7 @@ export interface StackSignature {
   marker: string;
 }
 
-/** A sensor the harness proposes adding to .harness/config/sensors.yaml. */
+/** A sensor the cairn proposes adding to .cairn/config/sensors.yaml. */
 export interface SensorProposal {
   id: string;
   /** Command + args. Run via child_process from the user tree. */
@@ -56,7 +56,7 @@ export interface DetectionResult {
   origin_url: string | null;
   /** All matching stack signatures (may be empty for non-source repos). */
   stack_signatures: StackSignature[];
-  /** Sensors the harness proposes. Ordered by stack signature. */
+  /** Sensors the cairn proposes. Ordered by stack signature. */
   proposed_sensors: SensorProposal[];
   /** Best-guess start command for the dev server. */
   start_command: StartCommand | null;

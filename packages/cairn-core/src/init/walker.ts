@@ -66,7 +66,7 @@ const DEFAULT_OFF_LIMITS_DIRS = new Set<string>([
   ".gradle",
   ".idea",
   ".vscode",
-  ".harness",
+  ".cairn",
   ".archive",
 ]);
 
@@ -216,7 +216,7 @@ export interface BuildRepoSummaryOptions {
   pass2DepthCap?: number;
   /**
    * Backwards-compat alias for `pass2DepthCap`. Older callers (smokes, the
-   * `harness scope rebuild` command) used `depthCap` against the legacy
+   * `cairn scope rebuild` command) used `depthCap` against the legacy
    * single-pass walker. Treated as `pass2DepthCap` so they keep working.
    */
   depthCap?: number;

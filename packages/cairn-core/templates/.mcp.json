@@ -1,7 +1,7 @@
 {
   "mcpServers": {
-    "harness": {
-      "command": "harness",
+    "cairn": {
+      "command": "cairn",
       "args": ["mcp", "serve"]
     }
   }

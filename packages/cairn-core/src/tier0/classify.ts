@@ -20,7 +20,7 @@ const VALID_INTENTS: readonly Tier0Intent[] = [
 ];
 
 const SYSTEM_PROMPT = [
-  "You classify a free-text developer message into a single intent for the harness.",
+  "You classify a free-text developer message into a single intent for the cairn.",
   'Respond ONLY with JSON: { "intent": <one of: code_task, review, direction, question, halt, status, unknown>, "confidence": <number between 0 and 1> }.',
   "Definitions:",
   "- code_task: operator wants code written or changed (fix, add, build, refactor, delete, migrate, wire, hook).",
@@ -28,7 +28,7 @@ const SYSTEM_PROMPT = [
   "- direction: a binding decision change. Phrases like 'scrap that', 'going forward', 'from now on', 'new direction'.",
   "- question: operator is asking, not directing.",
   "- halt: operator wants something stopped/cancelled.",
-  "- status: operator wants current state of harness or run.",
+  "- status: operator wants current state of cairn or run.",
   "- unknown: none of the above match.",
   "Be honest with confidence; below 0.7 means it is genuinely ambiguous.",
 ].join("\n");

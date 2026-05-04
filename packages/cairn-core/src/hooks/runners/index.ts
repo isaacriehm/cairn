@@ -1,7 +1,7 @@
 /**
  * Claude Code hook runners — pure logic, called by both bin scripts
- * (`harness-core/dist/hooks/<event>.js`) and the umbrella CLI
- * (`harness hook <event>`).
+ * (`cairn-core/dist/hooks/<event>.js`) and the umbrella CLI
+ * (`cairn hook <event>`).
  */
 
 export { runSessionStartHook } from "./session-start.js";
@@ -16,7 +16,7 @@ export type {
   ScanBypassResult,
 } from "../bypass-detection.js";
 export {
-  HARNESS_HOOK_VERSION,
+  CAIRN_HOOK_VERSION,
   emitShapeB,
   parseHookPayload,
   readHookStdin,

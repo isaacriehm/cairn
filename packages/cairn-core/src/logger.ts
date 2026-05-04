@@ -31,7 +31,7 @@ const proxyStream = new Writable({
 
 const root: Logger = pino(
   {
-    level: process.env["HARNESS_LOG_LEVEL"] ?? "info",
+    level: process.env["CAIRN_LOG_LEVEL"] ?? "info",
     base: { pid: process.pid },
     redact: {
       paths: [

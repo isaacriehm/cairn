@@ -36,7 +36,7 @@ function cleanup(): void {
 }
 
 function mkFixture(): string {
-  const dir = mkdtempSync(join(tmpdir(), "harness-lens-smoke-"));
+  const dir = mkdtempSync(join(tmpdir(), "cairn-lens-smoke-"));
   cleanups.push(dir);
   return dir;
 }
@@ -44,19 +44,19 @@ function mkFixture(): string {
 function runSmoke(): void {
   console.log("smoke-resolver — start");
 
-  // ── Step 1 — resolveRepoRoot finds .harness from nested cwd ─────
+  // ── Step 1 — resolveRepoRoot finds .cairn from nested cwd ─────
   {
     const repoRoot = mkFixture();
-    mkdirSync(join(repoRoot, ".harness"), { recursive: true });
+    mkdirSync(join(repoRoot, ".cairn"), { recursive: true });
     const nested = join(repoRoot, "src", "deep");
     mkdirSync(nested, { recursive: true });
     const resolved = LensResolver.resolveRepoRoot(nested);
     assert(resolved === repoRoot, `Step 1: expected ${repoRoot}, got ${resolved}`);
 
-    const noHarness = mkdtempSync(join(tmpdir(), "harness-lens-bare-"));
-    cleanups.push(noHarness);
+    const noCairn = mkdtempSync(join(tmpdir(), "cairn-lens-bare-"));
+    cleanups.push(noCairn);
     assert(
-      LensResolver.resolveRepoRoot(noHarness) === null,
+      LensResolver.resolveRepoRoot(noCairn) === null,
       "Step 1: bare dir should return null",
     );
     console.log("  ✓ Step 1 — resolveRepoRoot");
@@ -65,7 +65,7 @@ function runSmoke(): void {
   // ── Step 2 — resolveInvariant on missing ledger → unknown ───────
   {
     const repoRoot = mkFixture();
-    mkdirSync(join(repoRoot, ".harness", "ground", "invariants"), { recursive: true });
+    mkdirSync(join(repoRoot, ".cairn", "ground", "invariants"), { recursive: true });
     const resolver = new LensResolver(repoRoot);
     const r = resolver.resolveInvariant("V0023");
     assert(
@@ -79,7 +79,7 @@ function runSmoke(): void {
   // ── Step 3 — resolveInvariant against seeded ledger → active ───
   {
     const repoRoot = mkFixture();
-    const invDir = join(repoRoot, ".harness", "ground", "invariants");
+    const invDir = join(repoRoot, ".cairn", "ground", "invariants");
     mkdirSync(invDir, { recursive: true });
     writeFileSync(
       join(invDir, "invariants.ledger.yaml"),
@@ -110,7 +110,7 @@ function runSmoke(): void {
   // ── Step 4 — resolveTask against active dir ─────────────────────
   {
     const repoRoot = mkFixture();
-    const taskDir = join(repoRoot, ".harness", "tasks", "active", "TSK-foo");
+    const taskDir = join(repoRoot, ".cairn", "tasks", "active", "TSK-foo");
     mkdirSync(taskDir, { recursive: true });
     writeFileSync(
       join(taskDir, "spec.tightened.md"),
@@ -131,7 +131,7 @@ function runSmoke(): void {
   // ── Step 5 — scope-index roundtrip via resolveScopeWithTitles ──
   {
     const repoRoot = mkFixture();
-    mkdirSync(join(repoRoot, ".harness", "ground"), { recursive: true });
+    mkdirSync(join(repoRoot, ".cairn", "ground"), { recursive: true });
     writeScopeIndex(repoRoot, {
       generated: "2026-05-04T03:00:00Z",
       files: {

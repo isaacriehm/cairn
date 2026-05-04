@@ -1,9 +1,9 @@
 /**
- * `harness attention` — show pending operator review items.
+ * `cairn attention` — show pending operator review items.
  *
  * Reads two sources from the adopted project:
- *   1. `.harness/ground/decisions/_inbox/*.draft.md`  — DEC drafts awaiting confirm
- *   2. `.harness/baseline/sensor-audit-*.yaml` (latest) — pre-Harness sensor findings
+ *   1. `.cairn/ground/decisions/_inbox/*.draft.md`  — DEC drafts awaiting confirm
+ *   2. `.cairn/baseline/sensor-audit-*.yaml` (latest) — pre-Cairn sensor findings
  *
  * Prints a structured summary; exits 0 when there are no pending items, 2 when
  * any are present (so scripts can branch on attention).
@@ -57,12 +57,12 @@ function parseRepoFlag(argv: string[]): string {
 
 function ensureAdopted(repoRoot: string): void {
   if (!existsSync(repoRoot)) {
-    console.error(`harness attention: repo root does not exist: ${repoRoot}`);
+    console.error(`cairn attention: repo root does not exist: ${repoRoot}`);
     process.exit(2);
   }
-  if (!existsSync(`${repoRoot}/.harness`)) {
+  if (!existsSync(`${repoRoot}/.cairn`)) {
     console.error(
-      `harness attention: ${repoRoot} is not harness-adopted (no .harness/). Run \`harness init\` first.`,
+      `cairn attention: ${repoRoot} is not cairn-adopted (no .cairn/). Run \`cairn init\` first.`,
     );
     process.exit(2);
   }
@@ -82,7 +82,7 @@ function readFrontmatter(text: string): Record<string, unknown> {
 }
 
 function listDrafts(repoRoot: string): DraftEntry[] {
-  const dir = join(repoRoot, ".harness", "ground", "decisions", "_inbox");
+  const dir = join(repoRoot, ".cairn", "ground", "decisions", "_inbox");
   if (!existsSync(dir)) return [];
   let entries: Dirent[];
   try {
@@ -126,7 +126,7 @@ function listDrafts(repoRoot: string): DraftEntry[] {
 }
 
 function readLatestBaseline(repoRoot: string): BaselineSummary | null {
-  const dir = join(repoRoot, ".harness", "baseline");
+  const dir = join(repoRoot, ".cairn", "baseline");
   if (!existsSync(dir)) return null;
   let entries: string[];
   try {
@@ -216,7 +216,7 @@ function renderDraftsSection(drafts: DraftEntry[]): void {
     }
   }
   process.stdout.write(
-    "\n  Edit, accept, or discard each draft, then run `harness attention` again.\n",
+    "\n  Edit, accept, or discard each draft, then run `cairn attention` again.\n",
   );
 }
 
@@ -241,14 +241,14 @@ function renderBaselineSection(summary: BaselineSummary): void {
     }
   }
   process.stdout.write(
-    "\n  These are pre-Harness violations. Address them before starting new work, or accept as debt.\n",
+    "\n  These are pre-Cairn violations. Address them before starting new work, or accept as debt.\n",
   );
 }
 
 export async function attentionCli(argv: string[]): Promise<void> {
   if (argv[0] === "--help" || argv[0] === "-h") {
     process.stdout.write(
-      "Usage: harness attention [--repo <path>]\n" +
+      "Usage: cairn attention [--repo <path>]\n" +
         "  Show DEC drafts pending confirm + latest baseline sensor findings.\n" +
         "  Exit 0 when nothing pending; 2 when any items are pending.\n",
     );
@@ -261,7 +261,7 @@ export async function attentionCli(argv: string[]): Promise<void> {
   const drafts = listDrafts(repoRoot);
   const baseline = readLatestBaseline(repoRoot);
 
-  process.stdout.write(`  ⬡ harness attention — ${repoRoot}\n\n`);
+  process.stdout.write(`  ⬡ cairn attention — ${repoRoot}\n\n`);
 
   if (drafts.length === 0 && (baseline === null || baseline.totalFindings === 0)) {
     process.stdout.write("  Nothing pending. Project brain is up to date.\n");

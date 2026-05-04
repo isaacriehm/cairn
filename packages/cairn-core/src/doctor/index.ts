@@ -1,5 +1,5 @@
 /**
- * `harness doctor` — verify the adoption is healthy.
+ * `cairn doctor` — verify the adoption is healthy.
  *
  * Pure filesystem reads + a status.json check. No LLM. No subprocess fan-out.
  * Returns a structured `DoctorReport` the CLI renders. Exit-code mapping:
@@ -7,7 +7,7 @@
  *   1 — at least one error (missing core file, broken layout)
  *   2 — at least one warning (drafty brand, empty scope, daemon not running, …)
  *
- * Spec: BUILD_REPORT.md "Task D — harness doctor command".
+ * Spec: BUILD_REPORT.md "Task D — cairn doctor command".
  */
 
 import {
@@ -56,7 +56,7 @@ export function runDoctor(opts: RunDoctorOptions): DoctorReport {
   const checks: DoctorCheck[] = [];
 
   // ── Core checks ────────────────────────────────────────────────────
-  checks.push(checkHarnessLayout(repoRoot));
+  checks.push(checkCairnLayout(repoRoot));
   checks.push(checkMcpRegistration(repoRoot));
   checks.push(checkClaudeHooks(repoRoot));
 
@@ -80,15 +80,15 @@ export function runDoctor(opts: RunDoctorOptions): DoctorReport {
 
 // ── Core checks ──────────────────────────────────────────────────────
 
-function checkHarnessLayout(repoRoot: string): DoctorCheck {
-  const groundDir = join(repoRoot, ".harness", "ground");
+function checkCairnLayout(repoRoot: string): DoctorCheck {
+  const groundDir = join(repoRoot, ".cairn", "ground");
   if (!existsSync(groundDir)) {
     return {
       group: "core",
-      label: ".harness/",
+      label: ".cairn/",
       status: "error",
-      detail: "missing — run harness init",
-      fixCommand: "harness init",
+      detail: "missing — run cairn init",
+      fixCommand: "cairn init",
     };
   }
   let count = 0;
@@ -114,7 +114,7 @@ function checkHarnessLayout(repoRoot: string): DoctorCheck {
   }
   return {
     group: "core",
-    label: ".harness/",
+    label: ".cairn/",
     status: "ok",
     detail: `layout complete (${count} ground files)`,
   };
@@ -127,8 +127,8 @@ function checkMcpRegistration(repoRoot: string): DoctorCheck {
       group: "core",
       label: ".mcp.json",
       status: "error",
-      detail: "missing — run harness init",
-      fixCommand: "harness init",
+      detail: "missing — run cairn init",
+      fixCommand: "cairn init",
     };
   }
   let parsed: Record<string, unknown>;
@@ -139,8 +139,8 @@ function checkMcpRegistration(repoRoot: string): DoctorCheck {
       group: "core",
       label: ".mcp.json",
       status: "error",
-      detail: "unreadable — re-run harness init",
-      fixCommand: "harness init --force",
+      detail: "unreadable — re-run cairn init",
+      fixCommand: "cairn init --force",
     };
   }
   const servers = parsed["mcpServers"];
@@ -149,24 +149,24 @@ function checkMcpRegistration(repoRoot: string): DoctorCheck {
       group: "core",
       label: ".mcp.json",
       status: "error",
-      detail: "missing mcpServers — re-run harness init",
-      fixCommand: "harness init --force",
+      detail: "missing mcpServers — re-run cairn init",
+      fixCommand: "cairn init --force",
     };
   }
-  if ((servers as Record<string, unknown>)["harness"] === undefined) {
+  if ((servers as Record<string, unknown>)["cairn"] === undefined) {
     return {
       group: "core",
       label: ".mcp.json",
       status: "error",
-      detail: "no harness entry — re-run harness init",
-      fixCommand: "harness init --force",
+      detail: "no cairn entry — re-run cairn init",
+      fixCommand: "cairn init --force",
     };
   }
   return {
     group: "core",
     label: ".mcp.json",
     status: "ok",
-    detail: "harness MCP server registered",
+    detail: "cairn MCP server registered",
   };
 }
 
@@ -177,8 +177,8 @@ function checkClaudeHooks(repoRoot: string): DoctorCheck {
       group: "core",
       label: ".claude/",
       status: "error",
-      detail: "missing settings.json — re-run harness init",
-      fixCommand: "harness init --force",
+      detail: "missing settings.json — re-run cairn init",
+      fixCommand: "cairn init --force",
     };
   }
   let parsed: Record<string, unknown>;
@@ -190,7 +190,7 @@ function checkClaudeHooks(repoRoot: string): DoctorCheck {
       label: ".claude/",
       status: "error",
       detail: "settings.json unreadable",
-      fixCommand: "harness init --force",
+      fixCommand: "cairn init --force",
     };
   }
   const hooks = parsed["hooks"];
@@ -199,8 +199,8 @@ function checkClaudeHooks(repoRoot: string): DoctorCheck {
       group: "core",
       label: ".claude/",
       status: "warn",
-      detail: "no hooks block — re-run harness init",
-      fixCommand: "harness init --force",
+      detail: "no hooks block — re-run cairn init",
+      fixCommand: "cairn init --force",
     };
   }
   const labels: string[] = [];
@@ -216,7 +216,7 @@ function checkClaudeHooks(repoRoot: string): DoctorCheck {
       label: ".claude/",
       status: "warn",
       detail: "no SessionStart / PostToolUse entries",
-      fixCommand: "harness init --force",
+      fixCommand: "cairn init --force",
     };
   }
   return {
@@ -242,7 +242,7 @@ function checkDecisions(repoRoot: string): DoctorCheck {
       detail: "ledger build failed",
     };
   }
-  const inboxDir = join(repoRoot, ".harness", "ground", "decisions", "_inbox");
+  const inboxDir = join(repoRoot, ".cairn", "ground", "decisions", "_inbox");
   if (existsSync(inboxDir)) {
     try {
       const entries: Dirent[] = readdirSync(inboxDir, {
@@ -269,7 +269,7 @@ function checkDecisions(repoRoot: string): DoctorCheck {
       label: "decisions",
       status: "warn",
       detail: `${accepted} accepted, ${invariants} invariants, ${drafts} drafts pending`,
-      fixCommand: "harness attention",
+      fixCommand: "cairn attention",
     };
   }
   return {
@@ -281,14 +281,14 @@ function checkDecisions(repoRoot: string): DoctorCheck {
 }
 
 function checkBrandOverview(repoRoot: string): DoctorCheck {
-  const path = join(repoRoot, ".harness", "ground", "brand", "overview.md");
+  const path = join(repoRoot, ".cairn", "ground", "brand", "overview.md");
   if (!existsSync(path)) {
     return {
       group: "ground",
       label: "brand/overview",
       status: "warn",
-      detail: "missing — re-run harness init",
-      fixCommand: "harness init --force",
+      detail: "missing — re-run cairn init",
+      fixCommand: "cairn init --force",
     };
   }
   const status = readFrontmatterStatus(path) ?? "(none)";
@@ -305,19 +305,19 @@ function checkBrandOverview(repoRoot: string): DoctorCheck {
     label: "brand/overview",
     status: "warn",
     detail: `status:${status}`,
-    fixCommand: "harness configure brand",
+    fixCommand: "cairn configure brand",
   };
 }
 
 function checkScopeIndex(repoRoot: string): DoctorCheck {
-  const path = join(repoRoot, ".harness", "ground", "scope-index.yaml");
+  const path = join(repoRoot, ".cairn", "ground", "scope-index.yaml");
   if (!existsSync(path)) {
     return {
       group: "ground",
       label: "scope-index",
       status: "warn",
-      detail: "missing — run harness scope rebuild",
-      fixCommand: "harness scope rebuild",
+      detail: "missing — run cairn scope rebuild",
+      fixCommand: "cairn scope rebuild",
     };
   }
   let count = 0;
@@ -334,8 +334,8 @@ function checkScopeIndex(repoRoot: string): DoctorCheck {
       group: "ground",
       label: "scope-index",
       status: "warn",
-      detail: "unreadable — re-run harness scope rebuild",
-      fixCommand: "harness scope rebuild",
+      detail: "unreadable — re-run cairn scope rebuild",
+      fixCommand: "cairn scope rebuild",
     };
   }
   if (count === 0) {
@@ -343,8 +343,8 @@ function checkScopeIndex(repoRoot: string): DoctorCheck {
       group: "ground",
       label: "scope-index",
       status: "warn",
-      detail: "empty — run harness scope rebuild",
-      fixCommand: "harness scope rebuild",
+      detail: "empty — run cairn scope rebuild",
+      fixCommand: "cairn scope rebuild",
     };
   }
   return {
@@ -358,15 +358,15 @@ function checkScopeIndex(repoRoot: string): DoctorCheck {
 // ── Sensors ──────────────────────────────────────────────────────────
 
 function checkSensorAvailability(repoRoot: string): DoctorCheck[] {
-  const path = join(repoRoot, ".harness", "config", "sensors.yaml");
+  const path = join(repoRoot, ".cairn", "config", "sensors.yaml");
   if (!existsSync(path)) {
     return [
       {
         group: "sensors",
         label: "sensors.yaml",
         status: "warn",
-        detail: "missing — re-run harness init",
-        fixCommand: "harness init --force",
+        detail: "missing — re-run cairn init",
+        fixCommand: "cairn init --force",
       },
     ];
   }

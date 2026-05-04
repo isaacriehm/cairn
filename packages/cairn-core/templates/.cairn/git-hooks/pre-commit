@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Cairn pre-commit hook (versioned, per-clone activation via core.hooksPath).
+#
+# Spec: PLUGIN_ARCHITECTURE §17 Layer 1.
+#
+# Fails the commit when:
+#   - Cairn CLI is missing from PATH
+#   - sensor-run --staged exits non-zero
+#
+# To opt out a project: rm .cairn/  (irreversible).
+# Bypass for a single commit: git commit --no-verify (CI gate still catches).
+
+set -e
+
+if ! command -v cairn > /dev/null 2>&1; then
+  echo "✗ Cairn CLI not on PATH"
+  echo "  This project requires Cairn. Install:"
+  echo "    /plugin install cairn@isaacriehm-cairn   (Claude Code)"
+  echo "    npm install -g @isaacriehm/cairn            (CLI)"
+  echo "  Or: rm -rf .cairn/  to opt the project out (irreversible)"
+  exit 1
+fi
+
+exec cairn sensor-run --staged "$@"

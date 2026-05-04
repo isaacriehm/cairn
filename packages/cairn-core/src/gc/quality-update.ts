@@ -1,8 +1,8 @@
 /**
  * GC pass 5 — quality grades update.
  *
- * Rebuilds `.harness/ground/quality-grades.yaml` from terminal-run history at
- * `.harness/runs/terminal/*`. The grounding daemon also writes this file on
+ * Rebuilds `.cairn/ground/quality-grades.yaml` from terminal-run history at
+ * `.cairn/runs/terminal/*`. The grounding daemon also writes this file on
  * watch events, so GC's job is to ensure a fresh write lands on the GC cron
  * and that any drift between the file's content and the latest reality is
  * captured as a safe-class commit.
@@ -42,7 +42,7 @@ export function runQualityGradesUpdate(
   });
   const newContent = stringifyYaml(grades);
   const filePath = qualityGradesPath(opts.repoRoot);
-  const relPath = ".harness/ground/quality-grades.yaml";
+  const relPath = ".cairn/ground/quality-grades.yaml";
 
   const existing = existsSync(filePath) ? readFileSync(filePath, "utf8") : "";
   const existingModules = existing.length > 0 ? safeParseModules(existing) : [];
@@ -69,7 +69,7 @@ export function runQualityGradesUpdate(
     patch: { [relPath]: newContent },
     commit_message:
       `chore(gc): refresh quality-grades.yaml (${grades.modules.length} modules)\n\n` +
-      `GC quality-grades pass — recomputed from .harness/runs/terminal/.\n` +
+      `GC quality-grades pass — recomputed from .cairn/runs/terminal/.\n` +
       `Auto-applied as safe-class per PRIMER §12.2.\n`,
     findings: [finding],
   });

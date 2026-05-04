@@ -9,7 +9,7 @@ source-commits:
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Top-level (project-agnostic) configuration.
-# This block is read by harness package code; values here are universal defaults.
+# This block is read by Cairn package code; values here are universal defaults.
 # Project-specific overrides go in the `<project_name>:` extension block below.
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -48,7 +48,7 @@ timeouts:
   approval_dialog_seconds: 30           # 🟢/🔴 confirm window
 
 # Anthropic plan-quota self-throttle (per WORKFLOW_GUIDE §2.2).
-plan_quota_floor_percent: 20            # below this remaining → harness self-throttles to Tier 1 only
+plan_quota_floor_percent: 20            # below this remaining → Cairn self-throttles to Tier 1 only
 
 # Spec-tightener gate.
 spec_quality_floor: 7                   # quality_score < floor → operator dialog OR /ship-anyway
@@ -76,11 +76,11 @@ voice:
   confidence_floor: 0.85                # below → operator confirm-heard prompt
   audio_persistence: forbidden          # never write audio to disk
 
-# Local mirror checkout (harness operates here, never user's working tree).
+# Local mirror checkout (Cairn operates here, never user's working tree).
 mirror:
-  base_path: "~/.local/harness/repos"   # one subdir per adopted project
-  state_path: "~/.local/harness/state"  # PIDs, sockets, runtime
-  models_path: "~/.local/harness/models"
+  base_path: "~/.local/cairn/repos"   # one subdir per adopted project
+  state_path: "~/.local/cairn/state"  # PIDs, sockets, runtime
+  models_path: "~/.local/cairn/models"
 
 # Retention policy.
 retention_days:
@@ -95,7 +95,7 @@ retention_days:
 # block with a real key matching the adopting project's `package.json name`
 # (or directory name, lowercased, with non-alphanumerics → underscores).
 #
-# Harness package code reads this block by `Object.keys()` lookup — never by
+# Cairn package code reads this block by `Object.keys()` lookup — never by
 # hardcoded project name (per L50 + operator-S1).
 #
 # Example below uses `<project_name>` as the placeholder key.
@@ -130,7 +130,7 @@ Below is the rendered-prompt body the orchestrator injects into every agent run.
 
 ## Identity
 
-You are running inside the harness as agent role `{{agent_role}}` for project `{{project_name}}`. Your run-id is `{{run_id}}`. The mirror checkout is at `{{mirror_path}}` pinned to `origin/main` SHA `{{sha_pin}}`. Do not modify files outside the mirror. Do not switch branches.
+You are running inside Cairn as agent role `{{agent_role}}` for project `{{project_name}}`. Your run-id is `{{run_id}}`. The mirror checkout is at `{{mirror_path}}` pinned to `origin/main` SHA `{{sha_pin}}`. Do not modify files outside the mirror. Do not switch branches.
 
 ## Task
 
@@ -202,20 +202,20 @@ This will be cross-checked against your actual diff. Any mismatch fails the run.
 
 ## Tools available
 
-You have the standard Read/Edit/Write/Bash/Glob/Grep tool surface. You also have the harness MCP tools — use these for grounding rather than re-reading large files:
+You have the standard Read/Edit/Write/Bash/Glob/Grep tool surface. You also have the Cairn MCP tools — use these for grounding rather than re-reading large files:
 
-- `harness_decision_get(id)` — full ADR + assertions
-- `harness_decisions_in_scope(globs[])` — IDs whose scope overlaps your target
-- `harness_invariant_get(id)` — §V invariant + linked sensor
-- `harness_canonical_for_topic(topic)` — canonical doc path + verified-at
-- `harness_query_history(scope, question)` — the ONLY way to read `.archive/`
+- `cairn_decision_get(id)` — full ADR + assertions
+- `cairn_decisions_in_scope(globs[])` — IDs whose scope overlaps your target
+- `cairn_invariant_get(id)` — §V invariant + linked sensor
+- `cairn_canonical_for_topic(topic)` — canonical doc path + verified-at
+- `cairn_query_history(scope, question)` — the ONLY way to read `.archive/`
 
 ## Constraints
 
 - Hard cutovers; no backwards-compat shims, no deprecation notices, no transition regex.
 - No `[STALE]` banners — stale docs get archived, not labeled.
 - No model-issued confidence scores in user-visible writes.
-- No commit, no push — the harness handles git after sensor + reviewer + UAT pass.
+- No commit, no push — Cairn handles git after sensor + reviewer + UAT pass.
 
 ## Stop conditions
 

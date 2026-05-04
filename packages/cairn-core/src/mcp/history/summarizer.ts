@@ -1,6 +1,6 @@
 /**
  * Composes walker + Tier-1 summarizer + post-resolution of
- * currently_canonical_pointer for harness_query_history.
+ * currently_canonical_pointer for cairn_query_history.
  *
  * Flow:
  *   1. walkArchive(repoRoot, pathHint, since, until) → ArchiveFile[]
@@ -24,7 +24,7 @@ import { decisionsDir } from "../../ground/index.js";
 import { loadAcceptedDecisions } from "../../sensors/decisions.js";
 import {
   buildHistorySummarizerUserPrompt,
-  HARNESS_HISTORY_SUMMARIZE_PROMPT_ID,
+  CAIRN_HISTORY_SUMMARIZE_PROMPT_ID,
   HISTORY_SUMMARIZER_SYSTEM_PROMPT,
 } from "./prompt.js";
 import { HISTORY_SUMMARIZER_OUTPUT_SCHEMA } from "./schema.js";
@@ -115,7 +115,7 @@ export async function runQueryHistory(
         ? "No .archive/ directory found at this repo root."
         : `No files matched the walk filters (path_hint, since, until) across ${walk.bucketsScanned.length} archive bucket${walk.bucketsScanned.length === 1 ? "" : "s"}.`,
       summarizer_model: "(skipped — no matches)",
-      summarizer_prompt_id: HARNESS_HISTORY_SUMMARIZE_PROMPT_ID,
+      summarizer_prompt_id: CAIRN_HISTORY_SUMMARIZE_PROMPT_ID,
       walked_files: 0,
       walked_buckets: walk.bucketsScanned,
       truncated_walk: walk.capHit,
@@ -185,7 +185,7 @@ export async function runQueryHistory(
     caveatBits.push("Summarizer found no claims relevant to the scope question.");
   }
   caveatBits.push(
-    "All claims are dated and superseded-tagged. Do not treat any line as current truth. Cross-reference the canonical pointer (or call harness_decision_get / harness_canonical_for_topic) before acting.",
+    "All claims are dated and superseded-tagged. Do not treat any line as current truth. Cross-reference the canonical pointer (or call cairn_decision_get / cairn_canonical_for_topic) before acting.",
   );
 
   return {
@@ -193,7 +193,7 @@ export async function runQueryHistory(
     claims,
     summary_caveat: caveatBits.join(" "),
     summarizer_model: summary.model,
-    summarizer_prompt_id: HARNESS_HISTORY_SUMMARIZE_PROMPT_ID,
+    summarizer_prompt_id: CAIRN_HISTORY_SUMMARIZE_PROMPT_ID,
     walked_files: walk.files.length,
     walked_buckets: walk.bucketsScanned,
     truncated_walk: walk.capHit,
@@ -286,5 +286,5 @@ function resolveSupersededBy(
 function canonicalPointerFor(repoRoot: string, decisionId: string): string | null {
   const path = join(decisionsDir(repoRoot), `${decisionId}.md`);
   if (!existsSync(path)) return null;
-  return `.harness/ground/decisions/${decisionId}.md`;
+  return `.cairn/ground/decisions/${decisionId}.md`;
 }

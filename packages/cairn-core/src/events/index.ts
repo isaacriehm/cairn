@@ -1,5 +1,5 @@
 /**
- * Invalidation events — `.harness/events/<msTs>-<kind>.json`.
+ * Invalidation events — `.cairn/events/<msTs>-<kind>.json`.
  *
  * Locked write tools emit events after their write completes. Plugin
  * Stop hooks in other live sessions poll this directory and surface an

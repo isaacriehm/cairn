@@ -7,9 +7,9 @@
  *       this returns the workspace root path so the caller can warn the
  *       operator that init will only see the package subtree.
  *
- *   - isHarnessSourceRepo(repoRoot)
- *       Returns true when repoRoot looks like the Harness source repo itself
- *       (harness-build/ + packages/harness-core/ + pnpm-workspace.yaml). Init
+ *   - isCairnSourceRepo(repoRoot)
+ *       Returns true when repoRoot looks like the Cairn source repo itself
+ *       (cairn-build/ + packages/cairn-core/ + pnpm-workspace.yaml). Init
  *       must hard-stop in that case — running it on its own source would
  *       overwrite internals.
  */
@@ -112,14 +112,14 @@ function checkWorkspaceMarker(
 }
 
 /**
- * Returns true when `repoRoot` looks like the Harness source repository.
+ * Returns true when `repoRoot` looks like the Cairn source repository.
  * Checks for the conjunction of all three markers — any single one would
  * false-positive on too many repos.
  */
-export function isHarnessSourceRepo(repoRoot: string): boolean {
+export function isCairnSourceRepo(repoRoot: string): boolean {
   return (
-    existsSync(join(repoRoot, "harness-build")) &&
-    existsSync(join(repoRoot, "packages", "harness-core")) &&
+    existsSync(join(repoRoot, "cairn-build")) &&
+    existsSync(join(repoRoot, "packages", "cairn-core")) &&
     existsSync(join(repoRoot, "pnpm-workspace.yaml"))
   );
 }

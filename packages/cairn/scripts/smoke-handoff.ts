@@ -4,7 +4,7 @@
  *
  * Pure-mechanical (no LLM burn). Asserts that:
  *   1. buildHandoffBlock(repoRoot) returns null when there's no
- *      .harness/tasks/active/.
+ *      .cairn/tasks/active/.
  *   2. buildSpecDelta(repoRoot, []) returns null (empty input → no delta).
  *   3. buildSpecDelta(repoRoot, ["src/foo.ts"]) returns null when the
  *      path has no git history.
@@ -35,7 +35,7 @@ function cleanup(): void {
 }
 
 function mkFixture(): string {
-  const dir = mkdtempSync(join(tmpdir(), "harness-smoke-handoff-"));
+  const dir = mkdtempSync(join(tmpdir(), "cairn-smoke-handoff-"));
   cleanups.push(dir);
   return dir;
 }
@@ -43,10 +43,10 @@ function mkFixture(): string {
 async function runSmoke(): Promise<void> {
   console.log("smoke-handoff — start");
 
-  // ── Step 1 — no .harness/tasks/active/ → null ────────────────────
+  // ── Step 1 — no .cairn/tasks/active/ → null ────────────────────
   {
     const repoRoot = mkFixture();
-    mkdirSync(join(repoRoot, ".harness"), { recursive: true });
+    mkdirSync(join(repoRoot, ".cairn"), { recursive: true });
     const result = await buildHandoffBlock(repoRoot);
     assert(
       result === null,
@@ -58,7 +58,7 @@ async function runSmoke(): Promise<void> {
   // ── Step 2 — buildSpecDelta with empty taskScopePaths → null ─────
   {
     const repoRoot = mkFixture();
-    mkdirSync(join(repoRoot, ".harness"), { recursive: true });
+    mkdirSync(join(repoRoot, ".cairn"), { recursive: true });
     const result = await buildSpecDelta(repoRoot, []);
     assert(
       result === null,
@@ -70,7 +70,7 @@ async function runSmoke(): Promise<void> {
   // ── Step 3 — buildSpecDelta on path with no git history → null ───
   {
     const repoRoot = mkFixture();
-    mkdirSync(join(repoRoot, ".harness"), { recursive: true });
+    mkdirSync(join(repoRoot, ".cairn"), { recursive: true });
     // No git init — path has no history. Should return null.
     const result = await buildSpecDelta(repoRoot, ["src/foo.ts"]);
     assert(

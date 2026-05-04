@@ -1,12 +1,12 @@
 /**
- * `harness hook read-enrich` — PostToolUse hook on the Read tool.
+ * `cairn hook read-enrich` — PostToolUse hook on the Read tool.
  *
- * Scans the file content the agent just read for harness citation
+ * Scans the file content the agent just read for cairn citation
  * patterns (`§V<N>`, `TODO(TSK-<id>)`, banned `DEC-<N>`) and prepends a
  * legend block via Claude Code's documented Shape-B `additionalContext`
  * field so the agent sees authoritative resolutions inline with the
  * file content. No MCP round-trip; all sources read directly from
- * `.harness/` on disk.
+ * `.cairn/` on disk.
  *
  * Spec: docs/READ_ENRICHER_SPEC.md
  */
@@ -101,8 +101,8 @@ function isBinary(content: string): boolean {
 function isExcludedPath(relPath: string): boolean {
   if (relPath.startsWith(".archive/") || relPath === ".archive") return true;
   if (
-    relPath.startsWith(".harness/ground/") ||
-    relPath === ".harness/ground"
+    relPath.startsWith(".cairn/ground/") ||
+    relPath === ".cairn/ground"
   ) {
     return true;
   }
