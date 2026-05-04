@@ -30,13 +30,8 @@ Read:
 
 Write:
   harness_record_decision(...)              — drop draft to _inbox/ for operator confirm
-  harness_record_run_event(run_id, event)   — append to events.jsonl
-  harness_drop_task(...)                    — file a new active task
   harness_archive(path, reason)             — move canonical → .archive/
-
-Operator dialog:
-  harness_ask_operator(run_id, question, options[]?, category?, timeout_ms?)
-                                            — pause + ask, polls for answer`;
+`;
 
 export const SESSION_START_HEADER = `# Harness state context
 
