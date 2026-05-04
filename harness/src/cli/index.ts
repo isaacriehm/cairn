@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { VERSION } from "../index.js";
+import { readStatusForCLI, VERSION } from "../index.js";
 import { daemonCli } from "./daemon.js";
 import { gcCli } from "./gc.js";
 import { hookCli } from "./hook.js";
@@ -48,6 +48,22 @@ switch (subcommand) {
       subcommand === "uninstall" ? ["uninstall", ...rest] : rest,
     );
     break;
+  case "status-line": {
+    const projectRootIdx = rest.indexOf("--project-root");
+    let projectRoot: string;
+    if (projectRootIdx !== -1 && projectRootIdx + 1 < rest.length) {
+      const candidate = rest[projectRootIdx + 1];
+      if (candidate === undefined) {
+        console.error("--project-root requires a path argument");
+        process.exit(2);
+      }
+      projectRoot = candidate;
+    } else {
+      projectRoot = process.cwd();
+    }
+    process.stdout.write(`${readStatusForCLI(projectRoot)}\n`);
+    process.exit(0);
+  }
   case "--version":
   case "-v":
     console.log(VERSION);
@@ -70,7 +86,9 @@ switch (subcommand) {
         "  gc         garbage-collection passes against the canonical zone\n" +
         "             (subcommands: sweep | run)\n" +
         "  hook       Claude Code hook runner (stdin = hook payload JSON)\n" +
-        "             (subcommands: session-start)",
+        "             (subcommands: session-start)\n" +
+        "  status-line  print formatted status line for the daemon-maintained state file\n" +
+        "               (--project-root <path>?)",
     );
     process.exit(subcommand ? 2 : 1);
 }

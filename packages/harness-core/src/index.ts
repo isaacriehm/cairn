@@ -18,6 +18,7 @@ export * from "./mirror/index.js";
 export * from "./profiles/index.js";
 export * from "./sensors/index.js";
 export * from "./session-start/index.js";
+export * from "./status-line/index.js";
 export * from "./tier0/index.js";
 export * from "./tightener/index.js";
 export * from "./voice/index.js";
