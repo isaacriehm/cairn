@@ -9,6 +9,7 @@ export const VERSION = "0.0.0";
 export { logger } from "./logger.js";
 
 export * from "./claude/index.js";
+export * from "./context/index.js";
 export * from "./decision-capture/index.js";
 export * from "./gc/index.js";
 export * from "./ground/index.js";
