@@ -6,7 +6,7 @@
 
 export const VERSION = "0.0.0";
 
-export { logger } from "./logger.js";
+export { logger, setLogFile, setLogNull, setLogStderr } from "./logger.js";
 
 export * from "./claude/index.js";
 export * from "./context/index.js";
