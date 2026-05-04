@@ -36,7 +36,8 @@ import {
   type ScopeIndexEntry,
 } from "../ground/scope-index.js";
 import { ensureMirror, normalizeProjectName } from "../mirror/index.js";
-import { logger } from "../logger.js";
+import { homedir } from "node:os";
+import { logger, setLogFile } from "../logger.js";
 import {
   applyBrandAnswers,
   runBrandSetup,
@@ -158,6 +159,8 @@ export interface InitResult {
   } | null;
   /** Daemon autostart outcome (Phase 5c). null when skipped. */
   daemon_autostart: DaemonAutostartResult | null;
+  /** Absolute path to the log file pino output was redirected to. */
+  log_file_path: string | null;
   /** Submodule check outcome (Phase 1). null when skipped or no .gitmodules. */
   submodules: {
     /** Submodule paths that were uninitialized when init started. */
@@ -189,6 +192,9 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   const repoRoot = args.repoRoot ?? process.cwd();
   const mode: PromptMode = args.mode ?? "interactive";
   const warnings: string[] = [];
+
+  // ── Phase 0: redirect pino logs to a file so JSON lines never reach stdout.
+  const logFilePath = redirectInitLogs();
 
   header(`Harness init — ${repoRoot}`);
 
@@ -241,6 +247,7 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
       mapper_applied_to_config: false,
       brand_setup: null,
       daemon_autostart: null,
+      log_file_path: logFilePath,
       submodules: submoduleSummary,
       warnings,
     };
@@ -467,6 +474,8 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     seededFiles: seed.written_files,
     brandSetup,
     daemonAutostart,
+    submodules: submoduleSummary,
+    logFilePath,
     warnings,
   });
 
@@ -501,6 +510,7 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     mapper_applied_to_config: mapperAppliedToConfig,
     brand_setup: brandSetup,
     daemon_autostart: daemonAutostart,
+    log_file_path: logFilePath,
     submodules: submoduleSummary,
     warnings,
   };
@@ -897,6 +907,26 @@ function truncateOneLine(s: string, max: number): string {
   return collapsed.length > max ? `${collapsed.slice(0, max - 1)}…` : collapsed;
 }
 
+function redirectInitLogs(): string {
+  const stamp = new Date()
+    .toISOString()
+    .replace(/[:.]/g, "-");
+  const path = join(
+    homedir(),
+    ".local",
+    "harness",
+    "logs",
+    `init-${stamp}.log`,
+  );
+  try {
+    setLogFile(path);
+    return path;
+  } catch {
+    // best-effort — falls through to whatever the default destination is.
+    return path;
+  }
+}
+
 interface PreflightSubmodulesArgs {
   repoRoot: string;
   mode: PromptMode;
@@ -995,6 +1025,8 @@ interface CompletionSummaryArgs {
   seededFiles: string[];
   brandSetup: { answered: number; updated_files: string[] } | null;
   daemonAutostart: DaemonAutostartResult | null;
+  submodules: SubmoduleSummary | null;
+  logFilePath: string | null;
   warnings: string[];
 }
 
@@ -1017,6 +1049,9 @@ function printCompletionSummary(args: CompletionSummaryArgs): void {
   info(`  Brand             ${brandReport}`);
   info(`  Scope index       ${scopeReport}`);
   info(`  Daemon            ${daemonReport}`);
+  if (args.logFilePath !== null) {
+    info(`  Log               ${shortenHomePath(args.logFilePath)}`);
+  }
   info("");
   info("  Open Claude Code in this directory. Harness is live immediately.");
   info("");
@@ -1029,6 +1064,12 @@ function printCompletionSummary(args: CompletionSummaryArgs): void {
     info(`  ${args.warnings.length} warning${args.warnings.length === 1 ? "" : "s"}:`);
     for (const w of args.warnings) info(`    ! ${w}`);
   }
+}
+
+function shortenHomePath(abs: string): string {
+  const home = homedir();
+  if (abs.startsWith(home)) return `~${abs.slice(home.length)}`;
+  return abs;
 }
 
 function countGroundFiles(repoRoot: string): number {

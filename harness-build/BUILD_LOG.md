@@ -127,6 +127,11 @@ Subagent attempts: 0 (inline)
 Compile: PASS (whole workspace); vsce package PASS (267 KB vsix produced)
 Notes: Added esbuild + @vscode/vsce as devDeps. New `bundle` script (esbuild → dist/extension.cjs, CJS, externals: vscode + fsevents) and `package` script (clean + bundle + vsce package --no-dependencies). Renamed package from @devplusllc/harness-lens to harness-lens (vsce rejects scoped names; lens isn't depended on by other workspace packages). main → dist/extension.cjs. Added .vscodeignore (excludes src/, scripts/, loose tsc dist files) and README.md. devplusllc-harness-lens-0.0.0.vsix produced; 1.4 MB extension.cjs bundles harness-core + transitive deps (yaml, simple-git, zod, pino, etc.). 3 esbuild warnings about `import.meta.url` in harness-core init/* paths are cosmetic — those code paths never execute from the Lens runtime.
 
+## Task B — Suppress logger leakage to stdout during init [DONE 2026-05-04T06:02]
+Subagent attempts: 0 (inline)
+Compile: PASS (both packages); smoke-init verified zero JSON lines in stdout + log file at ~/.local/harness/logs/init-<ISO>.log
+Notes: logger.ts gains a proxy Writable that pino targets at construction. Default destination = nullStream() (drops output) so any package using `logger()` outside an explicit redirect produces no terminal noise. New setLogFile(absPath) opens an append WriteStream; setLogStderr() / setLogNull() handle daemon + smoke cases. Children created via `logger(module).child(...)` keep working because the proxy reads `activeDestination` at write-time. init.ts Phase 0 redirects to ~/.local/harness/logs/init-<ISO>.log immediately. InitResult.log_file_path string|null surfaces the path to callers + completion summary renders `Log  ~/.local/...` row when non-null. shortenHomePath helper.
+
 ## Task A — Submodule detection + init prompt [DONE 2026-05-04T05:55]
 Subagent attempts: 0 (inline)
 Compile: PASS (both packages); smoke-init PASS — Phase 1 noop on temp dir without .gitmodules
