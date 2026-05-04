@@ -25,6 +25,7 @@ import { runDocGardening } from "./doc-gardening.js";
 import { runFrontmatterFreshness } from "./frontmatter.js";
 import { runGeneratorDrift } from "./generator-drift.js";
 import { runQualityGradesUpdate } from "./quality-update.js";
+import { runScopeCoverage } from "./scope-coverage.js";
 import { runStubCatalogHits } from "./stub-hits.js";
 import type {
   GcAutoMergeClass,
@@ -75,6 +76,7 @@ export async function runGcSweep(opts: RunGcSweepOptions): Promise<GcSweepResult
     "stub-catalog-hits": 0,
     "doc-gardening": 0,
     "quality-grades": 0,
+    "scope-coverage": 0,
   };
 
   // 1. Frontmatter freshness.
@@ -133,6 +135,14 @@ export async function runGcSweep(opts: RunGcSweepOptions): Promise<GcSweepResult
     findings.push(...r.findings);
     proposals.push(...r.proposals);
     passDurations["quality-grades"] = Date.now() - t0;
+  }
+
+  // 6. Scope coverage.
+  {
+    const t0 = Date.now();
+    const r = runScopeCoverage({ repoRoot: opts.repoRoot });
+    findings.push(...r.findings);
+    passDurations["scope-coverage"] = Date.now() - t0;
   }
 
   // Re-classify proposals against project globs (passes set defaults; this

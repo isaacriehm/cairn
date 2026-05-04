@@ -8,6 +8,15 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
+import {
+  lookupScope,
+  readScopeIndex,
+  scopeIndexPath,
+  type ScopeIndex,
+  type ScopeIndexEntry,
+} from "../../ground/scope-index.js";
+
+export type { ScopeIndexEntry } from "../../ground/scope-index.js";
 
 export interface LedgerSnapshot {
   invariantsByid: Map<
@@ -35,9 +44,16 @@ interface TasksDirCacheEntry {
   titles: Map<string, string>;
 }
 
+interface ScopeIndexCacheEntry {
+  repoRoot: string;
+  mtimeMs: number;
+  index: ScopeIndex;
+}
+
 let invariantsCache: InvariantsCacheEntry | null = null;
 let activeTasksCache: TasksDirCacheEntry | null = null;
 let doneTasksCache: TasksDirCacheEntry | null = null;
+let scopeIndexCache: ScopeIndexCacheEntry | null = null;
 
 function invariantsLedgerFile(repoRoot: string): string {
   return join(
@@ -204,4 +220,44 @@ export function lookupTask(
   }
 
   return { found: "not_found" };
+}
+
+/**
+ * Cached scope-index reader. mtime-keyed so back-to-back hook invocations in
+ * the same process don't re-parse the file.
+ *
+ * Returns null when the file is missing, when no entry matches the path,
+ * when the entry is explicitly `unscoped: true`, or when the entry has no
+ * decisions/invariants — i.e., when there is nothing useful to surface.
+ */
+export function getScopeIndexEntry(
+  repoRoot: string,
+  repoRelativePath: string,
+): ScopeIndexEntry | null {
+  const path = scopeIndexPath(repoRoot);
+  if (!existsSync(path)) return null;
+  let mtimeMs: number;
+  try {
+    mtimeMs = statSync(path).mtimeMs;
+  } catch {
+    return null;
+  }
+  let index: ScopeIndex;
+  if (
+    scopeIndexCache !== null &&
+    scopeIndexCache.repoRoot === repoRoot &&
+    scopeIndexCache.mtimeMs === mtimeMs
+  ) {
+    index = scopeIndexCache.index;
+  } else {
+    const fresh = readScopeIndex(repoRoot);
+    if (fresh === null) return null;
+    scopeIndexCache = { repoRoot, mtimeMs, index: fresh };
+    index = fresh;
+  }
+  const entry = lookupScope(index, repoRelativePath);
+  if (entry === null) return null;
+  if (entry.unscoped === true) return null;
+  if (entry.decisions.length === 0 && entry.invariants.length === 0) return null;
+  return entry;
 }

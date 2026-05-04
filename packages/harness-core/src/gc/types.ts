@@ -28,7 +28,8 @@ export type GcPassId =
   | "generator-drift"
   | "stub-catalog-hits"
   | "doc-gardening"
-  | "quality-grades";
+  | "quality-grades"
+  | "scope-coverage";
 
 export type GcFindingKind =
   | "frontmatter_stale"
@@ -36,7 +37,10 @@ export type GcFindingKind =
   | "stub_hit"
   | "broken_link"
   | "orphan_path"
-  | "quality_update";
+  | "quality_update"
+  | "scope_uncovered"
+  | "scope_drift_orphan"
+  | "scope_index_missing";
 
 export type GcAutoMergeClass = "safe" | "code" | "high-stakes";
 

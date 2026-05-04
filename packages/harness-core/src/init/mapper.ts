@@ -45,6 +45,16 @@ export interface MapperProposedSensor {
   applies_to_globs: string[];
 }
 
+export interface MapperScopeIndexEntry {
+  decisions: string[];
+  invariants: string[];
+  unscoped?: boolean;
+}
+
+export interface MapperScopeIndex {
+  files: Record<string, MapperScopeIndexEntry>;
+}
+
 export interface MapperOutput {
   pilot_module: string;
   domain_summary: string;
@@ -56,6 +66,7 @@ export interface MapperOutput {
   off_limits_globs: string[];
   proposed_sensors: MapperProposedSensor[];
   notes: string;
+  scope_index: MapperScopeIndex;
 }
 
 export interface MapperResult {
@@ -110,6 +121,26 @@ export const MAPPER_OUTPUT_SCHEMA = {
       },
     },
     notes: { type: "string" },
+    scope_index: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        files: {
+          type: "object",
+          additionalProperties: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              decisions: { type: "array", items: { type: "string" } },
+              invariants: { type: "array", items: { type: "string" } },
+              unscoped: { type: "boolean" },
+            },
+            required: ["decisions", "invariants"],
+          },
+        },
+      },
+      required: ["files"],
+    },
   },
   required: [
     "pilot_module",
@@ -241,18 +272,31 @@ export function buildMapperUserPrompt(args: {
 function isMapperOutput(value: unknown): value is MapperOutput {
   if (typeof value !== "object" || value === null) return false;
   const v = value as Record<string, unknown>;
-  return (
-    typeof v["pilot_module"] === "string" &&
-    typeof v["domain_summary"] === "string" &&
-    Array.isArray(v["key_modules"]) &&
-    Array.isArray(v["route_handler_globs"]) &&
-    Array.isArray(v["dto_globs"]) &&
-    Array.isArray(v["generator_source_globs"]) &&
-    Array.isArray(v["high_stakes_globs"]) &&
-    Array.isArray(v["off_limits_globs"]) &&
-    Array.isArray(v["proposed_sensors"]) &&
-    typeof v["notes"] === "string"
-  );
+  if (
+    !(
+      typeof v["pilot_module"] === "string" &&
+      typeof v["domain_summary"] === "string" &&
+      Array.isArray(v["key_modules"]) &&
+      Array.isArray(v["route_handler_globs"]) &&
+      Array.isArray(v["dto_globs"]) &&
+      Array.isArray(v["generator_source_globs"]) &&
+      Array.isArray(v["high_stakes_globs"]) &&
+      Array.isArray(v["off_limits_globs"]) &&
+      Array.isArray(v["proposed_sensors"]) &&
+      typeof v["notes"] === "string"
+    )
+  ) {
+    return false;
+  }
+  // scope_index is optional (older mappers won't produce it). When present,
+  // it must be `{ files: {...} }`.
+  const scopeIdxRaw = v["scope_index"];
+  if (scopeIdxRaw !== undefined) {
+    if (typeof scopeIdxRaw !== "object" || scopeIdxRaw === null) return false;
+    const filesRaw = (scopeIdxRaw as Record<string, unknown>)["files"];
+    if (typeof filesRaw !== "object" || filesRaw === null) return false;
+  }
+  return true;
 }
 
 export function validateMapperOutput(value: unknown): MapperOutput {
@@ -260,6 +304,13 @@ export function validateMapperOutput(value: unknown): MapperOutput {
     throw new Error(
       `mapper output failed shape validation: ${JSON.stringify(value).slice(0, 200)}`,
     );
+  }
+  // value passed isMapperOutput, but scope_index may still be missing.
+  // Default it to `{ files: {} }` so the rest of the pipeline can rely on
+  // the field being present and shaped.
+  const v = value as unknown as Record<string, unknown>;
+  if (v["scope_index"] === undefined) {
+    v["scope_index"] = { files: {} };
   }
   return value;
 }

@@ -11,9 +11,14 @@ export { scanCitations } from "./citation-scanner.js";
 export type { ScannedCitations, CitationMatch } from "./citation-scanner.js";
 export {
   getInvariantsLedger,
+  getScopeIndexEntry,
   lookupTask,
 } from "./ledger-cache.js";
-export type { LedgerSnapshot, TaskLookupResult } from "./ledger-cache.js";
+export type {
+  LedgerSnapshot,
+  ScopeIndexEntry,
+  TaskLookupResult,
+} from "./ledger-cache.js";
 export { buildLegend } from "./legend-builder.js";
 export type { ScopeIndexHint } from "./legend-builder.js";
 export { runWriteGuardian } from "./write-guardian.js";

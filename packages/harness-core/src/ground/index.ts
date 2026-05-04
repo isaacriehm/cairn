@@ -31,6 +31,13 @@ export type { DriftSnapshot } from "./drift.js";
 export { buildQualityGrades, writeQualityGrades } from "./quality-grades.js";
 export type { QualityGradesOptions } from "./quality-grades.js";
 export {
+  lookupScope,
+  readScopeIndex,
+  scopeIndexPath,
+  writeScopeIndex,
+} from "./scope-index.js";
+export type { ScopeIndex, ScopeIndexEntry } from "./scope-index.js";
+export {
   Audience,
   ProvenanceFrontmatter,
   ManifestEntry,

@@ -60,6 +60,11 @@ export type {
   QualityUpdateOptions,
   QualityUpdateResult,
 } from "./quality-update.js";
+export { runScopeCoverage } from "./scope-coverage.js";
+export type {
+  ScopeCoverageOptions,
+  ScopeCoverageResult,
+} from "./scope-coverage.js";
 export { runStubCatalogHits } from "./stub-hits.js";
 export type {
   StubCatalogHitsOptions,
@@ -70,3 +75,4 @@ export type {
   RunGcBatchOptions,
   RunGcSweepOptions,
 } from "./sweep.js";
+export { walkSourceTree, SOURCE_TREE_SKIP_DIRS } from "./walk-source.js";
