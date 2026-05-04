@@ -60,7 +60,9 @@
     "smoke:events": "tsx scripts/smoke-events.ts",
     "smoke:plugin-layout": "tsx scripts/smoke-plugin-layout.ts",
     "smoke:resolve-attention": "tsx scripts/smoke-resolve-attention.ts",
-    "smoke:stop-hook": "tsx scripts/smoke-stop-hook.ts"
+    "smoke:stop-hook": "tsx scripts/smoke-stop-hook.ts",
+    "smoke:source-comments": "tsx scripts/smoke-source-comments.ts",
+    "smoke:rules-merge": "tsx scripts/smoke-rules-merge.ts"
   },
   "dependencies": {
     "@devplusllc/harness-core": "workspace:*",

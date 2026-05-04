@@ -34,6 +34,56 @@ export {
   discoverDocs,
   runDocsIngestion,
 } from "./ingest-docs.js";
+export {
+  HEURISTIC as SOURCE_COMMENT_HEURISTIC,
+  applyStripReplace,
+  classifyBlocks,
+  detectLang as detectSourceCommentLang,
+  previewStripReplace,
+  runSourceCommentsIngestion,
+  walkSourceComments,
+} from "./source-comments/index.js";
+export {
+  KEEP_END_MARKER,
+  KEEP_START_MARKER,
+  discoverRuleSources,
+  extractKeepBlocks,
+  parseRuleSections,
+  reapplyKeepBlocks,
+  regenerateRulesFiles,
+  renderKeepBlock,
+  runRulesMerge,
+} from "./rules-merge/index.js";
+export type {
+  KeepBlock,
+  RegenerateRulesArgs,
+  RegenerateRulesResult,
+  RuleClassKind,
+  RuleClassification,
+  RuleSection,
+  RuleSourceFile,
+  RunRulesMergeArgs,
+  RunRulesMergeResult,
+} from "./rules-merge/index.js";
+export type {
+  ClassifyArgs as SourceCommentClassifyArgs,
+  ClassifyResult as SourceCommentClassifyResult,
+  CommentBlock,
+  CommentClassKind,
+  CommentClassification,
+  CommentKind,
+  CommentLang,
+  DirtyDecision,
+  FileOutcome as StripReplaceFileOutcome,
+  IngestSourceCommentsArgs,
+  IngestSourceCommentsResult,
+  ReplaceItem,
+  SkipReason as StripReplaceSkipReason,
+  StripReplaceArgs,
+  StripReplaceResult,
+  WalkOptions as SourceCommentWalkOptions,
+  WalkResult as SourceCommentWalkResult,
+} from "./source-comments/index.js";
 export type {
   ClassifiedDoc,
   DocCandidate,
