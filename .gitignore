@@ -23,3 +23,6 @@ npm-debug.log*
 
 # Claude Code local session state (locks, settings cache)
 .claude/
+# Exception: harness ships a .claude/ template that init copies into adopted repos
+!packages/harness-core/templates/.claude/
+!packages/harness-core/templates/.claude/**
