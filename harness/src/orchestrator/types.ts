@@ -259,6 +259,14 @@ export interface OrchestratorOptions {
    * per L42 (max_attempts_per_task=3, attempt 2 = first sensor-feedback retry).
    */
   maxAttempts?: number;
+  /**
+   * Stall watchdog threshold. When the active run logs no event for this
+   * many seconds AND the phase is one that should produce events
+   * (excludes operator-pending `blocked`), the orchestrator posts a
+   * one-shot remediation embed pointing at `/halt` + `/status`. Default
+   * 90s; smokes drop this to a few seconds.
+   */
+  watchdogStallSeconds?: number;
 }
 
 export interface QueueEntry {

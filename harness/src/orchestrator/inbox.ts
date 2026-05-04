@@ -129,6 +129,39 @@ export function directionChannelOf(row: InboxDirectionRow): string | undefined {
   return row.free_text?.channelId;
 }
 
+/**
+ * Generic slash-event inbox row — covers /halt, /status, /queue, /eval,
+ * /resume, /oops, /help, /agent, /ship-anyway. The orchestrator routes by
+ * `slash.command`. /direction is intercepted earlier by `isDirectionRow`
+ * so it never reaches this guard's handler chain.
+ */
+export interface InboxSlashRow {
+  kind: "slash";
+  source: string;
+  received_at: string;
+  slash: {
+    command: string;
+    options: Record<string, string | number | boolean>;
+    authorId: string;
+    channelId?: string;
+    guildId?: string;
+    messageId?: string;
+    receivedAt: string;
+  };
+}
+
+export function isSlashRow(row: unknown): row is InboxSlashRow {
+  if (typeof row !== "object" || row === null) return false;
+  const r = row as Record<string, unknown>;
+  if (r["kind"] !== "slash") return false;
+  const s = r["slash"];
+  if (typeof s !== "object" || s === null) return false;
+  const ss = s as Record<string, unknown>;
+  return (
+    typeof ss["command"] === "string" && typeof ss["authorId"] === "string"
+  );
+}
+
 export async function moveToProcessed(
   repoRoot: string,
   file: string,

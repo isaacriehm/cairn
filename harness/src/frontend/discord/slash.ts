@@ -28,6 +28,7 @@ export const SLASH_COMMAND_NAMES = [
   "queue",
   "resume",
   "archive",
+  "unpause",
   "help",
 ] as const;
 
@@ -97,6 +98,9 @@ export function buildSlashCommands(): AnySlashBuilder[] {
       .addStringOption((opt) =>
         opt.setName("path").setDescription("Repo-relative path").setRequired(true),
       ),
+    new SlashCommandBuilder()
+      .setName("unpause")
+      .setDescription("Clear a quota-triggered dispatch pause"),
     new SlashCommandBuilder()
       .setName("help")
       .setDescription("List available commands with examples"),
