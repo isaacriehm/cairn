@@ -18,8 +18,16 @@
  * for an already-set-up operator runs proceed + e2e and that's it.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import {
+  type Dirent,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { join, relative } from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import {
   scopeIndexPath,
@@ -29,6 +37,15 @@ import {
 } from "../ground/scope-index.js";
 import { ensureMirror, normalizeProjectName } from "../mirror/index.js";
 import { logger } from "../logger.js";
+import {
+  applyBrandAnswers,
+  runBrandSetup,
+  type BrandAnswers,
+} from "./brand-setup.js";
+import {
+  tryStartDaemon,
+  type DaemonAutostartResult,
+} from "./daemon-autostart.js";
 import { detectAll } from "./detect.js";
 import {
   runMapper,
@@ -88,6 +105,18 @@ export interface RunInitArgs {
    * apply-to-workflow.md path without burning Sonnet tokens.
    */
   mockMapperOutput?: MapperOutput;
+  /**
+   * Skip the interactive 4-question brand setup (Phase 5b). Smokes / auto
+   * mode set this; interactive runs default to running it.
+   */
+  skipBrandSetup?: boolean;
+  /** Pre-canned brand answers — exercises the apply path without a TTY. */
+  scriptedBrandAnswers?: Partial<BrandAnswers>;
+  /**
+   * Skip the daemon autostart attempt (Phase 5c). Smokes default to skipping
+   * since the daemon isn't installed in the test environment.
+   */
+  skipDaemonAutostart?: boolean;
 }
 
 export interface InitResult {
@@ -105,6 +134,13 @@ export interface InitResult {
   mapper_applied_to_workflow: boolean;
   /** Whether mapper output reached the new .harness/config.yaml. */
   mapper_applied_to_config: boolean;
+  /** Brand-setup outcome (Phase 5b). null when skipped. */
+  brand_setup: {
+    answered: number;
+    updated_files: string[];
+  } | null;
+  /** Daemon autostart outcome (Phase 5c). null when skipped. */
+  daemon_autostart: DaemonAutostartResult | null;
   warnings: string[];
 }
 
@@ -168,6 +204,8 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
       mapper_output: null,
       mapper_applied_to_workflow: false,
       mapper_applied_to_config: false,
+      brand_setup: null,
+      daemon_autostart: null,
       warnings,
     };
   }
@@ -356,26 +394,45 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     }
   }
 
-  // ── Step 5: next-steps ─────────────────────────────────────────────
-  header("Done. Next steps");
-  info(`  cd "${repoRoot}"`);
-  info(`  pnpm dlx @devplusllc/harness watch --project ${decidedSlug}    # daemon`);
-  if (envState.discord_token && envState.discord_guild) {
-    info(
-      `  pnpm dlx @devplusllc/harness run --project ${decidedSlug} --frontend discord`,
-    );
-  } else {
-    info(
-      `  # discord adapter not configured — using stub. Set DISCORD_BOT_TOKEN + DISCORD_GUILD_ID, then:`,
-    );
-    info(
-      `  pnpm dlx @devplusllc/harness run --project ${decidedSlug} --frontend stub`,
-    );
+  // ── Step 5b: brand setup (interactive 4-question wizard) ───────────
+  let brandSetup: { answered: number; updated_files: string[] } | null = null;
+  if (args.skipBrandSetup !== true) {
+    const answers = await runBrandSetup({
+      projectName: decidedSlug,
+      ...(mode === "auto" ? { skip: true } : {}),
+      ...(args.scriptedBrandAnswers !== undefined
+        ? { scriptedAnswers: args.scriptedBrandAnswers }
+        : {}),
+    });
+    const answered =
+      (answers.whatItDoes.length > 0 ? 1 : 0) +
+      (answers.mainUsers.length > 0 ? 1 : 0) +
+      (answers.voice.length > 0 ? 1 : 0) +
+      (answers.avoid.length > 0 ? 1 : 0);
+    if (answered > 0) {
+      const apply = applyBrandAnswers(repoRoot, answers);
+      for (const w of apply.warnings) warnings.push(w);
+      brandSetup = { answered, updated_files: apply.updated };
+    } else {
+      brandSetup = { answered: 0, updated_files: [] };
+    }
   }
-  if (warnings.length > 0) {
-    info("\nWarnings:");
-    for (const w of warnings) info(`  ! ${w}`);
+
+  // ── Step 5c: daemon autostart ──────────────────────────────────────
+  let daemonAutostart: DaemonAutostartResult | null = null;
+  if (args.skipDaemonAutostart !== true) {
+    daemonAutostart = await tryStartDaemon(repoRoot);
   }
+
+  // ── Step 6: completion summary (structured) ────────────────────────
+  printCompletionSummary({
+    projectName: decidedSlug,
+    repoRoot,
+    seededFiles: seed.written_files,
+    brandSetup,
+    daemonAutostart,
+    warnings,
+  });
 
   log.info(
     {
@@ -387,6 +444,8 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
       mapper_ran: mapperOutput !== null,
       mapper_applied_to_workflow: mapperAppliedToWorkflow,
       mapper_applied_to_config: mapperAppliedToConfig,
+      brand_answered: brandSetup?.answered ?? null,
+      daemon_started: daemonAutostart?.started ?? null,
       warnings: warnings.length,
     },
     "init complete",
@@ -404,6 +463,8 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     mapper_output: mapperOutput,
     mapper_applied_to_workflow: mapperAppliedToWorkflow,
     mapper_applied_to_config: mapperAppliedToConfig,
+    brand_setup: brandSetup,
+    daemon_autostart: daemonAutostart,
     warnings,
   };
 
@@ -797,6 +858,199 @@ function printGlobs(label: string, globs: string[]): void {
 function truncateOneLine(s: string, max: number): string {
   const collapsed = s.replace(/\s+/g, " ").trim();
   return collapsed.length > max ? `${collapsed.slice(0, max - 1)}…` : collapsed;
+}
+
+interface CompletionSummaryArgs {
+  projectName: string;
+  repoRoot: string;
+  seededFiles: string[];
+  brandSetup: { answered: number; updated_files: string[] } | null;
+  daemonAutostart: DaemonAutostartResult | null;
+  warnings: string[];
+}
+
+function printCompletionSummary(args: CompletionSummaryArgs): void {
+  const groundCount = countGroundFiles(args.repoRoot);
+  const sensorCount = countSensorEntries(args.repoRoot);
+  const scopeReport = describeScopeIndex(args.repoRoot);
+  const brandReport = describeBrandStatus(args.repoRoot);
+  const daemonReport = describeDaemon(args.daemonAutostart);
+  const hookReport = describeHooks(args.repoRoot);
+  const mcpReport = describeMcpRegistration(args.repoRoot);
+
+  info("");
+  info(`  ✓ Harness ready — ${args.projectName}`);
+  info("");
+  info(`  Ground state      .harness/ground/ (${groundCount} files)`);
+  info(`  MCP server        ${mcpReport}`);
+  info(`  Hooks             ${hookReport}`);
+  info(`  Sensors           ${sensorCount} active`);
+  info(`  Brand             ${brandReport}`);
+  info(`  Scope index       ${scopeReport}`);
+  info(`  Daemon            ${daemonReport}`);
+  info("");
+  info("  Open Claude Code in this directory. Harness is live immediately.");
+  info("");
+  info("  Next: harness attention        see pending items");
+  info("        harness doctor           verify everything is working");
+  info("        harness configure brand  fill in brand guidelines");
+
+  if (args.warnings.length > 0) {
+    info("");
+    info(`  ${args.warnings.length} warning${args.warnings.length === 1 ? "" : "s"}:`);
+    for (const w of args.warnings) info(`    ! ${w}`);
+  }
+}
+
+function countGroundFiles(repoRoot: string): number {
+  const groundDir = join(repoRoot, ".harness", "ground");
+  if (!existsSync(groundDir)) return 0;
+  let count = 0;
+  const stack: string[] = [groundDir];
+  while (stack.length > 0) {
+    const dir = stack.pop();
+    if (dir === undefined) break;
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(dir, { withFileTypes: true, encoding: "utf8" });
+    } catch {
+      continue;
+    }
+    for (const e of entries) {
+      const abs = join(dir, e.name);
+      if (e.isDirectory()) {
+        if (e.name === "_inbox") continue;
+        stack.push(abs);
+      } else if (e.isFile()) {
+        count++;
+      }
+    }
+  }
+  return count;
+}
+
+function countSensorEntries(repoRoot: string): number {
+  const path = join(repoRoot, ".harness", "config", "sensors.yaml");
+  if (!existsSync(path)) return 0;
+  try {
+    const parsed = parseYaml(readFileSync(path, "utf8")) as unknown;
+    if (typeof parsed !== "object" || parsed === null) return 0;
+    const sensorsRaw = (parsed as Record<string, unknown>)["sensors"];
+    if (!Array.isArray(sensorsRaw)) return 0;
+    return sensorsRaw.length;
+  } catch {
+    return 0;
+  }
+}
+
+function describeScopeIndex(repoRoot: string): string {
+  const path = join(repoRoot, ".harness", "ground", "scope-index.yaml");
+  if (!existsSync(path)) return "missing — run harness scope rebuild";
+  try {
+    const parsed = parseYaml(readFileSync(path, "utf8")) as unknown;
+    if (typeof parsed !== "object" || parsed === null) {
+      return "empty — run harness scope rebuild";
+    }
+    const filesRaw = (parsed as Record<string, unknown>)["files"];
+    if (typeof filesRaw !== "object" || filesRaw === null) {
+      return "empty — run harness scope rebuild";
+    }
+    const count = Object.keys(filesRaw as Record<string, unknown>).length;
+    if (count === 0) return "empty — run harness scope rebuild";
+    return `ready (${count} file${count === 1 ? "" : "s"} classified)`;
+  } catch {
+    return "unreadable — run harness scope rebuild";
+  }
+}
+
+function describeBrandStatus(repoRoot: string): string {
+  const overview = join(repoRoot, ".harness", "ground", "brand", "overview.md");
+  const positioning = join(
+    repoRoot,
+    ".harness",
+    "ground",
+    "product",
+    "positioning.md",
+  );
+  const voice = join(repoRoot, ".harness", "ground", "brand", "voice.md");
+  const all = [overview, positioning, voice];
+  let currentCount = 0;
+  let total = 0;
+  for (const p of all) {
+    if (!existsSync(p)) continue;
+    total++;
+    if (readFrontmatterStatus(p) === "current") currentCount++;
+  }
+  if (total === 0) return "missing — re-run harness init";
+  if (currentCount === total) return "ready";
+  if (currentCount === 0) return "draft — run harness configure brand";
+  return `partial (${currentCount}/${total} current) — run harness configure brand`;
+}
+
+function readFrontmatterStatus(path: string): string | null {
+  try {
+    const text = readFileSync(path, "utf8");
+    const m = text.match(/^---\n([\s\S]*?\n)---/);
+    if (!m) return null;
+    const fm = m[1] ?? "";
+    const sm = fm.match(/^status:\s*(\S+)\s*$/m);
+    return sm && sm[1] ? sm[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+function describeDaemon(result: DaemonAutostartResult | null): string {
+  if (result === null) return "not started — run harness daemon start";
+  if (result.started) {
+    return result.pid !== null
+      ? `started (PID ${result.pid})`
+      : "started";
+  }
+  if (result.reason !== null && result.reason.includes("on PATH")) {
+    return "not started — install harness globally then run harness daemon start";
+  }
+  return "not started — run harness daemon start";
+}
+
+function describeHooks(repoRoot: string): string {
+  const path = join(repoRoot, ".claude", "settings.json");
+  if (!existsSync(path)) return "missing .claude/settings.json";
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+    const hooks = parsed["hooks"];
+    if (typeof hooks !== "object" || hooks === null) return "missing entries";
+    const sessionStart = (hooks as Record<string, unknown>)["SessionStart"];
+    const postToolUse = (hooks as Record<string, unknown>)["PostToolUse"];
+    const labels: string[] = [];
+    if (Array.isArray(sessionStart) && sessionStart.length > 0) {
+      labels.push("SessionStart");
+    }
+    if (Array.isArray(postToolUse) && postToolUse.length > 0) {
+      labels.push("PostToolUse (read-enricher, write-guardian)");
+    }
+    return labels.length === 0 ? "no entries" : labels.join(" · ");
+  } catch {
+    return "unreadable";
+  }
+}
+
+function describeMcpRegistration(repoRoot: string): string {
+  const path = join(repoRoot, ".mcp.json");
+  if (!existsSync(path)) return ".mcp.json · missing entry";
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+    const servers = parsed["mcpServers"];
+    if (typeof servers !== "object" || servers === null) {
+      return ".mcp.json · missing harness entry";
+    }
+    if ((servers as Record<string, unknown>)["harness"] !== undefined) {
+      return ".mcp.json · ready";
+    }
+    return ".mcp.json · missing harness entry";
+  } catch {
+    return ".mcp.json · unreadable";
+  }
 }
 
 function printSummary(d: DetectionResult, decidedSlug: string): void {
