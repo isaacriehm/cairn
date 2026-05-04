@@ -177,3 +177,8 @@ Total new files (this session, excluding lockfile): 12.
   + harness-build/BUILD_LOG.md entries (this file)
   + isaacriehm-harness-lens-0.0.0.vsix (gitignored artifact)
 BUILD_REPORT gaps closed: Gap 1 (scope rebuild), Gap 4 (gitignore audit confirmed correct), Gap 6 (cache content-hash). Gaps 2/3/5 are runtime/deployment concerns owned by harness-runtime — no state-layer change needed.
+
+## Hotfix — Ctrl+C / Esc cancel during init [DONE 2026-05-04T06:35]
+Subagent attempts: 0 (inline)
+Compile: PASS (both packages); smoke-init PASS — auto mode does NOT install handlers (so smokes don't deadlock)
+Notes: ora + cli-progress hide cursor while running; SIGINT didn't run their stop() so Ctrl+C left the operator stuck. Added cleanup registry in visual.ts — startSpinner + startProgress register their stop() and unregister on graceful succeed/fail. New installInitCancelHandlers() wires SIGINT/SIGTERM/SIGHUP to runAllCleanups() + showCursor() + exit(130). Also installs an Esc-keypress listener on stdin (single 0x1B byte = soft cancel; multi-byte sequences like arrow keys are skipped). brand-setup.ts adds rl.on("SIGINT") that closes readline + exits 130. installInitCancelHandlers() is gated to interactive mode in runInit so auto-mode smokes don't keep handlers attached. Public barrel re-exports installInitCancelHandlers + startSpinner / startProgress / withSpinner.

@@ -56,6 +56,7 @@ import {
 import {
   c as visualC,
   discoveryRow,
+  installInitCancelHandlers,
   withSpinner,
 } from "./visual.js";
 import {
@@ -195,7 +196,12 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   const mode: PromptMode = args.mode ?? "interactive";
   const warnings: string[] = [];
 
-  // ── Phase 0: redirect pino logs to a file so JSON lines never reach stdout.
+  // ── Phase 0: install cancel handlers + redirect pino logs to a file.
+  // Cancel handlers are interactive-only; auto mode (smokes) skips them so
+  // the SIGINT trap doesn't keep the test process alive.
+  if (mode === "interactive") {
+    installInitCancelHandlers();
+  }
   const logFilePath = redirectInitLogs();
 
   header(`Cairn init — ${repoRoot}`);

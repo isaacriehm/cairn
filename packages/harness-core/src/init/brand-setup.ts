@@ -66,6 +66,14 @@ export async function runBrandSetup(
     terminal: stdin.isTTY === true,
   });
 
+  // Ctrl+C inside readline emits SIGINT but rl.question() doesn't reject by
+  // default — install our own handler so the operator can abort cleanly.
+  rl.on("SIGINT", () => {
+    rl.close();
+    stdout.write(`\n  ⚠ cancelled\n`);
+    process.exit(130);
+  });
+
   const answers: BrandAnswers = { ...EMPTY };
   try {
     answers.whatItDoes = await ask(

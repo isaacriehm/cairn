@@ -8,6 +8,12 @@ export {
   detectStackSignatures,
   detectStartCommand,
 } from "./detect.js";
+export {
+  installInitCancelHandlers,
+  startProgress,
+  startSpinner,
+  withSpinner,
+} from "./visual.js";
 export { applyBrandAnswers, runBrandSetup } from "./brand-setup.js";
 export type {
   BrandAnswers,
