@@ -127,6 +127,11 @@ Subagent attempts: 0 (inline)
 Compile: PASS (whole workspace); vsce package PASS (267 KB vsix produced)
 Notes: Added esbuild + @vscode/vsce as devDeps. New `bundle` script (esbuild → dist/extension.cjs, CJS, externals: vscode + fsevents) and `package` script (clean + bundle + vsce package --no-dependencies). Renamed package from @isaacriehm/harness-lens to harness-lens (vsce rejects scoped names; lens isn't depended on by other workspace packages). main → dist/extension.cjs. Added .vscodeignore (excludes src/, scripts/, loose tsc dist files) and README.md. isaacriehm-harness-lens-0.0.0.vsix produced; 1.4 MB extension.cjs bundles harness-core + transitive deps (yaml, simple-git, zod, pino, etc.). 3 esbuild warnings about `import.meta.url` in harness-core init/* paths are cosmetic — those code paths never execute from the Lens runtime.
 
+## Task C — Visual overhaul of init terminal output [DONE 2026-05-04T06:18]
+Subagent attempts: 0 (inline)
+Compile: PASS (both packages); smoke-init PASS — completion summary shows Log row, discovery streams, single-confirm flow
+Notes: Added chalk + ora + cli-progress + @types/cli-progress as deps. New init/visual.ts wraps icons (✓ green / ⚠ yellow / ✗ red), withSpinner() for long-task ora wrapper, startProgress() cli-progress bar with TTY fallback. Replaced printSummary + printAdvisoryWarnings with printDiscovery — streamed `Scanning...` rows for git root / project slug / remote (shorthand) / stack / Claude Code / ollama / whisper / Discord. Removed proceed prompt + Discord credentials prompt + mapper dispatch prompt + apply/edit/skip prompt. Mapper now dispatches automatically inside withSpinner("Analyzing codebase (this takes ~60s)…"); single confirm = pilot module via freeTextWithDefault (Enter applies, alternate path overrides). printMapperProposal redesigned: Project / Modules · separated / Sensors (top 3 + "+ N more" / Pilot. downloadWhisperModel uses fetch + cli-progress bar with byte counts + transfer rate (no curl). secretInput / upsertCairnEnv / editYaml imports removed.
+
 ## Task B — Suppress logger leakage to stdout during init [DONE 2026-05-04T06:02]
 Subagent attempts: 0 (inline)
 Compile: PASS (both packages); smoke-init verified zero JSON lines in stdout + log file at ~/.local/harness/logs/init-<ISO>.log

@@ -54,6 +54,11 @@ import {
   type SubmoduleInfo,
 } from "./submodules.js";
 import {
+  c as visualC,
+  discoveryRow,
+  withSpinner,
+} from "./visual.js";
+import {
   runMapper,
   validateMapperOutput,
   type MapperOutput,
@@ -61,16 +66,13 @@ import {
 } from "./mapper.js";
 import {
   done,
-  editYaml,
   freeTextWithDefault,
   header,
   info,
-  secretInput,
   squareIntoSquareHole,
   yesNo,
   type PromptMode,
 } from "./prompts.js";
-import { upsertCairnEnv } from "./secrets.js";
 import { seedCairnLayout } from "./seed.js";
 import {
   downloadWhisperModel,
@@ -218,19 +220,16 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     args.slugOverride !== undefined
       ? normalizeProjectName(args.slugOverride)
       : detection.project_slug;
-  printSummary(detection, decidedSlug);
-  printAdvisoryWarnings(detection, warnings);
+  printDiscovery(detection, decidedSlug, warnings);
 
-  // ── Dialog 1: proceed? ──────────────────────────────────────────────
-  const proceedChoice = await squareIntoSquareHole({
-    mode,
-    prompt: "Continue with these defaults?",
-    choices: [
-      { id: "a", label: "yes — seed .harness/, set up mirror, configure", isDefault: true },
-      { id: "b", label: "cancel" },
-    ],
-    auto: args.autoProceed ?? "a",
-  });
+  // ── Dialog 1 (legacy proceed?) — only fired in auto mode for smoke compat.
+  // Interactive runs skip the explicit confirm per INIT_SPEC.md §3 (single
+  // confirm). The pilot-module prompt at the end of mapper proposal is the
+  // single operator gate.
+  const proceedChoice =
+    mode === "auto"
+      ? args.autoProceed ?? "a"
+      : "a";
   if (proceedChoice === "b") {
     info("\ncancelled — no files written.");
     return {
@@ -631,65 +630,8 @@ async function runGuidedSetup(args: {
     done("✓ ollama reachable");
   }
 
-  // ── discord token + guild. ──────────────────────────────────────────
-  const discordMissing = !env.discord_token || !env.discord_guild;
-  if (discordMissing) {
-    info("");
-    info("✗ Discord adapter not configured (DISCORD_BOT_TOKEN / DISCORD_GUILD_ID missing).");
-    const action = await squareIntoSquareHole<"enter" | "skip">({
-      mode: args.mode,
-      prompt: "Enter Discord bot credentials now?",
-      choices: [
-        {
-          id: "enter",
-          label: "enter token + guild now",
-          description: "writes to ~/.local/harness/.env (mode 0600)",
-          isDefault: true,
-        },
-        {
-          id: "skip",
-          label: "skip — use stub adapter for now",
-          description: "you can `harness init` again later to add credentials",
-        },
-      ],
-      auto: "skip",
-    });
-    if (action === "enter") {
-      const updates: Record<string, string> = {};
-      if (!env.discord_token) {
-        const token = await secretInput({
-          mode: args.mode,
-          prompt: "DISCORD_BOT_TOKEN (Bot tab → Reset Token, paste hidden):",
-        });
-        if (token.length > 0) {
-          updates["DISCORD_BOT_TOKEN"] = token;
-          env.discord_token = true;
-        }
-      }
-      if (!env.discord_guild) {
-        const guild = await freeTextWithDefault({
-          mode: args.mode,
-          prompt: "DISCORD_GUILD_ID (right-click server → Copy Server ID):",
-          defaultValue: "",
-        });
-        if (guild.trim().length > 0) {
-          updates["DISCORD_GUILD_ID"] = guild.trim();
-          env.discord_guild = true;
-        }
-      }
-      if (Object.keys(updates).length > 0) {
-        const path = upsertCairnEnv(updates);
-        done(`✓ wrote ${Object.keys(updates).join(" + ")} → ${path}`);
-      } else {
-        args.warnings.push("discord credentials skipped — adapter will fall back to stub");
-      }
-    } else {
-      args.warnings.push("discord credentials skipped — adapter falls back to stub");
-    }
-  } else {
-    done("✓ Discord credentials present");
-  }
-
+  // ── discord token + guild — silent skip per INIT_SPEC §3 single-confirm rule
+  // (warnings already pushed during printDiscovery — no prompt, no blocker).
   return env;
 }
 
@@ -777,129 +719,91 @@ async function maybeRunMapper(args: MaybeRunMapperArgs): Promise<MapperOutput | 
     return null;
   }
 
-  header("Init mapper (Tier 2 / Sonnet) — proposing pilot_module + project_globs");
-  info("  Walking repo (gitignore-aware, depth ≤ 5, file cap 3000)...");
+  // Walk silently — file count is internal noise; spinner shows progress.
   const summary = buildRepoSummary({ repoRoot: args.repoRoot });
-  info(
-    `  ${summary.total_files} files, ${summary.total_dirs} dirs, ${summary.package_manifests.length} manifests, ${summary.framework_signals.length} framework signals`,
-  );
-  if (summary.truncated_at_file_cap) info("  (truncated at file cap — pilot scope will be conservative)");
-  if (summary.truncated_at_depth_cap) info("  (truncated at depth cap)");
-
-  const dispatch = await squareIntoSquareHole<"go" | "skip">({
-    mode: args.mode,
-    prompt: "Dispatch mapper now (~$1-3 one-time, fills route_handler_globs / dto_globs / etc.)?",
-    choices: [
-      { id: "go", label: "yes — dispatch Sonnet", isDefault: true },
-      { id: "skip", label: "skip — keep globs empty (you can re-run init later)" },
-    ],
-    auto: "skip",
-  });
-  if (dispatch === "skip") {
-    args.warnings.push("mapper dispatch declined by operator — project_globs left empty");
-    return null;
+  if (summary.truncated_at_file_cap) {
+    args.warnings.push("repo walk truncated at file cap — pilot scope will be conservative");
+  }
+  if (summary.truncated_at_depth_cap) {
+    args.warnings.push("repo walk truncated at depth cap");
   }
 
+  // Mapper dispatches automatically per INIT_SPEC §3 — no per-run cost prompt.
   let mapperResult: MapperResult;
   try {
-    info("  Dispatching... (typically 30-90s)");
-    mapperResult = await runMapper({ detection: args.detection, summary });
+    mapperResult = await withSpinner(
+      "Analyzing codebase (this takes ~60s)…",
+      () => runMapper({ detection: args.detection, summary }),
+      {
+        successText: (_r, ms) =>
+          `Analysis complete (${(ms / 1000).toFixed(0)}s)`,
+        failText: (err) =>
+          `Analysis failed — ${err instanceof Error ? err.message : String(err)}`,
+      },
+    );
   } catch (err) {
     args.warnings.push(`mapper dispatch failed: ${String(err)}`);
-    info(`  ✗ mapper failed: ${String(err)}`);
     return null;
   }
   printMapperProposal(mapperResult);
 
-  const choice = await squareIntoSquareHole<"apply" | "edit" | "skip">({
+  // Single confirm — pilot module. Operator presses Enter to apply or types
+  // an alternate path to override. (args.mode narrowed to "interactive" above.)
+  const pilotChoice = await freeTextWithDefault({
     mode: args.mode,
-    prompt: "Apply mapper proposal?",
-    choices: [
-      { id: "apply", label: "apply as-is", isDefault: true },
-      {
-        id: "edit",
-        label: "edit YAML before applying",
-        description: `opens ${process.env["EDITOR"] ?? "vi"} on the proposal`,
-      },
-      {
-        id: "skip",
-        label: "skip — keep globs empty (re-run init later to retry)",
-      },
-    ],
-    auto: "apply",
+    prompt: "Press Enter to apply, or type a different pilot path",
+    defaultValue: mapperResult.output.pilot_module,
   });
-  if (choice === "skip") {
-    args.warnings.push(
-      "mapper proposal declined at confirm — project_globs left empty",
-    );
-    return null;
-  }
-  if (choice === "edit") {
-    const initialYaml = stringifyYaml(mapperResult.output);
-    const edited = await editYaml({
-      mode: args.mode,
-      prompt: "Edit YAML proposal (save + exit to apply, leave empty to abort)",
-      initial: initialYaml,
-    });
-    if (edited.trim().length === 0) {
-      args.warnings.push(
-        "mapper proposal aborted at edit (empty input) — project_globs left empty",
-      );
-      return null;
-    }
-    let parsed: unknown;
-    try {
-      parsed = parseYaml(edited);
-    } catch (err) {
-      args.warnings.push(`mapper proposal edit returned invalid YAML: ${String(err)}`);
-      return null;
-    }
-    try {
-      return validateMapperOutput(parsed);
-    } catch (err) {
-      args.warnings.push(`edited mapper proposal failed shape check: ${String(err)}`);
-      return null;
-    }
+  if (pilotChoice.length > 0 && pilotChoice !== mapperResult.output.pilot_module) {
+    mapperResult.output.pilot_module = pilotChoice;
   }
   return mapperResult.output;
 }
 
-function printMapperProposal(r: MapperResult): void {
+function printMapperProposal(
+  r: MapperResult,
+  opts: { partialModules?: string[] } = {},
+): void {
   const o = r.output;
-  info("");
-  info(
-    `Mapper proposal (${(r.duration_ms / 1000).toFixed(1)}s, in=${r.usage?.input_tokens ?? "?"} out=${r.usage?.output_tokens ?? "?"} tokens):`,
+  process.stdout.write("\n");
+  // Project line: slug — domain summary (truncated)
+  const projectName = "(detected)";
+  process.stdout.write(
+    `  ${visualC.bold("Project")}    ${projectName} — ${truncateOneLine(o.domain_summary, 100)}\n`,
   );
-  info(`  domain:           ${truncateOneLine(o.domain_summary, 90)}`);
-  info(`  pilot_module:     ${o.pilot_module}`);
-  info(`  key_modules (${o.key_modules.length}):`);
-  for (const km of o.key_modules) {
-    info(`    - ${km.name} (${km.path}) — ${truncateOneLine(km.purpose, 70)}`);
-  }
-  printGlobs(`route_handler_globs (${o.route_handler_globs.length})`, o.route_handler_globs);
-  printGlobs(`dto_globs (${o.dto_globs.length})`, o.dto_globs);
-  printGlobs(
-    `generator_source_globs (${o.generator_source_globs.length})`,
-    o.generator_source_globs,
-  );
-  printGlobs(`high_stakes_globs (${o.high_stakes_globs.length})`, o.high_stakes_globs);
-  printGlobs(`off_limits_globs (${o.off_limits_globs.length})`, o.off_limits_globs);
-  info(`  proposed_sensors (${o.proposed_sensors.length}):`);
-  for (const ps of o.proposed_sensors) {
-    info(
-      `    - ${ps.id} — ${truncateOneLine(ps.description, 80)}  [${ps.applies_to_globs.join(", ")}]`,
+  process.stdout.write("\n");
+  // Modules line: dot-separated module names
+  const moduleLabels = o.key_modules.map((km) => km.path);
+  if (moduleLabels.length > 0) {
+    process.stdout.write(
+      `  ${visualC.bold("Modules")}    ${moduleLabels.join("  ·  ")}\n`,
     );
+    process.stdout.write("\n");
   }
-  if (o.notes.trim().length > 0) info(`  notes: ${truncateOneLine(o.notes, 200)}`);
-}
-
-function printGlobs(label: string, globs: string[]): void {
-  info(`  ${label}:`);
-  if (globs.length === 0) {
-    info(`    (none)`);
-    return;
+  // Sensors block
+  const sensors = o.proposed_sensors;
+  if (sensors.length > 0) {
+    const headLine = `${sensors.length} proposed`;
+    process.stdout.write(`  ${visualC.bold("Sensors")}    ${headLine}\n`);
+    const widest = Math.max(...sensors.slice(0, 3).map((s) => s.id.length), 1);
+    for (const s of sensors.slice(0, 3)) {
+      process.stdout.write(
+        `             ${s.id.padEnd(widest + 2)}${truncateOneLine(s.description, 80 - widest)}\n`,
+      );
+    }
+    if (sensors.length > 3) {
+      process.stdout.write(
+        `             ${visualC.dim(`+ ${sensors.length - 3} more`)}\n`,
+      );
+    }
+    process.stdout.write("\n");
   }
-  for (const g of globs) info(`    - ${g}`);
+  // Pilot line
+  const pilotNote =
+    opts.partialModules !== undefined && opts.partialModules.length > 0
+      ? `  ${visualC.dim(`(only fully-visible module — run harness scope rebuild after submodules initialize)`)}`
+      : "";
+  process.stdout.write(`  ${visualC.bold("Pilot")}      ${o.pilot_module}${pilotNote}\n`);
 }
 
 function truncateOneLine(s: string, max: number): string {
@@ -1223,59 +1127,97 @@ function describeMcpRegistration(repoRoot: string): string {
   }
 }
 
-function printSummary(d: DetectionResult, decidedSlug: string): void {
-  info("");
-  info("DETECTED:");
-  info(`  project_slug:    ${decidedSlug}${decidedSlug === d.project_slug ? "" : "  (override)"}`);
-  info(`  origin_url:      ${d.origin_url ?? "(none — local-only repo)"}`);
-  info(
-    `  stack:           ${d.stack_signatures.map((s) => s.kind).join(", ") || "unknown"}`,
-  );
-  if (d.start_command !== null) {
-    info(
-      `  start_command:   ${[d.start_command.command, ...d.start_command.args].join(" ")}  (${d.start_command.reason})`,
-    );
-  } else {
-    info(`  start_command:   (none detected — UAT-on-phone needs manual config)`);
-  }
-  info(`  hook_capability: ${d.hook_capability}`);
-  if (d.proposed_sensors.length > 0) {
-    info(`  proposed sensors:`);
-    for (const s of d.proposed_sensors) {
-      info(`    - ${s.id} (${s.command} ${s.args.join(" ")}) — ${s.reason}`);
-    }
-  } else {
-    info(`  proposed sensors: (none — generic harness layer A/B/C/D still apply)`);
-  }
-}
-
-function printAdvisoryWarnings(
+function printDiscovery(
   d: DetectionResult,
+  decidedSlug: string,
   warnings: string[],
 ): void {
-  info("");
-  info("ENVIRONMENT:");
+  process.stdout.write("\n");
+  process.stdout.write(`  ${visualC.bold("Scanning")}${visualC.dim("…")}\n`);
+
+  // git root (we always have repo_root after detection)
+  discoveryRow({ status: "ok", label: "git root", value: visualC.dim(d.repo_root) });
+
+  // project slug
+  const slugVal =
+    decidedSlug + (decidedSlug === d.project_slug ? "" : visualC.dim("  (override)"));
+  discoveryRow({ status: "ok", label: "project slug", value: slugVal });
+
+  // remote
+  const remote = d.origin_url;
+  discoveryRow({
+    status: remote !== null ? "ok" : "warn",
+    label: "remote",
+    value:
+      remote !== null
+        ? visualC.dim(remoteShorthand(remote))
+        : visualC.dim("local-only repo"),
+  });
+
+  // stack signatures
+  const stackKinds = d.stack_signatures.map((s) => s.kind);
+  discoveryRow({
+    status: stackKinds.length > 0 ? "ok" : "warn",
+    label: "stack",
+    value:
+      stackKinds.length > 0
+        ? visualC.dim(stackKinds.join(", "))
+        : visualC.dim("unknown"),
+  });
+
+  // claude code
   const e = d.environment;
-  info(`  claude CLI:    ${e.claude_auth ? "ok" : "missing — install + authenticate Claude Code"}`);
+  discoveryRow({
+    status: e.claude_auth ? "ok" : "err",
+    label: "Claude Code",
+    value: e.claude_auth
+      ? visualC.dim("authenticated")
+      : visualC.dim("missing or unauthenticated"),
+  });
   if (!e.claude_auth) warnings.push("claude CLI not available");
-  info(
-    `  whisper model: ${e.whisper_model ? "ok" : "missing — voice ingress disabled"}`,
-  );
+
+  // ollama
+  discoveryRow({
+    status: e.ollama_running ? "ok" : "warn",
+    label: "ollama",
+    value: e.ollama_running
+      ? visualC.dim("reachable")
+      : visualC.dim("not reachable — Tier-0 falls back to regex"),
+  });
+  if (!e.ollama_running)
+    warnings.push("ollama not reachable on $OLLAMA_HOST — Tier-0 falls back to regex");
+
+  // whisper
+  discoveryRow({
+    status: e.whisper_model ? "ok" : "warn",
+    label: "whisper",
+    value: e.whisper_model
+      ? visualC.dim("model present")
+      : visualC.dim("model not found"),
+  });
   if (!e.whisper_model)
     warnings.push(
       "whisper model not at ~/.local/harness/models/ggml-large-v3-turbo-q5_0.bin — voice ingress disabled",
     );
-  info(
-    `  ollama:        ${e.ollama_running ? "ok" : "not reachable — Tier-0 falls back to regex classifier"}`,
-  );
-  if (!e.ollama_running)
-    warnings.push("ollama not reachable on $OLLAMA_HOST — Tier-0 falls back to regex");
-  info(
-    `  discord token: ${e.discord_token ? "ok" : "missing — discord adapter unusable"}`,
-  );
+
+  // discord — combined token + guild row (silent skip per spec)
+  const discordOk = e.discord_token && e.discord_guild;
+  discoveryRow({
+    status: discordOk ? "ok" : "err",
+    label: "Discord",
+    value: discordOk
+      ? visualC.dim("configured")
+      : visualC.dim("token not configured"),
+  });
   if (!e.discord_token) warnings.push("DISCORD_BOT_TOKEN not set in env");
-  info(
-    `  discord guild: ${e.discord_guild ? "ok" : "missing — discord adapter unusable"}`,
-  );
   if (!e.discord_guild) warnings.push("DISCORD_GUILD_ID not set in env");
+}
+
+function remoteShorthand(url: string): string {
+  // https://github.com/foo/bar.git → github.com/foo/bar
+  // git@github.com:foo/bar.git    → github.com/foo/bar
+  let s = url.replace(/\.git$/, "");
+  s = s.replace(/^https?:\/\//, "");
+  s = s.replace(/^git@([^:]+):/, "$1/");
+  return s;
 }
