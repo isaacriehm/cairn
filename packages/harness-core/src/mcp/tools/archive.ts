@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, renameSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { McpContext } from "../context.js";
 import { recordDriftEvent } from "../../ground/index.js";
+import { withWriteLock } from "../../lock.js";
 import { mcpError } from "../errors.js";
 import { isArchiveDenied, relPosix, safeJoin } from "../path-allowlist.js";
 import { archiveInput } from "../schemas.js";
@@ -35,21 +36,23 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
   const today = new Date().toISOString().slice(0, 10);
   const bucket = input.archive_dir ?? today;
   const target = join(ctx.repoRoot, ".archive", bucket, rel);
-  mkdirSync(dirname(target), { recursive: true });
-  renameSync(abs, target);
-  recordDriftEvent(ctx.repoRoot, {
-    ts: new Date().toISOString(),
-    kind: "orphan_path",
-    path: rel,
-    detail: `archived: ${input.reason}`,
-    severity: "soft",
+  return withWriteLock(ctx.repoRoot, () => {
+    mkdirSync(dirname(target), { recursive: true });
+    renameSync(abs, target);
+    recordDriftEvent(ctx.repoRoot, {
+      ts: new Date().toISOString(),
+      kind: "orphan_path",
+      path: rel,
+      detail: `archived: ${input.reason}`,
+      severity: "soft",
+    });
+    return {
+      ok: true,
+      archived_from: rel,
+      archived_to: relPosix(ctx.repoRoot, target),
+      reason: input.reason,
+    };
   });
-  return {
-    ok: true,
-    archived_from: rel,
-    archived_to: relPosix(ctx.repoRoot, target),
-    reason: input.reason,
-  };
 }
 
 export const archiveTool: ToolDef<Input> = {

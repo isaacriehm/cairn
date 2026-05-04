@@ -79,7 +79,7 @@ function assert(cond: unknown, msg: string): void {
 }
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const PKG_TEMPLATES = resolve(HERE, "..", "..", "packages", "harness-core", "templates");
+const PKG_TEMPLATES = resolve(HERE, "..", "..", "harness-core", "templates");
 
 /** Copy templates/.harness/config/* + .archive/README.md into repoRoot. */
 function seedHarnessConfig(repoRoot: string): void {
