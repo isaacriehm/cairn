@@ -8,7 +8,7 @@
  *   2. generator-drift       — re-run profile.extractors, diff against ground
  *   3. stub-catalog-hits     — full-tree scan against stub-patterns.yaml
  *   4. doc-gardening         — broken markdown links, orphan paths
- *   5. quality-grades        — rebuild .harness/ground/quality-grades.yaml
+ *   5. quality-grades        — rebuild .cairn/ground/quality-grades.yaml
  *
  * Each pass returns `GcFinding[]` and may attach a `GcCommitProposal` when the
  * fix is mechanical (frontmatter refresh, generator regen, quality-grades

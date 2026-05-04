@@ -1,5 +1,5 @@
 /**
- * Hover provider for harness citation tokens.
+ * Hover provider for cairn citation tokens.
  *
  * Triggers on §V<N> and TODO(TSK-<id>) tokens. Renders a Markdown card with
  * resolved title, status, and links to the underlying ground file.

@@ -3,11 +3,11 @@
  *
  * Per PLUGIN_ARCHITECTURE §7 (three-layer conflict catch, layer 2),
  * every locked write to global state emits a small JSON file under
- * `.harness/events/`. Plugin Stop hooks in other live sessions poll
+ * `.cairn/events/`. Plugin Stop hooks in other live sessions poll
  * that directory and surface an inline A/B/C if the event touches a
  * DEC/§V they have in scope.
  *
- * Files: `.harness/events/<msTs>-<kind>.json` — sortable by name. ts
+ * Files: `.cairn/events/<msTs>-<kind>.json` — sortable by name. ts
  * collisions resolved with a short crypto suffix.
  *
  * Retention: events older than 7 days are GC'd by `gcStaleEvents`.
@@ -31,7 +31,7 @@ export interface InvalidationEventRef {
 export interface InvalidationEventSource {
   /** Claude Code session id of the writer, if known. */
   session_id: string | null;
-  /** MCP tool name (e.g. `harness_record_decision`) or other emitter id. */
+  /** MCP tool name (e.g. `cairn_record_decision`) or other emitter id. */
   tool: string;
 }
 

@@ -68,7 +68,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
 }
 
 export const invariantsInScopeTool: ToolDef<Input> = {
-  name: "harness_invariants_in_scope",
+  name: "cairn_invariants_in_scope",
   description:
     "List active invariants whose source_decision scope overlaps the given path_globs.",
   inputSchema: invariantsInScopeInput,

@@ -41,14 +41,14 @@ const MERGE_OUTPUT_SCHEMA = {
 } as const;
 
 const MERGE_SYSTEM_PROMPT = [
-  "You are the MERGE step for a code-agent harness adopting a new project.",
+  "You are the MERGE step for a code-agent cairn adopting a new project.",
   "",
   "You receive per-module proposals from prior Sonnet calls (one per module). Your job is small and cheap:",
   "  1. Pick the `pilot_module` glob — bias toward the proposal where pilot_module_candidate is true. If multiple candidates, pick the one with highest confidence. If none, pick the highest-confidence module overall.",
   "  2. Write a 60-200 word `domain_summary` that synthesizes per-module domains into a single description of the whole project.",
   "  3. Write a short `notes` string covering anything cross-cutting (monorepo layout, shared packages, etc.). EMPTY string is fine.",
   "",
-  "You DO NOT pick globs or sensors — those are unioned mechanically by the harness after your call. You only pick the pilot, write the summary, and add notes.",
+  "You DO NOT pick globs or sensors — those are unioned mechanically by the cairn after your call. You only pick the pilot, write the summary, and add notes.",
   "",
   "Return ONLY the JSON object. No preamble.",
 ].join("\n");

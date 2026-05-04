@@ -46,7 +46,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
 }
 
 export const invariantGetTool: ToolDef<Input> = {
-  name: "harness_invariant_get",
+  name: "cairn_invariant_get",
   description: "Returns §V invariant body + linked sensor + linked e2e by id.",
   inputSchema: invariantGetInput,
   handler,

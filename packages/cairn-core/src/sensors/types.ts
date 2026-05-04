@@ -36,7 +36,7 @@ export type SensorLanguage =
   | "rust"
   | "sql";
 
-/** One pattern entry from .harness/config/stub-patterns.yaml. */
+/** One pattern entry from .cairn/config/stub-patterns.yaml. */
 export interface StubPattern {
   id: string;
   languages: SensorLanguage[];

@@ -61,7 +61,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
 }
 
 export const canonicalForTopicTool: ToolDef<Input> = {
-  name: "harness_canonical_for_topic",
+  name: "cairn_canonical_for_topic",
   description:
     "Returns the authoritative canonical_path + sha256 + verified-at for a registered topic. Topics are curated; unknown topics return TOPIC_NOT_REGISTERED.",
   inputSchema: canonicalForTopicInput,

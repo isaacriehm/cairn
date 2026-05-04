@@ -141,7 +141,7 @@ export function runAttestationCrossCheck(args: {
   diff: DiffEntry[];
   stubCatalog: StubCatalog;
   /** Globs of files always allowed in diff but not required to be in
-   *  files_touched (e.g. `.harness/runs/active/**`). */
+   *  files_touched (e.g. `.cairn/runs/active/**`). */
   ignoreGlobs?: string[];
 }): SensorResult {
   const startedAt = Date.now();

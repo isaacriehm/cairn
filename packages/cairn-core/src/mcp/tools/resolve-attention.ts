@@ -1,9 +1,9 @@
 /**
- * harness_resolve_attention — inline A/B/C resolution endpoint.
+ * cairn_resolve_attention — inline A/B/C resolution endpoint.
  *
  * Spec: PLUGIN_ARCHITECTURE §9 (MCP write tools — plugin-era addition).
  *
- * The harness-attention skill calls this after the operator picks an
+ * The cairn-attention skill calls this after the operator picks an
  * option. It maps `kind × choice` onto the canonical resolution
  * pathway:
  *
@@ -91,7 +91,7 @@ function resolveDecisionDraft(ctx: McpContext, input: Input): Promise<unknown> {
       ok: true,
       resolved_kind: "decision_edit_pending",
       item_id: input.item_id,
-      draft_path: `.harness/ground/decisions/_inbox/${input.item_id}.draft.md`,
+      draft_path: `.cairn/ground/decisions/_inbox/${input.item_id}.draft.md`,
       body,
     });
   }
@@ -114,7 +114,7 @@ function resolveDecisionDraft(ctx: McpContext, input: Input): Promise<unknown> {
         // ignore — file already gone
       }
       try {
-        emitEvent(ctx, "decision_accepted", input.item_id, `.harness/ground/decisions/${input.item_id}.md`);
+        emitEvent(ctx, "decision_accepted", input.item_id, `.cairn/ground/decisions/${input.item_id}.md`);
       } catch {
         // event emission must never roll back the resolution
       }
@@ -122,13 +122,13 @@ function resolveDecisionDraft(ctx: McpContext, input: Input): Promise<unknown> {
         ok: true,
         resolved_kind: "decision_accepted",
         item_id: input.item_id,
-        accepted_path: `.harness/ground/decisions/${input.item_id}.md`,
+        accepted_path: `.cairn/ground/decisions/${input.item_id}.md`,
       };
     }
 
     // choice === "b" — reject + archive.
     const today = new Date().toISOString().slice(0, 10);
-    const archivedRel = join(".archive", today, ".harness/ground/decisions/_inbox", `${input.item_id}.draft.md`);
+    const archivedRel = join(".archive", today, ".cairn/ground/decisions/_inbox", `${input.item_id}.draft.md`);
     const archivedAbs = join(ctx.repoRoot, archivedRel);
     mkdirSync(dirname(archivedAbs), { recursive: true });
     renameSync(inboxPath, archivedAbs);
@@ -166,7 +166,7 @@ function resolveBaselineFinding(ctx: McpContext, input: Input): Promise<unknown>
 
   // choice === "b" — append to suppressions.
   return withWriteLock(ctx.repoRoot, () => {
-    const suppressionsPath = join(ctx.repoRoot, ".harness", "baseline", "suppressions.yaml");
+    const suppressionsPath = join(ctx.repoRoot, ".cairn", "baseline", "suppressions.yaml");
     mkdirSync(dirname(suppressionsPath), { recursive: true });
     const initial = existsSync(suppressionsPath) ? "" : "suppressions:\n";
     const entry =
@@ -180,7 +180,7 @@ function resolveBaselineFinding(ctx: McpContext, input: Input): Promise<unknown>
       ok: true,
       resolved_kind: "baseline_suppressed",
       item_id: input.item_id,
-      suppressions_path: ".harness/baseline/suppressions.yaml",
+      suppressions_path: ".cairn/baseline/suppressions.yaml",
     };
   });
 }
@@ -216,14 +216,14 @@ function emitEvent(
     kind,
     refs: [{ kind: "decision", id: decId }],
     path,
-    source: { session_id: ctx.sessionId ?? null, tool: "harness_resolve_attention" },
+    source: { session_id: ctx.sessionId ?? null, tool: "cairn_resolve_attention" },
   });
 }
 
 export const resolveAttentionTool: ToolDef<Input> = {
-  name: "harness_resolve_attention",
+  name: "cairn_resolve_attention",
   description:
-    "Resolve an inline-A/B/C attention pick — DEC draft accept/reject/edit, baseline finding suppress/defer/triage, invalidation event refresh/continue/abort. Called by the harness-attention skill after the operator picks an option.",
+    "Resolve an inline-A/B/C attention pick — DEC draft accept/reject/edit, baseline finding suppress/defer/triage, invalidation event refresh/continue/abort. Called by the cairn-attention skill after the operator picks an option.",
   inputSchema: resolveAttentionInput,
   handler,
 };

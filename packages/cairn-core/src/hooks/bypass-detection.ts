@@ -4,7 +4,7 @@
  * Spec: PLUGIN_ARCHITECTURE §17 Layer 1 (bypass tracking).
  *
  * The post-commit hook appends every successfully-attested SHA to
- * `.harness/.attested-commits` (gitignored, per-clone). On every Stop hook
+ * `.cairn/.attested-commits` (gitignored, per-clone). On every Stop hook
  * we read that file + the last 5 SHAs from `git log` and surface any HEAD
  * commit that isn't in the attested set.
  *
@@ -27,7 +27,7 @@ export interface ScanBypassResult {
   bypassed: BypassedCommit[];
   /** Total HEAD commits inspected (≤ 5). */
   inspected: number;
-  /** True when `.harness/.attested-commits` exists (even if empty). */
+  /** True when `.cairn/.attested-commits` exists (even if empty). */
   attestedFileExists: boolean;
 }
 
@@ -50,7 +50,7 @@ export function scanBypassedCommits(repoRoot: string): ScanBypassResult {
   return {
     bypassed,
     inspected: recent.length,
-    attestedFileExists: existsSync(join(repoRoot, ".harness", ".attested-commits")),
+    attestedFileExists: existsSync(join(repoRoot, ".cairn", ".attested-commits")),
   };
 }
 
@@ -63,8 +63,8 @@ export function renderBypassHint(bypassed: BypassedCommit[]): string {
   lines.push(
     "The following HEAD commit" +
       (bypassed.length === 1 ? " was" : "s were") +
-      " not recorded by harness's post-commit hook. Likely cause: " +
-      "`git commit --no-verify` (or the hook ran before `harness join` " +
+      " not recorded by cairn's post-commit hook. Likely cause: " +
+      "`git commit --no-verify` (or the hook ran before `cairn join` " +
       "set `core.hooksPath`).",
   );
   lines.push("");
@@ -74,8 +74,8 @@ export function renderBypassHint(bypassed: BypassedCommit[]): string {
   lines.push("");
   lines.push("Surface inline to the operator now:");
   lines.push("");
-  lines.push("> Some recent commits weren't attested by harness. Pick one:");
-  lines.push("> `[a]` backfill — run `harness sweep` to attest sensors retroactively");
+  lines.push("> Some recent commits weren't attested by cairn. Pick one:");
+  lines.push("> `[a]` backfill — run `cairn sweep` to attest sensors retroactively");
   lines.push("> `[b]` accept — record a DEC noting the bypass + reason");
   lines.push("> `[c]` defer — keep the warning, address later");
   return lines.join("\n");
@@ -109,7 +109,7 @@ function readRecentHead(repoRoot: string): BypassedCommit[] {
 }
 
 function readAttestedCommits(repoRoot: string): Set<string> {
-  const path = join(repoRoot, ".harness", ".attested-commits");
+  const path = join(repoRoot, ".cairn", ".attested-commits");
   if (!existsSync(path)) return new Set();
   try {
     const body = readFileSync(path, "utf8");

@@ -6,8 +6,8 @@
  * level. Front-matter (everything before the first heading) is returned as a
  * synthetic section with `level: 0` and `title: ""`.
  *
- * Operator-preserved blocks (between `<!-- harness:keep-start -->` and
- * `<!-- harness:keep-end -->`) are tagged so the classifier can skip them.
+ * Operator-preserved blocks (between `<!-- cairn:keep-start -->` and
+ * `<!-- cairn:keep-end -->`) are tagged so the classifier can skip them.
  */
 
 import { extractKeepBlocks } from "./keep-markers.js";

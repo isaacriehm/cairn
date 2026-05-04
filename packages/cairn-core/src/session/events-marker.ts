@@ -1,5 +1,5 @@
 /**
- * Per-session events marker — `.harness/sessions/<id>/events-marker.json`.
+ * Per-session events marker — `.cairn/sessions/<id>/events-marker.json`.
  *
  * Records the timestamp at which a session armed its events watch. The
  * Stop hook (step 4) reads `eventsSince(repoRoot, marker.ts)` and

@@ -6,7 +6,7 @@
  *
  * Sequence:
  *   1. Adopt a fresh fixture (mocked classifiers, full pipeline) and run
- *      `harness join` so the bootstrap guard passes.
+ *      `cairn join` so the bootstrap guard passes.
  *   2. Run SessionStart bin against the adopted clone — assert per-session
  *      status.json + events-marker land, additionalContext non-empty.
  *   3. Drop a tightened task spec without an attestation; run Stop bin →
@@ -205,7 +205,7 @@ async function adoptFixture(repoRoot: string): Promise<void> {
   // Bootstrap so MCP write tools' bootstrap-guard passes.
   const join = runJoin({ cwd: repoRoot });
   if (!join.bootstrapped) {
-    throw new Error("harness join failed during fixture setup");
+    throw new Error("cairn join failed during fixture setup");
   }
 }
 
@@ -213,7 +213,7 @@ async function main(): Promise<void> {
   step("Adopt fresh fixture + bootstrap");
   assert(existsSync(SESSION_START_BIN), `compiled session-start bin missing — run pnpm -r build`);
   assert(existsSync(STOP_BIN), `compiled stop bin missing — run pnpm -r build`);
-  const repoRoot = mkdtempSync(join(tmpdir(), "harness-smoke-e2e-flow-"));
+  const repoRoot = mkdtempSync(join(tmpdir(), "cairn-smoke-e2e-flow-"));
   cleanups.push(repoRoot);
   await adoptFixture(repoRoot);
   console.log(`  fixture at ${repoRoot}`);
@@ -222,7 +222,7 @@ async function main(): Promise<void> {
   const sessionId = "smoke-e2e-flow";
   const ssOut = runHookBin(SESSION_START_BIN, { session_id: sessionId, cwd: repoRoot });
   assert(ssOut.status === 0, `session-start exit 0; stderr=${ssOut.stderr}`);
-  const sessionDir = join(repoRoot, ".harness", "sessions", sessionId);
+  const sessionDir = join(repoRoot, ".cairn", "sessions", sessionId);
   assert(existsSync(join(sessionDir, "status.json")), "status.json written");
   assert(existsSync(join(sessionDir, "events-marker.json")), "events-marker written");
   // No bootstrap banner expected since join ran in adoptFixture.
@@ -236,7 +236,7 @@ async function main(): Promise<void> {
   const taskId = "TSK-2026-05-04-flow-99999";
   writeFile(
     repoRoot,
-    `.harness/tasks/active/${taskId}/spec.tightened.md`,
+    `.cairn/tasks/active/${taskId}/spec.tightened.md`,
     `---\nid: ${taskId}\nstatus: ready\n---\n\n# ${taskId}\n\nbody\n`,
   );
   const stop1 = runHookBin(STOP_BIN, { session_id: sessionId, cwd: repoRoot });
@@ -254,7 +254,7 @@ async function main(): Promise<void> {
   step("Step 3 — Stop hint clears once attestation lands");
   writeFile(
     repoRoot,
-    `.harness/tasks/active/${taskId}/attestation.yaml`,
+    `.cairn/tasks/active/${taskId}/attestation.yaml`,
     `task_id: ${taskId}\nattested_at: ${new Date().toISOString()}\nattested_by: smoke\n`,
   );
   const stop2 = runHookBin(STOP_BIN, { session_id: sessionId, cwd: repoRoot });
@@ -269,7 +269,7 @@ async function main(): Promise<void> {
   const decId = "DEC-9001";
   writeFile(
     repoRoot,
-    `.harness/ground/decisions/_inbox/${decId}.draft.md`,
+    `.cairn/ground/decisions/_inbox/${decId}.draft.md`,
     [
       "---",
       `id: ${decId}`,
@@ -290,19 +290,19 @@ async function main(): Promise<void> {
     ].join("\n"),
   );
   const ctx: McpContext = { repoRoot, sessionId };
-  const accept = (await callTool("harness_resolve_attention", ctx, {
+  const accept = (await callTool("cairn_resolve_attention", ctx, {
     item_id: decId,
     choice: "a",
     kind: "decision_draft",
   })) as Record<string, unknown>;
   assert(!isMcpError(accept), `resolve_attention should succeed, got ${JSON.stringify(accept)}`);
   // Canonical file should now exist; draft renamed to .accepted.bak.
-  const canonical = join(repoRoot, ".harness/ground/decisions", `${decId}.md`);
+  const canonical = join(repoRoot, ".cairn/ground/decisions", `${decId}.md`);
   assert(existsSync(canonical), `canonical DEC file present at ${canonical}`);
   const canonicalBody = readFileSync(canonical, "utf8");
   assert(canonicalBody.includes("status: accepted"), "status flipped to accepted");
   // Inbox draft should be gone (renamed to .accepted.bak).
-  const inboxAfter = readdirSync(join(repoRoot, ".harness/ground/decisions/_inbox"));
+  const inboxAfter = readdirSync(join(repoRoot, ".cairn/ground/decisions/_inbox"));
   assert(
     !inboxAfter.includes(`${decId}.draft.md`),
     "draft removed from inbox",

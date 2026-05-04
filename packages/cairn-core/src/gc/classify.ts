@@ -3,7 +3,7 @@
  *
  * Given a set of repo-relative paths a commit will touch, return one of:
  *   safe        — formatting, doc regen, frontmatter refresh, generated content,
- *                 archive moves, stub-catalog additions, .harness/ground/* writes
+ *                 archive moves, stub-catalog additions, .cairn/ground/* writes
  *   code        — touches *.ts / *.tsx / *.js outside generator-managed files
  *   high-stakes — any path matches projectGlobs.high_stakes_globs
  *
@@ -18,9 +18,9 @@ import type { GcAutoMergeClass } from "./types.js";
 
 /** Patterns the classifier always treats as safe regardless of file type. */
 const SAFE_PATH_PREFIXES = [
-  ".harness/ground/",
-  ".harness/staleness/",
-  ".harness/runs/terminal/",
+  ".cairn/ground/",
+  ".cairn/staleness/",
+  ".cairn/runs/terminal/",
   ".archive/",
 ];
 
@@ -48,7 +48,7 @@ export interface ClassifyArgs {
   paths: readonly string[];
   projectGlobs?: ProjectGlobs;
   /**
-   * Globs of paths the harness considers generator-managed — touching these
+   * Globs of paths the cairn considers generator-managed — touching these
    * stays safe-class even when the extension is .ts. Default: empty.
    */
   generatorManagedGlobs?: readonly string[];
@@ -85,9 +85,9 @@ function isSafePath(path: string, generatorManagedGlobs: readonly string[]): boo
   // Documentation files are safe.
   if (path.startsWith("docs/")) return true;
   if (path === "AGENTS.md" || path === "CLAUDE.md" || path === "README.md") return true;
-  // Frontmatter / config under .harness/config/* is safe (the GC pass that
+  // Frontmatter / config under .cairn/config/* is safe (the GC pass that
   // writes there is doing config maintenance, not source change).
-  if (path.startsWith(".harness/config/") || path.startsWith(".claude/")) return true;
+  if (path.startsWith(".cairn/config/") || path.startsWith(".claude/")) return true;
   // Generic doc-extension files outside the source tree fall here.
   for (const ext of DOC_LIKE_EXTS) {
     if (path.endsWith(ext)) return true;

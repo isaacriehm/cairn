@@ -1,7 +1,7 @@
 /**
  * Layer A — mechanical stub-pattern catalog.
  *
- * Run regex patterns from `.harness/config/stub-patterns.yaml` against every
+ * Run regex patterns from `.cairn/config/stub-patterns.yaml` against every
  * file changed in the diff. Hard-severity match fails the run; soft-severity
  * contributes to attestation cross-check (stubs_introduced count).
  *

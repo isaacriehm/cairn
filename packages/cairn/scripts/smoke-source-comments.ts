@@ -52,7 +52,7 @@ function cleanup(): void {
 }
 
 function mkRepoRoot(): string {
-  const dir = mkdtempSync(join(tmpdir(), "harness-smoke-srccomm-"));
+  const dir = mkdtempSync(join(tmpdir(), "cairn-smoke-srccomm-"));
   cleanups.push(dir);
   return dir;
 }
@@ -267,7 +267,7 @@ async function main(): Promise<void> {
   // Indentation preserved (4 spaces leading)
   assert(/^ {4}\/\/ §V42$/m.test(newContent), "leading indent preserved");
   // Backup written
-  const backup = join(repoRoot3, ".harness/backups/source/src/db.ts.original");
+  const backup = join(repoRoot3, ".cairn/backups/source/src/db.ts.original");
   assert(existsSync(backup), "backup .original written");
   const backupContent = readFileSync(backup, "utf8");
   assert(backupContent.includes("/* one"), "backup retains original block");

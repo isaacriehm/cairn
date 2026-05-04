@@ -1,9 +1,9 @@
 /**
- * Per-write filesystem lock for `.harness/` global state.
+ * Per-write filesystem lock for `.cairn/` global state.
  *
  * Per docs/PLUGIN_ARCHITECTURE.md §7 (Concurrency): every write to global
- * state (`.harness/ground/`, `.harness/baseline/`, `.harness/inbox/`) is
- * serialized through `.harness/.write-lock` so concurrent Claude Code
+ * state (`.cairn/ground/`, `.cairn/baseline/`, `.cairn/inbox/`) is
+ * serialized through `.cairn/.write-lock` so concurrent Claude Code
  * sessions don't race. Reads are unlocked. Whole-operation locks
  * (`.gc-lock`, `.audit-lock`) are separate — see acquireOperationLock.
  *
@@ -29,7 +29,7 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_POLL_MS = 50;
 
 /**
- * Acquire `.harness/.write-lock` for the lifetime of `fn`. Releases on
+ * Acquire `.cairn/.write-lock` for the lifetime of `fn`. Releases on
  * success or error. Stale locks (holder PID is dead) are reclaimed.
  */
 export async function withWriteLock<T>(
@@ -37,7 +37,7 @@ export async function withWriteLock<T>(
   fn: () => Promise<T> | T,
   opts: WithLockOptions = {},
 ): Promise<T> {
-  return withLockAtPath(join(repoRoot, ".harness", ".write-lock"), fn, opts);
+  return withLockAtPath(join(repoRoot, ".cairn", ".write-lock"), fn, opts);
 }
 
 /**
@@ -51,7 +51,7 @@ export async function acquireOperationLock<T>(
   lockName: string,
   fn: () => Promise<T> | T,
 ): Promise<T> {
-  const lockPath = join(repoRoot, ".harness", lockName);
+  const lockPath = join(repoRoot, ".cairn", lockName);
   await mkdir(dirname(lockPath), { recursive: true });
   const acquired = await tryAcquire(lockPath);
   if (!acquired) {

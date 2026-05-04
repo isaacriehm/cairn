@@ -3,7 +3,7 @@
  * output. Mirrors `DecisionExtractorOutput` exactly.
  *
  * Assertion kinds match the production set in `src/ground/schemas.ts`. The
- * extractor's `parameters` is a free-form object; the harness materializes
+ * extractor's `parameters` is a free-form object; the cairn materializes
  * the assertion into the draft as-is and lets sensors validate at evaluation
  * time. Rejecting at extract time would block the operator's intent over
  * a malformed parameter the agent might still get right on the next pass.

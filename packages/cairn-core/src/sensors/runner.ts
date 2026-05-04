@@ -88,7 +88,7 @@ export async function runSensors(args: RunSensorsArgs): Promise<SensorSweepResul
       attestation,
       diff,
       stubCatalog,
-      ignoreGlobs: [".harness/runs/active/**", ".harness/inbox/processed/**"],
+      ignoreGlobs: [".cairn/runs/active/**", ".cairn/inbox/processed/**"],
     }),
   );
 

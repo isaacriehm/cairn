@@ -27,7 +27,7 @@ export class ScopeCodeLensProvider implements vscode.CodeLensProvider {
   provideCodeLenses(
     document: vscode.TextDocument,
   ): vscode.ProviderResult<vscode.CodeLens[]> {
-    const config = vscode.workspace.getConfiguration("harness");
+    const config = vscode.workspace.getConfiguration("cairn");
     if (config.get<boolean>("lens.codeLens") !== true) return [];
     if (document.uri.scheme !== "file") return [];
 

@@ -28,8 +28,8 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
       return { id: input.id, kind: input.kind, content: readFileSync(path, "utf8") };
     }
     case "task": {
-      const path = join(ctx.repoRoot, ".harness", "tasks", "active", input.id, "spec.tightened.md");
-      const fallback = join(ctx.repoRoot, ".harness", "tasks", "active", input.id, "spec.md");
+      const path = join(ctx.repoRoot, ".cairn", "tasks", "active", input.id, "spec.tightened.md");
+      const fallback = join(ctx.repoRoot, ".cairn", "tasks", "active", input.id, "spec.md");
       const target = existsSync(path) ? path : existsSync(fallback) ? fallback : null;
       if (!target) {
         return mcpError("TASK_NOT_FOUND", `No active task ${input.id}`);
@@ -37,7 +37,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
       return { id: input.id, kind: input.kind, content: readFileSync(target, "utf8") };
     }
     case "run": {
-      const meta = join(ctx.repoRoot, ".harness", "runs", "active", input.id, "meta.json");
+      const meta = join(ctx.repoRoot, ".cairn", "runs", "active", input.id, "meta.json");
       if (!existsSync(meta)) {
         return mcpError("RUN_NOT_FOUND", `No active run ${input.id}`);
       }
@@ -47,9 +47,9 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
 }
 
 export const getFullTool: ToolDef<Input> = {
-  name: "harness_get_full",
+  name: "cairn_get_full",
   description:
-    "Fetch full content of an artifact by id + kind (decision | invariant | task | run). Used after harness_search/timeline narrows candidates.",
+    "Fetch full content of an artifact by id + kind (decision | invariant | task | run). Used after cairn_search/timeline narrows candidates.",
   inputSchema: getFullInput,
   handler,
 };

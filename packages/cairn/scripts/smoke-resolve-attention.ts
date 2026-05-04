@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * smoke-resolve-attention — verifies harness_resolve_attention covers
+ * smoke-resolve-attention — verifies cairn_resolve_attention covers
  * every kind × choice pathway documented in the tool.
  *
  * Spec: PLUGIN_ARCHITECTURE §9 (plugin-era write tool).
@@ -36,22 +36,22 @@ function cleanup(): void {
 }
 
 function mkRepoRoot(): string {
-  const dir = mkdtempSync(join(tmpdir(), "harness-smoke-resolve-"));
+  const dir = mkdtempSync(join(tmpdir(), "cairn-smoke-resolve-"));
   cleanups.push(dir);
-  mkdirSync(join(dir, ".harness", "ground", "decisions", "_inbox"), { recursive: true });
+  mkdirSync(join(dir, ".cairn", "ground", "decisions", "_inbox"), { recursive: true });
   return dir;
 }
 
 function writeDraftDec(repoRoot: string, id: string): string {
-  const path = join(repoRoot, ".harness", "ground", "decisions", "_inbox", `${id}.draft.md`);
+  const path = join(repoRoot, ".cairn", "ground", "decisions", "_inbox", `${id}.draft.md`);
   const body = `---\nid: ${id}\ntitle: smoke-test draft\nstatus: draft\n---\n\n# ${id} — smoke-test draft\n\nbody.\n`;
   writeFileSync(path, body, "utf8");
   return path;
 }
 
 function getResolveTool(): ToolDef<unknown> {
-  const tool = (allTools as ToolDef<unknown>[]).find((t) => t.name === "harness_resolve_attention");
-  assert(tool !== undefined, "harness_resolve_attention should be registered in allTools");
+  const tool = (allTools as ToolDef<unknown>[]).find((t) => t.name === "cairn_resolve_attention");
+  assert(tool !== undefined, "cairn_resolve_attention should be registered in allTools");
   return tool;
 }
 
@@ -81,7 +81,7 @@ async function runSmoke(): Promise<void> {
     });
     assert(result.ok === true, `Step 1: ok=true expected, got ${JSON.stringify(result)}`);
     assert(result.resolved_kind === "decision_accepted", "Step 1: resolved_kind mismatch");
-    const acceptedPath = join(repoRoot, ".harness", "ground", "decisions", "DEC-1001.md");
+    const acceptedPath = join(repoRoot, ".cairn", "ground", "decisions", "DEC-1001.md");
     assert(existsSync(acceptedPath), "Step 1: canonical DEC file should exist");
     const acceptedBody = readFileSync(acceptedPath, "utf8");
     assert(/status: accepted/.test(acceptedBody), "Step 1: status should be promoted to accepted");
@@ -135,7 +135,7 @@ async function runSmoke(): Promise<void> {
       rationale: "legacy code, intentional",
     });
     assert(result.resolved_kind === "baseline_suppressed", "Step 4: resolved_kind mismatch");
-    const supp = join(repoRoot, ".harness", "baseline", "suppressions.yaml");
+    const supp = join(repoRoot, ".cairn", "baseline", "suppressions.yaml");
     assert(existsSync(supp), "Step 4: suppressions.yaml should be created");
     const body = readFileSync(supp, "utf8");
     assert(body.includes("BASELINE-stub_catalog_hits-services/auth.ts"), "Step 4: suppressed id should be in body");
@@ -159,7 +159,7 @@ async function runSmoke(): Promise<void> {
       choice: "c",
     });
     assert(defer.resolved_kind === "baseline_deferred", "Step 5c: defer path");
-    assert(!existsSync(join(repoRoot, ".harness", "baseline", "suppressions.yaml")), "Step 5: triage/defer must not write suppressions");
+    assert(!existsSync(join(repoRoot, ".cairn", "baseline", "suppressions.yaml")), "Step 5: triage/defer must not write suppressions");
     console.log("  ✓ Step 5 — Baseline triage + defer");
   }
 

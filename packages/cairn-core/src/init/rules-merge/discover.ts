@@ -1,7 +1,7 @@
 /**
  * Phase 7c discovery — find existing project-rules sources.
  *
- * Per spec §6 Phase 7c, the four sources harness reconciles are:
+ * Per spec §6 Phase 7c, the four sources cairn reconciles are:
  *   - <repoRoot>/CLAUDE.md
  *   - <repoRoot>/AGENTS.md
  *   - <repoRoot>/.claude/CLAUDE.md

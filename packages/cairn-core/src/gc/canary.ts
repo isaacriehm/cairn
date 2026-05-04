@@ -133,9 +133,9 @@ export function verifyBatchCanary(opts: BatchCanaryOptions): BatchCanaryResult {
   // 3. Sanity: workflow.md exists at the expected path (loadWorkflowTemplate
   // already throws when missing, but a missing template yields the more
   // detailed failure above; this check ensures the path itself is right).
-  const workflowPath = join(opts.repoRoot, ".harness", "config", "workflow.md");
+  const workflowPath = join(opts.repoRoot, ".cairn", "config", "workflow.md");
   if (!existsSync(workflowPath)) {
-    failures.push(`workflow.md not found at .harness/config/workflow.md`);
+    failures.push(`workflow.md not found at .cairn/config/workflow.md`);
   } else {
     // Cheap re-read to ensure we can read it post-batch (catches an edit that
     // wrote invalid utf-8 etc).

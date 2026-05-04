@@ -2,9 +2,9 @@
   "extends": "./tsconfig.base.json",
   "files": [],
   "references": [
-    { "path": "./packages/harness-core" },
-    { "path": "./packages/harness-frontend-stub" },
-    { "path": "./packages/harness-lens" },
-    { "path": "./packages/harness" }
+    { "path": "./packages/cairn-core" },
+    { "path": "./packages/cairn-frontend-stub" },
+    { "path": "./packages/cairn-lens" },
+    { "path": "./packages/cairn" }
   ]
 }

@@ -2,7 +2,7 @@
  * Stack profile — extension surface for project-specific generators, sensors,
  * and adoption-time defaults. Per L47 (Codex audit Q8).
  *
- * The harness package code is project-agnostic. All references to specific
+ * The cairn package code is project-agnostic. All references to specific
  * stacks (NestJS, Drizzle, Rails, etc.) live inside profile implementations,
  * NEVER in core code paths. The profile registry is consulted at adoption
  * time and at runtime via id-based lookup.
@@ -27,7 +27,7 @@ export interface ProfileExtractorContext {
 export interface ProfileExtractor {
   /** Stable id used in logs + manifest entries. */
   id: string;
-  /** Output path relative to repoRoot — usually under .harness/ground/. */
+  /** Output path relative to repoRoot — usually under .cairn/ground/. */
   outputRelPath: string;
   /** Watch globs that trigger this extractor (relative to repoRoot). */
   watch: string[];

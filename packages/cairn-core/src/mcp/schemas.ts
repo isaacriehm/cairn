@@ -132,8 +132,8 @@ export const archiveInput = {
 
 export const appendRunNoteInput = {
   /**
-   * Path-safe task id matching the directory under `.harness/tasks/active/`.
-   * The note appends to `.harness/tasks/active/<run_id>/notes.md`. The field
+   * Path-safe task id matching the directory under `.cairn/tasks/active/`.
+   * The note appends to `.cairn/tasks/active/<run_id>/notes.md`. The field
    * is named `run_id` to match the spec; the agent is responsible for passing
    * the id that aligns with its current task dir.
    */

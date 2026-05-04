@@ -1,8 +1,8 @@
 /**
  * Decision id allocator. DEC-NNNN, monotonic, never reused.
  *
- * Scans `.harness/ground/decisions/` for accepted decisions AND
- * `.harness/ground/decisions/_inbox/` for outstanding drafts. Either counts
+ * Scans `.cairn/ground/decisions/` for accepted decisions AND
+ * `.cairn/ground/decisions/_inbox/` for outstanding drafts. Either counts
  * toward the high-water mark — a draft that's pending operator confirmation
  * still owns its id; rejecting a draft does NOT recycle the id.
  *

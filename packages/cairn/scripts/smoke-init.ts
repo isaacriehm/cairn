@@ -3,8 +3,8 @@
  * smoke-init — Phase 16 acceptance.
  *
  * Synthetic project tree (git init + minimal package.json + tsconfig +
- * .eslintrc) → run `runInit` in auto mode → assert .harness/ seeded
- * with project_name placeholder substituted, .harness/config.yaml
+ * .eslintrc) → run `runInit` in auto mode → assert .cairn/ seeded
+ * with project_name placeholder substituted, .cairn/config.yaml
  * carries detected stack + sensors, mirror init skipped (no remote in
  * smoke). Pure mechanical, no claude burn.
  *
@@ -66,7 +66,7 @@ function assert(cond: unknown, msg: string): void {
 }
 
 function makeTsRepo(): string {
-  const root = mkdtempSync(join(tmpdir(), "harness-smoke-init-"));
+  const root = mkdtempSync(join(tmpdir(), "cairn-smoke-init-"));
   cleanups.push(root);
   execSync("git init -q", { cwd: root });
   execSync('git config user.email smoke@example.com', { cwd: root });
@@ -108,7 +108,7 @@ async function main(): Promise<void> {
 
   // ── Step 2: empty repo flags unknown stack.
   header("Step 2: empty repo → stack=[unknown], 0 sensors");
-  const root2 = mkdtempSync(join(tmpdir(), "harness-smoke-init-empty-"));
+  const root2 = mkdtempSync(join(tmpdir(), "cairn-smoke-init-empty-"));
   cleanups.push(root2);
   execSync("git init -q", { cwd: root2 });
   const sigs2 = detectStackSignatures(root2);
@@ -123,7 +123,7 @@ async function main(): Promise<void> {
   assert(sensors2.length === 0, `expected 0 sensors on empty repo, got ${sensors2.length}`);
 
   // ── Step 3: runInit auto-mode seeds layout.
-  header("Step 3: runInit --no-prompt seeds .harness/");
+  header("Step 3: runInit --no-prompt seeds .cairn/");
   const result3 = await runInit({
     repoRoot: root1,
     mode: "auto",
@@ -132,22 +132,22 @@ async function main(): Promise<void> {
   assert(result3.proceed === true, "expected proceed=true");
   assert(result3.seeded_files.length > 0, "no files seeded");
   for (const p of [
-    ".harness/config/workflow.md",
-    ".harness/config/sensors.yaml",
-    ".harness/config/stub-patterns.yaml",
-    ".harness/config/trust-policy.yaml",
-    ".harness/ground/manifest.yaml",
-    ".harness/ground/canonical-map/topics.yaml",
-    ".harness/config.yaml",
+    ".cairn/config/workflow.md",
+    ".cairn/config/sensors.yaml",
+    ".cairn/config/stub-patterns.yaml",
+    ".cairn/config/trust-policy.yaml",
+    ".cairn/ground/manifest.yaml",
+    ".cairn/ground/canonical-map/topics.yaml",
+    ".cairn/config.yaml",
     ".archive/README.md",
   ]) {
     assert(existsSync(join(root1, p)), `expected file ${p}`);
   }
   console.log(`  seeded ${result3.seeded_files.length} files; collisions=${result3.collisions.length}`);
 
-  // ── Step 4: placeholder substitution + harness_version pinned.
-  header("Step 4: workflow.md `<project_name>:` → `demo_app:`; config.yaml has harness_version");
-  const wfText = readFileSync(join(root1, ".harness/config/workflow.md"), "utf8");
+  // ── Step 4: placeholder substitution + cairn_version pinned.
+  header("Step 4: workflow.md `<project_name>:` → `demo_app:`; config.yaml has cairn_version");
+  const wfText = readFileSync(join(root1, ".cairn/config/workflow.md"), "utf8");
   assert(
     wfText.includes("demo_app:"),
     "workflow.md should contain demo_app: extension block key",
@@ -156,12 +156,12 @@ async function main(): Promise<void> {
     !/<project_name>:/.test(wfText),
     "workflow.md should not contain unresolved <project_name>: placeholder",
   );
-  const configText = readFileSync(join(root1, ".harness/config.yaml"), "utf8");
+  const configText = readFileSync(join(root1, ".cairn/config.yaml"), "utf8");
   const configParsed = parseYaml(configText) as Record<string, unknown>;
   assert(configParsed["slug"] === "demo_app", `config.slug mismatch: ${JSON.stringify(configParsed["slug"])}`);
   assert(
-    typeof configParsed["harness_version"] === "string" && (configParsed["harness_version"] as string).length > 0,
-    `config.harness_version missing or empty: ${JSON.stringify(configParsed["harness_version"])}`,
+    typeof configParsed["cairn_version"] === "string" && (configParsed["cairn_version"] as string).length > 0,
+    `config.cairn_version missing or empty: ${JSON.stringify(configParsed["cairn_version"])}`,
   );
   assert(
     Array.isArray(configParsed["stack_signatures"]) &&
@@ -175,17 +175,17 @@ async function main(): Promise<void> {
       ),
     "config.detected_sensor_commands missing tsc",
   );
-  console.log(`  slug=${configParsed["slug"]}, harness_version=${configParsed["harness_version"]}, stack=[${(configParsed["stack_signatures"] as string[]).join(", ")}]`);
+  console.log(`  slug=${configParsed["slug"]}, cairn_version=${configParsed["cairn_version"]}, stack=[${(configParsed["stack_signatures"] as string[]).join(", ")}]`);
 
   // ── Step 5: re-run without --force preserves existing.
   header("Step 5: re-run without --force → collisions, no overwrite");
-  const before = readFileSync(join(root1, ".harness/config/workflow.md"), "utf8");
+  const before = readFileSync(join(root1, ".cairn/config/workflow.md"), "utf8");
   const result5 = await runInit({
     repoRoot: root1,
     mode: "auto",
     autoProceed: "a",
   });
-  const after = readFileSync(join(root1, ".harness/config/workflow.md"), "utf8");
+  const after = readFileSync(join(root1, ".cairn/config/workflow.md"), "utf8");
   assert(before === after, "workflow.md should be unchanged on re-run without --force");
   assert(result5.collisions.length > 0, "expected collisions on re-run");
   console.log(`  collisions=${result5.collisions.length}`);
@@ -200,7 +200,7 @@ async function main(): Promise<void> {
     autoProceed: "a",
   });
   assert(result6.decided_slug === "custom_slug", `decided_slug mismatch: ${result6.decided_slug}`);
-  const wf6 = readFileSync(join(root6, ".harness/config/workflow.md"), "utf8");
+  const wf6 = readFileSync(join(root6, ".cairn/config/workflow.md"), "utf8");
   assert(wf6.includes("custom_slug:"), "workflow.md should reflect override slug");
   console.log(`  slug override propagated to workflow.md`);
 

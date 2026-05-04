@@ -1,16 +1,16 @@
 ---
-name: harness-attention
+name: cairn-attention
 description: |
   Use when the SessionStart context indicated `attention_count > 0` —
   pending DEC drafts in `_inbox/`, baseline sensor findings, or drift
   detected during the last GC sweep. Surfaces each item inline as
-  A/B/C and resolves it through `harness_resolve_attention`. Skip when
+  A/B/C and resolves it through `cairn_resolve_attention`. Skip when
   the operator is in flight on a task; resume at the next idle moment.
 ---
 
-# Skill: harness-attention
+# Skill: cairn-attention
 
-You are surfacing harness's pending-attention queue inline so the
+You are surfacing Cairn's pending-attention queue inline so the
 operator can resolve drafts and findings without leaving the chat. Spec:
 `docs/PLUGIN_ARCHITECTURE.md` §11.
 
@@ -20,13 +20,13 @@ Only fire when:
 
 - The most recent SessionStart additionalContext flagged
   `attention_count > 0`, OR
-- The operator typed `/harness-attention` (escape hatch — slash command
+- The operator typed `/cairn-attention` (escape hatch — slash command
   not yet wired; for now treat any "show me pending" / "what's in the
   inbox" message as a manual trigger).
 
 Skip when:
 
-- A `harness-direction` task is in flight for this session.
+- A `cairn-direction` task is in flight for this session.
 - The operator's prior turn was `[c]` "later" on this skill — wait
   until the next session.
 
@@ -34,13 +34,13 @@ Skip when:
 
 Run these in parallel:
 
-- List drafts: `Bash: ls .harness/ground/decisions/_inbox/*.draft.md 2>/dev/null`
+- List drafts: `Bash: ls .cairn/ground/decisions/_inbox/*.draft.md 2>/dev/null`
 - Latest baseline audit:
-  `Bash: ls -1t .harness/baseline/sensor-audit-*.yaml | head -1`
-- Drift events: `harness_search({query: "drift"})` against the staleness
+  `Bash: ls -1t .cairn/baseline/sensor-audit-*.yaml | head -1`
+- Drift events: `cairn_search({query: "drift"})` against the staleness
   log if any.
 - Recent invalidation events: read the per-session events marker, then
-  list `.harness/events/*.json` newer than `last_polled_ts`.
+  list `.cairn/events/*.json` newer than `last_polled_ts`.
 
 For each item, build a tuple `{kind, id, title, source, severity}`.
 
@@ -81,16 +81,16 @@ Use `AskUserQuestion` with the labels. After the operator picks, call
 the resolver:
 
 ```
-harness_resolve_attention({item_id: "<DEC-0042>", choice: "a"})
+cairn_resolve_attention({item_id: "<DEC-0042>", choice: "a"})
 ```
 
-> NOTE — `harness_resolve_attention` is the plugin-era write tool
+> NOTE — `cairn_resolve_attention` is the plugin-era write tool
 > documented in §9. It is added in step 6 alongside the reviewer
 > subagent. Until step 6 ships, fall back to the existing tools:
->   - DEC accept → `harness_record_decision({id, target: "accepted", ...})`
->   - DEC reject → `harness_archive({path: "...draft.md", reason: "rejected"})`
->   - Baseline accept → append to `.harness/baseline/suppressions.yaml`
->     via `harness_append`
+>   - DEC accept → `cairn_record_decision({id, target: "accepted", ...})`
+>   - DEC reject → `cairn_archive({path: "...draft.md", reason: "rejected"})`
+>   - Baseline accept → append to `.cairn/baseline/suppressions.yaml`
+>     via `cairn_append`
 >   - Defer → no-op (it stays in the queue)
 
 ## Step 4 — stamp the events poll cursor
@@ -102,7 +102,7 @@ session marker so the next Stop hook poll only sees newer events:
 Bash: node -e "const x = require('@isaacriehm/cairn-core'); x.stampEventsPoll({repoRoot: process.cwd(), sessionId: process.env.CLAUDE_SESSION_ID, ts: Date.now()})"
 ```
 
-(The `stampEventsPoll` runtime helper lives in harness-core/session;
+(The `stampEventsPoll` runtime helper lives in cairn-core/session;
 the Stop hook also calls it on every assistant turn end. Calling it
 here keeps the cursor fresh after the operator drains attention.)
 
@@ -112,7 +112,7 @@ here keeps the cursor fresh after the operator drains attention.)
 - Every option must cite the underlying source (file path, sensor id,
   session id) so the operator has full context.
 - Never auto-resolve. Even soft conflicts route through A/B/C.
-- Hard inconsistencies (kind=conflict) block the next harness-direction
+- Hard inconsistencies (kind=conflict) block the next cairn-direction
   invocation until resolved — make that visible in the surface text.
 - Caveman-ultra style for chat replies; full English in any DEC body
   the skill writes.

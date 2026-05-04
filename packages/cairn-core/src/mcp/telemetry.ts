@@ -4,8 +4,8 @@ import type { McpContext } from "./context.js";
 
 /**
  * Writes one row per tool call to:
- *   - .harness/runs/active/<runId>/mcp-calls.jsonl     when ctx.runId set
- *   - .harness/staleness/mcp-calls.jsonl               otherwise
+ *   - .cairn/runs/active/<runId>/mcp-calls.jsonl     when ctx.runId set
+ *   - .cairn/staleness/mcp-calls.jsonl               otherwise
  */
 export interface TelemetryRow {
   ts: string;
@@ -19,8 +19,8 @@ export interface TelemetryRow {
 export function recordCall(ctx: McpContext, row: TelemetryRow): void {
   const path =
     ctx.runId !== undefined
-      ? join(ctx.repoRoot, ".harness", "runs", "active", ctx.runId, "mcp-calls.jsonl")
-      : join(ctx.repoRoot, ".harness", "staleness", "mcp-calls.jsonl");
+      ? join(ctx.repoRoot, ".cairn", "runs", "active", ctx.runId, "mcp-calls.jsonl")
+      : join(ctx.repoRoot, ".cairn", "staleness", "mcp-calls.jsonl");
   const dir = dirname(path);
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });

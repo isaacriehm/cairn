@@ -6,7 +6,7 @@
  *   ◢ Invariants in scope    (id, title; click → open invariants ledger)
  *
  * Empty when the active file has no scope-index entry, when the workspace is
- * not harness-adopted, or when the index is unscoped for this file.
+ * not cairn-adopted, or when the index is unscoped for this file.
  */
 
 import { relative } from "node:path";

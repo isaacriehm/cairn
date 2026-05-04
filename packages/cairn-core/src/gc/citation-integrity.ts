@@ -1,7 +1,7 @@
 /**
  * GC pass — citation integrity.
  *
- * Walks every source file in the repo and scans for harness citations
+ * Walks every source file in the repo and scans for cairn citations
  * (§V invariants, TODO(TSK-...) linked todos, banned DEC-N comments).
  * Each citation is resolved against the appropriate source of truth:
  *   - §V<N>  → invariants.ledger.yaml. Missing → orphaned. superseded_by set
@@ -150,8 +150,8 @@ export function runCitationIntegrity(opts: CitationIntegrityOptions): CitationIn
     // TODO(TSK-...) — check active/done dirs
     for (const m of matches.todos) {
       const taskId = m.id; // already "TSK-..."
-      const activeDir = join(opts.repoRoot, ".harness", "tasks", "active", taskId);
-      const doneDir = join(opts.repoRoot, ".harness", "tasks", "done", taskId);
+      const activeDir = join(opts.repoRoot, ".cairn", "tasks", "active", taskId);
+      const doneDir = join(opts.repoRoot, ".cairn", "tasks", "done", taskId);
       if (existsSync(activeDir)) continue;   // active TODO — fine
       if (existsSync(doneDir)) continue;     // done — agent will remove eventually; not a finding
       findings.push({

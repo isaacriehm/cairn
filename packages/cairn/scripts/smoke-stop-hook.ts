@@ -37,11 +37,11 @@ function cleanup(): void {
 }
 
 function mkRepoRoot(sessionId: string): string {
-  const dir = mkdtempSync(join(tmpdir(), "harness-smoke-stop-"));
+  const dir = mkdtempSync(join(tmpdir(), "cairn-smoke-stop-"));
   cleanups.push(dir);
-  // .harness/sessions/<sessionId>/events-marker.json — pretend
+  // .cairn/sessions/<sessionId>/events-marker.json — pretend
   // SessionStart already armed the watch.
-  const sessionDir = join(dir, ".harness", "sessions", sessionId);
+  const sessionDir = join(dir, ".cairn", "sessions", sessionId);
   mkdirSync(sessionDir, { recursive: true });
   writeFileSync(
     join(sessionDir, "events-marker.json"),
@@ -98,7 +98,7 @@ function parseOutput(stdout: string): HookOutput {
 }
 
 function writeTightenedSpec(repoRoot: string, taskId: string, opts: { withAttestation?: boolean; ageMs?: number } = {}): void {
-  const taskDir = join(repoRoot, ".harness", "tasks", "active", taskId);
+  const taskDir = join(repoRoot, ".cairn", "tasks", "active", taskId);
   mkdirSync(taskDir, { recursive: true });
   const spec = `---\nid: ${taskId}\nstatus: ready\n---\n\n# ${taskId}\n\nbody.\n`;
   writeFileSync(join(taskDir, "spec.tightened.md"), spec, "utf8");

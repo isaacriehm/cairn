@@ -38,7 +38,7 @@ function cleanup(): void {
 }
 
 function mkFixture(): string {
-  const dir = mkdtempSync(join(tmpdir(), "harness-smoke-read-enrich-"));
+  const dir = mkdtempSync(join(tmpdir(), "cairn-smoke-read-enrich-"));
   cleanups.push(dir);
   return dir;
 }
@@ -93,7 +93,7 @@ const x = 1;
   // ── Step 4 — scope-index integration via getScopeIndexEntry ──────
   {
     const repoRoot = mkFixture();
-    mkdirSync(join(repoRoot, ".harness", "ground"), { recursive: true });
+    mkdirSync(join(repoRoot, ".cairn", "ground"), { recursive: true });
     writeScopeIndex(repoRoot, {
       generated: "2026-05-04T03:00:00Z",
       files: {

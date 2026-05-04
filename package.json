@@ -1,8 +1,8 @@
 {
-  "name": "harness-monorepo",
+  "name": "cairn-monorepo",
   "version": "0.0.0",
   "private": true,
-  "description": "Portable agent harness for solo developers (root monorepo).",
+  "description": "Portable agent cairn for solo developers (root monorepo).",
   "engines": {
     "node": ">=22"
   },

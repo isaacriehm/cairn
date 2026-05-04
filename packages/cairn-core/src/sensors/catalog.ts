@@ -1,12 +1,12 @@
 /**
  * Loaders for the on-disk sensor configuration files.
  *
- * `.harness/config/stub-patterns.yaml` — Layer A regex catalog
- * `.harness/config/sensors.yaml`       — sensor registry (which sensors run,
+ * `.cairn/config/stub-patterns.yaml` — Layer A regex catalog
+ * `.cairn/config/sensors.yaml`       — sensor registry (which sensors run,
  *                                        their layer, fail_severity, glob keys)
  *
- * Both files ship as templates in `harness/templates/.harness/config/` and
- * are copied into the adopted project's `.harness/config/` at init.
+ * Both files ship as templates in `cairn/templates/.cairn/config/` and
+ * are copied into the adopted project's `.cairn/config/` at init.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -17,17 +17,17 @@ import type { StubCatalog, StubPattern, SensorLanguage } from "./types.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /**
- * Path to the catalog file shipped inside the harness package itself. Used
+ * Path to the catalog file shipped inside the cairn package itself. Used
  * as the fallback when the adopted project hasn't customized the catalog.
  *
- * `dist/sensors/catalog.js` runtime path → `templates/.harness/config/...`.
+ * `dist/sensors/catalog.js` runtime path → `templates/.cairn/config/...`.
  */
 const PKG_TEMPLATE_STUB = join(
   HERE,
   "..",
   "..",
   "templates",
-  ".harness",
+  ".cairn",
   "config",
   "stub-patterns.yaml",
 );
@@ -36,7 +36,7 @@ const PKG_TEMPLATE_SENSORS = join(
   "..",
   "..",
   "templates",
-  ".harness",
+  ".cairn",
   "config",
   "sensors.yaml",
 );
@@ -79,16 +79,16 @@ export function parseStubCatalog(yamlText: string): StubCatalog {
 
 /**
  * Load the stub-pattern catalog. Order:
- *   1. `<repoRoot>/.harness/config/stub-patterns.yaml` (project override)
- *   2. The package's bundled template file (always present in harness/dist).
+ *   1. `<repoRoot>/.cairn/config/stub-patterns.yaml` (project override)
+ *   2. The package's bundled template file (always present in cairn/dist).
  *
  * Returns the parsed catalog. Throws only if both candidates are missing or
- * unparseable — that would indicate a broken harness install.
+ * unparseable — that would indicate a broken cairn install.
  */
 export function loadStubCatalog(repoRoot?: string): StubCatalog {
   const candidates: string[] = [];
   if (repoRoot !== undefined) {
-    candidates.push(join(repoRoot, ".harness", "config", "stub-patterns.yaml"));
+    candidates.push(join(repoRoot, ".cairn", "config", "stub-patterns.yaml"));
   }
   candidates.push(PKG_TEMPLATE_STUB);
   for (const p of candidates) {
@@ -123,7 +123,7 @@ export interface SensorRegistry {
 export function loadSensorRegistry(repoRoot?: string): SensorRegistry {
   const candidates: string[] = [];
   if (repoRoot !== undefined) {
-    candidates.push(join(repoRoot, ".harness", "config", "sensors.yaml"));
+    candidates.push(join(repoRoot, ".cairn", "config", "sensors.yaml"));
   }
   candidates.push(PKG_TEMPLATE_SENSORS);
   for (const p of candidates) {

@@ -1,5 +1,5 @@
 /**
- * `harness join` — per-clone bootstrap.
+ * `cairn join` — per-clone bootstrap.
  *
  * Spec: PLUGIN_ARCHITECTURE §17 Layer 2.
  *
@@ -7,13 +7,13 @@
  * script runs it on every `npm install` / `pnpm install`).
  *
  * Steps:
- *   1. Locate the harness-adopted repo root (walk up from cwd for `.harness/`).
- *   2. Verify the local CLI's version against `.harness/config.yaml`'s
- *      `harness_version`. Strict-equal for now (no semver spread); a mismatch
+ *   1. Locate the cairn-adopted repo root (walk up from cwd for `.cairn/`).
+ *   2. Verify the local CLI's version against `.cairn/config.yaml`'s
+ *      `cairn_version`. Strict-equal for now (no semver spread); a mismatch
  *      returns kind="version-mismatch" without blocking — caller decides.
- *   3. `git config core.hooksPath .harness/git-hooks` (per-clone activation).
+ *   3. `git config core.hooksPath .cairn/git-hooks` (per-clone activation).
  *   4. chmod +x the three git hooks (best-effort; FS may not support).
- *   5. Ensure `.harness/sessions/` exists (per-clone session-state dir).
+ *   5. Ensure `.cairn/sessions/` exists (per-clone session-state dir).
  *
  * Returns a structured result so the CLI / plugin can render exactly what
  * happened. Never throws on recoverable issues — every step has a status.
@@ -42,7 +42,7 @@ export interface JoinResult {
   /** True iff every step is "ok" or "skipped". */
   bootstrapped: boolean;
   steps: JoinStep[];
-  /** Convenience: from `.harness/config.yaml`'s harness_version. */
+  /** Convenience: from `.cairn/config.yaml`'s cairn_version. */
   projectCairnVersion: string | null;
   /** Convenience: this CLI's VERSION. */
   cliVersion: string;
@@ -74,7 +74,7 @@ export function runJoin(args: RunJoinArgs = {}): JoinResult {
       step: "locate-repo",
       status: "error",
       detail:
-        "no .harness/ found from cwd upward — run `harness init` first or cd into a harness-adopted project",
+        "no .cairn/ found from cwd upward — run `cairn init` first or cd into a cairn-adopted project",
     });
     return {
       repoRoot: null,
@@ -95,7 +95,7 @@ export function runJoin(args: RunJoinArgs = {}): JoinResult {
     steps.push({
       step: "version-check",
       status: "skipped",
-      detail: ".harness/config.yaml missing harness_version (legacy adoption?)",
+      detail: ".cairn/config.yaml missing cairn_version (legacy adoption?)",
     });
   } else if (projectVersion !== VERSION) {
     steps.push({
@@ -107,7 +107,7 @@ export function runJoin(args: RunJoinArgs = {}): JoinResult {
     steps.push({
       step: "version-check",
       status: "ok",
-      detail: `harness_version=${projectVersion}`,
+      detail: `cairn_version=${projectVersion}`,
     });
   }
 
@@ -126,12 +126,12 @@ export function runJoin(args: RunJoinArgs = {}): JoinResult {
     };
   }
 
-  const hooksDir = join(repoRoot, ".harness", "git-hooks");
+  const hooksDir = join(repoRoot, ".cairn", "git-hooks");
   if (!existsSync(hooksDir)) {
     steps.push({
       step: "set-hooks-path",
       status: "error",
-      detail: `${hooksDir} missing — run \`harness init\` to seed hooks first`,
+      detail: `${hooksDir} missing — run \`cairn init\` to seed hooks first`,
     });
     return {
       repoRoot,
@@ -170,7 +170,7 @@ export function runJoin(args: RunJoinArgs = {}): JoinResult {
 function findCairnRoot(start: string): string | null {
   let cur = resolve(start);
   for (let i = 0; i < 80; i++) {
-    if (existsSync(join(cur, ".harness"))) return cur;
+    if (existsSync(join(cur, ".cairn"))) return cur;
     const parent = dirname(cur);
     if (parent === cur) return null;
     cur = parent;
@@ -179,11 +179,11 @@ function findCairnRoot(start: string): string | null {
 }
 
 function readProjectVersion(repoRoot: string): string | null {
-  const path = join(repoRoot, ".harness", "config.yaml");
+  const path = join(repoRoot, ".cairn", "config.yaml");
   if (!existsSync(path)) return null;
   try {
     const parsed = parseYaml(readFileSync(path, "utf8")) as Record<string, unknown>;
-    const v = parsed?.["harness_version"];
+    const v = parsed?.["cairn_version"];
     return typeof v === "string" ? v : null;
   } catch (err) {
     log.warn(
@@ -203,7 +203,7 @@ function setGitHooksPath(repoRoot: string): JoinStep {
     };
   }
   try {
-    execFileSync("git", ["config", "core.hooksPath", ".harness/git-hooks"], {
+    execFileSync("git", ["config", "core.hooksPath", ".cairn/git-hooks"], {
       cwd: repoRoot,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
@@ -211,7 +211,7 @@ function setGitHooksPath(repoRoot: string): JoinStep {
     return {
       step: "set-hooks-path",
       status: "ok",
-      detail: "core.hooksPath = .harness/git-hooks",
+      detail: "core.hooksPath = .cairn/git-hooks",
     };
   } catch (err) {
     return {
@@ -250,7 +250,7 @@ function chmodHooks(hooksDir: string): JoinStep {
 }
 
 function ensureSessionDir(repoRoot: string): JoinStep {
-  const dir = join(repoRoot, ".harness", "sessions");
+  const dir = join(repoRoot, ".cairn", "sessions");
   try {
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
@@ -283,11 +283,11 @@ export interface InspectJoinStateArgs {
 }
 
 export interface JoinState {
-  /** True when `git config core.hooksPath` reports `.harness/git-hooks`. */
+  /** True when `git config core.hooksPath` reports `.cairn/git-hooks`. */
   hooksPathSet: boolean;
   /** Raw value reported by git, or null when git failed / unset. */
   hooksPathValue: string | null;
-  /** From `.harness/config.yaml` — null if absent / unreadable. */
+  /** From `.cairn/config.yaml` — null if absent / unreadable. */
   projectCairnVersion: string | null;
   /** True when projectCairnVersion === current CLI VERSION. */
   versionMatches: boolean;
@@ -300,11 +300,11 @@ export function inspectJoinState(args: InspectJoinStateArgs): JoinState {
   const hooksPathValue = readGitConfigValue(repoRoot, "core.hooksPath");
   const projectCairnVersion = readProjectVersion(repoRoot);
   return {
-    hooksPathSet: hooksPathValue === ".harness/git-hooks",
+    hooksPathSet: hooksPathValue === ".cairn/git-hooks",
     hooksPathValue,
     projectCairnVersion,
     versionMatches: projectCairnVersion === VERSION,
-    sessionsDirReady: existsSync(join(repoRoot, ".harness", "sessions")),
+    sessionsDirReady: existsSync(join(repoRoot, ".cairn", "sessions")),
   };
 }
 

@@ -64,7 +64,7 @@ export function formatRemediation(
     "",
     "1. Re-emit your `attestation:` YAML block at the END of your reply, with corrected `delivered`, `files_touched`, `todos_introduced`, and `stubs_introduced` values.",
     "2. Edit the files listed above to remove the stub patterns / fix the assertions / fill the empty handlers.",
-    "3. Do NOT re-introduce TODO/FIXME/XXX/HACK markers, `throw new Error('not implemented')`, `as any` casts, or any pattern flagged in `.harness/config/stub-patterns.yaml`.",
+    "3. Do NOT re-introduce TODO/FIXME/XXX/HACK markers, `throw new Error('not implemented')`, `as any` casts, or any pattern flagged in `.cairn/config/stub-patterns.yaml`.",
     "4. If any failure is genuinely impossible to satisfy (e.g. an assertion contradicts a current decision), emit a `blocked_by:` block in your final response instead of a partial diff.",
     "",
   );

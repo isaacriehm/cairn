@@ -37,7 +37,7 @@ export interface ScopeIndex {
 }
 
 export function scopeIndexPath(repoRoot: string): string {
-  return join(repoRoot, ".harness", "ground", "scope-index.yaml");
+  return join(repoRoot, ".cairn", "ground", "scope-index.yaml");
 }
 
 export function readScopeIndex(repoRoot: string): ScopeIndex | null {
@@ -114,8 +114,8 @@ export interface RebuildScopeIndexResult {
 
 /**
  * Re-run the init mapper LLM scoped to the scope-index field of its output and
- * write the result to `.harness/ground/scope-index.yaml`. Used by the
- * `harness scope rebuild` CLI subcommand to populate scope coverage after
+ * write the result to `.cairn/ground/scope-index.yaml`. Used by the
+ * `cairn scope rebuild` CLI subcommand to populate scope coverage after
  * decisions/invariants land — the init-time skeleton ships empty.
  *
  * Throws if the LLM call fails. Caller (CLI) catches and prints a user-facing

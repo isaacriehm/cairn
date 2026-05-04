@@ -2,9 +2,9 @@
  * `Stop` hook runner — fires when the assistant turn ends.
  *
  * Current scope:
- *   • Drain `.harness/events/` since the per-session marker; stamp the
+ *   • Drain `.cairn/events/` since the per-session marker; stamp the
  *     poll cursor so the next Stop only sees newer events.
- *   • Scan `.harness/tasks/active/<id>/` for tasks that have a
+ *   • Scan `.cairn/tasks/active/<id>/` for tasks that have a
  *     tightened spec but no `attestation.yaml`; surface a reviewer-
  *     spawn hint in additionalContext so main Claude can spawn the
  *     reviewer subagent on the next assistant turn.
@@ -145,7 +145,7 @@ export async function runStopHook(): Promise<void> {
 }
 
 /**
- * Scan `.harness/tasks/active/<id>/` for tasks that have a tightened
+ * Scan `.cairn/tasks/active/<id>/` for tasks that have a tightened
  * spec but no `attestation.yaml`. Per PLUGIN_ARCHITECTURE §10, the
  * Stop hook spawns the reviewer subagent for those.
  *
@@ -154,7 +154,7 @@ export async function runStopHook(): Promise<void> {
  * rather than spawning reviewers blindly.
  */
 function scanPendingReviews(repoRoot: string): PendingReview[] {
-  const activeDir = join(repoRoot, ".harness", "tasks", "active");
+  const activeDir = join(repoRoot, ".cairn", "tasks", "active");
   if (!existsSync(activeDir)) return [];
   const out: PendingReview[] = [];
   const cutoffMs = Date.now() - 6 * 60 * 60 * 1000;
@@ -181,7 +181,7 @@ function scanPendingReviews(repoRoot: string): PendingReview[] {
     if (mtime < cutoffMs) continue;
     out.push({
       task_id: taskId,
-      spec_path: `.harness/tasks/active/${taskId}/spec.tightened.md`,
+      spec_path: `.cairn/tasks/active/${taskId}/spec.tightened.md`,
     });
   }
   return out;
@@ -198,7 +198,7 @@ function renderReviewerHint(pending: PendingReview[]): string {
   }
   lines.push("");
   lines.push(
-    "Spawn the `reviewer` subagent (defined at `agents/reviewer.md` in the harness plugin) via the Task tool to attest each pending task. The subagent reads the diff, collects subagent attestation files, extracts non-obvious DECs, and writes the consolidated `attestation.yaml`. Once written, this hook will stop surfacing the reminder.",
+    "Spawn the `reviewer` subagent (defined at `agents/reviewer.md` in the cairn plugin) via the Task tool to attest each pending task. The subagent reads the diff, collects subagent attestation files, extracts non-obvious DECs, and writes the consolidated `attestation.yaml`. Once written, this hook will stop surfacing the reminder.",
   );
   return lines.join("\n");
 }

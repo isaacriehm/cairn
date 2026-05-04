@@ -2,7 +2,7 @@
  * Draft writer + confirm-side persistence.
  *
  * `writeDecisionDraft` materializes the extractor output into
- * `.harness/ground/decisions/_inbox/<DEC-id>.draft.md`. Frontmatter
+ * `.cairn/ground/decisions/_inbox/<DEC-id>.draft.md`. Frontmatter
  * conforms to `DecisionFrontmatter` (status: "draft").
  *
  * `acceptDraft` moves the draft to its canonical path with status flipped
@@ -43,8 +43,8 @@ export function writeDecisionDraft(args: WriteDecisionDraftArgs): DecisionDraft 
   const canonicalFilename = `${args.id}.md`;
   const draftAbs = join(inboxDir, draftFilename);
   const canonicalAbs = join(dir, canonicalFilename);
-  const draftRel = `.harness/ground/decisions/_inbox/${draftFilename}`;
-  const canonicalRel = `.harness/ground/decisions/${canonicalFilename}`;
+  const draftRel = `.cairn/ground/decisions/_inbox/${draftFilename}`;
+  const canonicalRel = `.cairn/ground/decisions/${canonicalFilename}`;
 
   const now = new Date().toISOString();
   // candidate_assertions are PROPOSALS — schema-loose. They live under
@@ -270,7 +270,7 @@ export function liftCandidatesToAssertions(args: {
   decisionId: string;
   verdicts: LiftVerdict[];
 }): LiftResult {
-  const decisionRel = `.harness/ground/decisions/${args.decisionId}.md`;
+  const decisionRel = `.cairn/ground/decisions/${args.decisionId}.md`;
   const decisionAbs = join(args.repoRoot, decisionRel);
   if (!existsSync(decisionAbs)) {
     throw new Error(

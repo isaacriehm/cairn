@@ -91,7 +91,7 @@ let scopeIndexCache: ScopeIndexCacheEntry | null = null;
 function invariantsLedgerFile(repoRoot: string): string {
   return join(
     repoRoot,
-    ".harness",
+    ".cairn",
     "ground",
     "invariants",
     "invariants.ledger.yaml",
@@ -153,7 +153,7 @@ export function getInvariantsLedger(repoRoot: string): LedgerSnapshot | null {
 }
 
 function tasksScopeDir(repoRoot: string, scope: "active" | "done"): string {
-  return join(repoRoot, ".harness", "tasks", scope);
+  return join(repoRoot, ".cairn", "tasks", scope);
 }
 
 function readDirMtime(path: string): number | null {

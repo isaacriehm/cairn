@@ -1,7 +1,7 @@
 /**
  * GC pass 3 — stub-catalog hits (full-tree scan).
  *
- * Layer A in `harness/src/sensors/stub-catalog.ts` only flags genuinely-NEW
+ * Layer A in `cairn/src/sensors/stub-catalog.ts` only flags genuinely-NEW
  * stubs (added lines per diff). That keeps per-task feedback tight and avoids
  * paying for pre-existing debt over and over.
  *

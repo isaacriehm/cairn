@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * check-layout — validates the harness-frontend-claudecode plugin layout.
+ * check-layout — validates the cairn-frontend-claudecode plugin layout.
  *
  * Confirms manifest + mcp + hooks files parse as JSON with expected
  * shape, and that referenced bin scripts exist under cairn-core/dist.

@@ -2,9 +2,9 @@
  * JSON Schema enforced by `claude --json-schema` for the history
  * summarizer Tier-1 call.
  *
- * Per MCP_SURFACE.md §"harness_query_history": every claim MUST carry
+ * Per MCP_SURFACE.md §"cairn_query_history": every claim MUST carry
  * source_path, source_lines, as_of, and a supersedes-tag (string DEC-id
- * or null). The harness post-resolves currently_canonical_pointer from
+ * or null). The cairn post-resolves currently_canonical_pointer from
  * the decisions ledger after the LLM returns — keeps the LLM's
  * responsibilities tight (cite + summarize) and makes the canonical
  * cross-reference mechanical.

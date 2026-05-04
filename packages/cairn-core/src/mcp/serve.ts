@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * Bin entrypoint — `node harness-core/dist/mcp/serve.js`.
+ * Bin entrypoint — `node cairn-core/dist/mcp/serve.js`.
  *
- * Plugin manifest (`.mcp.json`) registers this path so the harness MCP
- * server starts without depending on the `harness` umbrella CLI being
- * on PATH. The umbrella's `harness mcp serve` calls `startMcpServer`
+ * Plugin manifest (`.mcp.json`) registers this path so the cairn MCP
+ * server starts without depending on the `cairn` umbrella CLI being
+ * on PATH. The umbrella's `cairn mcp serve` calls `startMcpServer`
  * directly via the library export.
  *
  * Flags:
@@ -46,8 +46,8 @@ function parseArgs(argv: string[]): ParsedArgs {
   return {
     repoRoot:
       repoRoot ??
-      (process.env["HARNESS_REPO_ROOT"]
-        ? resolve(process.env["HARNESS_REPO_ROOT"])
+      (process.env["CAIRN_REPO_ROOT"]
+        ? resolve(process.env["CAIRN_REPO_ROOT"])
         : process.cwd()),
     sessionId,
     runId,
@@ -78,7 +78,7 @@ async function main(): Promise<void> {
 
 main().catch((err: unknown) => {
   process.stderr.write(
-    `[harness mcp] ${err instanceof Error ? err.message : String(err)}\n`,
+    `[cairn mcp] ${err instanceof Error ? err.message : String(err)}\n`,
   );
   process.exit(1);
 });

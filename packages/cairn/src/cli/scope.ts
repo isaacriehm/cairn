@@ -1,7 +1,7 @@
 /**
- * `harness scope <subcommand>` — scope-index commands.
+ * `cairn scope <subcommand>` — scope-index commands.
  *
- *   harness scope rebuild [--repo <path>]   — re-run mapper, rewrite scope-index.yaml
+ *   cairn scope rebuild [--repo <path>]   — re-run mapper, rewrite scope-index.yaml
  *
  * Spec: BUILD_REPORT.md Gap 1 / DOCS_SPEC.md §3.8.
  */
@@ -12,7 +12,7 @@ import { rebuildScopeIndex } from "@isaacriehm/cairn-core";
 
 function usage(): never {
   console.error(
-    "Usage: harness scope <subcommand>\n" +
+    "Usage: cairn scope <subcommand>\n" +
       "  rebuild       re-run mapper LLM and rewrite scope-index.yaml\n" +
       "                (--repo <path>?   defaults to cwd)\n",
   );
@@ -33,17 +33,17 @@ function parseRepoFlag(argv: string[]): string {
 async function rebuildHandler(argv: string[]): Promise<void> {
   const repoRoot = parseRepoFlag(argv);
   if (!existsSync(repoRoot)) {
-    console.error(`harness scope rebuild: repo root does not exist: ${repoRoot}`);
+    console.error(`cairn scope rebuild: repo root does not exist: ${repoRoot}`);
     process.exit(2);
   }
-  if (!existsSync(`${repoRoot}/.harness`)) {
+  if (!existsSync(`${repoRoot}/.cairn`)) {
     console.error(
-      `harness scope rebuild: ${repoRoot} is not harness-adopted (no .harness/). Run \`harness init\` first.`,
+      `cairn scope rebuild: ${repoRoot} is not cairn-adopted (no .cairn/). Run \`cairn init\` first.`,
     );
     process.exit(2);
   }
 
-  process.stdout.write("⬡ harness scope rebuild — running mapper LLM…\n");
+  process.stdout.write("⬡ cairn scope rebuild — running mapper LLM…\n");
   try {
     const result = await rebuildScopeIndex({ repoRoot });
     const relPath = result.path.startsWith(repoRoot)
@@ -57,7 +57,7 @@ async function rebuildHandler(argv: string[]): Promise<void> {
     process.exit(0);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`harness scope rebuild: mapper failed — ${msg}`);
+    console.error(`cairn scope rebuild: mapper failed — ${msg}`);
     process.exit(1);
   }
 }
@@ -70,7 +70,7 @@ export async function scopeCli(argv: string[]): Promise<void> {
       return;
     case undefined:
     default:
-      console.error(`harness scope: unknown subcommand "${String(sub)}"`);
+      console.error(`cairn scope: unknown subcommand "${String(sub)}"`);
       usage();
   }
 }

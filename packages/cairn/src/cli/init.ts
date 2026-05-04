@@ -30,10 +30,10 @@ function parseArgs(argv: string[]): ParsedFlags {
 
 function usage(): never {
   console.error(
-    "Usage: harness init [target-dir] [options]\n" +
+    "Usage: cairn init [target-dir] [options]\n" +
       "  [target-dir]      directory to adopt (default: cwd)\n" +
       "  --slug <name>     override the auto-derived project slug\n" +
-      "  --force           overwrite existing .harness/ files\n" +
+      "  --force           overwrite existing .cairn/ files\n" +
       "  --skip-mirror     do not clone the parallel mirror checkout\n" +
       "  --skip-mapper     skip the Tier-2 mapper (project_globs left empty)\n" +
       "  --no-prompt       run non-interactively (uses defaults; mapper skipped)\n" +
@@ -42,11 +42,11 @@ function usage(): never {
       "Detects stack signatures (typescript / python / ruby / go / rust /\n" +
       "elixir / unknown), proposes sensors, dispatches a one-time Tier-2\n" +
       "mapper to fill route_handler_globs / dto_globs / generator_source_globs\n" +
-      "/ high_stakes_globs / pilot_module, seeds .harness/ from the harness\n" +
-      "package templates, writes .harness/config.yaml with the project-specific\n" +
+      "/ high_stakes_globs / pilot_module, seeds .cairn/ from the cairn\n" +
+      "package templates, writes .cairn/config.yaml with the project-specific\n" +
       "overlay (mapper output baked in), patches the `<slug>:` block in\n" +
-      ".harness/config/workflow.md, and clones the parallel mirror at\n" +
-      "~/.local/harness/repos/<slug>/.",
+      ".cairn/config/workflow.md, and clones the parallel mirror at\n" +
+      "~/.local/cairn/repos/<slug>/.",
   );
   process.exit(1);
 }

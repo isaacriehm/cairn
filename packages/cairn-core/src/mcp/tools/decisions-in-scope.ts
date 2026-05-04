@@ -58,7 +58,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
 }
 
 export const decisionsInScopeTool: ToolDef<Input> = {
-  name: "harness_decisions_in_scope",
+  name: "cairn_decisions_in_scope",
   description:
     "List decision summaries whose scope_globs overlap any of the given path_globs.",
   inputSchema: decisionsInScopeInput,

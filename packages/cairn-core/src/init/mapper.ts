@@ -247,7 +247,7 @@ function readLedgerSafely<T>(repoRoot: string, kind: "decisions" | "invariants")
   // Ground state may not exist on first-run adopters. Empty list is fine —
   // mapper just gets no in-scope ledger context to classify against.
   try {
-    const groundDir = join(repoRoot, ".harness", "ground");
+    const groundDir = join(repoRoot, ".cairn", "ground");
     if (!existsSync(groundDir)) return [];
     return (kind === "decisions"
       ? buildDecisionsLedger({ repoRoot })

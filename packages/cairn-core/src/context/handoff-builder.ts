@@ -35,7 +35,7 @@ interface CheckpointEntry {
 }
 
 export async function buildHandoffBlock(repoRoot: string): Promise<string | null> {
-  const activeDir = join(repoRoot, ".harness", "tasks", "active");
+  const activeDir = join(repoRoot, ".cairn", "tasks", "active");
   if (!existsSync(activeDir)) return null;
 
   let dirents: Dirent[];
@@ -71,7 +71,7 @@ export async function buildHandoffBlock(repoRoot: string): Promise<string | null
   if (matched === null) return null;
 
   // Read meta.json for the run's sha_pin.
-  const metaPath = join(repoRoot, ".harness", "runs", "active", matched.runId, "meta.json");
+  const metaPath = join(repoRoot, ".cairn", "runs", "active", matched.runId, "meta.json");
   if (!existsSync(metaPath)) return null;
   let meta: MetaFile;
   try {

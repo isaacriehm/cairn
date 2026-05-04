@@ -2,7 +2,7 @@
  * Session id resolution + per-session directory lifecycle.
  *
  * Per PLUGIN_ARCHITECTURE §7, each Claude Code session owns a
- * `.harness/sessions/<session-id>/` directory holding its mutable state
+ * `.cairn/sessions/<session-id>/` directory holding its mutable state
  * (status.json, current task pointer, run notes). The directory is
  * created at SessionStart and removed at SessionEnd. Stale dirs left
  * behind by crashed sessions (no live PID, > MAX_AGE_MS old) are GC'd

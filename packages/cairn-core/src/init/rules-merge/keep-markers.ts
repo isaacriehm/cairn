@@ -1,19 +1,19 @@
 /**
  * Phase 7c — operator keep-section preservation.
  *
- * After adoption, harness regenerates CLAUDE.md / AGENTS.md from ground state
+ * After adoption, cairn regenerates CLAUDE.md / AGENTS.md from ground state
  * on each sweep. Operator-written sections survive only when wrapped in a pair
  * of HTML comment markers:
  *
- *     <!-- harness:keep-start -->
+ *     <!-- cairn:keep-start -->
  *     ... operator content (preserved verbatim) ...
- *     <!-- harness:keep-end -->
+ *     <!-- cairn:keep-end -->
  *
  * These helpers parse + render those blocks.
  */
 
-export const KEEP_START_MARKER = "<!-- harness:keep-start -->";
-export const KEEP_END_MARKER = "<!-- harness:keep-end -->";
+export const KEEP_START_MARKER = "<!-- cairn:keep-start -->";
+export const KEEP_END_MARKER = "<!-- cairn:keep-end -->";
 
 export interface KeepBlock {
   /** Optional operator label after the start marker (e.g. `:custom-flow`). */
@@ -26,8 +26,8 @@ export interface KeepBlock {
   endOffset: number;
 }
 
-const START_RE = /<!--\s*harness:keep-start(?::([^\s]+))?\s*-->/g;
-const END_TOKEN = "<!-- harness:keep-end -->";
+const START_RE = /<!--\s*cairn:keep-start(?::([^\s]+))?\s*-->/g;
+const END_TOKEN = "<!-- cairn:keep-end -->";
 
 export function extractKeepBlocks(source: string): KeepBlock[] {
   const blocks: KeepBlock[] = [];
@@ -59,16 +59,16 @@ export function extractKeepBlocks(source: string): KeepBlock[] {
 export function renderKeepBlock(body: string, label?: string): string {
   const labelPart = label && label.length > 0 ? `:${label}` : "";
   return [
-    `<!-- harness:keep-start${labelPart} -->`,
+    `<!-- cairn:keep-start${labelPart} -->`,
     body,
     KEEP_END_MARKER,
   ].join("\n");
 }
 
 /**
- * Replace any harness-rendered region of `existing` with `regenerated`, while
+ * Replace any cairn-rendered region of `existing` with `regenerated`, while
  * preserving every keep-block from `existing` at its original logical anchor:
- * the regenerator inserts a placeholder marker `<!-- harness:keep-anchor:N -->`
+ * the regenerator inserts a placeholder marker `<!-- cairn:keep-anchor:N -->`
  * for each keep block; this helper substitutes those anchors back to the real
  * keep blocks. If a keep block has no matching anchor it is appended at the
  * end of the file under a "## Operator-preserved sections" heading.
@@ -83,7 +83,7 @@ export function reapplyKeepBlocks(
   for (let i = 0; i < keepBlocks.length; i++) {
     const block = keepBlocks[i];
     if (block === undefined) continue;
-    const anchor = `<!-- harness:keep-anchor:${i} -->`;
+    const anchor = `<!-- cairn:keep-anchor:${i} -->`;
     if (out.includes(anchor)) {
       out = out.replace(anchor, renderKeepBlock(block.body, block.label));
       consumed.add(i);
@@ -95,7 +95,7 @@ export function reapplyKeepBlocks(
   if (orphans.length === 0) return out;
   const trailer: string[] = [
     "",
-    "<!-- harness:appendix-start -->",
+    "<!-- cairn:appendix-start -->",
     "## Operator-preserved sections",
     "",
   ];
@@ -104,7 +104,7 @@ export function reapplyKeepBlocks(
     trailer.push(renderKeepBlock(o.b.body, o.b.label));
     trailer.push("");
   }
-  trailer.push("<!-- harness:appendix-end -->");
+  trailer.push("<!-- cairn:appendix-end -->");
   trailer.push("");
   return `${out.trimEnd()}\n${trailer.join("\n")}`;
 }

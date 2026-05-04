@@ -30,7 +30,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
       .slice(0, 60);
     // ms-suffix gives uniqueness when the same agent files multiple tasks per second.
     const id = `TSK-${today}-${slug || "task"}-${Date.now() % 100000}`;
-    const dir = join(ctx.repoRoot, ".harness", "tasks", "active", id);
+    const dir = join(ctx.repoRoot, ".cairn", "tasks", "active", id);
     mkdirSync(dir, { recursive: true });
 
     const frontmatter = {
@@ -65,21 +65,21 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
       writeInvalidationEvent(ctx.repoRoot, {
         kind: "task_created",
         refs: [{ kind: "task", id }],
-        path: `.harness/tasks/active/${id}/spec.md`,
-        source: { session_id: ctx.sessionId ?? null, tool: "harness_drop_task" },
+        path: `.cairn/tasks/active/${id}/spec.md`,
+        source: { session_id: ctx.sessionId ?? null, tool: "cairn_drop_task" },
       });
     } catch {
       // Event emission must never roll back the task spec write.
     }
 
-    return { ok: true, id, path: `.harness/tasks/active/${id}/spec.md` };
+    return { ok: true, id, path: `.cairn/tasks/active/${id}/spec.md` };
   });
 }
 
 export const dropTaskTool: ToolDef<Input> = {
-  name: "harness_drop_task",
+  name: "cairn_drop_task",
   description:
-    "Create a new active task — writes spec.md + status.yaml under .harness/tasks/active/<id>/. Used by spec-planner subagent. Operator-issued tasks come via the frontend adapter, not this tool.",
+    "Create a new active task — writes spec.md + status.yaml under .cairn/tasks/active/<id>/. Used by spec-planner subagent. Operator-issued tasks come via the frontend adapter, not this tool.",
   inputSchema: dropTaskInput,
   handler,
 };

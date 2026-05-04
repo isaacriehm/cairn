@@ -14,7 +14,7 @@ import * as core from "@isaacriehm/cairn-core";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "..", "..", "..");
 const PLUGIN_ROOT = join(REPO_ROOT, "packages", "cairn-frontend-claudecode");
-const HARNESS_CORE_DIST = join(REPO_ROOT, "packages", "cairn-core", "dist");
+const CAIRN_CORE_DIST = join(REPO_ROOT, "packages", "cairn-core", "dist");
 
 function assert(cond: unknown, message: string): asserts cond {
   if (!cond) {
@@ -61,8 +61,8 @@ function resolveBin(arg: string): string {
   // ${CLAUDE_PLUGIN_ROOT} resolves to PLUGIN_ROOT at runtime; in the
   // monorepo, ../cairn-core points to packages/cairn-core.
   return arg
-    .replace("${CLAUDE_PLUGIN_ROOT}/../cairn-core/dist/", `${HARNESS_CORE_DIST}/`)
-    .replace("${CLAUDE_PLUGIN_ROOT}/../cairn-core/dist", HARNESS_CORE_DIST);
+    .replace("${CLAUDE_PLUGIN_ROOT}/../cairn-core/dist/", `${CAIRN_CORE_DIST}/`)
+    .replace("${CLAUDE_PLUGIN_ROOT}/../cairn-core/dist", CAIRN_CORE_DIST);
 }
 
 function runSmoke(): void {
@@ -110,7 +110,7 @@ function runSmoke(): void {
       assert(cmd.startsWith("node "), `Step 3: command must start with 'node ', got ${cmd}`);
       const m = cmd.match(/\$\{CLAUDE_PLUGIN_ROOT\}\/\.\.\/cairn-core\/dist\/(hooks\/[a-z-]+\.js)/);
       assert(m !== null, `Step 3: command must reference cairn-core/dist/hooks/<x>.js, got ${cmd}`);
-      const binPath = join(HARNESS_CORE_DIST, m[1]!);
+      const binPath = join(CAIRN_CORE_DIST, m[1]!);
       assert(existsSync(binPath), `Step 3: hook bin missing at ${binPath}`);
     }
     // PostToolUse must include both Read|Grep|Glob and Write|Edit matchers.

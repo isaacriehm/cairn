@@ -65,7 +65,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
 }
 
 export const supersedesChainTool: ToolDef<Input> = {
-  name: "harness_supersedes_chain",
+  name: "cairn_supersedes_chain",
   description:
     "Forward chain from earliest superseded decision to current binding decision (status=accepted at the head).",
   inputSchema: supersedesChainInput,

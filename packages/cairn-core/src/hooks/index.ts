@@ -3,10 +3,10 @@
  *
  * Bin entrypoints live at `dist/hooks/<event>.js` (one per event) so
  * the plugin manifest can invoke them via
- * `node ${CLAUDE_PLUGIN_ROOT}/../harness-core/dist/hooks/<event>.js`
- * without depending on the `harness` umbrella CLI being on PATH.
+ * `node ${CLAUDE_PLUGIN_ROOT}/../cairn-core/dist/hooks/<event>.js`
+ * without depending on the `cairn` umbrella CLI being on PATH.
  *
- * The umbrella CLI's `harness hook <event>` calls the same runners.
+ * The umbrella CLI's `cairn hook <event>` calls the same runners.
  */
 
 export * from "./runners/index.js";

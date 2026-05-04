@@ -1,7 +1,7 @@
 /**
  * Per-session state lifecycle.
  *
- * Owns `.harness/sessions/<id>/` — the directory each Claude Code
+ * Owns `.cairn/sessions/<id>/` — the directory each Claude Code
  * session uses for its own status.json, current task pointer, and run
  * notes. Spec: PLUGIN_ARCHITECTURE §7.
  *

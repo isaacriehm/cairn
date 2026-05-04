@@ -1,7 +1,7 @@
 {
   "statusLine": {
     "type": "command",
-    "command": "harness status-line"
+    "command": "cairn status-line"
   },
   "hooks": {
     "SessionStart": [
@@ -9,7 +9,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "harness hook session-start"
+            "command": "cairn hook session-start"
           }
         ]
       }
@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "harness hook session-end"
+            "command": "cairn hook session-end"
           }
         ]
       }
@@ -30,7 +30,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "harness hook read-enrich"
+            "command": "cairn hook read-enrich"
           }
         ]
       },
@@ -39,7 +39,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "harness hook write-guard"
+            "command": "cairn hook write-guard"
           }
         ]
       },
@@ -48,7 +48,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "harness hook write-guard"
+            "command": "cairn hook write-guard"
           }
         ]
       }

@@ -3,13 +3,13 @@
  *
  * Output:
  *   - DEC drafts (one per "rationale" classification with non-empty title)
- *     written to `.harness/ground/decisions/_inbox/<id>.draft.md`
+ *     written to `.cairn/ground/decisions/_inbox/<id>.draft.md`
  *   - Invariant proposals appended to
- *     `.harness/baseline/invariant-proposals-<ISO>.yaml`
+ *     `.cairn/baseline/invariant-proposals-<ISO>.yaml`
  *   - Canonical-map citations appended to
- *     `.harness/baseline/canonical-citations-<ISO>.yaml`
+ *     `.cairn/baseline/canonical-citations-<ISO>.yaml`
  *   - Full audit (every block + classification) at
- *     `.harness/baseline/source-comments-<ISO>.yaml` — consumed by the
+ *     `.cairn/baseline/source-comments-<ISO>.yaml` — consumed by the
  *     strip-replace stage so it doesn't have to re-walk.
  */
 
@@ -135,7 +135,7 @@ export async function runSourceCommentsIngestion(
       } else {
         decDraftsWritten.push({
           id,
-          path: `.harness/ground/decisions/_inbox/${id}.draft.md`,
+          path: `.cairn/ground/decisions/_inbox/${id}.draft.md`,
           sourceFile: block.file,
         });
       }
@@ -164,7 +164,7 @@ export async function runSourceCommentsIngestion(
     }
   }
 
-  const auditRelPath = `.harness/baseline/source-comments-${tsSlug}.yaml`;
+  const auditRelPath = `.cairn/baseline/source-comments-${tsSlug}.yaml`;
   const auditPath = join(repoRoot, auditRelPath);
   let invariantProposalsPath: string | null = null;
   let canonicalCitationsPath: string | null = null;
@@ -197,7 +197,7 @@ export async function runSourceCommentsIngestion(
       })),
     });
     if (invariantProposals.length > 0) {
-      const rel = `.harness/baseline/invariant-proposals-${tsSlug}.yaml`;
+      const rel = `.cairn/baseline/invariant-proposals-${tsSlug}.yaml`;
       invariantProposalsPath = join(repoRoot, rel);
       writeYaml(invariantProposalsPath, {
         run_at: nowIso,
@@ -205,7 +205,7 @@ export async function runSourceCommentsIngestion(
       });
     }
     if (canonicalCitations.length > 0) {
-      const rel = `.harness/baseline/canonical-citations-${tsSlug}.yaml`;
+      const rel = `.cairn/baseline/canonical-citations-${tsSlug}.yaml`;
       canonicalCitationsPath = join(repoRoot, rel);
       writeYaml(canonicalCitationsPath, {
         run_at: nowIso,
@@ -282,7 +282,7 @@ function writeDecDraft(args: WriteDecDraftArgs): { absPath: string; relPath: str
   mkdirSync(inboxDir, { recursive: true });
   const filename = `${args.id}.draft.md`;
   const abs = join(inboxDir, filename);
-  const rel = `.harness/ground/decisions/_inbox/${filename}`;
+  const rel = `.cairn/ground/decisions/_inbox/${filename}`;
   const fm: Record<string, unknown> = {
     id: args.id,
     title: args.classification.suggestedDecDraft || `(untitled — from ${args.block.file})`,
@@ -292,7 +292,7 @@ function writeDecDraft(args: WriteDecDraftArgs): { absPath: string; relPath: str
     generated: args.generatedAt,
     "verified-at": args.generatedAt,
     decided_at: args.generatedAt,
-    decided_by: "harness-init",
+    decided_by: "cairn-init",
     capture_source: "init-source-comments",
     capture_confidence: "medium",
     sourceFile: args.block.file,

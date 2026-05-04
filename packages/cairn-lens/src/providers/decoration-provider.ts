@@ -84,7 +84,7 @@ export class CitationDecorationManager implements vscode.Disposable {
   }
 
   private refreshEditor(editor: vscode.TextEditor): void {
-    const config = vscode.workspace.getConfiguration("harness");
+    const config = vscode.workspace.getConfiguration("cairn");
     const inlineEnabled = config.get<boolean>("lens.inlineDecorations") === true;
     const gutterEnabled = config.get<boolean>("lens.gutterIcons") === true;
 

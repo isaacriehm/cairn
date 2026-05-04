@@ -3,7 +3,7 @@
  * smoke-session-state — per-session state partition lifecycle.
  *
  * Spec: PLUGIN_ARCHITECTURE §7. Verifies:
- *   1. ensureSessionDir creates `.harness/sessions/<id>/` + meta.json with
+ *   1. ensureSessionDir creates `.cairn/sessions/<id>/` + meta.json with
  *      session_id / started_at / pid.
  *   2. Two sessions in the same repo write to isolated dirs.
  *   3. cleanupSession removes only its own dir.
@@ -45,7 +45,7 @@ function cleanup(): void {
 }
 
 function mkRepoRoot(): string {
-  const dir = mkdtempSync(join(tmpdir(), "harness-smoke-session-"));
+  const dir = mkdtempSync(join(tmpdir(), "cairn-smoke-session-"));
   cleanups.push(dir);
   return dir;
 }

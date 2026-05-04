@@ -1,7 +1,7 @@
 /**
- * Inquirer-driven prompts for `harness init`.
+ * Inquirer-driven prompts for `cairn init`.
  *
- * Per operator note 2026-05-02: harness init uses inquirer
+ * Per operator note 2026-05-02: cairn init uses inquirer
  * (`@inquirer/prompts`) for operator-facing dialogs. Hand-rolled readline
  * was rejected as too ad-hoc.
  *

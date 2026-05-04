@@ -101,8 +101,8 @@ switch (subcommand) {
     process.exit(0);
   default:
     console.error(
-      "Usage: harness <command>\n" +
-        "  init       adopt this harness into a project\n" +
+      "Usage: cairn <command>\n" +
+        "  init       adopt this cairn into a project\n" +
         "  join       per-clone bootstrap (set core.hooksPath, chmod hooks)\n" +
         "  mcp        MCP server (stdio transport)\n" +
         "             (subcommands: serve)\n" +
