@@ -136,6 +136,19 @@ if (existsSync(commandsDir)) {
   }
 }
 
+// ── agents: each .md must have name + description in frontmatter ────
+const agentsDir = join(PKG_ROOT, "agents");
+if (existsSync(agentsDir)) {
+  for (const entry of readdirSync(agentsDir, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
+    validateMarkdownFrontmatter(
+      join(agentsDir, entry.name),
+      ["name", "description"],
+      `agent ${entry.name}`,
+    );
+  }
+}
+
 function validateMarkdownFrontmatter(path, requiredKeys, label) {
   const text = readFileSync(path, "utf8");
   if (!text.startsWith("---\n")) {

@@ -58,7 +58,9 @@
     "smoke:lock": "tsx scripts/smoke-lock.ts",
     "smoke:session-state": "tsx scripts/smoke-session-state.ts",
     "smoke:events": "tsx scripts/smoke-events.ts",
-    "smoke:plugin-layout": "tsx scripts/smoke-plugin-layout.ts"
+    "smoke:plugin-layout": "tsx scripts/smoke-plugin-layout.ts",
+    "smoke:resolve-attention": "tsx scripts/smoke-resolve-attention.ts",
+    "smoke:stop-hook": "tsx scripts/smoke-stop-hook.ts"
   },
   "dependencies": {
     "@devplusllc/harness-core": "workspace:*",

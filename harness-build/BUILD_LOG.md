@@ -246,6 +246,40 @@ Notes:
   Files added:
     harness/src/cli/attention.ts
 
+## Step 6 — Reviewer subagent + harness_resolve_attention + Stop scan [DONE 2026-05-04T23:00]
+Subagent attempts: 0 (inline)
+Compile: PASS (workspace-wide tsc -b clean across 5 packages)
+Smokes: PASS — smoke:resolve-attention (7/7 new), smoke:stop-hook (5/5 new), smoke:plugin-layout (8/8, +Step 4d agents/reviewer.md), all 12 prior smokes regression-clean.
+Notes:
+  Three loosely-coupled deliverables that complete the plugin's review/attention loop. Spec: PLUGIN_ARCHITECTURE §8 (daily flow), §9 (MCP write tool plugin-era addition), §10 (Stop hook), §11 (subagent role).
+  Files added (plugin):
+    packages/harness-frontend-claudecode/agents/reviewer.md — markdown brief; frontmatter declares name + description + tools (Bash, Read, Glob, Grep). Pipeline per §11: read tightened spec → walk staged + unstaged diff (per-file scope-glob check + §V citation check) → collect per-subagent attestation.yaml → emit DEC drafts via harness_record_decision({target:"inbox"}) for non-obvious choices (cap 5 per attestation, rest into remaining_concerns) → write consolidated `.harness/tasks/active/<task_id>/attestation.yaml` → return tight summary to main Claude. Hard rules: read-only on working tree, target=inbox always, ≤5 DEC drafts.
+  Files added (harness-core):
+    src/mcp/tools/resolve-attention.ts — new write tool. kind × choice resolution matrix:
+      decision_draft a → withWriteLock: copy `_inbox/<id>.draft.md` → `<id>.md`, status flipped to accepted, draft renamed to `.accepted.bak` for recovery, emits `decision_accepted` invalidation event.
+      decision_draft b → withWriteLock: rename draft into `.archive/<today>/...`, emits `decision_rejected` event with optional rationale.
+      decision_draft c → returns the body (no write) so the skill can hand it to the operator's editor flow.
+      baseline_finding a → no-op (skill opens the file).
+      baseline_finding b → withWriteLock: append to `.harness/baseline/suppressions.yaml` with id + suppressed_at + optional rationale.
+      baseline_finding c → no-op.
+      invalidation_event a/b/c → ack only (refresh / continue_under_old / abort) — marker stamping happens in the skill since it owns the session id.
+      drift any → reserved (drift surface lands later).
+      Errors: malformed item_id and missing draft return mcpError envelopes (VALIDATION_FAILED / FILE_NOT_FOUND).
+    src/mcp/schemas.ts — added `resolveAttentionInput` (item_id, choice enum a|b|c, kind enum decision_draft|baseline_finding|invalidation_event|drift, optional rationale).
+    src/mcp/tools/index.ts — registered resolveAttentionTool (last entry; comment "Write — plugin-era").
+  Files modified (harness-core):
+    src/hooks/runners/stop.ts — runStopHook now scans `.harness/tasks/active/<id>/` for tasks that have a `spec.tightened.md` but no `attestation.yaml`. Window: only tasks whose spec mtime is within the last 6h (older orphans are stale; operator deals via attention). When pending reviews exist, additionalContext renders a "## Reviewer pending (N tasks)" block listing each task_id + spec_path + a one-paragraph instruction to spawn the reviewer subagent via Task tool with `agents/reviewer.md`. Telemetry row gains pending_reviews count.
+  Smokes added:
+    smoke-resolve-attention.ts — 7 steps covering accept/reject/edit, suppress/triage/defer, invalidation refresh/continue/abort, error envelopes for missing draft and malformed item_id. Asserts: state changes (canonical DEC file content + status=accepted, draft removed from inbox, suppressions.yaml appended), event emission (1 file written for accept), idempotent no-op for triage/defer/edit.
+    smoke-stop-hook.ts — 5 steps spawning the compiled `dist/hooks/stop.js` bin via spawnSync with piped JSON stdin. Asserts Shape-B output: empty additionalContext on bare repo, reviewer-pending block when spec.tightened.md exists without attestation.yaml, suppressed when attestation.yaml present, suppressed when spec is >6h old, multiple pending tasks listed correctly with N count in header.
+  Files modified (plugin):
+    scripts/check-layout.mjs — added agents/*.md walk; validates name + description in frontmatter + non-empty body. Mirrors the skills/commands validation.
+    packages/harness/scripts/smoke-plugin-layout.ts — added Step 4d (agents/reviewer.md present + valid frontmatter + body >200 chars).
+  Files modified (harness):
+    package.json — registered smoke:resolve-attention, smoke:stop-hook.
+  Notable design choice: stop hook surfaces a TEXT hint in additionalContext rather than directly spawning the reviewer subagent. Hooks are short-lived subprocesses; main Claude (the next assistant turn) is the right thing to issue a Task call. The hint references `agents/reviewer.md` so main Claude knows exactly which subagent definition to invoke.
+  Step 7 (heavy adoption pipeline phases 7b/7c/10) and step 8 (multi-dev enforcement) consume these surfaces.
+
 ## Step 5 — Skills + slash commands [DONE 2026-05-04T22:30]
 Subagent attempts: 0 (inline)
 Compile: PASS (workspace-wide tsc -b clean across 5 packages); plugin's check-layout extended to validate skill + command frontmatter shape.
