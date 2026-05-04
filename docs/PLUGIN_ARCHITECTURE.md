@@ -1,0 +1,600 @@
+---
+type: spec
+status: draft
+generated: 2026-05-04
+supersedes-parts-of: ARCHITECTURE.md, INIT_SPEC.md, MCP_SURFACE.md, FILESYSTEM_LAYOUT.md
+purpose: Lock the plugin form factor — adoption, daily flow, state, concurrency, distribution
+---
+
+# Plugin Architecture — `harness-frontend-claudecode`
+
+The plugin pivot: harness is shipped as a Claude Code plugin. The operator installs once at user level. From then on, opening Claude Code in any project activates harness. After a one-time visual adoption pass, harness runs invisibly — surfacing only via inline A/B/C prompts when it needs operator input.
+
+## §1 Vision
+
+Harness becomes the **project maintainer**. After install + adoption, the operator just uses Claude Code normally and harness:
+
+1. Intercepts vague prompts, asks **genuinely good questions** (not UX trivia) about forks that materially change the spec.
+2. Tightens the prompt into a structured spec via iterative dialogue.
+3. **Chunks complex tasks** and dispatches them as Claude Code subagents — each subagent inherits MCP tools and reads the tightened spec.
+4. **Reviews and attests** at task completion via a bundled reviewer subagent.
+5. **Enforces constraints** at two gates: plugin Stop hook (in-session early signal) + pre-commit git hook (canonical backstop).
+6. **Captures decisions** the reviewer surfaces from the diff, drafts to the inbox, surfaces inline next session.
+7. **Detects drift** between ground state and the working tree (GC sweep), surfaces remediation inline.
+
+Operator never types `harness <subcommand>` for ongoing work. Only `harness init` (terminal-side bootstrap) remains as a CLI surface; the in-Claude-Code path is the `/harness-init` slash command + the auto-invoked `harness-adopt` skill.
+
+## §2 Form factor + agnosticism
+
+Claude Code is the **primary** frontend. The layered architecture preserves platform agnosticism: `harness-core` remains pure state + MCP server (any MCP client works). Frontends are sibling packages. Future Cursor / Copilot / Windsurf / etc. integrations become additional sibling packages — `harness-frontend-cursor`, `harness-frontend-copilot` — without rewriting the core.
+
+Single-vendor lock-in is rejected at the architecture level even while we ship Claude Code as the only live frontend in v0.
+
+## §3 Package layout
+
+```
+packages/
+  harness/                            — umbrella + `harness init` CLI bin
+  harness-core/                       — state + MCP + tier0 + tightener + sensors + GC
+  harness-frontend-claudecode/        — NEW: this plugin (.claude-plugin/plugin.json)
+  harness-frontend-stub/              — test adapter
+  harness-lens/                       — VS Code/Cursor IDE extension (parallel surface)
+
+_dormant/                             — root-level, outside pnpm-workspace
+  harness-frontend-discord/           — discord adapter (incl. voice/whisper)
+  harness-runtime/                    — orchestration runtime (FIFO + mirror + dispatch + UAT)
+  README.md                           — explains revival
+```
+
+`mirror/` and `voice/` submodules of harness-core that were tightly coupled to dormant code (mirror = runtime checkout convention, voice = discord transcription) move into `_dormant/` alongside the runtime. The `tier0/` and `tightener/` submodules **stay live** in harness-core — they are central to the daily flow's question-asker and spec-tightener.
+
+`pnpm-workspace.yaml` continues to list only `packages/*`. The `_dormant/` tree is invisible to the build.
+
+## §4 Plugin manifest + components
+
+Lives at `packages/harness-frontend-claudecode/`:
+
+```
+packages/harness-frontend-claudecode/
+├── .claude-plugin/
+│   └── plugin.json                   — manifest (name, version, repo, etc.)
+├── .mcp.json                         — registers harness-core MCP server (stdio)
+├── hooks/
+│   └── hooks.json                    — SessionStart, Stop, PostToolUse[read-enrich]
+├── skills/
+│   ├── harness-adopt/SKILL.md        — first-time adoption flow
+│   ├── harness-direction/SKILL.md    — prompt → tier0 → tightener → dispatch
+│   └── harness-attention/SKILL.md    — surface pending DEC drafts + drift inline
+├── commands/
+│   └── harness-init.md               — slash command equivalent of `harness init`
+├── agents/
+│   └── reviewer.md                   — subagent definition for attestation + DEC capture
+└── package.json                      — workspace package, depends on harness-core
+```
+
+Component locations follow Claude Code's auto-discovery defaults (`skills/`, `commands/`, `agents/` at plugin root). MCP and hooks declared via dedicated files (`.mcp.json`, `hooks/hooks.json`) rather than inline in `plugin.json` for editability.
+
+`plugin.json` minimum:
+
+```json
+{
+  "name": "harness",
+  "version": "0.1.0",
+  "description": "Project-state + context-loading layer — the invisible project maintainer",
+  "author": { "name": "DevPlus LLC" },
+  "repository": "https://github.com/devplusllc/harness",
+  "license": "MIT"
+}
+```
+
+`userConfig` field unused in v0. All operator config lives in `~/.local/harness/.env` (legacy) or per-project `.harness/config/` (preferred for new config).
+
+## §5 Distribution
+
+- **v0 → v1**: GitHub URL distribution.
+  - User runs `/plugin marketplace add devplusllc/harness` once
+  - Then `/plugin install harness@devplusllc-harness`
+  - Tag `v0.1.0`, `v0.2.0`, … on each release; users pull via `/plugin update harness@devplusllc-harness`
+- **v1.0.0 milestone**: evaluate moving to the official Anthropic plugin marketplace for first-class discovery + auto-update by default.
+
+Pre-publish (operator's call, not now): wipe history + push current clean working tree as the initial commit of the public repo. The private repo stays as authoritative dev backup.
+
+Auto-update is OFF by default for github-distributed plugins. Operator can enable per-marketplace via the `/plugin` UI.
+
+## §6 Adoption flow — one-time, super visual, comprehensive
+
+Three trigger paths converge on the same pipeline:
+
+1. **Auto** — operator opens Claude Code in a project with no `.harness/`. Plugin's SessionStart hook detects, the `harness-adopt` skill auto-invokes and renders inline:
+   > Adopt this project with harness? `[a]` yes `[b]` not now `[c]` never (mark and skip on future opens)
+2. **Explicit slash command** — operator types `/harness-init`.
+3. **Terminal CLI** — operator runs `harness init` outside Claude Code. Same pipeline.
+
+On `[a]`, the skill (or CLI) spawns the init pipeline as a subprocess and **streams its rich terminal output (chalk + ora + cli-progress) into the Claude Code conversation as a fenced code block** — the visual approach (α). Choices that need operator input surface as inline A/B/C via the skill calling Claude Code's AskUserQuestion tool.
+
+### Phases (heavy version per side-note "fully processes once")
+
+| Phase | What happens | Visible to operator |
+|------|--------------|---------------------|
+| 1 | Submodule detect + `git submodule init` | "Detecting submodules…" → "Initialized N submodules" |
+| 2 | Priority walker (high-signal pass + rest pass) | Tree silhouette, file counts per top-level dir |
+| 3 | Per-module Sonnet calls (chunked, parallel, fallback) | Per-module status icons (`↻`/`✓`/`⚠`) updating live |
+| 4 | Pilot module confirm | One A/B/C: pick pilot module from top 3 candidates |
+| 5 | Brand setup — 4 questions inline A/B/C | Brand name / positioning / voice tone / domain |
+| 6 | Writes `.harness/` skeleton, baseline `status.json` | "Writing .harness/" → file count |
+| 7a | **Docs ingestion (Haiku/doc, parallel)** — every doc classified into DEC drafts / canonical-map / voice updates / consolidate-with-existing | Per-doc status icons; DEC draft count grows |
+| 7b | **Source comment ingestion (full repo, no cap)** — deterministic walker finds essay-style comment blocks (heuristic: block comment > 3 lines OR > 200 chars OR JSDoc with > 30 words of prose) across **every** source file. Haiku batch-classifies each block (20 blocks per batch call) into DEC draft / §V invariant proposal / canonical-map citation. Detection deterministic, classification LLM, replacement deterministic (see Phase 10). One-time spend acceptable per the "fully processes once" mandate. | Per-batch status; DEC + §V counts grow; total Haiku tokens displayed |
+| 7c | **Existing project rules merge** — `CLAUDE.md`, `AGENTS.md`, `.claude/CLAUDE.md`, `.claude/rules/` ingested and reconciled with harness state. Post-adoption: harness regenerates `CLAUDE.md` and `AGENTS.md` from ground state on each `harness sweep`; operator-written sections preserved between `<!-- harness:keep-start -->` and `<!-- harness:keep-end -->` markers | "Merging project rules…" → diff summary |
+| 8 | Baseline sensor audit — every sensor runs against full repo, findings to `.harness/baseline/sensor-audit-<ISO>.yaml` | Per-sensor status; finding counts |
+| 9 | **Inconsistency detection** — hard conflicts (factual contradictions across decisions/docs) block + A/B/C inline; soft (scope/phrasing) deferred to attention | "Conflict: DEC-0019 says X; docs/auth.md says Y. `[a]` …" |
+| 10 | **Comment policy enforcement** — strip essay comments, replace with `// §V<N>` cites. **Detection + replacement deterministic (no LLM).** Pre-check: skip files with uncommitted changes; surface "stash and process / skip / overwrite" inline. Originals backed up to `.harness/backups/source/<rel-path>.original`. Consent-gated per module: A/B/C with full diff preview before any write. | Per-module preview + A/B/C "strip all `[a]` / review per-file `[b]` / skip `[c]`" |
+| 11 | **Project rules write** — plugin enabling auto-merges harness's hooks/MCP/skills into user-level `~/.claude/settings.json` `enabledPlugins`. No project-level config touched | "Plugin enabled at user scope" |
+| 12 | **Multi-dev enforcement install** — versioned git hooks at `.harness/git-hooks/`, `core.hooksPath` configured, CI workflow `.github/workflows/harness-check.yml` written, `package.json` `prepare` script added (Node projects), `.harness/JOIN.md` written for new contributors. See §17. | "Installed git hooks + CI gate" |
+| 13 | Final summary + `harness attention` count | Markdown summary table; pending counts |
+
+After this single pass, harness IS the project maintainer. Source files are clean (only `// §V<N>` and `// TODO(TSK-)` cites). All prior decisions are canonicalized. Existing rules are merged. Sensors are baselined. Inconsistencies are resolved or queued.
+
+## §7 State model
+
+Three storage zones:
+
+| Zone | Location | Owner | Lock |
+|------|----------|-------|------|
+| **Global** | `.harness/ground/` (decisions, invariants, canonical-map, brand, quality-grades), `.harness/baseline/`, `.harness/inbox/` | shared across sessions | per-write `flock` on `.harness/.write-lock` |
+| **Per-session** | `.harness/sessions/<session-id>/` (status.json, current task, run notes) | one session | none — owned by session |
+| **Plugin-internal** | `${CLAUDE_PLUGIN_DATA}/` (cache, telemetry, adopted-projects index) | plugin | none |
+
+Session ID generated at plugin SessionStart (Claude Code session id if exposed, else uuid). Cleanup at SessionEnd. Stale sessions (> 24h, no live PID) GC'd by next SessionStart in any session.
+
+### Concurrency
+
+- **Per-write `flock`** on `.harness/.write-lock` for any global-state write. OS-level — auto-release on process crash. Reads unlocked.
+- **Whole-operation locks** on `.harness/.gc-lock` and `.harness/.audit-lock` for sweep operations. Second concurrent sweep bails fast with "another in progress".
+- **DEC ID allocation** atomic under the per-write lock. Two sessions calling `harness_record_decision` get distinct DEC-NNNN values.
+- **Invalidation events**: when a global write completes, harness writes `.harness/events/<ts>-<event>.json`. Plugin instances poll the events directory at Stop hook (chokidar file watcher armed, debounced). If an event touches a DEC/§V in the current session's in-scope set → surface inline:
+  > A modified DEC-0042 (which you're using). `[a]` refresh in-scope `[b]` continue under old `[c]` abort
+
+Default `[a]`. Event log retention: last 7 days, GC'd by sweep.
+
+### Three-layer conflict catch
+
+When two sessions race on a decision used by both:
+
+1. **Live reads** — every MCP read tool re-reads state from disk. No frozen session snapshot. Next call returns post-A state.
+2. **Invalidation events + inline A/B/C** — early signal.
+3. **Pre-commit gate** — sensors run against current ground state, catches stale code at commit.
+
+After-the-fact (B already committed when A modifies the DEC): GC drift sweep flags the file as drift, surfaces in attention as A/B/C "update file / revert DEC / accept divergence (record as new DEC)".
+
+## §8 Daily flow (post-adoption)
+
+```
+Operator types prompt
+        │
+        ▼
+┌─────────────────────────────────────────────────────────┐
+│ harness-direction skill (auto-invoked on user message)  │
+│   1. tier0 (Haiku via Claude binary, escalate to Sonnet │
+│      for complexity) — checks readiness                 │
+│         Inputs: prompt + in-scope decisions/invariants  │
+│                 + canonical-map topics + recent commits │
+│         Output: { ready: bool, questions[] | spec_seed }│
+│   2. If ready=false → render inline A/B/C questions     │
+│      via AskUserQuestion. After answers, loop.          │
+│   3. If ready=true → tightener (Sonnet) produces        │
+│      .harness/tasks/active/<id>/spec.tightened.md       │
+│   4. Tightener proposes chunks:                         │
+│         1 chunk → silent dispatch (no prompt)           │
+│         ≥2 chunks → A/B/C plan review:                  │
+│           "Plan: 3 subagents — [auth] [billing] [tests] │
+│            [a] dispatch all [b] modify [c] cancel"      │
+└─────────────────────────────────────────────────────────┘
+        │
+        ▼
+Main Claude spawns subagents via Task tool
+   - Each subagent inherits harness MCP tools
+   - Reads spec.tightened.md + queries decisions_in_scope
+   - Works in main repo (no mirror, no runtime checkout)
+        │
+        ▼
+Reviewer subagent fires LAST
+   - Reads diff, sensors output, attestation.yaml from each subagent
+   - Surfaces non-obvious choices as DEC drafts → _inbox/
+   - Returns attestation summary
+        │
+        ▼
+Stop hook (plugin) — fires when assistant turn ends
+   - Run sensors on diff (staged + unstaged)
+   - If findings → surface inline A/B/C
+   - Poll invalidation events; if relevant → surface refresh prompt
+   - If new DEC drafts → surface "review N pending decisions? [a/b/c]"
+        │
+        ▼
+Operator commits → pre-commit git hook (canonical backstop)
+   - Layer A (stub catalog) + decision-assertions on staged diff
+   - Hard fail blocks commit, soft warn passes
+```
+
+PostToolUse hook on `Read`/`Grep`/`Glob` enriches tool results with citation legend (§V references + relevant DEC summaries). Banned: PreToolUse (bricks session per prior anti-pattern).
+
+## §9 MCP surface
+
+Per-session stdio MCP server. `.mcp.json` registration:
+
+```json
+{
+  "mcpServers": {
+    "harness": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/../harness-core/dist/mcp/server.js"]
+    }
+  }
+}
+```
+
+The MCP server detects the project root at startup by walking up from `process.cwd()` until it finds either `.harness/` or `.git/`. No env var dependency. Works in any project Claude Code opens.
+
+Tools (18 current, see `MCP_SURFACE.md` for full schema):
+
+- **Read**: `harness_decision_get`, `harness_decisions_in_scope`, `harness_decisions_for_symbol`, `harness_invariant_get`, `harness_invariants_in_scope`, `harness_canonical_for_topic`, `harness_ground_get`, `harness_supersedes_chain`, `harness_search`, `harness_timeline`, `harness_get_full`, `harness_query_history`
+- **Write** (locked): `harness_record_decision`, `harness_record_run_event`, `harness_drop_task`, `harness_archive`, `harness_append`, `harness_ask_operator`
+- **NEW (plugin-era)**: `harness_resolve_attention(item_id, choice)` — the inline-A/B/C resolution endpoint. Skill calls this after operator picks a/b/c.
+
+Write tools wrap their work in the per-write flock helper from `harness-core/src/lock.ts` (new module).
+
+## §10 Hooks
+
+`hooks/hooks.json`:
+
+```json
+{
+  "SessionStart": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "node ${CLAUDE_PLUGIN_ROOT}/../harness-core/dist/hooks/session-start.js"
+        }
+      ]
+    }
+  ],
+  "Stop": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "node ${CLAUDE_PLUGIN_ROOT}/../harness-core/dist/hooks/stop.js"
+        }
+      ]
+    }
+  ],
+  "PostToolUse": [
+    {
+      "matcher": "Read|Grep|Glob",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "node ${CLAUDE_PLUGIN_ROOT}/../harness-core/dist/hooks/post-tool-use/read-enricher.js"
+        }
+      ]
+    }
+  ]
+}
+```
+
+| Hook | Job |
+|------|-----|
+| `SessionStart` | Build handoff context (git diff since last session, in-scope decisions/invariants, brand/positioning); detect adoption state (has `.harness/`?); detect attention (pending DEC drafts, baseline findings, drift) and stage the session to auto-invoke `harness-attention` skill if non-zero; clean up stale per-session state directories |
+| `Stop` | (1) Run sensors on staged + unstaged diff; surface findings inline. (2) Poll `.harness/events/` for invalidation events touching session's in-scope; surface refresh prompt if any. (3) Scan `.harness/tasks/active/<id>/` for tasks created this session without `attestation.yaml`; if any → spawn reviewer subagent to attest. (4) Compare HEAD's last 5 commits against `.harness/.attested-commits` marker file; surface backfill prompt for any commit that bypassed pre-commit hook (i.e. `--no-verify`). (5) Update per-session `status.json` |
+| `PostToolUse` (Read/Grep/Glob) | Citation enrichment — inject §V references + decision summaries into the tool result text |
+| `PreToolUse` | **BANNED** — bricks the session if the hook fails. Never use. |
+
+## §11 Skills + subagents + slash commands
+
+| Surface | Path | Trigger | Job |
+|---------|------|---------|-----|
+| Skill | `skills/harness-adopt/SKILL.md` | SessionStart sees no `.harness/` | Walks operator through adoption inline; orchestrates init pipeline subprocess |
+| Skill | `skills/harness-direction/SKILL.md` | Auto-invoked when operator's user message looks like a task ("build…", "add…", "fix…", "refactor…") and there's no active task | Runs tier0 → tightener → dispatch chunks via Task tool |
+| Skill | `skills/harness-attention/SKILL.md` | SessionStart context flagged `attention_count > 0` | Surfaces pending DEC drafts + drift + baseline findings as inline A/B/C; calls `harness_resolve_attention` after each pick |
+| Subagent | `agents/reviewer.md` | Spawned by main Claude as the LAST step of any non-trivial task | Reads diff + sensor outputs + attestation files; extracts non-obvious DECs; returns attestation summary |
+| Slash command | `commands/harness-init.md` | Operator types `/harness-init` | Same as auto-adopt skill but explicitly invoked |
+| Slash command | `commands/harness-direction.md` | Operator types `/harness-direction <prompt>` | Manual invocation of the direction skill — escape hatch when auto-invoke misses (conversational message wrongly classified, or operator wants to force the question-asker on a borderline prompt) |
+
+Skill `description` frontmatter is what triggers auto-invocation. Example for `harness-direction`:
+
+```yaml
+---
+description: |
+  Use when the user gives a task-shaped prompt (build, add, fix, refactor,
+  implement, change). Runs tier0 question-asker → tightener spec writer →
+  Claude Code subagent dispatch with constraint context. Skip for
+  questions, conversation, or read-only requests.
+---
+```
+
+### Subagent dispatch protocol
+
+The `harness-direction` skill produces a structured **dispatch block** that main Claude reads and turns into Task-tool calls. Skill output ends with:
+
+````markdown
+## Dispatch plan
+
+Tightened spec: `.harness/tasks/active/<task-id>/spec.tightened.md`
+Reviewer: spawn LAST after all dispatched subagents complete.
+
+```dispatch
+- subagent: general-purpose
+  brief: |
+    Read .harness/tasks/active/<task-id>/spec.tightened.md.
+    Implement the auth middleware portion (files: services/auth/*.ts).
+    Cite §V42, §V43 in any new code. Write attestation.yaml on completion.
+- subagent: general-purpose
+  brief: |
+    Read the same spec.
+    Implement the billing portion (files: services/billing/*.ts).
+    Cite §V12. Write attestation.yaml.
+```
+````
+
+Skill description instructs main Claude: "After receiving this skill's output, parse the `dispatch` block. Spawn one Task call per entry, in parallel where possible. Then spawn the reviewer subagent." This is reliable enough in practice; if drift becomes a problem, escalate to a deterministic post-skill hook that issues the Task calls directly.
+
+For 1-chunk dispatches, the skill omits the `dispatch` block and just hands the spec to main Claude with "implement this directly".
+
+## §12 Authority matrix
+
+| Surface | Plugin authority |
+|---------|------------------|
+| `.harness/ground/` (own state) | Full auto |
+| `.harness/sessions/<id>/` (own per-session state) | Full auto |
+| Source files (comment strips, §V cites) | A/B/C per module-batch with per-file escalation on reject |
+| Existing docs (consolidation, rewrites) | A/B/C per doc or batch |
+| `~/.claude/settings.json` (`enabledPlugins` map only) | Auto on `/plugin install` |
+| Project's `.claude/settings.json` | **Never written.** Plugin's contributions merge at runtime |
+| Pre-commit git hook install | Full auto |
+| Soft inconsistencies (scope/phrasing) | Defer to attention |
+| Hard inconsistencies (factual contradictions) | Block adoption, A/B/C inline per conflict |
+| Auto-resolution of any kind | Forbidden — operator decides every contested change |
+
+## §13 Inconsistency handling during adoption
+
+**Hard conflicts** — factual contradictions between decisions / docs / source comments. Example: `docs/auth.md` says "JWT expires in 24h"; `services/auth.ts` comment says "JWT expires in 7d". Adoption blocks. Inline A/B/C:
+
+> Conflict: JWT expiry. `docs/auth.md` says 24h. `services/auth.ts:42` comment says 7d. Which is canonical?
+> `[a]` 24h (file: docs/auth.md) `[b]` 7d (file: services/auth.ts) `[c]` neither — capture as new DEC
+
+**Soft conflicts** — scope/phrasing differences, possibly intentional layering. Adoption completes. Conflicts written to `.harness/inbox/conflicts/<id>.yaml`. First post-adoption attention pass surfaces them.
+
+## §14 Question-asker quality
+
+tier0's job is to detect **forks that materially change the spec**, not UX trivia.
+
+| Bad question | Why bad |
+|--------------|---------|
+| "What color should the button be?" | UX trivia, not a fork |
+| "Should this be a function or class?" | Style, not a constraint fork |
+| "Do you want tests?" | Inferable from project policy / DECs |
+
+| Good question | Why good |
+|---------------|---------|
+| "You said 'add billing'. Per DEC-0019 Stripe is the only payment processor. Adding a new product to the existing integration `@/services/stripe`, or replacing it with something else?" | References existing constraint; identifies fork; asks about something that materially changes the spec |
+| "You said 'make X faster'. The current bottleneck is the BullMQ queue depth (per RUN-0042 perf trace). Optimize queue throughput, or change the architecture (e.g., direct execution)?" | Cites recent evidence; offers a fork the operator likely has an opinion on |
+
+tier0 inputs:
+- Operator prompt
+- In-scope decisions for the prompt's apparent target paths
+- Top 5 invariants by relevance
+- Canonical-map topics that match prompt keywords
+- Last 5 commits' messages (recent context)
+
+tier0 output is JSON: `{ ready: boolean, questions?: Question[], spec_seed?: string }`. Auto-escalate to Sonnet when prompt > 500 tokens or touches > 10 decisions.
+
+## §15 Comment policy enforcement
+
+**Two legal citations** in source files:
+
+- `// §V<N>` — invariant reference
+- `// TODO(TSK-<id>)` — linked task
+
+Banned: DEC-id comments, essay JSDoc, multi-paragraph rationale, restated requirements.
+
+### Three stages, with strict LLM/deterministic split
+
+| Stage | LLM? | What happens |
+|-------|------|--------------|
+| **Detection** | **No** — deterministic | Walker finds essay-style comment blocks via heuristic: block comment > 3 lines OR > 200 chars OR JSDoc with > 30 words of prose. Per-language tweaks (Python `"""…"""`, Rust `///`, Go `//`, etc.) |
+| **Extraction** | **Yes** — Haiku batch | 20 detected blocks per Haiku call → JSON: `{ block_id, type: "rationale" | "constraint" | "citation" | "license" | "other", suggested_dec_draft?, suggested_invariant?, suggested_canonical_topic? }`. License headers + "other" left in source untouched |
+| **Replacement** | **No** — deterministic | Mechanical string substitution: strip the original block, insert `// §V<N>` (if §V exists or was just proposed) or `// TODO(TSK-<id>)` (if linked to active task). Never LLM-rewritten |
+
+### Pre-write safety checks
+
+Before any source file is modified during Phase 10:
+
+1. **Uncommitted-changes check** — `git status --porcelain` on the file. If dirty:
+   > `services/auth.ts` has uncommitted changes. Replacing comments would mix into your work-in-progress. `[a]` stash and process `[b]` skip this file `[c]` overwrite (lose uncommitted changes — destructive)
+2. **Backup** — copy `services/auth.ts` → `.harness/backups/source/services/auth.ts.original` (preserves directory structure). One backup per file, single snapshot. Used by `harness uninstall --full` to restore.
+3. **Diff preview** — generate the proposed diff and show in the per-module batch consent prompt before any write.
+
+### Consent flow
+
+**Per-module batch (default):**
+
+> Module `core/auth` has 23 essay-style comment blocks. Extracted: 8 DEC drafts, 3 §V candidate invariants. Diff preview: [collapsible].
+> `[a]` strip all (review extractions in `_inbox/`) `[b]` review per-file (escalation) `[c]` skip module
+
+**Per-file escalation when operator picks `[b]`:**
+
+> `services/auth.ts:42-78` — 24-line JSDoc on JWT signing rationale. Extracted as DEC-draft-0042 + §V42 invariant proposal. Replacement: `// §V42`. Diff: [collapsible].
+> `[a]` apply `[b]` keep as-is `[c]` modify (open in editor)
+
+If the file has uncommitted changes the per-file prompt also shows the dirty-file warning.
+
+### Post-adoption ongoing capture
+
+Reviewer subagent extracts DEC drafts from new essay-style comments the operator writes during normal work, surfacing in next session's attention pass. Same three-stage split: deterministic detection, LLM extract, deterministic replace (only when operator approves). Same backup convention.
+
+## §16 Migration
+
+| Item | Action |
+|------|--------|
+| `harness-runtime/` | Move `packages/harness-runtime/` → `_dormant/harness-runtime/`. Update `pnpm-workspace.yaml`: no change (already `packages/*`). Verify build excludes it. README in `_dormant/` documents revival path |
+| `harness-frontend-discord/` | Same, → `_dormant/harness-frontend-discord/` |
+| `voice/` (in harness-core) | Move `packages/harness-core/src/voice/` → `_dormant/harness-core-voice/` (or fold into dormant discord package). Drop `voice` from `index.ts` exports |
+| `mirror/` (in harness-core) | Move `packages/harness-core/src/mirror/` → `_dormant/harness-core-mirror/`. Drop `mirror` from `index.ts`. Removes the runtime checkout convention |
+| Ollama (tier0 backend) | Replace `tier0/ollama.ts` with Claude-binary subprocess. Drop init's `offerInstallOllama` + `pullOllamaModel` + `probeOllama` + `OLLAMA_HOST` warning. Drop `regex_fallback`. Claude binary is required — no degraded mode. Adoption preflight detects missing `claude` and bails with install instructions |
+| Daemon | Inline-delete daemon entrypoints. GC, sensor sweep, drift watch fold into hooks (SessionStart) + on-demand MCP tool (`harness_sensor_sweep`) |
+| `harness/` umbrella | Stays. CLI surface narrows to `harness init` + `harness join` + `harness uninstall` only (other subcommands `attention`, `doctor`, `fix`, `scope`, `sweep`, etc. remain as debug-only entry points, not advertised). Plugin slash commands are the operator-facing path |
+| `harness-lens/` | Stays. IDE extension is a parallel surface (hovers/inlays/CodeLens) — different consumer of the same ledger |
+| Pre-publish history scrub | Wipe history, fresh public repo with current clean working tree as initial commit. Private repo retained as backup. Manual step, not automated |
+
+### Uninstall vs full uninstall
+
+Two operations, distinct intents:
+
+| Command | What it does | Reversible? |
+|---------|--------------|-------------|
+| `harness uninstall` | Stops active enforcement only: removes `core.hooksPath` config, removes `.github/workflows/harness-check.yml`, removes `package.json` `prepare` script entry. Leaves `.harness/` directory + stripped comments + `.harness/git-hooks/` intact. | **Yes** — re-enable via `harness join` or plugin re-adopt |
+| `harness uninstall --full` | Full de-adoption: above + restores all stripped source comments from `.harness/backups/source/*.original` (verified file-by-file; warns on missing or modified backups), deletes `.harness/`, removes `.harness/git-hooks/`, removes `JOIN.md`, removes plugin's project entry from `${CLAUDE_PLUGIN_DATA}/projects.json`. Asks confirmation: "this is irreversible. proceed?" `[a]` yes `[b]` no | **No** — fresh adoption required to re-enable |
+
+The split mirrors how plugin disable (`/plugin disable harness`) is per-user (just stops the plugin) vs full plugin uninstall (`/plugin uninstall harness`) which removes user-level state. `harness uninstall` is per-project light; `harness uninstall --full` is per-project complete.
+
+## §17 Multi-developer enforcement
+
+Once a project is harness-adopted, every developer who touches it must be running harness — locally and at PR time. A second developer cloning the repo without harness installed must be **blocked from contributing** until they bootstrap. Defense in depth across four layers:
+
+### Layer 1 — Versioned git hooks (catches local commits)
+
+Adoption commits the pre-commit hook to the repo at `.harness/git-hooks/pre-commit` (versioned, reviewable, diff-able). The hook is **not** placed in `.git/hooks/` directly — that path is per-clone and not versioned, so dev2's clone wouldn't get it.
+
+Instead, adoption configures `git config core.hooksPath .harness/git-hooks` so git uses the versioned hook dir. This config IS per-clone (lives in `.git/config`), so it must be set on every clone via the bootstrap step (Layer 2).
+
+The hook script itself is short and resilient:
+
+```sh
+#!/usr/bin/env bash
+set -e
+if ! command -v harness > /dev/null 2>&1; then
+  echo "✗ harness CLI not on PATH"
+  echo "  This project requires harness. Install:"
+  echo "    /plugin install harness@devplusllc-harness   (Claude Code)"
+  echo "    npm install -g @devplusllc/harness            (CLI)"
+  echo "  Or: rm .harness/  to opt the project out (irreversible)"
+  exit 1
+fi
+exec harness sensor-run --staged "$@"
+```
+
+So if harness CLI is missing, commit fails with clear instructions. No silent bypass.
+
+**Bypass tracking** — when the hook completes successfully, it appends the about-to-be-committed SHA (from `git rev-parse --verify HEAD@{0}` post-commit, via a paired `post-commit` hook) to `.harness/.attested-commits` (gitignored, per-clone). The Stop hook compares HEAD's last 5 commit SHAs against this file; any commit not in the attested set is a bypass candidate. Surfaces inline:
+> Commit `abc1234` ("…") was not attested by harness (likely `git commit --no-verify`). Run `harness sweep` to backfill sensor results, or accept divergence?
+> `[a]` backfill `[b]` accept (record as DEC: "intentional bypass — reason?") `[c]` defer
+
+### Layer 2 — Per-clone bootstrap
+
+When dev2 clones the repo for the first time, they need a one-time bootstrap to:
+
+1. Verify harness CLI is installed (and its version is compatible with the project's harness state)
+2. Set `core.hooksPath = .harness/git-hooks` on the local clone
+3. Optionally install local harness session state directory
+
+Three trigger paths:
+
+- **Plugin auto-detect**: dev2 opens project in Claude Code with the harness plugin enabled. Plugin's SessionStart sees `.harness/` exists but `core.hooksPath` is unset (or harness CLI version mismatch). Auto-renders inline blocking A/B/C:
+  > This project uses harness, but your clone isn't bootstrapped. Without it, your commits will fail. `[a]` bootstrap now (one-time, ~5s) `[b]` skip (commits will fail until you bootstrap)
+- **Package-manager `prepare` hook**: for Node projects, adoption adds to `package.json`:
+  ```json
+  { "scripts": { "prepare": "harness join || true" } }
+  ```
+  Runs on every `npm install` / `pnpm install`. `harness join` checks state, runs bootstrap, idempotent. Fails soft (`|| true`) so missing harness during install doesn't break the install — the failure surfaces at first commit attempt instead.
+- **Manual**: `harness join` CLI command. Documented in the auto-generated `.harness/JOIN.md` that adoption writes (visible at repo root, instructs new contributors).
+
+For non-Node projects (Python, Go, Rust), adoption writes equivalent into `Makefile`, `justfile`, `pyproject.toml` `[tool.poetry] scripts`, etc. — best-effort detection during adoption Phase 1.
+
+### Layer 3 — CI / server-side gate (non-bypassable)
+
+Adoption ships a CI workflow (`.github/workflows/harness-check.yml` for GitHub-hosted repos, equivalent for GitLab/Bitbucket). Workflow runs on every PR:
+
+```yaml
+name: harness-check
+on: [pull_request, push]
+jobs:
+  harness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm install -g @devplusllc/harness
+      - run: harness sensor-run --diff origin/main..HEAD --strict
+```
+
+Fails the PR if any sensors fail or attestation is missing. **Non-bypassable** — even if dev2 used `git commit --no-verify` to skip the local hook, the CI gate catches it at PR time and the PR can't merge.
+
+This is the canonical enforcement layer. Layers 1 and 2 are conveniences (fail fast at dev's machine) but Layer 3 is the contract.
+
+### Layer 4 — Plugin SessionStart bootstrap-required block (Claude Code users)
+
+Beyond just commit blocking: if dev2 opens the harness-adopted project in Claude Code with the harness plugin and tries to use harness features (skills, MCP) without bootstrapping, the plugin enters **degraded mode**:
+
+- MCP read tools work (read-only access to ground state)
+- MCP write tools return `BOOTSTRAP_REQUIRED` envelope
+- harness-direction skill blocks: "bootstrap required before harness can drive task work for this clone"
+- harness-attention shows but can't resolve
+
+Forces dev2 through the bootstrap before any harness feature engages.
+
+### Adoption commits
+
+Phase 12 (pre-commit hook install) becomes "git hooks + CI workflow + bootstrap docs". Files committed:
+
+```
+.harness/git-hooks/pre-commit          — sensor runner
+.harness/git-hooks/commit-msg          — optional: validates DEC/TSK refs in commit msg
+.harness/JOIN.md                       — instructions for new contributors
+.github/workflows/harness-check.yml    — CI gate (or equivalent for non-GitHub)
+package.json prepare script            — auto-bootstrap on install (Node projects)
+```
+
+### Edge case: legacy commits before adoption
+
+When adopting an existing project with prior history, the CI gate's `--diff origin/main..HEAD` only checks the PR's net change, not the entire prior history. Pre-existing violations don't block — they go to baseline (Phase 8 audit). Future commits are gated.
+
+## §18 Resolved during draft (cross-references)
+
+The following decisions were made during drafting and folded into the relevant sections — listed here for traceability:
+
+| Topic | Resolution | Section |
+|-------|------------|---------|
+| Source-comment detection threshold | Block > 3 lines OR > 200 chars OR JSDoc with > 30 words of prose; deterministic (no LLM); 20 blocks/Haiku batch for classification | §6 Phase 7b, §15 |
+| Comment replacement | Mechanical string substitution, never LLM-rewritten | §15 |
+| Pre-write safety | Skip dirty files (offer stash/skip/overwrite); backup originals to `.harness/backups/source/<rel>.original` | §15 |
+| Subagent output | Each subagent's output streams verbatim; reviewer produces final attestation summary | §8, §11 |
+| Adoption tracking | `${CLAUDE_PLUGIN_DATA}/projects.json` keyed by abs-path; `decline-temp` re-prompts after 7 days; `decline-never` requires explicit `/harness-init` to re-prompt | §11 (skills) |
+| Existing rules merge | Adoption ingests; post-adoption regenerates `CLAUDE.md` + `AGENTS.md` from ground state with `<!-- harness:keep-start -->` operator sections preserved | §6 Phase 7c |
+| Reviewer last-detection | Stop hook scans `.harness/tasks/active/<id>/` for missing `attestation.yaml`; spawns reviewer if any | §10 |
+| `--no-verify` bypass detection | Pre-commit hook (paired with post-commit) appends attested SHAs to `.harness/.attested-commits`; Stop hook diffs against HEAD's last 5; surfaces backfill prompt | §17 Layer 1 |
+| Uninstall vs full uninstall | `harness uninstall` light (stops enforcement, keeps state); `harness uninstall --full` restores original comments from backups, deletes `.harness/`, removes hooks + CI workflow | §16 |
+| MCP project-root detection | cwd-based walker (look for `.harness/` or `.git/`); no env var dependency | §9 |
+| Subagent dispatch protocol | Skill emits structured ```dispatch``` fenced block; main Claude parses and issues Task calls | §11 |
+| Claude binary requirement | **Hard requirement** — no degraded mode. Adoption preflight detects missing `claude`, bails with install instructions | §16 (Ollama row) |
+| Source-comment scan scope | **No cap** — every source file processed during adoption, accept the one-time Haiku spend per "fully processes once" mandate | §6 Phase 7b |
+| `harness-direction` skill triggering | Auto-invoke via fuzzy `description` matcher + slash command `/harness-direction <prompt>` as escape hatch when auto-invoke misses | §11 |
+
+## §19 Build sequence
+
+Once this spec is locked, the build proceeds in this order:
+
+1. **Move dormant code** — `harness-runtime/` + `harness-frontend-discord/` → `_dormant/`. Move `voice/` + `mirror/` out of harness-core. Verify `pnpm -r build` clean.
+2. **Kill Ollama** — replace tier0/ollama.ts with Claude-binary subprocess. Update init detect + setup-runners. Drop OLLAMA_HOST env. Smoke tier0 against Haiku.
+3. **Implement flock + state partition** — `harness-core/src/lock.ts`, `.harness/sessions/<id>/` directory + cleanup. Update all write tools to wrap in flock. Add invalidation event writer + chokidar watcher.
+4. **Scaffold `packages/harness-frontend-claudecode/`** — manifest, .mcp.json, hooks/hooks.json, skills/, agents/, commands/.
+5. **Implement skills** — harness-adopt (orchestrates init pipeline subprocess), harness-direction (tier0 → tightener → dispatch), harness-attention (surface pending).
+6. **Implement reviewer subagent** — markdown brief in agents/reviewer.md. Stop hook checks for active task without attestation, spawns reviewer.
+7. **Heavy adoption pipeline** — extend init Phase 6 to include source-comment ingestion (7b) + project rules merge (7c) + comment-strip flow (10).
+8. **Pre-commit hook installer** — generates `.git/hooks/pre-commit` script that calls into harness-core's sensor runner against staged diff.
+9. **Smoke + verify end-to-end** — install plugin into a fresh test project, run full adoption, verify daily flow with a small task.
+10. **Pre-publish prep** — gitleaks scan; content audit; wipe + push fresh public repo at v0.1.0.
+
+Each step gets its own BUILD_LOG entry and compile-gate.
+
+---
+
+End of spec. All draft-time questions resolved; see §18 for traceability table.
