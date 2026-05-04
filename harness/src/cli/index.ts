@@ -86,7 +86,7 @@ switch (subcommand) {
         "  gc         garbage-collection passes against the canonical zone\n" +
         "             (subcommands: sweep | run)\n" +
         "  hook       Claude Code hook runner (stdin = hook payload JSON)\n" +
-        "             (subcommands: session-start)\n" +
+        "             (subcommands: session-start | read-enrich)\n" +
         "  status-line  print formatted status line for the daemon-maintained state file\n" +
         "               (--project-root <path>?)",
     );

@@ -7,6 +7,7 @@
  * additionalContext } }`).
  *
  *   harness hook session-start
+ *   harness hook read-enrich    PostToolUse on Read — citation legend
  *
  * Future events (locked direction, not yet implemented):
  *   harness hook user-prompt-submit
@@ -23,6 +24,7 @@ import { dirname, join, resolve } from "node:path";
 import {
   buildSessionStartContext,
   resolveRepoRoot,
+  runReadEnricher,
 } from "@isaacriehm/harness-core";
 
 const HARNESS_HOOK_VERSION = "0.0.0";
@@ -178,11 +180,11 @@ function usage(): never {
   console.error(
     "Usage: harness hook <event>\n" +
       "  session-start    SessionStart hook (default)\n" +
+      "  read-enrich      PostToolUse on Read — citation legend enricher\n" +
       "\n" +
       "Reads the Claude Code hook payload JSON on stdin, emits the\n" +
-      "Shape-B response (`{ continue, hookSpecificOutput: { hookEventName,\n" +
-      "additionalContext } }`) on stdout. Designed to be wired in\n" +
-      "`.claude/settings.json` under `hooks.SessionStart`.\n",
+      "Shape-B response on stdout. Designed to be wired in\n" +
+      "`.claude/settings.json` under `hooks.SessionStart` / `hooks.PostToolUse`.\n",
   );
   process.exit(1);
 }
@@ -193,6 +195,9 @@ export async function hookCli(argv: string[]): Promise<void> {
     case undefined:
     case "session-start":
       await sessionStartHook();
+      return;
+    case "read-enrich":
+      await runReadEnricher();
       return;
     default:
       console.error(`harness hook: unknown event "${sub}"`);
