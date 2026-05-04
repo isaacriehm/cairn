@@ -55,7 +55,8 @@
     "setup:uat-browsers": "tsx scripts/setup-uat-browsers.ts",
     "setup:uat-sql": "tsx scripts/setup-uat-sql.ts",
     "setup:uat-docker": "tsx scripts/setup-uat-docker.ts",
-    "smoke:lock": "tsx scripts/smoke-lock.ts"
+    "smoke:lock": "tsx scripts/smoke-lock.ts",
+    "smoke:session-state": "tsx scripts/smoke-session-state.ts"
   },
   "dependencies": {
     "@devplusllc/harness-core": "workspace:*",

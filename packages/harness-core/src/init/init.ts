@@ -36,10 +36,6 @@ import {
   type ScopeIndexEntry,
 } from "../ground/scope-index.js";
 import { normalizeProjectName } from "../paths/index.js";
-import {
-  defaultStatusJson,
-  writeStatusJsonForSlug,
-} from "../status-line/index.js";
 import { homedir } from "node:os";
 import { logger, setLogFile } from "../logger.js";
 import {
@@ -521,19 +517,6 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     }
   }
 
-  // ── Step 5c: baseline status.json ──────────────────────────────────
-  // Write a baseline status.json so the file always exists with
-  // `ctx_tokens_budget: 4000`. Without this, status line would render
-  // `ctx:0/0`. Plugin SessionStart hook updates it per session thereafter.
-  {
-    const slug = normalizeProjectName(decidedSlug);
-    try {
-      writeStatusJsonForSlug(slug, defaultStatusJson(false));
-    } catch (err) {
-      warnings.push(`status.json baseline write failed: ${String(err)}`);
-    }
-  }
-
   // ── Phase 6: ingestion sweep + baseline audit ──────────────────────
   // Populates project brain from docs that already exist in the repo, then
   // runs every runnable sensor against the full codebase to surface pre-
@@ -548,20 +531,10 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     warnings,
   });
 
-  // Patch status.json with baseline attention_count = drafts + baseline
-  // findings. Plugin SessionStart hook recomputes this each session.
-  {
-    const drafts = phase6.ingestion?.decDraftsWritten.length ?? 0;
-    const baselineFindings = phase6.baselineAudit?.totalFindings ?? 0;
-    const slug = normalizeProjectName(decidedSlug);
-    try {
-      writeStatusJsonForSlug(slug, {
-        attention_count: drafts + baselineFindings,
-      });
-    } catch (err) {
-      warnings.push(`status.json attention patch failed: ${String(err)}`);
-    }
-  }
+  // Per-session status.json is owned by the plugin's SessionStart hook
+  // (PLUGIN_ARCHITECTURE §7). Init no longer writes it; the next
+  // SessionStart in any clone seeds the per-session file with the
+  // current attention_count derived from drafts + baseline findings.
 
   // ── Step 6: completion summary (structured) ────────────────────────
   printCompletionSummary({

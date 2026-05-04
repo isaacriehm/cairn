@@ -8,6 +8,34 @@ import { initCli } from "./init.js";
 import { mcpCli } from "./mcp.js";
 import { scopeCli } from "./scope.js";
 
+async function readSessionIdFromStdin(): Promise<string | null> {
+  return new Promise((resolveP) => {
+    const chunks: Buffer[] = [];
+    let settled = false;
+    const settle = (value: string | null): void => {
+      if (settled) return;
+      settled = true;
+      resolveP(value);
+    };
+    process.stdin.on("data", (chunk: Buffer) => chunks.push(chunk));
+    process.stdin.on("end", () => {
+      const text = Buffer.concat(chunks).toString("utf8").trim();
+      if (text.length === 0) return settle(null);
+      try {
+        const parsed = JSON.parse(text) as { session_id?: unknown };
+        if (typeof parsed?.session_id === "string" && parsed.session_id.length > 0) {
+          return settle(parsed.session_id);
+        }
+      } catch {
+        // fall through to null
+      }
+      settle(null);
+    });
+    process.stdin.on("error", () => settle(null));
+    setTimeout(() => settle(null), 250);
+  });
+}
+
 const [, , subcommand, ...rest] = process.argv;
 
 switch (subcommand) {
@@ -48,7 +76,19 @@ switch (subcommand) {
     } else {
       projectRoot = process.cwd();
     }
-    process.stdout.write(`${readStatusForCLI(projectRoot)}\n`);
+    const sessionIdIdx = rest.indexOf("--session-id");
+    let sessionId: string | null = null;
+    if (sessionIdIdx !== -1 && sessionIdIdx + 1 < rest.length) {
+      const candidate = rest[sessionIdIdx + 1];
+      if (candidate === undefined) {
+        console.error("--session-id requires a value");
+        process.exit(2);
+      }
+      sessionId = candidate;
+    } else if (!process.stdin.isTTY) {
+      sessionId = await readSessionIdFromStdin();
+    }
+    process.stdout.write(`${readStatusForCLI(projectRoot, sessionId)}\n`);
     process.exit(0);
   }
   case "--version":
@@ -74,7 +114,8 @@ switch (subcommand) {
         "  hook       Claude Code hook runner (stdin = hook payload JSON)\n" +
         "             (subcommands: session-start | read-enrich | write-guard)\n" +
         "  status-line  print formatted status line\n" +
-        "               (--project-root <path>?)",
+        "               (--project-root <path>? --session-id <id>?\n" +
+        "                or pipe Claude Code status-line payload JSON on stdin)",
     );
     process.exit(subcommand ? 2 : 1);
 }

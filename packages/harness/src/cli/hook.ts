@@ -7,6 +7,7 @@
  * additionalContext } }`).
  *
  *   harness hook session-start
+ *   harness hook session-end    cleanup per-session state dir
  *   harness hook read-enrich    PostToolUse on Read — citation legend
  *   harness hook write-guard    PostToolUse on Write/Edit — copy-safety + scope reminder
  *
@@ -24,9 +25,15 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
   buildSessionStartContext,
+  cleanupSession,
+  defaultStatusJson,
+  ensureSessionDir,
+  gcStaleSessions,
   resolveRepoRoot,
+  resolveSessionId,
   runReadEnricher,
   runWriteGuardian,
+  writeStatusJson,
 } from "@devplusllc/harness-core";
 
 const HARNESS_HOOK_VERSION = "0.0.0";
@@ -117,7 +124,7 @@ async function sessionStartHook(): Promise<void> {
   const startedAt = Date.now();
   const raw = await readStdin();
   const payload = parseHookPayload(raw);
-  const sessionId = typeof payload.session_id === "string" ? payload.session_id : null;
+  const payloadSessionId = typeof payload.session_id === "string" ? payload.session_id : null;
   const source = typeof payload.source === "string" ? payload.source : null;
   const cwdInput = typeof payload.cwd === "string" ? payload.cwd : process.cwd();
   const repoRoot = resolveRepoRoot(cwdInput);
@@ -132,7 +139,7 @@ async function sessionStartHook(): Promise<void> {
     });
     recordTelemetry({
       repoRoot: null,
-      sessionId,
+      sessionId: payloadSessionId,
       source,
       sectionsRendered: [],
       sectionsDropped: [],
@@ -141,6 +148,32 @@ async function sessionStartHook(): Promise<void> {
       warnings: ["no_harness_dir_found"],
     });
     return;
+  }
+
+  // ── Per-session state partition (PLUGIN_ARCHITECTURE §7) ───────────
+  // Resolve the session id (Claude Code provides it; fallback uuid only
+  // matters for dev/test). Create the per-session dir, seed status.json
+  // with attention_count derived from current ground state, then GC any
+  // sessions left behind by crashed Claude Code processes.
+  const sessionWarnings: string[] = [];
+  const sessionId = resolveSessionId({ session_id: payloadSessionId ?? undefined });
+  try {
+    ensureSessionDir({ repoRoot, sessionId });
+    writeStatusJson(repoRoot, sessionId, defaultStatusJson(true));
+  } catch (err) {
+    sessionWarnings.push(
+      `session_dir_init_failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  try {
+    const gc = gcStaleSessions({ repoRoot });
+    if (gc.removed.length > 0) {
+      sessionWarnings.push(`gc_removed:${gc.removed.length}`);
+    }
+  } catch (err) {
+    sessionWarnings.push(
+      `session_gc_failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   // Adapter heuristic: when source === "resume" the prior session's
@@ -158,6 +191,21 @@ async function sessionStartHook(): Promise<void> {
   }
   const result = await buildSessionStartContext(buildArgs);
 
+  // Patch the per-session status with current attention/scope counts
+  // so the status-line reflects this session's view immediately.
+  try {
+    writeStatusJson(repoRoot, sessionId, {
+      decisions_in_scope: result.counts.decisions,
+      invariants_in_scope: result.counts.invariants,
+      attention_count: result.counts.pendingDrafts,
+      updated_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    sessionWarnings.push(
+      `session_status_patch_failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
   emitShapeB({
     continue: true,
     hookSpecificOutput: {
@@ -174,14 +222,46 @@ async function sessionStartHook(): Promise<void> {
     sectionsDropped: result.sectionsDropped,
     totalChars: result.totalChars,
     durationMs: Date.now() - startedAt,
-    warnings: result.warnings,
+    warnings: [...result.warnings, ...sessionWarnings],
   });
+}
+
+interface SessionEndShapeBOutput {
+  continue: boolean;
+  hookSpecificOutput: {
+    hookEventName: "SessionEnd";
+  };
+}
+
+async function sessionEndHook(): Promise<void> {
+  const raw = await readStdin();
+  const payload = parseHookPayload(raw);
+  const sessionId = typeof payload.session_id === "string" ? payload.session_id : null;
+  const cwdInput = typeof payload.cwd === "string" ? payload.cwd : process.cwd();
+  const repoRoot = resolveRepoRoot(cwdInput);
+
+  const out: SessionEndShapeBOutput = {
+    continue: true,
+    hookSpecificOutput: { hookEventName: "SessionEnd" },
+  };
+
+  if (repoRoot !== null && sessionId !== null && sessionId.length > 0) {
+    try {
+      cleanupSession(repoRoot, sessionId);
+    } catch {
+      // SessionEnd cleanup is best-effort; stale dirs are GC'd at next SessionStart.
+    }
+  }
+
+  process.stdout.write(JSON.stringify(out));
+  process.stdout.write("\n");
 }
 
 function usage(): never {
   console.error(
     "Usage: harness hook <event>\n" +
       "  session-start    SessionStart hook (default)\n" +
+      "  session-end      SessionEnd cleanup of per-session state dir\n" +
       "  read-enrich      PostToolUse on Read — citation legend enricher\n" +
       "  write-guard      PostToolUse on Write/Edit — copy-safety + scope reminder\n" +
       "\n" +
@@ -198,6 +278,9 @@ export async function hookCli(argv: string[]): Promise<void> {
     case undefined:
     case "session-start":
       await sessionStartHook();
+      return;
+    case "session-end":
+      await sessionEndHook();
       return;
     case "read-enrich":
       await runReadEnricher();

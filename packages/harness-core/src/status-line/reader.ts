@@ -47,16 +47,20 @@ function isStatusJson(x: unknown): x is StatusJson {
 }
 
 /**
- * Render the current status-line string for the project at `repoRoot`.
+ * Render the current status-line string for a session inside the
+ * adopted repo at `repoRoot`. `sessionId` is the Claude Code session id
+ * (passed via the status-line hook's stdin payload).
  *
- * Returns the placeholder `⬡ harness  daemon:down  ○` if the state file is
- * missing, unreadable, malformed JSON, or fails shape validation. Spec §1
- * collapses the "daemon down" and "state file missing" cases for v1.
+ * Returns the placeholder `⬡ harness  daemon:down  ○` when:
+ *   - `sessionId` is null/empty (status-line invoked outside a session)
+ *   - the per-session status.json is missing
+ *   - the file is unreadable, malformed JSON, or fails shape validation
  *
  * Hot path — invoked on every Claude Code prompt. Keep this cheap.
  */
-export function readStatusForCLI(repoRoot: string): string {
-  const filePath = statusJsonPath(repoRoot);
+export function readStatusForCLI(repoRoot: string, sessionId: string | null): string {
+  if (sessionId === null || sessionId.length === 0) return PLACEHOLDER;
+  const filePath = statusJsonPath(repoRoot, sessionId);
   if (!existsSync(filePath)) return PLACEHOLDER;
 
   let raw: string;

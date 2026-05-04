@@ -246,6 +246,33 @@ Notes:
   Files added:
     harness/src/cli/attention.ts
 
+## Step 3b — Per-session state partition [DONE 2026-05-04T21:00]
+Subagent attempts: 0 (inline)
+Compile: PASS (workspace-wide tsc -b clean)
+Smokes: PASS — smoke:session-state (5/5 new), smoke:status-line (6/6, rewritten for per-session sig), smoke:session-start (8/8), smoke:handoff (3/3), smoke:scope-index (3/3), smoke:read-enrich (4/4), smoke:init OK, smoke:ingestion-baseline (4/4), smoke:tier0 OK, smoke:gc OK, smoke:lock OK
+Notes:
+  Implements PLUGIN_ARCHITECTURE §7 (per-session state partition) — `.harness/sessions/<session-id>/` is owned by exactly one Claude Code session for the lifetime of that session. Status.json moves out of `~/.local/harness/state/<slug>/` (legacy daemon-era path) into the per-session dir under the repo. Hard cutover — no transition shim.
+  Files added:
+    packages/harness-core/src/session/index.ts (barrel)
+    packages/harness-core/src/session/id.ts (resolveSessionId, ensureSessionDir, cleanupSession, gcStaleSessions; `meta.json` schema with session_id/started_at/pid; `isPidAlive` via process.kill(pid, 0); MAX_STALE_AGE_MS = 24h per spec)
+    packages/harness-core/templates/.harness/.gitignore (ignores sessions/, .write-lock, .gc-lock, .audit-lock for adopted projects)
+    packages/harness/scripts/smoke-session-state.ts (5 steps: id resolution, ensure+meta preservation, concurrent isolation+cleanup, GC selective removal, GC no-op on empty root)
+  Files modified:
+    packages/harness-core/src/paths/index.ts — added sessionsDir, sessionStateDir, sanitizeSessionId; removed dead projectStatePath + stateRoot (no remaining callers post-cutover)
+    packages/harness-core/src/status-line/writer.ts — statusJsonPath/writeStatusJson now require sessionId; dropped writeStatusJsonForSlug (slug-keyed variant is dead with the per-session move); defaultStatusJson param renamed to `sessionAlive` (the `daemon_alive` JSON key kept on the wire so format.ts's "daemon:down" placeholder rendering doesn't churn)
+    packages/harness-core/src/status-line/reader.ts — readStatusForCLI(repoRoot, sessionId | null); placeholder when sessionId is null/empty/missing/malformed
+    packages/harness-core/src/status-line/index.ts — exports updated; module docstring rewritten to reference PLUGIN_ARCHITECTURE §7
+    packages/harness-core/src/init/init.ts — dropped Phase 5c baseline status.json write + post-Phase-6 attention_count patch (status.json is now per-session and seeded by SessionStart, not by init); dropped writeStatusJsonForSlug + defaultStatusJson imports
+    packages/harness-core/src/doctor/index.ts — removed dead checkDaemonStatus + ageHintFromIso + pidLabel helpers (daemon is dormant; per-session status is created on every SessionStart so absence isn't a doctor signal); dropped projectStatePath import
+    packages/harness/src/cli/hook.ts — SessionStart hook resolves session id, calls ensureSessionDir + writes default status.json, runs gcStaleSessions, then patches status with current decisions/invariants/attention counts. New `harness hook session-end` subcommand: reads payload session_id, calls cleanupSession (best-effort; stale dirs GC'd at next SessionStart anyway). Telemetry sessionId now comes from resolved id (post-fallback) instead of raw payload.
+    packages/harness/src/cli/index.ts — `harness status-line` accepts `--session-id <id>` flag and falls back to reading Claude Code's status-line stdin payload (`{session_id, ...}`) with a 250 ms timeout. No stdin + no flag → null sessionId → placeholder.
+    packages/harness-core/templates/.claude/settings.json — registers SessionEnd hook alongside SessionStart.
+    packages/harness/scripts/smoke-status-line.ts — full rewrite for per-session sig: 6 steps (placeholder paths, two-session isolation, format priority cases).
+    packages/harness/package.json — adds `smoke:session-state` script entry.
+  Concurrency posture: per-session dirs are owned by one process — no lock per spec §7. The flock module from step 3 still wraps every global-state write tool (DEC capture, archive, drop-task). gcStaleSessions never touches a dir whose pid is alive, regardless of mtime.
+  Notable design choice: the SessionStart hook patches per-session status.json **after** buildSessionStartContext computes decisions/invariants/pendingDrafts, so the status line reflects this session's real scope (not the default zeros). One extra write but it sets ctx_tokens_budget=4000 and the badge counts immediately.
+  Step 3c (invalidation events + chokidar watcher) and step 4 (plugin scaffold) remain.
+
 ## Phase 6 — Initial ingestion sweep [DONE 2026-05-04T18:30]
 Subagent attempts: 0 (inline)
 Compile: PASS (workspace-wide tsc -b clean); smokes: smoke-init OK, smoke-session-start OK (8/8), new smoke-ingestion-baseline PASS (4/4 — DEC drafts + canonical-map + voice.md, baseline audit yaml, onboarding fires when 0 decisions/0 invariants, onboarding suppressed once first DEC accepted).

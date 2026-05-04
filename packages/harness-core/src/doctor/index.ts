@@ -23,7 +23,7 @@ import {
   buildDecisionsLedger,
   buildInvariantsLedger,
 } from "../ground/index.js";
-import { normalizeProjectName, projectStatePath } from "../paths/index.js";
+import { normalizeProjectName } from "../paths/index.js";
 
 export type DoctorStatus = "ok" | "warn" | "error" | "info";
 
@@ -59,7 +59,6 @@ export function runDoctor(opts: RunDoctorOptions): DoctorReport {
   checks.push(checkHarnessLayout(repoRoot));
   checks.push(checkMcpRegistration(repoRoot));
   checks.push(checkClaudeHooks(repoRoot));
-  checks.push(checkDaemonStatus(projectName));
 
   // ── Ground state checks ────────────────────────────────────────────
   checks.push(checkDecisions(repoRoot));
@@ -226,94 +225,6 @@ function checkClaudeHooks(repoRoot: string): DoctorCheck {
     status: "ok",
     detail: `${labels.join(" + ")} registered`,
   };
-}
-
-function checkDaemonStatus(projectName: string): DoctorCheck {
-  const stateDir = projectStatePath(projectName);
-  const statusFile = join(stateDir, "status.json");
-  if (!existsSync(statusFile)) {
-    return {
-      group: "core",
-      label: "status.json",
-      status: "warn",
-      detail: "daemon not running",
-      fixCommand: "harness daemon start",
-    };
-  }
-  let parsed: Record<string, unknown>;
-  try {
-    parsed = JSON.parse(readFileSync(statusFile, "utf8")) as Record<
-      string,
-      unknown
-    >;
-  } catch {
-    return {
-      group: "core",
-      label: "status.json",
-      status: "warn",
-      detail: "daemon state unreadable",
-      fixCommand: "harness daemon start",
-    };
-  }
-  const alive = parsed["daemon_alive"] === true;
-  if (!alive) {
-    return {
-      group: "core",
-      label: "status.json",
-      status: "warn",
-      detail: "daemon not running",
-      fixCommand: "harness daemon start",
-    };
-  }
-  const updatedAt =
-    typeof parsed["updated_at"] === "string"
-      ? (parsed["updated_at"] as string)
-      : null;
-  const ageHint = ageHintFromIso(updatedAt);
-  const pidHint = pidLabel(stateDir, parsed);
-  const attention =
-    typeof parsed["attention_count"] === "number"
-      ? (parsed["attention_count"] as number)
-      : 0;
-  const attentionHint = attention > 0 ? `, attention:${attention}` : "";
-  return {
-    group: "core",
-    label: "status.json",
-    status: "ok",
-    detail: `daemon alive${pidHint}${ageHint}${attentionHint}`,
-    ...(attention > 0 ? { fixCommand: "harness attention" } : {}),
-  };
-}
-
-function ageHintFromIso(iso: string | null): string {
-  if (iso === null) return "";
-  const t = Date.parse(iso);
-  if (!Number.isFinite(t)) return "";
-  const ms = Date.now() - t;
-  const minutes = Math.floor(ms / 60_000);
-  if (minutes < 60) return `, last ping ${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  return `, last ping ${hours}h ago`;
-}
-
-function pidLabel(
-  stateDir: string,
-  status: Record<string, unknown>,
-): string {
-  const pidFromStatus = status["pid"];
-  if (typeof pidFromStatus === "number" && pidFromStatus > 0) {
-    return ` (PID ${pidFromStatus})`;
-  }
-  const pidFile = join(stateDir, "daemon.pid");
-  if (!existsSync(pidFile)) return "";
-  try {
-    const txt = readFileSync(pidFile, "utf8").trim();
-    const n = Number.parseInt(txt, 10);
-    if (Number.isFinite(n) && n > 0) return ` (PID ${n})`;
-  } catch {
-    // ignore
-  }
-  return "";
 }
 
 // ── Ground state checks ──────────────────────────────────────────────

@@ -1,10 +1,12 @@
 /**
  * Status-line module.
  *
- * The harness daemon writes `~/.local/harness/state/<slug>/status.json` and
- * Claude Code's status_line hook invokes `harness status-line` to render it.
+ * The plugin's SessionStart hook writes `.harness/sessions/<id>/status.json`
+ * and Claude Code's status_line hook invokes `harness status-line` (which
+ * reads the same file via `readStatusForCLI`).
  *
- * See docs/STATUS_LINE_SPEC.md.
+ * Spec: PLUGIN_ARCHITECTURE §7 (per-session state partition);
+ * docs/STATUS_LINE_SPEC.md (format).
  */
 
 export type TaskState =
@@ -34,8 +36,8 @@ export interface StatusJson {
 
 export {
   defaultStatusJson,
+  statusJsonPath,
   writeStatusJson,
-  writeStatusJsonForSlug,
 } from "./writer.js";
 export { readStatusForCLI } from "./reader.js";
 export { formatStatus } from "./format.js";
