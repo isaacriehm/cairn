@@ -54,6 +54,16 @@ export {
   renderKeepBlock,
   runRulesMerge,
 } from "./rules-merge/index.js";
+export {
+  installMultiDev,
+  patchPackageJsonPrepare,
+} from "./multi-dev/index.js";
+export type {
+  InstallMultiDevArgs,
+  MultiDevHostKind,
+  MultiDevInstallResult,
+  MultiDevInstallStep,
+} from "./multi-dev/index.js";
 export type {
   KeepBlock,
   RegenerateRulesArgs,

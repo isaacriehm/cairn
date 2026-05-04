@@ -22,6 +22,11 @@ import {
   eventsSince,
   type InvalidationEvent,
 } from "../../events/index.js";
+import {
+  renderBypassHint,
+  scanBypassedCommits,
+  type BypassedCommit,
+} from "../bypass-detection.js";
 import { resolveRepoRoot } from "../../session-start/index.js";
 import {
   readEventsMarker,
@@ -59,6 +64,7 @@ export async function runStopHook(): Promise<void> {
 
   let drained: InvalidationEvent[] = [];
   let pendingReviews: PendingReview[] = [];
+  let bypassed: BypassedCommit[] = [];
   let additionalContext = "";
 
   if (repoRoot !== null && sessionId !== null && sessionId.length > 0) {
@@ -85,6 +91,21 @@ export async function runStopHook(): Promise<void> {
     } catch (err) {
       warnings.push(
         `pending_review_scan_failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
+    try {
+      const bypassResult = scanBypassedCommits(repoRoot);
+      bypassed = bypassResult.bypassed;
+      if (bypassed.length > 0) {
+        const hint = renderBypassHint(bypassed);
+        additionalContext = additionalContext.length > 0
+          ? `${additionalContext}\n\n${hint}`
+          : hint;
+      }
+    } catch (err) {
+      warnings.push(
+        `bypass_scan_failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
 
@@ -118,6 +139,7 @@ export async function runStopHook(): Promise<void> {
     extra: {
       events_drained: drained.length,
       pending_reviews: pendingReviews.length,
+      bypassed_commits: bypassed.length,
     },
   });
 }

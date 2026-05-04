@@ -27,6 +27,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import type { McpContext } from "../context.js";
+import { requireBootstrap } from "../bootstrap-guard.js";
 import { mcpError } from "../errors.js";
 import { askOperatorInput } from "../schemas.js";
 import type { ToolDef } from "./types.js";
@@ -57,6 +58,8 @@ async function handler(
   ctx: McpContext,
   input: Input,
 ): Promise<unknown> {
+  const block = requireBootstrap(ctx.repoRoot);
+  if (block !== null) return block;
   const runDir = join(
     ctx.repoRoot,
     ".harness",

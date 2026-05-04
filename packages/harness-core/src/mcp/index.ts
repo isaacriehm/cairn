@@ -6,6 +6,7 @@ export { allTools } from "./tools/index.js";
 export type { ToolDef } from "./tools/types.js";
 export { mcpError, isMcpError } from "./errors.js";
 export type { McpErrorCode, McpErrorPayload } from "./errors.js";
+export { requireBootstrap } from "./bootstrap-guard.js";
 export { asMcpResult } from "./result.js";
 export {
   APPEND_ALLOWLIST,

@@ -4,6 +4,7 @@ import type { McpContext } from "../context.js";
 import { writeInvalidationEvent, type InvalidationEventRef } from "../../events/index.js";
 import { recordDriftEvent } from "../../ground/index.js";
 import { withWriteLock } from "../../lock.js";
+import { requireBootstrap } from "../bootstrap-guard.js";
 import { mcpError } from "../errors.js";
 import { isArchiveDenied, relPosix, safeJoin } from "../path-allowlist.js";
 import { archiveInput } from "../schemas.js";
@@ -16,6 +17,8 @@ interface Input {
 }
 
 async function handler(ctx: McpContext, input: Input): Promise<unknown> {
+  const block = requireBootstrap(ctx.repoRoot);
+  if (block !== null) return block;
   const abs = safeJoin(ctx.repoRoot, input.path);
   if (typeof abs !== "string") return abs;
   const rel = relPosix(ctx.repoRoot, abs);

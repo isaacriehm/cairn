@@ -5,6 +5,7 @@ import { doctorCli, fixCli } from "./doctor.js";
 import { gcCli } from "./gc.js";
 import { hookCli } from "./hook.js";
 import { initCli } from "./init.js";
+import { joinCli } from "./join.js";
 import { mcpCli } from "./mcp.js";
 import { scopeCli } from "./scope.js";
 
@@ -41,6 +42,9 @@ const [, , subcommand, ...rest] = process.argv;
 switch (subcommand) {
   case "init":
     await initCli(rest);
+    break;
+  case "join":
+    await joinCli(rest);
     break;
   case "mcp":
     await mcpCli(rest);
@@ -99,6 +103,7 @@ switch (subcommand) {
     console.error(
       "Usage: harness <command>\n" +
         "  init       adopt this harness into a project\n" +
+        "  join       per-clone bootstrap (set core.hooksPath, chmod hooks)\n" +
         "  mcp        MCP server (stdio transport)\n" +
         "             (subcommands: serve)\n" +
         "  gc         garbage-collection passes against the canonical zone\n" +

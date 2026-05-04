@@ -22,6 +22,7 @@ export * from "./gc/index.js";
 export * from "./ground/index.js";
 export * from "./hooks/post-tool-use/index.js";
 export * from "./init/index.js";
+export * from "./join/index.js";
 export * from "./mcp/index.js";
 export * from "./paths/index.js";
 export * from "./profiles/index.js";
