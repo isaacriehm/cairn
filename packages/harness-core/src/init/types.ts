@@ -64,6 +64,5 @@ export interface DetectionResult {
   /** Optional environment readiness — advisory, never blocking. */
   environment: {
     claude_auth: boolean;
-    whisper_model: boolean;
   };
 }

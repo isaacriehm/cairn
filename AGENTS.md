@@ -1,70 +1,88 @@
 # Cairn — Project Orientation (TOC pattern)
 
-This is the table of contents for agents working in this repo. Per OpenAI's harness lesson — *"treat AGENTS.md as the table of contents"* — keep this file under ~150 lines. All real content lives in `docs/`.
+Table of contents for agents working on this repo. Per OpenAI's harness
+lesson — *"treat AGENTS.md as the table of contents"* — keep this file under
+~150 lines. Real content lives in `docs/`.
 
 ## What this project is
 
-**Cairn = state + context-loading layer for AI orchestration.** It curates `.harness/ground/` (decisions, §V invariants, canonical-map, quality-grades), exposes that state via an MCP server, and provides bootstrapping (init mapper) + maintenance (GC drift sweep + backprop) for it.
+**Cairn = state + context-loading layer for AI coding agents.** It curates
+`.harness/ground/` (decisions, §V invariants, canonical-map, brand,
+quality-grades), exposes that state via an MCP server, and ships a Claude
+Code plugin that wires adoption + the daily flow inline.
 
-Orchestration runtime (FIFO queue, mirror checkout, claude subprocess dispatch, sensor sweep, reviewer, UAT pipeline) is a **consumer** built on top. Discord / voice / channel-per-task is a **frontend adapter** consuming the runtime. Each layer is its own pnpm workspace package.
+The Claude Code plugin is the primary surface; the CLI (`cairn ...`) is the
+bootstrap and debug entrypoint. There is no separate orchestration runtime
+— the plugin uses Claude Code's built-in subagent dispatch.
 
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the layered model and the four-package boundary. The earlier "agent orchestrator with Discord UX bolted on" framing in PRIMER §3 + INTEGRATION_PLAN §1 is superseded.
+## Document index
 
-## Project state
+| What | Where |
+|------|-------|
+| Quick start + concepts | [`README.md`](README.md) |
+| Layered architecture (locked) | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
+| Plugin spec — adoption phases, hooks, multi-dev enforcement (locked) | [`docs/PLUGIN_ARCHITECTURE.md`](docs/PLUGIN_ARCHITECTURE.md) |
+| MCP tool surface — tool-by-tool reference | [`docs/MCP_SURFACE.md`](docs/MCP_SURFACE.md) |
+| `.harness/` directory contract | [`docs/FILESYSTEM_LAYOUT.md`](docs/FILESYSTEM_LAYOUT.md) |
+| License | [`LICENSE`](LICENSE) |
 
-| Item | Location |
-|------|----------|
-| The current handoff | [`harness-build/RESUME.md`](harness-build/RESUME.md) — read this first if you are a freshly-spawned agent |
-| **Locked architecture (layered model)** | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
-| Concept primer | [`docs/PRIMER.md`](docs/PRIMER.md) |
-| Phased build plan (historical — see ARCHITECTURE for current model) | [`docs/INTEGRATION_PLAN.md`](docs/INTEGRATION_PLAN.md) |
-| Filesystem layout for adopted projects | [`docs/FILESYSTEM_LAYOUT.md`](docs/FILESYSTEM_LAYOUT.md) |
-| MCP server tool surface | [`docs/MCP_SURFACE.md`](docs/MCP_SURFACE.md) |
-| UAT-on-phone pipeline | [`docs/UAT_PIPELINE.md`](docs/UAT_PIPELINE.md) |
-| Operator UX + tier ladder | [`docs/WORKFLOW_GUIDE.md`](docs/WORKFLOW_GUIDE.md) |
-| Open questions for the operator | [`docs/QUESTIONS.md`](docs/QUESTIONS.md) |
-| Research artifacts (sample-project-derived) | [`docs/_research/`](docs/_research/) |
-
-## Operator profile (apply when communicating with the user)
+## Operator profile (apply when communicating with the operator)
 
 | Trait | Behavior |
 |-------|----------|
-| Communication | Terse-direct. Lead with answer/action. No filler. |
-| Decisions | Fast-intuitive. Don't present options unless explicitly asked. When user states a decision, treat it as final. |
-| Explanations | Concise. Root cause in 1-2 sentences then fix. |
-| UX Philosophy | Design-conscious. UX equal in importance to functional correctness. |
-| Vendor Choices | Opinionated. **Do not suggest alternative libraries/frameworks unless they avoid real risk.** |
-| Env vars | **Hates env vars.** Only secrets/brand/domain go in env. Hardcoded model IDs in code = correct. |
-| Tests | "Tests are shitware. Only E2E with real DB matters." Drop the test framing entirely. Sensors and E2E only. |
-| Backward compat | **Hates backward compat.** No transition shims. Hard cutovers. |
-| Mobile mode | When operator is on mobile, AskUserQuestion options get truncated. Switch to chat-mode K/R/U/M with concise option labels. |
-| Caveman ultra mode | Active for chat replies. Documents in full English. |
+| Communication | Terse-direct. Lead with answer or action. No filler. |
+| Decisions | Fast-intuitive. Don't present options unless explicitly asked. When the operator states a decision, treat it as final. |
+| Explanations | Concise. Root cause in 1-2 sentences then the fix. |
+| UX philosophy | Design-conscious. UX is equal in importance to functional correctness. |
+| Vendor choices | Opinionated. Do not suggest alternative libraries / frameworks unless they avoid a real risk. |
+| Env vars | The operator hates env vars. Hardcode model IDs and paths in code. |
+| Tests | "Tests are shitware. Only E2E with real DB matters." Sensors + E2E smokes only — no unit-test framing. |
+| Backward compat | The operator hates backward-compat shims. Hard cutovers only. |
+| Mobile mode | When the operator is on mobile, `AskUserQuestion` options get truncated; switch to chat-mode A/B/C with concise option labels. |
+| Caveman ultra mode | Active for chat replies. Documents stay in full English. |
 
 ## Hard rules
 
-- All design decisions are recorded in `docs/`. Drift between conversation and `docs/` is a bug.
-- Anti-patterns are named and rejected in `docs/PRIMER.md` §11. Do not propose anything on that list.
-- Locked architectural decisions in `docs/ARCHITECTURE.md` (§1 layered model, §3 package contents) are not reopened without explicit operator instruction.
+- All design decisions live in `docs/`. Drift between conversation and `docs/` is a bug.
+- Locked architectural decisions in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (§1 layered model, §3 package contents) and [`docs/PLUGIN_ARCHITECTURE.md`](docs/PLUGIN_ARCHITECTURE.md) (§3 package layout, §17 multi-dev) are not reopened without explicit operator instruction.
+- Never use Claude Code `PreToolUse` hooks — they can brick the session. SessionStart instructions + MCP tools only.
+- Hardcode model IDs in code (no env vars). Hard cutovers only (no transition shims).
 
-## Workspace layout (post-split)
+## Workspace layout
 
 ```
-Cairn/                         — repo root (this file lives here)
+cairn/
 └── packages/
-    ├── harness/                  — umbrella + CLI bin (`harness init/run/…`)
-    ├── harness-core/             — state + context + MCP. The Cairn.
-    ├── harness-runtime/          — orchestration consumer (FIFO, mirror,
-    │                               sensors, reviewer, UAT, dispatch)
-    ├── harness-frontend-discord/ — Discord adapter (bot, voice, channels)
-    ├── harness-frontend-stub/    — in-memory test adapter
-    └── harness-lens/             — VS Code / Cursor extension (.vsix)
+    ├── cairn/                       — umbrella + CLI bin (`cairn init/join/hook/...`)
+    ├── cairn-core/                  — state + context + MCP server + sensors + hook runners
+    ├── cairn-frontend-claudecode/   — Claude Code plugin (manifest + hooks + skills + agents + commands)
+    ├── cairn-frontend-stub/         — in-memory test adapter (internal)
+    └── cairn-lens/                  — VS Code / Cursor extension (.vsix)
 ```
 
-## When you (an agent) are starting fresh
+The technical packages currently use the historical `harness*` names; the
+search-replace to `cairn*` lands as part of the public-repo initial commit.
 
-1. Read [`harness-build/RESUME.md`](harness-build/RESUME.md) end-to-end.
+## Smoke gate
+
+```bash
+pnpm install
+pnpm -r build
+for s in plugin-layout resolve-attention stop-hook events session-state \
+         status-line session-start handoff scope-index read-enrich init \
+         ingestion-baseline tier0 gc lock source-comments rules-merge join \
+         bypass-detection bootstrap-guard e2e-adoption e2e-daily-flow; do
+  pnpm --filter @isaacriehm/cairn "smoke:$s"
+done
+```
+
+22 smokes; all should pass on a clean tree.
+
+## Starting fresh
+
+1. Read [`README.md`](README.md) end-to-end.
 2. Read [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — locked layered model.
-3. Read [`docs/PRIMER.md`](docs/PRIMER.md) for concepts + anti-patterns.
-4. Skim the other `docs/*.md` files.
-5. Confirm to the operator in 2-3 lines what you've loaded and ask what to work on next.
+3. Read [`docs/PLUGIN_ARCHITECTURE.md`](docs/PLUGIN_ARCHITECTURE.md) — plugin spec.
+4. Skim [`docs/MCP_SURFACE.md`](docs/MCP_SURFACE.md) and [`docs/FILESYSTEM_LAYOUT.md`](docs/FILESYSTEM_LAYOUT.md).
+5. Confirm to the operator in 2-3 lines what you've loaded.
 6. Match the operator's terse-direct style.

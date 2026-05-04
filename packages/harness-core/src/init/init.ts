@@ -1,21 +1,18 @@
 /**
- * `harness init` orchestrator — full guided setup.
+ * `cairn init` orchestrator — full guided adoption.
  *
  * Stages:
  *   1. Detect → print summary
  *   2. Proceed dialog (cancel exits cleanly, no writes)
- *   3. Guided setup loop — for each missing prerequisite, prompt to fix:
- *        • discord bot token + guild → write to ~/.local/harness/.env
- *        • whisper model → curl download
- *        • ollama service → brew install + ollama pull
- *        • claude CLI → instruct (interactive auth, can't automate)
- *   4. Seed `.harness/` + .archive/ from templates with `<project_name>`
- *      substituted. Write `.harness/config.yaml`.
- *   5. Mirror init (skippable).
- *   6. E2E dialog — now actually executes setup:uat-* via subprocess.
- *
- * Pre-configured environment skips guided setup dialogs entirely; init
- * for an already-set-up operator runs proceed + e2e and that's it.
+ *   3. Seed `.harness/` + `.archive/` from templates with `<project_name>`
+ *      substituted; write `.harness/config.yaml` (including `harness_version`).
+ *   4. Mapper (Tier-2 chunked Sonnet) → seed `<slug>:` workflow.md block +
+ *      `.harness/config.yaml` project_globs.
+ *   5. Brand setup (4-question wizard).
+ *   6. Phase 6 docs ingestion + baseline sensor sweep.
+ *   7. Phase 7b source-comment ingestion + 7c rules merge (mock-friendly
+ *      via `mockSourceCommentClassify` / `mockRulesMergeClassify`).
+ *   8. Phase 12 multi-dev install (deterministic, idempotent).
  */
 
 import {
@@ -103,10 +100,6 @@ import {
   type PromptMode,
 } from "./prompts.js";
 import { seedCairnLayout } from "./seed.js";
-import {
-  downloadWhisperModel,
-  runCairnSetupScript,
-} from "./setup-runners.js";
 import type { DetectionResult } from "./types.js";
 import { buildRepoSummary, type RepoSummary } from "./walker.js";
 import { updateWorkflowSlugBlock } from "./workflow-block.js";
@@ -122,11 +115,9 @@ export interface RunInitArgs {
   mode?: PromptMode;
   /** Force-overwrite existing `.harness/` files. Default false. */
   force?: boolean;
-  /** Auto-pick the E2E setup answer when mode=auto. */
-  autoE2e?: "now" | "defer" | "skip";
   /** Auto-pick proceed? when mode=auto. */
   autoProceed?: "a" | "b";
-  /** Skip guided setup (claude/whisper/ollama/discord) — smoke convenience. */
+  /** Skip guided setup — smoke convenience. */
   skipGuidedSetup?: boolean;
   /** Skip the Tier-2 init mapper. Default off in interactive mode (we run the
    * mapper unless operator declines or claude is missing); always off in auto
@@ -219,7 +210,6 @@ export interface InitResult {
   seeded_files: string[];
   collisions: string[];
   config_path: string;
-  e2e_setup: "now" | "defer" | "skip" | null;
   /** Mapper outcome — null when skipped/failed, full output when applied. */
   mapper_output: MapperOutput | null;
   /** Whether mapper output reached the workflow.md slug block. */
@@ -367,7 +357,6 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
       seeded_files: [],
       collisions: [],
       config_path: "",
-      e2e_setup: null,
       mapper_output: null,
       mapper_applied_to_workflow: false,
       mapper_applied_to_config: false,
@@ -506,48 +495,6 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     };
     writeScopeIndex(repoRoot, seed);
     done(`+ .harness/ground/scope-index.yaml`);
-  }
-
-  // ── Dialog 2: E2E setup ────────────────────────────────────────────
-  const e2eChoice = await squareIntoSquareHole<"now" | "defer" | "skip">({
-    mode,
-    prompt: "E2E heavy probes (browsers / sql / docker compose) — set up now?",
-    choices: [
-      {
-        id: "now",
-        label: "now",
-        description: "run setup:uat-browsers + setup:uat-sql --build-binding + setup:uat-docker",
-      },
-      {
-        id: "defer",
-        label: "defer (recommended for first adoption)",
-        description: "orchestrator prompts again on the first UAT need",
-        isDefault: true,
-      },
-      {
-        id: "skip",
-        label: "skip",
-        description:
-          "code-class UAT becomes review-only; high-stakes refused dispatch",
-      },
-    ],
-    auto: args.autoE2e ?? "defer",
-  });
-  recordE2eDecision({ repoRoot, e2eChoice });
-  if (e2eChoice === "now") {
-    header("E2E setup — running setup:uat-browsers + setup:uat-sql + setup:uat-docker");
-    const browsers = await runCairnSetupScript("setup-uat-browsers");
-    if (!browsers.ok) {
-      warnings.push(`setup:uat-browsers exited ${browsers.exit_code} — re-run manually`);
-    }
-    const sql = await runCairnSetupScript("setup-uat-sql", ["--build-binding"]);
-    if (!sql.ok) {
-      warnings.push(`setup:uat-sql exited ${sql.exit_code} — re-run manually`);
-    }
-    const docker = await runCairnSetupScript("setup-uat-docker");
-    if (!docker.ok) {
-      warnings.push(`setup:uat-docker exited ${docker.exit_code} — re-run manually`);
-    }
   }
 
   // ── Step 5b: brand setup (interactive 4-question wizard) ───────────
@@ -729,7 +676,6 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
       slug: decidedSlug,
       seeded: seed.written_files.length,
       collisions: seed.collisions.length,
-      e2e: e2eChoice,
       mapper_ran: mapperOutput !== null,
       mapper_applied_to_workflow: mapperAppliedToWorkflow,
       mapper_applied_to_config: mapperAppliedToConfig,
@@ -748,7 +694,6 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     seeded_files: seed.written_files,
     collisions: seed.collisions,
     config_path: ".harness/config.yaml",
-    e2e_setup: e2eChoice,
     mapper_output: mapperOutput,
     mapper_applied_to_workflow: mapperAppliedToWorkflow,
     mapper_applied_to_config: mapperAppliedToConfig,
@@ -763,25 +708,6 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     submodules: submoduleSummary,
     warnings,
   };
-
-  function recordE2eDecision(a: {
-    repoRoot: string;
-    e2eChoice: "now" | "defer" | "skip";
-  }): void {
-    const p = join(a.repoRoot, ".harness", "config.yaml");
-    if (!existsSync(p)) return;
-    const text = readFileSync(p, "utf8");
-    if (/^e2e_setup:/m.test(text)) {
-      const updated = text.replace(/^e2e_setup:.*$/m, `e2e_setup: ${a.e2eChoice}`);
-      writeFileSync(p, updated, "utf8");
-    } else {
-      writeFileSync(
-        p,
-        text + (text.endsWith("\n") ? "" : "\n") + `e2e_setup: ${a.e2eChoice}\n`,
-        "utf8",
-      );
-    }
-  }
 }
 
 function buildProjectOverlay(args: {
@@ -915,9 +841,7 @@ async function maybeRunMapper(
     });
     const ms = Date.now() - t0;
     const seconds = `${(ms / 1000).toFixed(0)}s`;
-    if (mapperResult.path === "legacy") {
-      spinner.succeed(`Analysis complete (${seconds} · legacy fallback)`);
-    } else if (failedModules > 0) {
+    if (failedModules > 0) {
       spinner.succeed(
         `Analysis complete (${seconds} · ${completed - failedModules}/${totalSlices} modules ok)`,
       );
@@ -1554,19 +1478,6 @@ function printDiscovery(
       : visualC.dim("missing or unauthenticated"),
   });
   if (!e.claude_auth) warnings.push("claude CLI not available");
-
-  // whisper
-  discoveryRow({
-    status: e.whisper_model ? "ok" : "warn",
-    label: "whisper",
-    value: e.whisper_model
-      ? visualC.dim("model present")
-      : visualC.dim("model not found"),
-  });
-  if (!e.whisper_model)
-    warnings.push(
-      "whisper model not at ~/.local/harness/models/ggml-large-v3-turbo-q5_0.bin — voice ingress disabled",
-    );
 }
 
 interface PhaseSixArgs {

@@ -20,8 +20,6 @@ import type {
   StartCommand,
 } from "./types.js";
 
-const WHISPER_MODEL_PATH = `${process.env["HOME"] ?? ""}/.local/harness/models/ggml-large-v3-turbo-q5_0.bin`;
-
 interface PackageJson {
   name?: string;
   scripts?: Record<string, string>;
@@ -313,7 +311,6 @@ export function detectHookCapability(repoRoot: string): HookCapability {
 export async function detectEnvironment(): Promise<DetectionResult["environment"]> {
   return {
     claude_auth: claudeIsAvailable(),
-    whisper_model: existsSync(WHISPER_MODEL_PATH),
   };
 }
 

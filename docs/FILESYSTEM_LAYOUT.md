@@ -19,20 +19,18 @@ Replaces the prior Postgres design. Everything lives on disk. Two-zone canonical
 |---------|----------|
 | Primary state | Filesystem only — markdown + YAML + JSONL |
 | Database | None |
-| Notion (as **state**) | None. Filesystem owns state. (Per Codex audit Finding #1: this is distinct from the frontend-adapter use; see next row.) |
-| Notion (as **frontend adapter**) | Supported. Operator's friend uses Notion as their preferred operator console. Adapter consumes the same uniform task/run/UAT bundle as Discord and CLI. Not v0 default; built lazily when needed. |
-| Concurrency model | Single-task FIFO; mirror checkout isolation |
-| Branching | None — direct commits to main |
-| User checkout protection | Cairn operates only in mirror at `~/.local/harness/repos/<project>/` |
+| Frontend adapter | Claude Code plugin is the primary operator surface; CLI is bootstrap + debug; VS Code / Cursor extension is a parallel read-only consumer |
+| Concurrency model | Per-write `flock` on `.harness/.write-lock`; per-session state partition under `.harness/sessions/<id>/` |
+| Branching | None — direct commits to main, gated by sensors at pre-commit + CI |
 | Two zones | `canonical` (default agent visible) / `historical` (`.archive/` — only via explicit MCP) |
 | Provenance | YAML frontmatter required on every load-bearing markdown |
-| Append-only writes | Via `harness-mcp` tools — no read-before-write penalty |
+| Append-only writes | Via Cairn MCP tools — no read-before-write penalty |
 
 ---
 
 ## 1. Top-level layout in any harness-adopted repo
 
-The layout below is **stack-agnostic**. Subdirectories under `.harness/ground/{schema,routes,events}/` are populated only when the operator's project has a generator that produces them — the init mapper proposes generators per detected stack signature (Drizzle / Prisma / SQLAlchemy → schema dump; OpenAPI / NestJS / FastAPI → routes table; project-defined event registry → events). Projects without those concerns simply have empty/missing directories; the harness layout itself doesn't change. Likewise `inbox/`, `transcripts/`, and `tasks/active/<id>/spec.md` are populated by whichever frontend adapter is active (CLI / Discord / Notion / future web); the layout stores no adapter-specific structure.
+The layout below is **stack-agnostic**. Subdirectories under `.harness/ground/{schema,routes,events}/` are populated only when the operator's project has a generator that produces them — the init mapper proposes generators per detected stack signature (Drizzle / Prisma / SQLAlchemy → schema dump; OpenAPI / NestJS / FastAPI → routes table; project-defined event registry → events). Projects without those concerns simply have empty/missing directories; the layout itself doesn't change. Likewise `tasks/active/<id>/spec.md` is populated by the active frontend adapter (Claude Code plugin in v0.1.0); the layout stores no adapter-specific structure.
 
 ```
 <repo-root>/
@@ -98,7 +96,7 @@ The layout below is **stack-agnostic**. Subdirectories under `.harness/ground/{s
 │   │   │       └── .uat-passed     ← SHA256 of bundle (evidence file)
 │   │   └── terminal/<run-id>/      ← completed runs (auto-moved)         HISTORICAL
 │   ├── inbox/                                                             GITIGNORED
-│   │   └── <ts>-<source>.json      ← raw frontend-adapter ingress (CLI / Discord / Notion / web)
+│   │   └── <ts>-<source>.json      ← raw frontend-adapter ingress (Claude Code plugin in v0.1.0)
 │   ├── transcripts/                                                       GITIGNORED
 │   │   └── <ts>-<msg-id>.txt       ← voice transcripts when adapter ships audio
 │   └── staleness/
@@ -115,7 +113,7 @@ Mirror checkout (separate, not in repo):
 ```
 ~/.local/harness/repos/<project-slug>/      ← parallel git clone, harness operates here
 ~/.local/harness/state/<project-slug>/      ← non-portable runtime state (PIDs, sockets)
-~/.local/harness/models/                    ← optional model files (e.g. whisper.cpp when voice adapter installed)
+~/.local/harness/models/                    ← optional model files (reserved for future cache use)
 ```
 
 ---
@@ -210,7 +208,7 @@ verified-at: 2026-05-01T18:23:00Z
 source-commits:
   - 9e3f4a2  # the run that confirmed this decision
 decided_at: 2026-05-01
-decided_by: discord:isaac
+decided_by: operator
 scope_globs:
   - core/src/dashboard/**
   - core/src/proactive-actions/**
@@ -331,9 +329,8 @@ type: spec
 status: tightening
 audience: dual
 generated: 2026-05-02T05:30:00Z
-source: discord:voice
-source_message_id: "1234567890"
-source_channel: task-add-oauth-unique-index
+source: claude-code-session
+source_session_id: "01HXPEXAMPLE0001"
 intent: fix_issue
 priority: 5
 target_path_globs:
@@ -719,11 +716,10 @@ Implementation lives in `packages/harness-core/src/init/`. Key outputs:
 - Init mapper (Tier 2) reads the repo summary and proposes `pilot_module` + `route_handler_globs` + `dto_globs` + `generator_source_globs` + `high_stakes_globs` + `off_limits_globs` + per-project sensor candidates; output applied to the `<slug>:` extension block in `workflow.md` and to `.harness/config.yaml`
 - Mechanical pass populates `.harness/ground/manifest.yaml` and category extracts where generators apply
 - Writes `.mcp.json` registering the harness MCP server (`harness mcp serve`) and `.claude/settings.json` registering the SessionStart hook (`harness hook session-start`)
-- Prompts for Discord guild + bot token; creates category structure (📋 / 🟢 / 📦)
-- Detects Ollama; prompts to install if missing
-- E2E setup probes (`setup:uat-browsers`, `setup:uat-sql`, `setup:uat-docker`) gated behind a now/defer/skip operator dialog
+- Phase 7b/7c source-comment + rules-merge ingestion (Haiku-classified, deterministic walker + replacement)
+- Phase 12 multi-dev install patches `package.json` `prepare` script for Node projects + emits hints for non-Node hosts
 
-Result: a fresh `harness adopted` state with canonical surfaces marked, the MCP server registered, the SessionStart hook live, and the daemon ready to start. **No PreToolUse hook is registered** — two-zone enforcement is soft (see §2.3).
+Result: a fresh `cairn adopted` state with canonical surfaces marked, the MCP server registered, all hooks live, and the per-clone bootstrap recorded. **No PreToolUse hook is registered** — two-zone enforcement is soft (see §2.3).
 
 ---
 

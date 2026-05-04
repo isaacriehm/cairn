@@ -1,31 +1,17 @@
 /**
- * Legacy single-call mapper — extracted unchanged from the original mapper.ts.
+ * Mapper schema + system prompt + user-prompt builder.
  *
- * Used as a fallback when the chunked parallel path (`mapper-parallel.ts` +
- * `mapper-merge.ts`) cannot run — e.g., every per-module Sonnet call failed,
- * or the slicer detected zero modules and the orchestrator chose to skip the
- * parallel path entirely.
- *
- * This module deliberately preserves the original behavior: one Sonnet call
- * with a flat ~20k token repo summary. The acknowledged trade-off is degraded
- * proposals on monorepos (per `INIT_SPEC.md` §3 motivation), but it remains
- * the safest fallback because the rest of init has consumed `MapperOutput` for
- * months and we want zero downstream churn when we drop into legacy mode.
+ * The chunked parallel mapper (`mapper-parallel.ts`) operates per-module on a
+ * subset of these inputs; the `harness scope rebuild` CLI consumes the full
+ * surface to regenerate `scope_index.yaml` against an existing project. Both
+ * paths share the same JSON schema + system prompt to guarantee identical
+ * output shape.
  */
 
-import { runClaude } from "../claude/index.js";
-import { logger } from "../logger.js";
-import {
-  validateMapperOutput,
-  type MapperOutput,
-  type MapperResult,
-} from "./mapper.js";
 import type { DetectionResult } from "./types.js";
 import type { RepoSummary } from "./walker.js";
 
-const log = logger("init.mapper-legacy");
-
-export const LEGACY_OUTPUT_SCHEMA = {
+export const MAPPER_OUTPUT_SCHEMA = {
   type: "object",
   additionalProperties: false,
   properties: {
@@ -101,7 +87,7 @@ export const LEGACY_OUTPUT_SCHEMA = {
   ],
 } as const;
 
-export const LEGACY_SYSTEM_PROMPT = [
+export const MAPPER_SYSTEM_PROMPT = [
   "You are the INIT MAPPER for a code-agent harness adopting a new project.",
   "",
   "Your job: read a structural inventory of an unknown project (top-level dirs, package manifests, framework signals, file-extension breakdown, notable files and dirs) and produce a structured proposal that lets the harness run useful sensors against the project's diffs.",
@@ -134,7 +120,7 @@ export const LEGACY_SYSTEM_PROMPT = [
   "- Return ONLY the JSON object. No prose, no preamble, no code fences.",
 ].join("\n");
 
-export function buildLegacyUserPrompt(args: {
+export function buildMapperUserPrompt(args: {
   detection: DetectionResult;
   summary: RepoSummary;
 }): string {
@@ -214,55 +200,4 @@ export function buildLegacyUserPrompt(args: {
   }
   parts.push(`Now produce the JSON object per the schema. No preamble.`);
   return parts.join("\n");
-}
-
-export interface RunLegacyMapperArgs {
-  detection: DetectionResult;
-  summary: RepoSummary;
-  /** Hard timeout for the claude call (ms). Default 300000. */
-  timeoutMs?: number;
-}
-
-export async function runLegacyMapper(args: RunLegacyMapperArgs): Promise<MapperResult> {
-  const userPrompt = buildLegacyUserPrompt({
-    detection: args.detection,
-    summary: args.summary,
-  });
-  log.info(
-    {
-      slug: args.detection.project_slug,
-      total_files: args.summary.total_files,
-      manifests: args.summary.package_manifests.length,
-      truncated_file_cap: args.summary.truncated_at_file_cap,
-      truncated_depth_cap: args.summary.truncated_at_depth_cap,
-    },
-    "legacy mapper dispatch",
-  );
-  const result = await runClaude({
-    tier: "sonnet",
-    prompt: userPrompt,
-    system: LEGACY_SYSTEM_PROMPT,
-    jsonSchema: LEGACY_OUTPUT_SCHEMA as object,
-    timeoutMs: args.timeoutMs ?? 300_000,
-  });
-  const output: MapperOutput = validateMapperOutput(result.parsed);
-  return {
-    output,
-    tier: "sonnet",
-    model: result.model,
-    duration_ms: result.durationMs,
-    path: "legacy",
-    ...(result.usage !== undefined
-      ? {
-          usage: {
-            ...(result.usage.input_tokens !== undefined
-              ? { input_tokens: result.usage.input_tokens }
-              : {}),
-            ...(result.usage.output_tokens !== undefined
-              ? { output_tokens: result.usage.output_tokens }
-              : {}),
-          },
-        }
-      : {}),
-  };
 }

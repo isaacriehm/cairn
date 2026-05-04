@@ -34,21 +34,19 @@ Single-vendor lock-in is rejected at the architecture level even while we ship C
 
 ```
 packages/
-  harness/                            — umbrella + `harness init` CLI bin
-  harness-core/                       — state + MCP + tier0 + tightener + sensors + GC
-  harness-frontend-claudecode/        — NEW: this plugin (.claude-plugin/plugin.json)
-  harness-frontend-stub/              — test adapter
-  harness-lens/                       — VS Code/Cursor IDE extension (parallel surface)
-
-_dormant/                             — root-level, outside pnpm-workspace
-  harness-frontend-discord/           — discord adapter (incl. voice/whisper)
-  harness-runtime/                    — orchestration runtime (FIFO + mirror + dispatch + UAT)
-  README.md                           — explains revival
+  cairn/                              — umbrella + CLI bin (`cairn init`, `cairn join`, `cairn hook X`, …)
+  cairn-core/                         — state + MCP + tier0 + tightener + sensors + GC + hook runners
+  cairn-frontend-claudecode/          — Claude Code plugin (.claude-plugin/plugin.json)
+  cairn-frontend-stub/                — in-memory test adapter
+  cairn-lens/                         — VS Code / Cursor IDE extension (parallel surface)
 ```
 
-`mirror/` and `voice/` submodules of harness-core that were tightly coupled to dormant code (mirror = runtime checkout convention, voice = discord transcription) move into `_dormant/` alongside the runtime. The `tier0/` and `tightener/` submodules **stay live** in harness-core — they are central to the daily flow's question-asker and spec-tightener.
+`tier0/` (Haiku-classifier) and `tightener/` (spec quality gate) live inside
+cairn-core — both are central to the daily flow's question-asker and
+spec-tightener.
 
-`pnpm-workspace.yaml` continues to list only `packages/*`. The `_dormant/` tree is invisible to the build.
+`pnpm-workspace.yaml` lists `packages/*`. There are no dormant trees in
+the public repo.
 
 ## §4 Plugin manifest + components
 
@@ -432,30 +430,16 @@ If the file has uncommitted changes the per-file prompt also shows the dirty-fil
 
 Reviewer subagent extracts DEC drafts from new essay-style comments the operator writes during normal work, surfacing in next session's attention pass. Same three-stage split: deterministic detection, LLM extract, deterministic replace (only when operator approves). Same backup convention.
 
-## §16 Migration
-
-| Item | Action |
-|------|--------|
-| `harness-runtime/` | Move `packages/harness-runtime/` → `_dormant/harness-runtime/`. Update `pnpm-workspace.yaml`: no change (already `packages/*`). Verify build excludes it. README in `_dormant/` documents revival path |
-| `harness-frontend-discord/` | Same, → `_dormant/harness-frontend-discord/` |
-| `voice/` (in harness-core) | Move `packages/harness-core/src/voice/` → `_dormant/harness-core-voice/` (or fold into dormant discord package). Drop `voice` from `index.ts` exports |
-| `mirror/` (in harness-core) | Move `packages/harness-core/src/mirror/` → `_dormant/harness-core-mirror/`. Drop `mirror` from `index.ts`. Removes the runtime checkout convention |
-| Ollama (tier0 backend) | Replace `tier0/ollama.ts` with Claude-binary subprocess. Drop init's `offerInstallOllama` + `pullOllamaModel` + `probeOllama` + `OLLAMA_HOST` warning. Drop `regex_fallback`. Claude binary is required — no degraded mode. Adoption preflight detects missing `claude` and bails with install instructions |
-| Daemon | Inline-delete daemon entrypoints. GC, sensor sweep, drift watch fold into hooks (SessionStart) + on-demand MCP tool (`harness_sensor_sweep`) |
-| `harness/` umbrella | Stays. CLI surface narrows to `harness init` + `harness join` + `harness uninstall` only (other subcommands `attention`, `doctor`, `fix`, `scope`, `sweep`, etc. remain as debug-only entry points, not advertised). Plugin slash commands are the operator-facing path |
-| `harness-lens/` | Stays. IDE extension is a parallel surface (hovers/inlays/CodeLens) — different consumer of the same ledger |
-| Pre-publish history scrub | Wipe history, fresh public repo with current clean working tree as initial commit. Private repo retained as backup. Manual step, not automated |
-
-### Uninstall vs full uninstall
+## §16 Uninstall
 
 Two operations, distinct intents:
 
 | Command | What it does | Reversible? |
 |---------|--------------|-------------|
-| `harness uninstall` | Stops active enforcement only: removes `core.hooksPath` config, removes `.github/workflows/harness-check.yml`, removes `package.json` `prepare` script entry. Leaves `.harness/` directory + stripped comments + `.harness/git-hooks/` intact. | **Yes** — re-enable via `harness join` or plugin re-adopt |
-| `harness uninstall --full` | Full de-adoption: above + restores all stripped source comments from `.harness/backups/source/*.original` (verified file-by-file; warns on missing or modified backups), deletes `.harness/`, removes `.harness/git-hooks/`, removes `JOIN.md`, removes plugin's project entry from `${CLAUDE_PLUGIN_DATA}/projects.json`. Asks confirmation: "this is irreversible. proceed?" `[a]` yes `[b]` no | **No** — fresh adoption required to re-enable |
+| `cairn uninstall` | Stops active enforcement only: removes `core.hooksPath` config, removes `.github/workflows/harness-check.yml`, removes `package.json` `prepare` script entry. Leaves `.harness/` directory + stripped comments + `.harness/git-hooks/` intact. | **Yes** — re-enable via `cairn join` or plugin re-adopt |
+| `cairn uninstall --full` | Full de-adoption: above + restores all stripped source comments from `.harness/backups/source/*.original` (verified file-by-file; warns on missing or modified backups), deletes `.harness/`, removes `.harness/git-hooks/`, removes `JOIN.md`, removes plugin's project entry from `${CLAUDE_PLUGIN_DATA}/projects.json`. Asks confirmation: "this is irreversible. proceed?" `[a]` yes `[b]` no | **No** — fresh adoption required to re-enable |
 
-The split mirrors how plugin disable (`/plugin disable harness`) is per-user (just stops the plugin) vs full plugin uninstall (`/plugin uninstall harness`) which removes user-level state. `harness uninstall` is per-project light; `harness uninstall --full` is per-project complete.
+The split mirrors how plugin disable (`/plugin disable cairn`) is per-user (just stops the plugin) vs full plugin uninstall (`/plugin uninstall cairn`) which removes user-level state. `cairn uninstall` is per-project light; `cairn uninstall --full` is per-project complete.
 
 ## §17 Multi-developer enforcement
 
@@ -574,27 +558,28 @@ The following decisions were made during drafting and folded into the relevant s
 | Uninstall vs full uninstall | `harness uninstall` light (stops enforcement, keeps state); `harness uninstall --full` restores original comments from backups, deletes `.harness/`, removes hooks + CI workflow | §16 |
 | MCP project-root detection | cwd-based walker (look for `.harness/` or `.git/`); no env var dependency | §9 |
 | Subagent dispatch protocol | Skill emits structured ```dispatch``` fenced block; main Claude parses and issues Task calls | §11 |
-| Claude binary requirement | **Hard requirement** — no degraded mode. Adoption preflight detects missing `claude`, bails with install instructions | §16 (Ollama row) |
+| Claude binary requirement | **Hard requirement** — no degraded mode. Adoption preflight detects missing `claude`, bails with install instructions | §6 Phase 1 |
 | Source-comment scan scope | **No cap** — every source file processed during adoption, accept the one-time Haiku spend per "fully processes once" mandate | §6 Phase 7b |
 | `harness-direction` skill triggering | Auto-invoke via fuzzy `description` matcher + slash command `/harness-direction <prompt>` as escape hatch when auto-invoke misses | §11 |
 
-## §19 Build sequence
+## §19 Build history
 
-Once this spec is locked, the build proceeds in this order:
+The plugin pivot landed across ten steps. Per-step deliverables:
 
-1. **Move dormant code** — `harness-runtime/` + `harness-frontend-discord/` → `_dormant/`. Move `voice/` + `mirror/` out of harness-core. Verify `pnpm -r build` clean.
-2. **Kill Ollama** — replace tier0/ollama.ts with Claude-binary subprocess. Update init detect + setup-runners. Drop OLLAMA_HOST env. Smoke tier0 against Haiku.
-3. **Implement flock + state partition** — `harness-core/src/lock.ts`, `.harness/sessions/<id>/` directory + cleanup. Update all write tools to wrap in flock. Add invalidation event writer + chokidar watcher.
-4. **Scaffold `packages/harness-frontend-claudecode/`** — manifest, .mcp.json, hooks/hooks.json, skills/, agents/, commands/.
-5. **Implement skills** — harness-adopt (orchestrates init pipeline subprocess), harness-direction (tier0 → tightener → dispatch), harness-attention (surface pending).
-6. **Implement reviewer subagent** — markdown brief in agents/reviewer.md. Stop hook checks for active task without attestation, spawns reviewer.
-7. **Heavy adoption pipeline** — extend init Phase 6 to include source-comment ingestion (7b) + project rules merge (7c) + comment-strip flow (10).
-8. **Pre-commit hook installer** — generates `.git/hooks/pre-commit` script that calls into harness-core's sensor runner against staged diff.
-9. **Smoke + verify end-to-end** — install plugin into a fresh test project, run full adoption, verify daily flow with a small task.
-10. **Pre-publish prep** — gitleaks scan; content audit; wipe + push fresh public repo at v0.1.0.
+1. **Repo unification** — five workspace packages live under `packages/*`.
+2. **Tier0 Haiku** — replace pre-pivot local-classifier backend with `claude --model haiku` subprocess + JSON-schema output.
+3. **Flock + per-session state partition + invalidation events** — `cairn-core/src/lock.ts`, `.harness/sessions/<id>/`, `.harness/events/`. Every write tool wraps in flock; per-session marker + Stop-hook poll cursor.
+4. **Plugin scaffold** — `cairn-frontend-claudecode/` manifest, `.mcp.json`, `hooks/hooks.json`, hook bin entrypoints under `cairn-core/dist/hooks/`.
+5. **Skills + slash commands** — cairn-adopt, cairn-direction, cairn-attention; `/cairn-init`, `/cairn-direction`.
+6. **Reviewer subagent + `harness_resolve_attention` + Stop scan** — `agents/reviewer.md`, MCP tool for inline A/B/C resolution, Stop hook scans for tasks pending review.
+7. **Heavy adoption pipeline** — Phase 7b source-comment ingestion, 7c rules merge, Phase 10 strip-replace primitives.
+8. **Multi-developer enforcement** — versioned git hooks, `cairn join` bootstrap, CI gate, plugin degraded mode, Stop-hook bypass detection.
+9. **End-to-end smoke + visual init wiring** — adopted-fixture E2E smoke, daily-flow E2E smoke, Phase 7b/7c/12 wired into the init.ts visual pipeline.
+10. **Pre-publish prep** — gitleaks scan, content audit, README rewrite, name + LICENSE.
 
-Each step gets its own BUILD_LOG entry and compile-gate.
+The build is feature-complete at v0.1.0. Subsequent work tracks via the
+attention queue + DEC drafts.
 
 ---
 
-End of spec. All draft-time questions resolved; see §18 for traceability table.
+End of spec. All draft-time questions resolved; see §18 for traceability.

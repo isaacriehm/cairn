@@ -1,166 +1,190 @@
 ---
 type: architecture
-status: draft-v2
+status: locked
 audience: dual
-generated: 2026-05-04
-supersedes: docs/_history/INTEGRATION_PLAN.md
+generated: 2026-05-05
 ---
 
 # Cairn — Architecture (layered model)
 
-Cairn is **state management + context loading for AI coding agents**. Orchestration runtime, sensor sweeps, mirror checkouts, UAT pipelines, and frontend adapters are *consumers* built on top of the state layer — not part of its core.
+Cairn is **state management + context loading for AI coding agents**. The
+Claude Code plugin is the primary surface that adopters interact with; the
+CLI provides bootstrap and debug entrypoints. Everything else is built on
+top of a curated, queryable ground state at `.harness/ground/`.
 
-## 1. Three layers, four packages
+## §1 Three layers, four packages
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐
-│  FRONTEND (UX adapter — pluggable, opt-in)                         │
-│    packages/harness-frontend-discord  — Discord adapter            │
-│    packages/harness-frontend-stub     — In-memory test adapter     │
-│    packages/harness-frontend-cli      — Terminal adapter (default) │
-│    (future: harness-frontend-notion, …)                            │
+│  FRONTEND (UX surface — pluggable)                                 │
+│    cairn-frontend-claudecode   — Claude Code plugin (primary)      │
+│    cairn-frontend-stub         — In-memory test adapter            │
+│    cairn-lens                  — VS Code / Cursor extension        │
 └────────────────────────────────────────┬───────────────────────────┘
-                                         │ FrontendAdapter contract
-                                         │ (DialogSpec, PostUpdate,
-                                         │  ApprovalBundle, …)
+                                         │ MCP server + hooks
                                          │
 ┌────────────────────────────────────────▼───────────────────────────┐
-│  RUNTIME (orchestration consumer)                                  │
-│    packages/harness-runtime — orchestrator, FIFO queue, mirror     │
-│                               checkout, Claude Code dispatcher,    │
-│                               sensor sweep, reviewer subagent,     │
-│                               UAT pipeline, backprop, watchdog.    │
-│                               Adapter-agnostic.                    │
+│  CLI (bootstrap + debug)                                           │
+│    cairn — `cairn init`, `cairn join`, `cairn hook <event>`,       │
+│            `cairn doctor`, `cairn attention`, `cairn mcp serve`    │
 └────────────────────────────────────────┬───────────────────────────┘
-                                         │ depends on harness-core
+                                         │ depends on cairn-core
                                          │
 ┌────────────────────────────────────────▼───────────────────────────┐
 │  CORE (state + context)                                            │
-│    packages/harness-core   — `.harness/ground/` writers, MCP       │
-│                              server (15 tools), grounding daemon,  │
-│                              init wizard, GC drift sweep,          │
-│                              decision-capture, stub catalog,       │
-│                              decision-assertion evaluator,         │
-│                              provenance frontmatter, two-zone      │
-│                              separation, spec tightener,           │
-│                              claude wrapper + tier0 classifier.    │
-│                              The Cairn.                          │
+│    cairn-core — `.harness/ground/` writers, MCP server, sensors,   │
+│                 hook runners, init wizard, GC drift sweep,         │
+│                 decision-capture, source-comment + rules-merge     │
+│                 ingestion, multi-dev install, claude wrapper +     │
+│                 tier0 classifier. The Cairn.                       │
 └────────────────────────────────────────────────────────────────────┘
 ```
 
-**Each layer installs independently.** A project that just wants the state layer + Claude Code integration installs `harness-core` only. Adding `harness-runtime` enables the full GSD execution loop. Frontend adapters are installed via `harness install <adapter>`.
+Each layer installs independently. The minimum useful install is
+`cairn-core` + the Claude Code plugin — adopters point Claude Code at the
+plugin, the plugin invokes the CLI for hook runners and the MCP server, and
+ground state lives in `.harness/`.
 
-## 2. Why this split
+## §2 Why this split
 
-The load-bearing thing is the curated state layer. Orchestration, UAT, and frontend UX are consumers of it. Bundling them together forces every adopter to pull the full stack even if they only want Claude Code + ground state.
+The load-bearing piece is the curated state layer. The plugin is the
+primary frontend; the CLI is bootstrap + debug; everything is built on top
+of the same ground state contract. Bundling them into one package would
+force every adopter to pull the whole stack even if they only want the
+plugin's daily-flow behaviour.
 
 Concrete wins:
 
-1. **Clearer purpose.** "Cairn is the state + context-loading layer" is a sentence anyone can hold.
-2. **Adopters can pick what they want.** Core only for minimal Claude Code integration. Core + runtime for full GSD execution. Adapters are opt-in.
-3. **Frontend pluggability is real.** Adding a new adapter doesn't touch the orchestrator — it implements `FrontendAdapter` from core.
-4. **Each package has its own smoke + typecheck + version cadence.** Changes to one layer don't force re-typecheck of another.
-5. **The MCP surface is the public API.** What agents talk to is explicit and bounded.
+1. **Clear purpose.** "Cairn is the state + context-loading layer" is a
+   sentence anyone can hold.
+2. **Pluggable frontend.** A future adapter (web, IDE-other-than-VS-Code,
+   etc.) implements the MCP surface + hook conventions; `cairn-core` does
+   not change.
+3. **Each package has its own smoke + typecheck cadence.** Changes to one
+   layer do not force re-typecheck of another.
+4. **The MCP surface is the public API.** What agents talk to is explicit
+   and bounded.
 
-## 3. Package contents
+## §3 Package contents
 
-### 3.1 `harness-core` — the state + context layer
+### 3.1 `cairn-core` — state + context layer
 
 What lives here:
-- `init/` — adoption wizard. `detect.ts` (mechanical stack signatures), `walker.ts` (gitignore-aware repo summary), `mapper.ts` (Tier-2 LLM proposing sensors, generators, `<slug>:` block), `seed.ts` (template copy + `{{var}}` substitution), `workflow-block.ts` (round-trip the `<slug>:` extension block), `prompts.ts` (`@inquirer/prompts` wrappers: `squareIntoSquareHole`, `freeTextWithDefault`, `secretInput`, `editYaml`).
-- `ground/` — `.harness/ground/` schema + writers. `walk.ts` (canonical-zone walker; hardcodes `.archive` + historical roots to SKIP_DIRS), `glob.ts`, `paths.ts`, `manifest.ts`, `ledgers.ts` (decisions + invariants ledger writers), `quality-grades.ts`, `drift.ts`, `frontmatter.ts` (provenance parsing + freshness eval), `schemas.ts` (zod for all 11 `DecisionAssertion` kinds + `DecisionFrontmatter` + `InvariantFrontmatter` + `ManifestEntry` + `QualityGrade`).
-- `mcp/` — MCP server. 15 typed tools (see `MCP_SURFACE.md`). Subdir `mcp/history/` houses the `query_history` summarizer.
-- `daemon/` — grounding daemon. File watcher (chokidar), generator runner, manifest rebuilder, docs-index maintainer, GC cron. See `DAEMON_SPEC.md`.
-- `gc/` — five-pass GC sweep. `sweep.ts` composes passes; `apply.ts` commits via `simple-git`; `canary.ts` post-batch integrity check; `classify.ts` (safe / code / high-stakes per project globs); `profiles/` (stack-profile generator registry).
-- `decision-capture/` — operator direction text → typed candidate decision. `extractor.ts` (Tier-1) + `refinement.ts` (assertion proposer) + `writer.ts` (draft → accepted) + `capture.ts` (end-to-end) + `id.ts` (monotonic DEC-id allocator).
-- `sensors/` — Layers A, B, D, decision-assertions, runner, remediation. `catalog.ts`, `stub-catalog.ts` (Layer A), `attestation.ts` (Layer B), `structural.ts` (Layer D — project-agnostic), `decisions.ts` (11-kind evaluator), `diff.ts`, `runner.ts`, `remediation.ts`.
-- `session-start/` — `buildSessionStartContext()` composes the SessionStart hook payload. Priority-ordered truncation to token budget. See `SESSIONSTART_SPEC.md`.
-- `tightener/` — spec quality gate. Tier-1 LLM call; scores task body, surfaces ambiguities, proposes tightened spec.
-- `claude/` — subprocess wrapper for `claude --print --output-format json --json-schema`. Used by tightener, mapper, decision-capture, history summarizer.
-- `tier0/` — Ollama local classifier (intent + activity-summary).
-- `mirror/` — parallel git clone management at `~/.local/harness/repos/<slug>/`. Clone + sync + push + dirty-overlap pre-check.
-- `profiles/` — stack-profile registry for GC generator-drift detection.
-- `frontend-types.ts` — `FrontendAdapter` contract + shared types. Imported by both runtime and all frontend adapters.
-- `inbox.ts` — `writeInboxRow()` appends normalized events to `.harness/inbox/`. Adapter ingress drops here; runtime tails.
-- `prompt.ts` — minimal template renderer for `workflow.md` prompt body (`{{var}}`, `{{#each}}`).
+
+- `init/` — adoption wizard. Phase orchestration, mapper (chunked Sonnet),
+  source-comment ingestion (Phase 7b), rules merge (Phase 7c), strip-replace
+  primitives (Phase 10), multi-dev install (Phase 12). Visual rendering
+  helpers + the four-question brand setup.
+- `ground/` — `.harness/ground/` schema + writers. Decisions ledger,
+  invariants ledger, manifest, canonical-map, scope-index, drift events,
+  frontmatter parsing, glob matching.
+- `mcp/` — MCP server. 19 typed tools (read, write-locked write,
+  history-summarizer). Bootstrap-guard wraps every write tool with the
+  `BOOTSTRAP_REQUIRED` envelope when a clone is unbootstrapped.
+- `hooks/` — hook runner functions called by both the CLI subcommand
+  (`cairn hook <event>`) and the bin entrypoints under `dist/hooks/`.
+  SessionStart, SessionEnd, Stop, PostToolUse[Read|Grep|Glob|Write|Edit].
+  Bypass-detection module.
+- `gc/` — GC sweep with five passes (drift / completion-integrity /
+  scope-coverage / quality-grades / staleness). `apply.ts` commits via
+  `simple-git`; `canary.ts` post-batch integrity check.
+- `decision-capture/` — DEC id allocator + scanner. The `harness_record_decision`
+  MCP tool composes a draft on top of these.
+- `sensors/` — Layer A (stub catalog), Layer B (attestation), Layer D
+  (structural project-agnostic), decision-assertions, runner, remediation
+  prompt body.
+- `session-start/` — `buildSessionStartContext()` composes the SessionStart
+  hook payload. Priority-ordered truncation to token budget.
+- `events/` — invalidation events writer + reader; per-session marker.
+- `session/` — per-session state partition. resolveSessionId,
+  ensureSessionDir, gcStaleSessions.
+- `status-line/` — per-session status.json writer + Claude Code status-line
+  reader.
+- `tightener/` — spec quality gate. Tier-1 LLM call; scores task body,
+  surfaces ambiguities, proposes tightened spec.
+- `claude/` — subprocess wrapper for `claude --print --output-format json
+  --json-schema`. Used by tightener, mapper, classifiers.
+- `tier0/` — fast Haiku classifier (intent + activity-summary).
+- `join/` — per-clone bootstrap orchestrator. `runJoin` + `inspectJoinState`.
+- `lock.ts` — per-write `flock` on `.harness/.write-lock` for global writes.
+- `frontend-types.ts` — `FrontendAdapter` contract for the test stub.
 - `logger.ts` — pino setup.
 
-### 3.2 `harness-runtime` — orchestration consumer
+### 3.2 `cairn` — umbrella + CLI
 
-What lives here:
-- `orchestrator/` — the `Orchestrator` class. FIFO queue, dispatch, lifecycle (queued → tightening → blocked → prepping → running → sensing → reviewing → uat → succeeded|failed). Imports tightener / mapper from core; imports adapters via the FrontendAdapter contract.
-- `mirror/` — clone, sync (fetch+reset --hard origin/main), push, dirty-overlap pre-check.
-- `runner/` — claude subprocess invocation as the implementer (vs the one-shot calls in core). Streams events to events.jsonl.
-- `sensors/` — sensor sweep over a diff. Maps to project_globs from harness-core.
-- `reviewer/` — reviewer subagent (Layer C). Same model as implementer, fresh context.
-- `uat/` — UAT pipeline (Layer U). Probes, runner, persistent UAT.md, evidence-file gate.
-- `backprop/` — backprop subagent dispatcher. Uses harness-core's ground/invariants writer to persist §V entries.
-- `watchdog/` — stall detector + remediation post.
-- Slash command handlers (`/halt`, `/status`, `/queue`, `/eval`, `/resume`, `/oops`, `/archive`, `/unpause`, `/help`).
+The CLI binary. Subcommands: `init`, `join`, `hook <event>`, `doctor`,
+`fix`, `attention`, `gc`, `scope`, `mcp serve`, `status-line`. Each command
+composes primitives from `cairn-core`. Hook runners are also exposed as
+direct bin entrypoints under `cairn-core/dist/hooks/<event>.js` for
+flexibility — the published plugin shells out to `cairn hook <event>`
+instead so the binary stays the contract.
 
-### 3.3 `harness-frontend-discord` — Discord adapter
+### 3.3 `cairn-frontend-claudecode` — Claude Code plugin
 
-What lives here:
-- `adapter.ts` — `DiscordFrontendAdapter` implementing `FrontendAdapter` from core.
-- `channels/` — channel-per-task lifecycle.
-- `slash/` — slash command builder + registration.
-- `acl/` — owner-id ACL.
-- `embed/` — embed builder, taskBody render, recent-events feed.
+Plugin manifest, `.mcp.json` (registers `cairn mcp serve`), `hooks.json`
+(SessionStart, SessionEnd, Stop, PostToolUse), skills (`cairn-adopt`,
+`cairn-direction`, `cairn-attention`), agents (reviewer subagent), slash
+commands (`/cairn-init`, `/cairn-direction`).
 
-### 3.4 `harness-frontend-stub` — test adapter
+### 3.4 `cairn-frontend-stub` — test adapter
 
-In-memory adapter for smokes. Records every postTaskUpdate / requestApproval / requestDialog / notify call. Programmable response for dialogs.
+In-memory `FrontendAdapter` for smokes. Records every dialog request +
+update post; programmable response for dialog round-trips.
 
-### 3.5 `harness/` — umbrella + CLI bin
+### 3.5 `cairn-lens` — VS Code / Cursor extension
 
-Stays as the top-level package adopters install via `pnpm dlx --package harness harness <subcommand>` (or eventual `npx @isaacriehm/harness`).
-- `bin/` — CLI entry: `harness init / watch / run / task / install`.
-- `src/cli/` — command implementations. Each composes core + runtime + frontends.
-- `scripts/` — smokes (per-package smokes get extracted to their own packages later; for now keep here for cross-cutting integration tests).
-- Re-exports for any adopter that wants to do `import { ... } from "harness"` without thinking about sub-packages.
+Hover provider, inlay hints, CodeLens for inline §V references and DEC
+links. Read-only consumer of the same ground state.
 
-## 4. The FrontendAdapter contract
+## §4 The MCP surface — Cairn's public API
 
-The boundary between runtime and frontend is the `FrontendAdapter` interface (currently in `harness/src/frontend/types.ts`; moves to `harness-core/src/types.ts`):
+The MCP server (in `cairn-core`) is what agents talk to during a session.
+From the agent's perspective, **the MCP is what Cairn IS**. Tools group
+into:
 
-```ts
-interface FrontendAdapter {
-  name: string;
-  start(): Promise<void>;
-  stop(): Promise<void>;
-  onTask(handler): void;
-  onVoice(handler): void;
-  onSlash(handler): void;
-  onFreeText(handler): void;
-  onInteraction(handler): void;
-  postTaskUpdate(update: PostUpdate): Promise<void>;
-  requestApproval(bundle: ApprovalBundle): Promise<Approval>;
-  requestDialog(spec: DialogSpec): Promise<DialogResponse>;
-  notify(level, message): Promise<void>;
-  startTyping?(channelId): () => void;
-  isChannelAlive?(channelId): Promise<boolean>;
-}
-```
+- **Read** — `harness_decision_get`, `harness_decisions_in_scope`,
+  `harness_decisions_for_symbol`, `harness_invariant_get`,
+  `harness_invariants_in_scope`, `harness_canonical_for_topic`,
+  `harness_ground_get`, `harness_supersedes_chain`, `harness_search`,
+  `harness_timeline`, `harness_get_full`, `harness_query_history`.
+- **Write** (per-write `flock`) — `harness_record_decision`,
+  `harness_record_run_event`, `harness_drop_task`, `harness_archive`,
+  `harness_append`, `harness_ask_operator`.
+- **Plugin-era resolution** — `harness_resolve_attention` resolves the
+  inline A/B/C surface for DEC-draft accept / reject / edit, baseline-
+  finding triage / suppress / defer, invalidation-event refresh /
+  continue-under-old / abort.
 
-Runtime calls `adapter.requestDialog(spec)` and gets a Promise<DialogResponse>. It does not know whether that's a Discord button click, a CLI prompt, a Notion page comment, or a stub. Frontends are interchangeable.
+See [`MCP_SURFACE.md`](MCP_SURFACE.md) for tool-by-tool schemas.
 
-## 5. The MCP surface — Cairn's public API
+## §5 The plugin contract
 
-The harness MCP server (in harness-core) is what agents talk to during a run. From the agent's perspective, **the MCP is what Cairn IS**. Tools include:
+Plugin entrypoints reduce to two surfaces:
 
-- `harness_decision_get(id)` — full ADR + assertions
-- `harness_decisions_in_scope(globs[])` — IDs whose scope overlaps the run
-- `harness_invariant_get(id)` — §V invariant + linked sensor
-- `harness_canonical_for_topic(topic)` — canonical doc path + verified-at
-- `harness_query_history(scope, question)` — the only path into `.archive/`
-- `harness_record_decision(...)` — drop a decision draft to `_inbox/`
-- `harness_query_history(scope)` — the only path into `.archive/`
-- … (15 total — see `MCP_SURFACE.md`)
+1. **MCP server** — `cairn mcp serve` (registered in `.mcp.json`).
+2. **Hook runners** — `cairn hook <event>` for SessionStart / SessionEnd /
+   Stop / PostToolUse. Each prints Shape B JSON to stdout.
 
-Adopters who want only the state layer install `harness-core` and register the MCP server. They don't need runtime or any frontend adapter.
+Plus three skills that auto-invoke under the right conditions:
 
-## 6. Open boundary question — `voice/`
+- `cairn-adopt` — first-time adoption walk. SessionStart triggers it when
+  `.harness/` is missing.
+- `cairn-direction` — daily flow. Auto-invokes on user message in an
+  adopted project.
+- `cairn-attention` — drains the pending-decisions queue. Auto-invokes
+  when the Stop hook surfaces a non-empty hint.
 
-`voice/` (Whisper transcription) currently lives in `harness-core` on the argument that runtime can't depend on a frontend. The cleaner model: voice input is a frontend adapter concern — the adapter receives audio, transcribes it, and emits a `FreeTextEvent` to the runtime. The transcription pipeline moves to the Discord adapter (and any future voice-capable adapter). `harness-core` stops owning Whisper.
+See [`PLUGIN_ARCHITECTURE.md`](PLUGIN_ARCHITECTURE.md) for the full plugin
+spec.
 
-This is deferred but flagged: the current placement is a forced compromise, not a design choice.
+## §6 What's not in scope
+
+- **No orchestration runtime.** The plugin's daily flow uses Claude Code's
+  built-in subagent dispatch (`Task` tool); Cairn provides the spec
+  tightener + reviewer prompt + sensors but does not run a separate
+  process pool.
+- **No alternative agent UX.** The plugin is the operator surface. CLI is
+  for bootstrap and debug.
+- **No remote infrastructure.** No hosted service, no telemetry beyond
+  the local pino log file. Ground state is on disk; agent calls are local
+  Claude Code subprocesses.

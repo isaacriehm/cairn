@@ -100,11 +100,10 @@ export interface DialogSpec {
   channelId?: string;
   timeoutMs?: number;
   /**
-   * When true, ping the channel's authorized operators (Discord
-   * `<@id>` mentions for `DISCORD_OWNER_USER_IDS`) so they get a
-   * mobile push. Used for agent-initiated `harness_ask_operator` so
-   * the operator notices the run is paused. Routine confirmations
-   * (per-question walks, e2e setup) leave this false to avoid noise.
+   * When true, the adapter notifies authorized operators (push, mention,
+   * etc. — adapter-defined) so they see the run is paused. Used for
+   * agent-initiated `harness_ask_operator`; routine confirmations leave
+   * this false to avoid noise.
    */
   pingOperators?: boolean;
   /**
@@ -184,7 +183,7 @@ export interface PostUpdate {
   taskBody?: string;
   channelId?: string;
   /**
-   * Tier-0 (Ollama) summary of what the agent is doing right now —
+   * Tier-0 (Haiku) summary of what the agent is doing right now —
    * one-line, present-progressive ("Reading core/src/X", "Editing
    * platform/Y"). Surfaces inside the live status embed so the
    * operator sees ongoing activity instead of a static "running" badge.
@@ -193,9 +192,9 @@ export interface PostUpdate {
    */
   activity?: string;
   /**
-   * Second-source visibility (§3.3 win 2) — extracted from claude
-   * stream-json events. Independent of Ollama; renders even when the
-   * Tier-0 summary fails. Each list capped + deduped at the source.
+   * Second-source visibility — extracted from claude stream-json events.
+   * Independent of the Tier-0 summary; renders even when the Tier-0 call
+   * fails. Each list capped + deduped at the source.
    */
   tools?: {
     files?: string[];
@@ -246,21 +245,18 @@ export interface FrontendAdapter {
   requestDialog(spec: DialogSpec): Promise<DialogResponse>;
   notify(level: NotifyLevel, message: string): Promise<void>;
   /**
-   * Show "typing" / activity indicator on the given channel until the
-   * returned stop fn is called. Adapters that don't support a native
-   * typing indicator (CLI, stub) should no-op. Discord refreshes every
-   * ~8 seconds since the native indicator decays after 10s.
+   * Show a "typing" / activity indicator on the given channel until the
+   * returned stop fn is called. Adapters without a native typing
+   * indicator should no-op.
    */
   startTyping?(channelId: string): () => void;
   /**
    * Pre-flight check: is this channel still reachable + writable?
-   * Adapters that can answer (Discord) MUST return false when the
-   * channel has been deleted or the bot lacks access. The orchestrator
-   * uses this to skip dispatching a queued task whose per-task channel
-   * is gone — typical when the operator deletes a stale `🟢 active`
-   * channel between runs and the queue shadow restored the entry.
-   * Adapters without channels (CLI / stub) should leave this undefined;
-   * the orchestrator treats undefined as "always alive."
+   * Adapters that maintain channels MUST return false when the channel
+   * has been deleted or the adapter lacks access. The orchestrator uses
+   * this to skip dispatching a queued task whose channel is gone.
+   * Adapters without channels should leave this undefined; the
+   * orchestrator treats undefined as "always alive".
    */
   isChannelAlive?(channelId: string): Promise<boolean>;
 }

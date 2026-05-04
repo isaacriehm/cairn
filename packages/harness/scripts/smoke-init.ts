@@ -123,13 +123,11 @@ async function main(): Promise<void> {
   assert(sensors2.length === 0, `expected 0 sensors on empty repo, got ${sensors2.length}`);
 
   // ── Step 3: runInit auto-mode seeds layout.
-  header("Step 3: runInit --no-prompt --skip-mirror seeds .harness/");
+  header("Step 3: runInit --no-prompt seeds .harness/");
   const result3 = await runInit({
     repoRoot: root1,
     mode: "auto",
-    skipMirror: true,
     autoProceed: "a",
-    autoE2e: "defer",
   });
   assert(result3.proceed === true, "expected proceed=true");
   assert(result3.seeded_files.length > 0, "no files seeded");
@@ -147,8 +145,8 @@ async function main(): Promise<void> {
   }
   console.log(`  seeded ${result3.seeded_files.length} files; collisions=${result3.collisions.length}`);
 
-  // ── Step 4: placeholder substitution + e2e config.
-  header("Step 4: workflow.md `<project_name>:` → `demo_app:`; config.yaml e2e_setup: defer");
+  // ── Step 4: placeholder substitution + harness_version pinned.
+  header("Step 4: workflow.md `<project_name>:` → `demo_app:`; config.yaml has harness_version");
   const wfText = readFileSync(join(root1, ".harness/config/workflow.md"), "utf8");
   assert(
     wfText.includes("demo_app:"),
@@ -162,6 +160,10 @@ async function main(): Promise<void> {
   const configParsed = parseYaml(configText) as Record<string, unknown>;
   assert(configParsed["slug"] === "demo_app", `config.slug mismatch: ${JSON.stringify(configParsed["slug"])}`);
   assert(
+    typeof configParsed["harness_version"] === "string" && (configParsed["harness_version"] as string).length > 0,
+    `config.harness_version missing or empty: ${JSON.stringify(configParsed["harness_version"])}`,
+  );
+  assert(
     Array.isArray(configParsed["stack_signatures"]) &&
       (configParsed["stack_signatures"] as string[]).includes("typescript"),
     "config.stack_signatures missing typescript",
@@ -173,8 +175,7 @@ async function main(): Promise<void> {
       ),
     "config.detected_sensor_commands missing tsc",
   );
-  assert(configParsed["e2e_setup"] === "defer", `e2e_setup mismatch: ${configParsed["e2e_setup"]}`);
-  console.log(`  slug=${configParsed["slug"]}, stack=[${(configParsed["stack_signatures"] as string[]).join(", ")}], e2e=${configParsed["e2e_setup"]}`);
+  console.log(`  slug=${configParsed["slug"]}, harness_version=${configParsed["harness_version"]}, stack=[${(configParsed["stack_signatures"] as string[]).join(", ")}]`);
 
   // ── Step 5: re-run without --force preserves existing.
   header("Step 5: re-run without --force → collisions, no overwrite");
@@ -182,17 +183,12 @@ async function main(): Promise<void> {
   const result5 = await runInit({
     repoRoot: root1,
     mode: "auto",
-    skipMirror: true,
     autoProceed: "a",
-    autoE2e: "skip",
   });
   const after = readFileSync(join(root1, ".harness/config/workflow.md"), "utf8");
   assert(before === after, "workflow.md should be unchanged on re-run without --force");
   assert(result5.collisions.length > 0, "expected collisions on re-run");
-  // Step 5 still records e2e_setup decision (skip) on existing config.
-  const cfgAfter = readFileSync(join(root1, ".harness/config.yaml"), "utf8");
-  assert(/^e2e_setup:\s*skip\s*$/m.test(cfgAfter), "e2e_setup should update to skip on re-run");
-  console.log(`  collisions=${result5.collisions.length}, e2e flipped to skip`);
+  console.log(`  collisions=${result5.collisions.length}`);
 
   // ── Step 6: slug override.
   header("Step 6: --slug override wins over package.json name");
@@ -200,10 +196,8 @@ async function main(): Promise<void> {
   const result6 = await runInit({
     repoRoot: root6,
     mode: "auto",
-    skipMirror: true,
     slugOverride: "custom-slug",
     autoProceed: "a",
-    autoE2e: "defer",
   });
   assert(result6.decided_slug === "custom_slug", `decided_slug mismatch: ${result6.decided_slug}`);
   const wf6 = readFileSync(join(root6, ".harness/config/workflow.md"), "utf8");

@@ -129,14 +129,11 @@ export type {
 } from "./mapper-parallel.js";
 export { mergeModuleProposals, mechanicalMerge } from "./mapper-merge.js";
 export type { MergeArgs } from "./mapper-merge.js";
-export { runLegacyMapper } from "./mapper-legacy.js";
-export type { RunLegacyMapperArgs } from "./mapper-legacy.js";
 export { seedCairnLayout, templatesRoot } from "./seed.js";
 export type { SeedOptions, SeedResult } from "./seed.js";
 export {
   editYaml,
   freeTextWithDefault,
-  secretInput,
   squareIntoSquareHole,
   yesNo,
   type Choice,
@@ -144,11 +141,6 @@ export {
   type PromptMode,
   type PromptOptions,
 } from "./prompts.js";
-export {
-  harnessEnvPath,
-  readCairnEnv,
-  upsertCairnEnv,
-} from "./secrets.js";
 export type {
   DetectionResult,
   HookCapability,

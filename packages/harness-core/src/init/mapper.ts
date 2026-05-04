@@ -1,8 +1,7 @@
 /**
  * Init mapper orchestrator (Tier 2 / Sonnet, with cheap Haiku merge).
  *
- * Per `docs/INIT_SPEC.md` §3, init no longer makes a single Sonnet call with a
- * flat ~20k-token repo summary. The new shape:
+ * Three-stage pipeline:
  *
  *   1. `module-slicer` partitions the repo into ModuleSlices (one per
  *      detected module — submodules, workspace packages, top-level packages,
@@ -13,13 +12,14 @@
  *   3. `mapper-merge` runs a cheap Haiku call to pick the pilot module and
  *      synthesize the project domain summary; the rest of the merge is
  *      mechanical (union of arrays, dedupe sensors by id).
- *   4. If the parallel path fails (no slices, or every per-module call
- *      threw), fall back to `mapper-legacy` — the original single-call
- *      flat-summary path, preserved unchanged.
  *
- * Public surface (`MapperOutput`, `MapperResult`, validators, the legacy
- * prompt + schema constants) is unchanged so downstream init writers and the
- * separate `harness scope rebuild` command don't break.
+ * If every module call fails, the orchestrator throws — there's no
+ * fallback path. The operator re-runs `cairn init` with `--force` after
+ * fixing whatever broke (auth, network, etc.).
+ *
+ * Public surface (`MapperOutput`, `MapperResult`, validators, prompt + schema
+ * constants) is consumed by both this orchestrator and the standalone
+ * `cairn scope rebuild` command.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -34,11 +34,10 @@ import type {
   InvariantLedgerEntry,
 } from "../ground/schemas.js";
 import {
-  LEGACY_OUTPUT_SCHEMA,
-  LEGACY_SYSTEM_PROMPT,
-  buildLegacyUserPrompt,
-  runLegacyMapper,
-} from "./mapper-legacy.js";
+  MAPPER_OUTPUT_SCHEMA as PROMPTS_SCHEMA,
+  MAPPER_SYSTEM_PROMPT as PROMPTS_SYSTEM,
+  buildMapperUserPrompt as PROMPTS_BUILD,
+} from "./mapper-prompts.js";
 import {
   mapModulesParallel,
   type ModuleProposal,
@@ -93,9 +92,7 @@ export interface MapperResult {
   duration_ms: number;
   tier: "sonnet";
   model: string;
-  /** Which path produced this result. */
-  path: "parallel" | "legacy";
-  /** Per-module proposals when path === "parallel"; empty otherwise. */
+  /** Per-module proposals from the parallel pipeline. */
   module_proposals?: ModuleProposal[];
   usage?: {
     input_tokens?: number;
@@ -103,14 +100,11 @@ export interface MapperResult {
   };
 }
 
-// ── Backcompat re-exports ──────────────────────────────────────────────────
-// `harness scope rebuild` and other consumers import these names from this
-// module; route them to the legacy implementations so behavior is identical
-// to the pre-chunked path.
+// ── Re-exports — `cairn scope rebuild` and other consumers import these. ──
 
-export const MAPPER_OUTPUT_SCHEMA = LEGACY_OUTPUT_SCHEMA;
-export const MAPPER_SYSTEM_PROMPT = LEGACY_SYSTEM_PROMPT;
-export const buildMapperUserPrompt = buildLegacyUserPrompt;
+export const MAPPER_OUTPUT_SCHEMA = PROMPTS_SCHEMA;
+export const MAPPER_SYSTEM_PROMPT = PROMPTS_SYSTEM;
+export const buildMapperUserPrompt = PROMPTS_BUILD;
 
 export function isMapperOutput(value: unknown): value is MapperOutput {
   if (typeof value !== "object" || value === null) return false;
@@ -170,8 +164,6 @@ export interface RunMapperArgs {
   /** Optional progress callback fired as each module proposal completes. */
   onModuleStart?: (slice: ModuleSlice) => void;
   onModuleEnd?: (slice: ModuleSlice, proposal: ModuleProposal) => void;
-  /** Hard timeout for the legacy single-call path (ms). Default 300000. */
-  legacyTimeoutMs?: number;
 }
 
 export async function runMapper(args: RunMapperArgs): Promise<MapperResult> {
@@ -203,19 +195,14 @@ export async function runMapper(args: RunMapperArgs): Promise<MapperResult> {
     ...(args.onModuleEnd !== undefined ? { onModuleEnd: args.onModuleEnd } : {}),
   });
 
-  // 3. If every module call failed, fall back to legacy.
+  // 3. If every module call failed there's no fallback — surface the
+  //    error so the operator can re-run after fixing the upstream cause.
   const allFailed = proposals.length > 0 && proposals.every((p) => p.failed);
   if (allFailed) {
-    log.warn(
-      { slices: slices.length },
-      "all module calls failed — falling back to legacy single-call path",
+    throw new Error(
+      `mapper failed: all ${proposals.length} module call(s) returned errors. ` +
+        `Re-run \`cairn init --force\` after fixing the upstream cause (auth, network, etc.).`,
     );
-    const legacy = await runLegacyMapper({
-      detection: args.detection,
-      summary: args.summary,
-      ...(args.legacyTimeoutMs !== undefined ? { timeoutMs: args.legacyTimeoutMs } : {}),
-    });
-    return { ...legacy, path: "legacy" };
   }
 
   // 4. Merge call (Haiku).
@@ -241,7 +228,6 @@ export async function runMapper(args: RunMapperArgs): Promise<MapperResult> {
     tier: "sonnet",
     model: "haiku+sonnet",
     duration_ms: Date.now() - startedAt,
-    path: "parallel",
     module_proposals: proposals,
   };
 }

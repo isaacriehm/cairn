@@ -352,16 +352,17 @@ Deliberate omissions, with reasons:
 3. Agent reads that path. No fuzzy match. No "is this still the rule?" investigation.
 ```
 
-### Flow 3 — operator issued a direction change in Discord
+### Flow 3 — operator issued a direction change inline (Claude Code plugin)
 
 ```
-1. discord ingress writes raw message to .harness/inbox/
-2. Tier-0 classifier flags as direction-change
-3. Tier-1 decision-extractor produces structured candidate
-4. Server calls: harness_record_decision({ ..., target: "inbox" }) → DEC-0099 draft created
-5. Bot posts confirm dialog to Discord
-6. Operator 🟢
-7. Server moves draft to canonical; daemon regenerates ledger; future runs see DEC-0099
+1. Operator types prompt in Claude Code chat
+2. cairn-direction skill invokes tier0 classifier (Haiku)
+3. Tier0 flags as direction-change → spec tightener (Sonnet) drafts a candidate decision
+4. Plugin calls: harness_record_decision({ ..., target: "inbox" }) → DEC-0099 draft created in _inbox/
+5. Stop hook surfaces inline: "Review DEC-0099 draft? [a] accept [b] reject [c] edit"
+6. Operator picks [a]
+7. cairn-attention skill calls harness_resolve_attention({ item_id: "DEC-0099", choice: "a", kind: "decision_draft" })
+8. Server moves draft to canonical, emits invalidation event; future sessions see DEC-0099
 ```
 
 ### Flow 4 — agent investigating a historical pattern
