@@ -165,6 +165,22 @@ function runSmoke(): void {
     console.log(`  ✓ Step 4c — ${expected.length} slash commands present`);
   }
 
+  // ── Step 4d — agents/reviewer.md present + valid frontmatter ───
+  {
+    const reviewerPath = join(PLUGIN_ROOT, "agents", "reviewer.md");
+    assert(existsSync(reviewerPath), "Step 4d: missing agents/reviewer.md");
+    const text = readFileSync(reviewerPath, "utf8");
+    assert(text.startsWith("---\n"), "Step 4d: reviewer.md must start with frontmatter");
+    const end = text.indexOf("\n---", 4);
+    assert(end !== -1, "Step 4d: reviewer.md frontmatter not terminated");
+    const fm = text.slice(4, end);
+    assert(/^name:\s*\S/m.test(fm), "Step 4d: reviewer.md frontmatter missing name");
+    assert(/^description:\s*\S/m.test(fm), "Step 4d: reviewer.md frontmatter missing description");
+    const body = text.slice(end + 4).trim();
+    assert(body.length > 200, `Step 4d: reviewer.md body looks empty (${body.length} chars)`);
+    console.log("  ✓ Step 4d — agents/reviewer.md present + valid");
+  }
+
   // ── Step 5 — every hook bin export accepts payload via stdin ─────
   // Sanity-check that the runners barrel exports the expected symbols.
   {

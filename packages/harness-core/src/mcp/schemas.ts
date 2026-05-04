@@ -148,6 +148,29 @@ export const appendRunNoteInput = {
   note: z.string().min(1),
 };
 
+export const resolveAttentionInput = {
+  /**
+   * Item id from the attention skill — DEC-NNNN for a draft, the
+   * baseline finding key (e.g. `BASELINE-stub_catalog_hits-services/auth.ts`)
+   * for sensor findings, the event filename for invalidation events.
+   */
+  item_id: z.string().min(1),
+  /** Operator's pick from the inline A/B/C. */
+  choice: z.enum(["a", "b", "c"]),
+  /**
+   * Item kind — narrows the resolution path. The skill knows the kind
+   * from the item it surfaced.
+   */
+  kind: z.enum([
+    "decision_draft",
+    "baseline_finding",
+    "invalidation_event",
+    "drift",
+  ]),
+  /** Optional free-text — when choice=c the operator may type a rationale. */
+  rationale: z.string().optional(),
+};
+
 export const askOperatorInput = {
   /** The agent's run id — files land under runs/active/<run_id>/questions/. */
   run_id: z.string().min(1),

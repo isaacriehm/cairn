@@ -11,6 +11,7 @@ import { invariantGetTool } from "./invariant-get.js";
 import { invariantsInScopeTool } from "./invariants-in-scope.js";
 import { queryHistoryTool } from "./query-history.js";
 import { recordDecisionTool } from "./record-decision.js";
+import { resolveAttentionTool } from "./resolve-attention.js";
 import { searchTool } from "./search.js";
 import { supersedesChainTool } from "./supersedes-chain.js";
 import { timelineTool } from "./timeline.js";
@@ -35,6 +36,8 @@ export const allTools: ToolDef<unknown>[] = [
   recordDecisionTool as ToolDef<unknown>,
   appendRunNoteTool as ToolDef<unknown>,
   archiveTool as ToolDef<unknown>,
+  // Write — plugin-era
+  resolveAttentionTool as ToolDef<unknown>,
 ];
 
 export type { ToolDef };
