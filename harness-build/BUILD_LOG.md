@@ -127,6 +127,24 @@ Subagent attempts: 0 (inline)
 Compile: PASS (whole workspace); vsce package PASS (267 KB vsix produced)
 Notes: Added esbuild + @vscode/vsce as devDeps. New `bundle` script (esbuild → dist/extension.cjs, CJS, externals: vscode + fsevents) and `package` script (clean + bundle + vsce package --no-dependencies). Renamed package from @devplusllc/harness-lens to harness-lens (vsce rejects scoped names; lens isn't depended on by other workspace packages). main → dist/extension.cjs. Added .vscodeignore (excludes src/, scripts/, loose tsc dist files) and README.md. devplusllc-harness-lens-0.0.0.vsix produced; 1.4 MB extension.cjs bundles harness-core + transitive deps (yaml, simple-git, zod, pino, etc.). 3 esbuild warnings about `import.meta.url` in harness-core init/* paths are cosmetic — those code paths never execute from the Lens runtime.
 
+## Task D — Submodule note in completion output [DONE 2026-05-04T06:25]
+Subagent attempts: 0 (inline)
+Compile: PASS (both packages); smoke-init PASS — zero JSON lines confirmed via grep -cE pattern
+Notes: describeScopeIndex now returns ScopeReport { line, followUp } instead of bare string. When submodules.initialized && submodules.success: scope-index line reads "partial — N files classified (submodules now initialized)" + follow-up row "Run harness scope rebuild for full classification". When scope-index empty AND submodules just initialized: line reads "empty — submodules now initialized, run harness scope rebuild". Final smoke-init `grep -cE '"level":|"time":|"pid":'` reports 0 — no JSON visible in operator-facing output.
+
+## Closing summary [2026-05-04T06:25]
+Tasks A, B, C, D: all DONE. Whole-workspace tsc -b clean.
+New files:
+  packages/harness-core/src/init/submodules.ts
+  packages/harness-core/src/init/visual.ts
+Modified:
+  packages/harness-core/src/init/init.ts (Phase 0 log redirect + Phase 1 submodule preflight + streamed discovery + ora mapper spinner + cli-progress whisper + single-confirm flow + ScopeReport submodule note)
+  packages/harness-core/src/init/setup-runners.ts (whisper download via fetch + cli-progress)
+  packages/harness-core/src/logger.ts (proxy Writable + setLogFile/setLogStderr/setLogNull)
+  packages/harness-core/src/index.ts (re-export setLogFile etc)
+  packages/harness-core/package.json (chalk, ora, cli-progress, @types/cli-progress)
+Acceptance: harness init produces 0 JSON log lines in stdout; logs written to ~/.local/harness/logs/init-<ISO>.log; submodule prompt fires before walker when .gitmodules present with uninitialized entries; ora spinner during mapper; cli-progress bar during whisper download; single confirm = pilot module path.
+
 ## Task C — Visual overhaul of init terminal output [DONE 2026-05-04T06:18]
 Subagent attempts: 0 (inline)
 Compile: PASS (both packages); smoke-init PASS — completion summary shows Log row, discovery streams, single-confirm flow
