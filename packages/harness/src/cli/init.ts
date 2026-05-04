@@ -61,7 +61,6 @@ export async function initCli(argv: string[]): Promise<void> {
   const slugOverride =
     typeof parsed.flags["slug"] === "string" ? parsed.flags["slug"] : undefined;
   const force = parsed.flags["force"] === true;
-  const skipMirror = parsed.flags["skip-mirror"] === true;
   const skipMapper = parsed.flags["skip-mapper"] === true;
   const noPrompt = parsed.flags["no-prompt"] === true;
   const autoE2eRaw =
@@ -83,7 +82,6 @@ export async function initCli(argv: string[]): Promise<void> {
     ...(slugOverride !== undefined ? { slugOverride } : {}),
     mode: noPrompt ? "auto" : "interactive",
     force,
-    skipMirror,
     skipMapper,
     ...(noPrompt ? { autoE2e: autoE2eRaw as "now" | "defer" | "skip" } : {}),
     ...(noPrompt ? { autoProceed: "a" as const } : {}),

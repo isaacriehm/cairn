@@ -42,8 +42,6 @@ export type {
   IngestionResult,
   RunDocsIngestionArgs,
 } from "./ingest-docs.js";
-export { tryStartDaemon } from "./daemon-autostart.js";
-export type { DaemonAutostartResult } from "./daemon-autostart.js";
 export { runInit } from "./init.js";
 export type { InitResult, RunInitArgs } from "./init.js";
 export {

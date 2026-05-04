@@ -10,7 +10,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 import { simpleGit } from "simple-git";
 import { claudeIsAvailable } from "../claude/index.js";
-import { normalizeProjectName } from "../mirror/index.js";
+import { normalizeProjectName } from "../paths/index.js";
 import type {
   DetectionResult,
   HookCapability,

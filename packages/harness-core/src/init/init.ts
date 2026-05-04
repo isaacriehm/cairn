@@ -35,7 +35,7 @@ import {
   type ScopeIndex,
   type ScopeIndexEntry,
 } from "../ground/scope-index.js";
-import { ensureMirror, normalizeProjectName } from "../mirror/index.js";
+import { normalizeProjectName } from "../paths/index.js";
 import {
   defaultStatusJson,
   writeStatusJsonForSlug,
@@ -62,10 +62,6 @@ import {
   isCairnSourceRepo,
   type MonorepoContext,
 } from "./preflight-guards.js";
-import {
-  tryStartDaemon,
-  type DaemonAutostartResult,
-} from "./daemon-autostart.js";
 import { detectAll } from "./detect.js";
 import {
   runGitSubmoduleUpdate,
@@ -115,8 +111,6 @@ export interface RunInitArgs {
   mode?: PromptMode;
   /** Force-overwrite existing `.harness/` files. Default false. */
   force?: boolean;
-  /** Skip mirror clone — useful for smoke and offline testing. */
-  skipMirror?: boolean;
   /** Auto-pick the E2E setup answer when mode=auto. */
   autoE2e?: "now" | "defer" | "skip";
   /** Auto-pick proceed? when mode=auto. */
@@ -140,11 +134,6 @@ export interface RunInitArgs {
   skipBrandSetup?: boolean;
   /** Pre-canned brand answers — exercises the apply path without a TTY. */
   scriptedBrandAnswers?: Partial<BrandAnswers>;
-  /**
-   * Skip the daemon autostart attempt (Phase 5c). Smokes default to skipping
-   * since the daemon isn't installed in the test environment.
-   */
-  skipDaemonAutostart?: boolean;
   /**
    * Skip the submodule detection + init prompt (Phase 1). Smokes set this so
    * temp dir fixtures don't trip on git submodule lookups.
@@ -188,7 +177,6 @@ export interface InitResult {
   seeded_files: string[];
   collisions: string[];
   config_path: string;
-  mirror_path: string | null;
   e2e_setup: "now" | "defer" | "skip" | null;
   /** Mapper outcome — null when skipped/failed, full output when applied. */
   mapper_output: MapperOutput | null;
@@ -201,8 +189,6 @@ export interface InitResult {
     answered: number;
     updated_files: string[];
   } | null;
-  /** Daemon autostart outcome (Phase 5c). null when skipped. */
-  daemon_autostart: DaemonAutostartResult | null;
   /** Phase 6 ingestion outcome (docs → DEC drafts, canonical-map seed). */
   ingestion: IngestionResult | null;
   /** Phase 6 baseline sensor audit outcome. */
@@ -333,13 +319,11 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
       seeded_files: [],
       collisions: [],
       config_path: "",
-      mirror_path: null,
       e2e_setup: null,
       mapper_output: null,
       mapper_applied_to_workflow: false,
       mapper_applied_to_config: false,
       brand_setup: null,
-      daemon_autostart: null,
       ingestion: null,
       baseline_audit: null,
       log_file_path: logFilePath,
@@ -473,29 +457,6 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     done(`+ .harness/ground/scope-index.yaml`);
   }
 
-  // ── Step 4: mirror ─────────────────────────────────────────────────
-  let mirrorPath: string | null = null;
-  if (args.skipMirror === true) {
-    info("\nmirror init skipped (--skip-mirror)");
-  } else if (detection.origin_url === null) {
-    warnings.push("no git origin — mirror init skipped");
-    info("\nmirror init skipped (no git origin)");
-  } else {
-    header(`Mirror checkout → ~/.local/harness/repos/${decidedSlug}/`);
-    try {
-      const record = await ensureMirror({
-        projectName: decidedSlug,
-        originUrl: detection.origin_url,
-        userTreePath: repoRoot,
-      });
-      mirrorPath = record.mirrorPath;
-      done(`+ ${mirrorPath}`);
-    } catch (err) {
-      warnings.push(`mirror init failed: ${String(err)}`);
-      info(`mirror init failed: ${String(err)}`);
-    }
-  }
-
   // ── Dialog 2: E2E setup ────────────────────────────────────────────
   const e2eChoice = await squareIntoSquareHole<"now" | "defer" | "skip">({
     mode,
@@ -562,21 +523,17 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     }
   }
 
-  // ── Step 5c: daemon autostart ──────────────────────────────────────
-  // Write a baseline status.json BEFORE the autostart attempt so the file
-  // always exists with `ctx_tokens_budget: 4000`. Without this, projects whose
-  // daemon binary isn't on PATH (or whose autostart fails for any reason)
-  // would render `ctx:0/0` in the status line. Daemon, when it does start,
-  // overwrites the file with its own snapshot — our baseline is just a guard.
-  let daemonAutostart: DaemonAutostartResult | null = null;
-  if (args.skipDaemonAutostart !== true) {
+  // ── Step 5c: baseline status.json ──────────────────────────────────
+  // Write a baseline status.json so the file always exists with
+  // `ctx_tokens_budget: 4000`. Without this, status line would render
+  // `ctx:0/0`. Plugin SessionStart hook updates it per session thereafter.
+  {
     const slug = normalizeProjectName(decidedSlug);
     try {
       writeStatusJsonForSlug(slug, defaultStatusJson(false));
     } catch (err) {
       warnings.push(`status.json baseline write failed: ${String(err)}`);
     }
-    daemonAutostart = await tryStartDaemon(repoRoot);
   }
 
   // ── Phase 6: ingestion sweep + baseline audit ──────────────────────
@@ -594,13 +551,8 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   });
 
   // Patch status.json with baseline attention_count = drafts + baseline
-  // findings. Only when daemon didn't actually start — a live daemon owns
-  // the file and computes its own attention count.
-  if (
-    args.skipDaemonAutostart !== true &&
-    daemonAutostart !== null &&
-    daemonAutostart.started === false
-  ) {
+  // findings. Plugin SessionStart hook recomputes this each session.
+  {
     const drafts = phase6.ingestion?.decDraftsWritten.length ?? 0;
     const baselineFindings = phase6.baselineAudit?.totalFindings ?? 0;
     const slug = normalizeProjectName(decidedSlug);
@@ -619,7 +571,6 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     repoRoot,
     seededFiles: seed.written_files,
     brandSetup,
-    daemonAutostart,
     submodules: submoduleSummary,
     scanTruncated:
       repoSummary.truncated_at_file_cap ||
@@ -642,7 +593,6 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
       mapper_applied_to_workflow: mapperAppliedToWorkflow,
       mapper_applied_to_config: mapperAppliedToConfig,
       brand_answered: brandSetup?.answered ?? null,
-      daemon_started: daemonAutostart?.started ?? null,
       ingestion_drafts: phase6.ingestion?.decDraftsWritten.length ?? null,
       baseline_findings: phase6.baselineAudit?.totalFindings ?? null,
       warnings: warnings.length,
@@ -657,13 +607,11 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     seeded_files: seed.written_files,
     collisions: seed.collisions,
     config_path: ".harness/config.yaml",
-    mirror_path: mirrorPath,
     e2e_setup: e2eChoice,
     mapper_output: mapperOutput,
     mapper_applied_to_workflow: mapperAppliedToWorkflow,
     mapper_applied_to_config: mapperAppliedToConfig,
     brand_setup: brandSetup,
-    daemon_autostart: daemonAutostart,
     ingestion: phase6.ingestion,
     baseline_audit: phase6.baselineAudit,
     log_file_path: logFilePath,
@@ -1090,7 +1038,6 @@ interface CompletionSummaryArgs {
   repoRoot: string;
   seededFiles: string[];
   brandSetup: { answered: number; updated_files: string[] } | null;
-  daemonAutostart: DaemonAutostartResult | null;
   submodules: SubmoduleSummary | null;
   /** True when the Phase-1 walker hit a file or depth cap. */
   scanTruncated: boolean;
@@ -1113,7 +1060,6 @@ function printCompletionSummary(args: CompletionSummaryArgs): void {
     args.scanTruncated,
   );
   const brandReport = describeBrandStatus(args.repoRoot);
-  const daemonReport = describeDaemon(args.daemonAutostart);
   const hookReport = describeHooks(args.repoRoot);
   const mcpReport = describeMcpRegistration(args.repoRoot);
 
@@ -1139,7 +1085,6 @@ function printCompletionSummary(args: CompletionSummaryArgs): void {
   if (scopeReport.followUp !== null) {
     info(`                    ${scopeReport.followUp}`);
   }
-  info(`  Daemon            ${daemonReport}`);
   if (args.logFilePath !== null) {
     info(`  Log               ${shortenHomePath(args.logFilePath)}`);
   }
@@ -1340,19 +1285,6 @@ function readFrontmatterStatus(path: string): string | null {
   } catch {
     return null;
   }
-}
-
-function describeDaemon(result: DaemonAutostartResult | null): string {
-  if (result === null) return "not started — run harness daemon start";
-  if (result.started) {
-    return result.pid !== null
-      ? `started (PID ${result.pid})`
-      : "started";
-  }
-  if (result.reason !== null && result.reason.includes("on PATH")) {
-    return "not started — install harness globally then run harness daemon start";
-  }
-  return "not started — run harness daemon start";
 }
 
 function describeHooks(repoRoot: string): string {

@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { normalizeProjectName, projectStatePath } from "../mirror/index.js";
+import { normalizeProjectName, projectStatePath } from "../paths/index.js";
 import type { StatusJson } from "./index.js";
 
 /**

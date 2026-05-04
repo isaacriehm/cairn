@@ -143,12 +143,8 @@ checkFile("packages/harness/README.md");
 checkFile("packages/harness/src/index.ts");
 checkFile("packages/harness/src/cli/index.ts");
 checkFile("packages/harness/src/cli/init.ts");
-checkFile("packages/harness/src/cli/mirror.ts");
 checkFile("packages/harness/src/cli/mcp.ts");
 checkFile("packages/harness/src/cli/gc.ts");
-checkFile("packages/harness/src/cli/task.ts");
-checkFile("packages/harness/src/cli/daemon.ts");
-checkFile("packages/harness/src/cli/install.ts");
 
 // ── harness-core (state + context) ─────────────────────────────────────────
 const corePkg = "packages/harness-core";
@@ -160,15 +156,8 @@ checkFile(`${corePkg}/src/prompt.ts`);
 checkFile(`${corePkg}/src/inbox.ts`);
 checkFile(`${corePkg}/src/frontend-types.ts`);
 
-// mirror
-checkFile(`${corePkg}/src/mirror/index.ts`);
-checkFile(`${corePkg}/src/mirror/types.ts`);
-checkFile(`${corePkg}/src/mirror/paths.ts`);
-checkFile(`${corePkg}/src/mirror/state.ts`);
-checkFile(`${corePkg}/src/mirror/clone.ts`);
-checkFile(`${corePkg}/src/mirror/sync.ts`);
-checkFile(`${corePkg}/src/mirror/push.ts`);
-checkFile(`${corePkg}/src/mirror/dirty-overlap.ts`);
+// paths (slug + project state path utilities; mirror/ moved to _dormant)
+checkFile(`${corePkg}/src/paths/index.ts`);
 
 // ground
 checkFile(`${corePkg}/src/ground/index.ts`);
@@ -224,7 +213,7 @@ checkFile(`${corePkg}/templates/.harness/ground/canonical-map/topics.yaml`, {
   requireYaml: true,
 });
 
-// claude / tier0 / tightener / decision-capture / gc / init / sensors / voice
+// claude / tier0 / tightener / decision-capture / gc / init / sensors
 for (const sub of [
   "claude",
   "decision-capture",
@@ -233,7 +222,6 @@ for (const sub of [
   "sensors",
   "tier0",
   "tightener",
-  "voice",
 ]) {
   checkFile(`${corePkg}/src/${sub}/index.ts`);
 }

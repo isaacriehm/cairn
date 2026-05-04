@@ -11,7 +11,6 @@ import {
   rebuildScopeIndex,
   runDoctor,
   runFix,
-  tryStartDaemon,
   type DoctorCheck,
   type DoctorReport,
 } from "@isaacriehm/harness-core";
@@ -115,10 +114,6 @@ export async function fixCli(argv: string[]): Promise<void> {
     rebuildScopeIndexFn: async (root) => {
       const r = await rebuildScopeIndex({ repoRoot: root });
       return { filesClassified: r.filesClassified };
-    },
-    startDaemonFn: async (root) => {
-      const r = await tryStartDaemon(root);
-      return { started: r.started, reason: r.reason };
     },
   });
 

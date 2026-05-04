@@ -23,7 +23,7 @@ import {
   buildDecisionsLedger,
   buildInvariantsLedger,
 } from "../ground/index.js";
-import { normalizeProjectName, projectStatePath } from "../mirror/index.js";
+import { normalizeProjectName, projectStatePath } from "../paths/index.js";
 
 export type DoctorStatus = "ok" | "warn" | "error" | "info";
 
@@ -563,10 +563,6 @@ export interface RunFixOptions {
   rebuildScopeIndexFn?: (repoRoot: string) => Promise<{
     filesClassified: number;
   }>;
-  /** Inject a non-default daemon starter — used by smokes. */
-  startDaemonFn?: (
-    repoRoot: string,
-  ) => Promise<{ started: boolean; reason: string | null }>;
 }
 
 export interface FixReport {
@@ -594,24 +590,6 @@ export async function runFix(opts: RunFixOptions): Promise<FixReport> {
           command: c.fixCommand ?? null,
         });
         void err;
-      }
-      continue;
-    }
-
-    if (c.label === "status.json" && opts.startDaemonFn !== undefined) {
-      try {
-        const r = await opts.startDaemonFn(opts.repoRoot);
-        if (r.started) applied.push(`daemon started`);
-        else
-          manual.push({
-            check: c.label,
-            command: c.fixCommand ?? null,
-          });
-      } catch {
-        manual.push({
-          check: c.label,
-          command: c.fixCommand ?? null,
-        });
       }
       continue;
     }
