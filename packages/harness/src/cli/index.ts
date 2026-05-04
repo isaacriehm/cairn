@@ -9,22 +9,14 @@ import { initCli } from "./init.js";
 import { installCli } from "./install.js";
 import { mcpCli } from "./mcp.js";
 import { mirrorCli } from "./mirror.js";
-import { runCli } from "./run.js";
 import { scopeCli } from "./scope.js";
 import { taskCli } from "./task.js";
-import { watchCli } from "./watch.js";
 
 const [, , subcommand, ...rest] = process.argv;
 
 switch (subcommand) {
   case "init":
     await initCli(rest);
-    break;
-  case "run":
-    await runCli(rest);
-    break;
-  case "watch":
-    await watchCli(rest);
     break;
   case "mirror":
     await mirrorCli(rest);
@@ -91,9 +83,6 @@ switch (subcommand) {
         "  daemon     supervise watch + run + nightly gc as one process\n" +
         "  install    register the daemon as a launchd LaunchAgent (macOS)\n" +
         "  uninstall  unregister the launchd LaunchAgent\n" +
-        "  watch      long-lived grounding daemon\n" +
-        "             (--project <slug> [--repo-root <path>])\n" +
-        "  run        orchestrator + frontend adapters\n" +
         "  mirror     manage the parallel mirror checkout\n" +
         "             (subcommands: init | sync | push | status)\n" +
         "  mcp        MCP server (stdio transport)\n" +

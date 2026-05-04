@@ -143,8 +143,6 @@ checkFile("packages/harness/README.md");
 checkFile("packages/harness/src/index.ts");
 checkFile("packages/harness/src/cli/index.ts");
 checkFile("packages/harness/src/cli/init.ts");
-checkFile("packages/harness/src/cli/run.ts");
-checkFile("packages/harness/src/cli/watch.ts");
 checkFile("packages/harness/src/cli/mirror.ts");
 checkFile("packages/harness/src/cli/mcp.ts");
 checkFile("packages/harness/src/cli/gc.ts");
@@ -240,25 +238,9 @@ for (const sub of [
   checkFile(`${corePkg}/src/${sub}/index.ts`);
 }
 
-// ── harness-runtime (orchestration) ────────────────────────────────────────
-const runtimePkg = "packages/harness-runtime";
-checkFile(`${runtimePkg}/package.json`);
-checkFile(`${runtimePkg}/tsconfig.json`);
-checkFile(`${runtimePkg}/src/index.ts`);
-for (const sub of ["backprop", "orchestrator", "reviewer", "uat", "watch"]) {
-  checkFile(`${runtimePkg}/src/${sub}/index.ts`);
-}
-
-// ── harness-frontend-discord ───────────────────────────────────────────────
-const discordPkg = "packages/harness-frontend-discord";
-checkFile(`${discordPkg}/package.json`);
-checkFile(`${discordPkg}/tsconfig.json`);
-checkFile(`${discordPkg}/src/index.ts`);
-checkFile(`${discordPkg}/src/discord/index.ts`);
-checkFile(`${discordPkg}/src/discord/acl.ts`);
-checkFile(`${discordPkg}/src/discord/channels.ts`);
-checkFile(`${discordPkg}/src/discord/classifier.ts`);
-checkFile(`${discordPkg}/src/discord/slash.ts`);
+// ── harness-runtime + harness-frontend-discord ────────────────────────────
+// Both moved to _dormant/ per docs/PLUGIN_ARCHITECTURE.md §16. Not part of
+// the active build. No layout check.
 
 // ── harness-frontend-stub ──────────────────────────────────────────────────
 const stubPkg = "packages/harness-frontend-stub";

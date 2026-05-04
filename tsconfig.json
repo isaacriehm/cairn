@@ -3,8 +3,6 @@
   "files": [],
   "references": [
     { "path": "./packages/harness-core" },
-    { "path": "./packages/harness-runtime" },
-    { "path": "./packages/harness-frontend-discord" },
     { "path": "./packages/harness-frontend-stub" },
     { "path": "./packages/harness-lens" },
     { "path": "./packages/harness" }

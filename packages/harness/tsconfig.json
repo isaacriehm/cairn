@@ -11,8 +11,6 @@
   "exclude": ["dist", "node_modules"],
   "references": [
     { "path": "../harness-core" },
-    { "path": "../harness-runtime" },
-    { "path": "../harness-frontend-discord" },
     { "path": "../harness-frontend-stub" }
   ]
 }
