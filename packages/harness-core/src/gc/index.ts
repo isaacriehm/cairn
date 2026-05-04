@@ -38,6 +38,11 @@ export type {
 } from "./canary.js";
 export { classifyAutoMerge } from "./classify.js";
 export type { ClassifyArgs } from "./classify.js";
+export { runCompletionIntegrity } from "./completion-integrity.js";
+export type {
+  CompletionIntegrityOptions,
+  CompletionIntegrityResult,
+} from "./completion-integrity.js";
 export { runDocGardening } from "./doc-gardening.js";
 export type {
   DocGardeningOptions,

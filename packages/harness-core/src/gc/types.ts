@@ -29,7 +29,8 @@ export type GcPassId =
   | "stub-catalog-hits"
   | "doc-gardening"
   | "quality-grades"
-  | "scope-coverage";
+  | "scope-coverage"
+  | "completion-integrity";
 
 export type GcFindingKind =
   | "frontmatter_stale"
@@ -40,7 +41,8 @@ export type GcFindingKind =
   | "quality_update"
   | "scope_uncovered"
   | "scope_drift_orphan"
-  | "scope_index_missing";
+  | "scope_index_missing"
+  | "task_integrity_error";
 
 export type GcAutoMergeClass = "safe" | "code" | "high-stakes";
 
