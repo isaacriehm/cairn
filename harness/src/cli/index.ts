@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { readStatusForCLI, VERSION } from "../index.js";
 import { daemonCli } from "./daemon.js";
+import { doctorCli, fixCli } from "./doctor.js";
 import { gcCli } from "./gc.js";
 import { hookCli } from "./hook.js";
 import { initCli } from "./init.js";
@@ -35,6 +36,12 @@ switch (subcommand) {
     break;
   case "scope":
     await scopeCli(rest);
+    break;
+  case "doctor":
+    await doctorCli(rest);
+    break;
+  case "fix":
+    await fixCli(rest);
     break;
   case "hook":
     await hookCli(rest);
@@ -91,6 +98,10 @@ switch (subcommand) {
         "             (subcommands: sweep | run)\n" +
         "  scope      scope-index commands\n" +
         "             (subcommands: rebuild [--repo <path>])\n" +
+        "  doctor     verify the adoption is healthy (checks core, ground, sensors)\n" +
+        "             (--repo <path>?)\n" +
+        "  fix        auto-resolve doctor warnings where possible\n" +
+        "             (--repo <path>?)\n" +
         "  hook       Claude Code hook runner (stdin = hook payload JSON)\n" +
         "             (subcommands: session-start | read-enrich | write-guard)\n" +
         "  status-line  print formatted status line for the daemon-maintained state file\n" +

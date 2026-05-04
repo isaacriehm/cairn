@@ -8,6 +8,13 @@ export {
   detectStackSignatures,
   detectStartCommand,
 } from "./detect.js";
+export { applyBrandAnswers, runBrandSetup } from "./brand-setup.js";
+export type {
+  BrandAnswers,
+  RunBrandSetupOptions,
+} from "./brand-setup.js";
+export { tryStartDaemon } from "./daemon-autostart.js";
+export type { DaemonAutostartResult } from "./daemon-autostart.js";
 export { runInit } from "./init.js";
 export type { InitResult, RunInitArgs } from "./init.js";
 export {
