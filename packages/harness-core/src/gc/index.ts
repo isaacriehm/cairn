@@ -36,6 +36,11 @@ export type {
   BatchCanaryResult,
   BatchCanaryOptions,
 } from "./canary.js";
+export { runCitationIntegrity } from "./citation-integrity.js";
+export type {
+  CitationIntegrityOptions,
+  CitationIntegrityResult,
+} from "./citation-integrity.js";
 export { classifyAutoMerge } from "./classify.js";
 export type { ClassifyArgs } from "./classify.js";
 export { runCompletionIntegrity } from "./completion-integrity.js";

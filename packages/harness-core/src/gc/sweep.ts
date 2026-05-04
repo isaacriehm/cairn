@@ -20,6 +20,7 @@ import type { Profile } from "../profiles/types.js";
 import type { ProjectGlobs, SensorLanguage } from "../sensors/types.js";
 import { applyCommit } from "./apply.js";
 import { verifyBatchCanary, type BatchCanaryResult } from "./canary.js";
+import { runCitationIntegrity } from "./citation-integrity.js";
 import { classifyAutoMerge } from "./classify.js";
 import { runCompletionIntegrity } from "./completion-integrity.js";
 import { runDocGardening } from "./doc-gardening.js";
@@ -79,6 +80,7 @@ export async function runGcSweep(opts: RunGcSweepOptions): Promise<GcSweepResult
     "quality-grades": 0,
     "scope-coverage": 0,
     "completion-integrity": 0,
+    "citation-integrity": 0,
   };
 
   // 1. Frontmatter freshness.
@@ -153,6 +155,14 @@ export async function runGcSweep(opts: RunGcSweepOptions): Promise<GcSweepResult
     const r = runScopeCoverage({ repoRoot: opts.repoRoot });
     findings.push(...r.findings);
     passDurations["scope-coverage"] = Date.now() - t0;
+  }
+
+  // 8. Citation integrity.
+  {
+    const t0 = Date.now();
+    const r = runCitationIntegrity({ repoRoot: opts.repoRoot });
+    findings.push(...r.findings);
+    passDurations["citation-integrity"] = Date.now() - t0;
   }
 
   // Re-classify proposals against project globs (passes set defaults; this

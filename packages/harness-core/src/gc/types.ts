@@ -30,7 +30,8 @@ export type GcPassId =
   | "doc-gardening"
   | "quality-grades"
   | "scope-coverage"
-  | "completion-integrity";
+  | "completion-integrity"
+  | "citation-integrity";
 
 export type GcFindingKind =
   | "frontmatter_stale"
@@ -42,7 +43,10 @@ export type GcFindingKind =
   | "scope_uncovered"
   | "scope_drift_orphan"
   | "scope_index_missing"
-  | "task_integrity_error";
+  | "task_integrity_error"
+  | "orphaned_citation"
+  | "superseded_citation"
+  | "banned_dec_comment";
 
 export type GcAutoMergeClass = "safe" | "code" | "high-stakes";
 
