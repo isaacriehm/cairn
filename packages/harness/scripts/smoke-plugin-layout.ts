@@ -122,12 +122,47 @@ function runSmoke(): void {
     console.log("  ✓ Step 3 — hooks.json wires SessionStart/SessionEnd/Stop/PostToolUse with valid bins");
   }
 
-  // ── Step 4 — component dirs exist (empty for step 4) ─────────────
+  // ── Step 4 — component dirs exist ────────────────────────────────
   {
     for (const dir of ["skills", "agents", "commands"]) {
       assert(existsSync(join(PLUGIN_ROOT, dir)), `Step 4: missing component dir ${dir}/`);
     }
     console.log("  ✓ Step 4 — skills/agents/commands dirs scaffolded");
+  }
+
+  // ── Step 4b — required skills present with frontmatter ──────────
+  {
+    const expected = ["harness-adopt", "harness-direction", "harness-attention"];
+    for (const slug of expected) {
+      const path = join(PLUGIN_ROOT, "skills", slug, "SKILL.md");
+      assert(existsSync(path), `Step 4b: missing skill ${slug}/SKILL.md`);
+      const text = readFileSync(path, "utf8");
+      assert(text.startsWith("---\n"), `Step 4b: ${slug} must start with frontmatter`);
+      const end = text.indexOf("\n---", 4);
+      assert(end !== -1, `Step 4b: ${slug} frontmatter not terminated`);
+      const fm = text.slice(4, end);
+      assert(/^name:\s*\S/m.test(fm), `Step 4b: ${slug} frontmatter missing name`);
+      assert(/^description:\s*\S/m.test(fm), `Step 4b: ${slug} frontmatter missing description`);
+      const body = text.slice(end + 4).trim();
+      assert(body.length > 200, `Step 4b: ${slug} body looks empty (${body.length} chars)`);
+    }
+    console.log(`  ✓ Step 4b — ${expected.length} skills present with valid frontmatter`);
+  }
+
+  // ── Step 4c — required slash commands present ───────────────────
+  {
+    const expected = ["harness-init.md", "harness-direction.md"];
+    for (const filename of expected) {
+      const path = join(PLUGIN_ROOT, "commands", filename);
+      assert(existsSync(path), `Step 4c: missing command ${filename}`);
+      const text = readFileSync(path, "utf8");
+      assert(text.startsWith("---\n"), `Step 4c: ${filename} must start with frontmatter`);
+      const end = text.indexOf("\n---", 4);
+      assert(end !== -1, `Step 4c: ${filename} frontmatter not terminated`);
+      const fm = text.slice(4, end);
+      assert(/^description:/m.test(fm), `Step 4c: ${filename} missing description`);
+    }
+    console.log(`  ✓ Step 4c — ${expected.length} slash commands present`);
   }
 
   // ── Step 5 — every hook bin export accepts payload via stdin ─────

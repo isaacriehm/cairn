@@ -246,6 +246,29 @@ Notes:
   Files added:
     harness/src/cli/attention.ts
 
+## Step 5 — Skills + slash commands [DONE 2026-05-04T22:30]
+Subagent attempts: 0 (inline)
+Compile: PASS (workspace-wide tsc -b clean across 5 packages); plugin's check-layout extended to validate skill + command frontmatter shape.
+Smokes: PASS — smoke:plugin-layout (7 steps now: +Step 4b skills present, +Step 4c slash commands present), all 12 other smokes regression-clean.
+Notes:
+  Implements PLUGIN_ARCHITECTURE §11 (skills + slash commands) within harness-frontend-claudecode/. Files are markdown documents; the description frontmatter drives Claude Code's auto-invocation matcher; the body is the instruction set Claude executes when the skill fires.
+  Files added (skills):
+    skills/harness-adopt/SKILL.md — first-time adoption inline walk. Trigger: SessionStart sees no .harness/ AND no decline-never marker. Pipeline per §6: A/B/C "[a] yes / [b] not now / [c] never" → preflight (claude on PATH, git work tree) → spawn `harness init` subprocess streaming output as fenced text → translate phase A/B/Cs into AskUserQuestion calls → final summary with pilot module + DEC drafts + baseline findings + CI gate state.
+    skills/harness-direction/SKILL.md — task prompt → tier0 → tightener → dispatch. Trigger: task-shaped verb in user message AND no active task. Pipeline per §8/§14: parallel MCP context reads (decisions_in_scope, invariants_in_scope, canonical_for_topic, search) + last 5 commits → ready/not-ready decision → ≤2-3 cited A/B/C questions if not-ready → write `.harness/tasks/active/<id>/spec.tightened.md` → propose chunks (1=silent, ≥2=plan-review A/B/C) → emit ```dispatch``` fenced block per §11 for main Claude to parse + Task-spawn subagents.
+    skills/harness-attention/SKILL.md — surface pending DEC drafts + sensor findings + drift + cross-session invalidation events. Trigger: SessionStart context flagged attention_count > 0. Pipeline: read drafts/baseline/drift/events in parallel → sort by hard-conflict > DEC > sensor > drift > invalidation → cap at 3 items per turn → A/B/C with cited source → resolve via harness_resolve_attention (NEW MCP tool, lands in step 6) with documented fallbacks (record_decision/archive/append) until then → stamp events poll cursor.
+  Files added (slash commands):
+    commands/harness-init.md — manual `/harness-init`; equivalent to harness-adopt skill but bypasses the trigger gate. Detects already-adopted projects and routes to `[a] re-init --force / [b] doctor / [c] cancel` (default cancel for safety).
+    commands/harness-direction.md — manual `/harness-direction <prompt>`; escape hatch when auto-invoke misclassifies. argument-hint declared in frontmatter. Empty-arg case surfaces a usage hint.
+  Files modified:
+    packages/harness-frontend-claudecode/scripts/check-layout.mjs — extended to walk skills/<slug>/SKILL.md + commands/*.md and validate frontmatter (`name` for skills, `description` for both) + non-empty body. Catches skill files written outside the frontmatter convention before they ship.
+    packages/harness/scripts/smoke-plugin-layout.ts — added Step 4b (3 skills present with valid name+description and >200-char body) and Step 4c (2 slash commands present with description frontmatter).
+    packages/harness-frontend-claudecode/skills/.gitkeep, agents/.gitkeep, commands/.gitkeep — removed (real content shipped for skills + commands; agents/ keeps gitkeep until step 6 lands reviewer.md).
+  Notable design choices:
+    - In the plugin form factor, the running Claude IS the question-asker. The "tier0 Haiku" cost optimization mentioned in spec §14 (escalate Sonnet on complexity) is a future optimization; for now the skill instructs the running Sonnet/Opus instance to do the question-asking inline. Skips one round-trip and matches the operator's preference for fast-intuitive direction.
+    - harness-attention skill documents the FALLBACK path (record_decision / archive / append) for resolving DEC drafts since `harness_resolve_attention` is added in step 6. This keeps the skill functional immediately rather than gating it on the new write tool.
+    - Skill bodies cite `feedback_decide_dont_overprompt.md` and `caveman:caveman` style preferences inline so the running agent honors them without re-loading memory.
+  Step 6 (reviewer subagent + harness_resolve_attention MCP tool) and step 7 (heavy adoption pipeline phases 7b/7c/10) consume these surfaces.
+
 ## Step 4 — Plugin scaffold + hook bin entrypoints [DONE 2026-05-04T22:00]
 Subagent attempts: 0 (inline)
 Compile: PASS (workspace-wide tsc -b clean across 5 packages now)

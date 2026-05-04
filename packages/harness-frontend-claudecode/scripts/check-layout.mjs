@@ -8,7 +8,7 @@
  * regressions.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -107,6 +107,56 @@ if (hooks) {
 // ── component dirs (skills/agents/commands) ─────────────────────────
 for (const dir of ["skills", "agents", "commands"]) {
   if (!existsSync(join(PKG_ROOT, dir))) fail(`missing component dir: ${dir}/`);
+}
+
+// ── skills: each subdir must contain SKILL.md with valid frontmatter ─
+const skillsDir = join(PKG_ROOT, "skills");
+if (existsSync(skillsDir)) {
+  for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const skillFile = join(skillsDir, entry.name, "SKILL.md");
+    if (!existsSync(skillFile)) {
+      fail(`skill ${entry.name}: missing SKILL.md`);
+      continue;
+    }
+    validateMarkdownFrontmatter(skillFile, ["name", "description"], `skill ${entry.name}`);
+  }
+}
+
+// ── commands: each .md must have a description in frontmatter ───────
+const commandsDir = join(PKG_ROOT, "commands");
+if (existsSync(commandsDir)) {
+  for (const entry of readdirSync(commandsDir, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
+    validateMarkdownFrontmatter(
+      join(commandsDir, entry.name),
+      ["description"],
+      `command ${entry.name}`,
+    );
+  }
+}
+
+function validateMarkdownFrontmatter(path, requiredKeys, label) {
+  const text = readFileSync(path, "utf8");
+  if (!text.startsWith("---\n")) {
+    fail(`${label}: must start with --- frontmatter`);
+    return;
+  }
+  const end = text.indexOf("\n---", 4);
+  if (end === -1) {
+    fail(`${label}: frontmatter not terminated`);
+    return;
+  }
+  const fmBlock = text.slice(4, end);
+  const body = text.slice(end + 4).trim();
+  for (const key of requiredKeys) {
+    // Match `key:` followed by either inline value or a `|` block.
+    const re = new RegExp(`^${key}:\\s*\\S`, "m");
+    if (!re.test(fmBlock)) {
+      fail(`${label}: frontmatter missing or empty key "${key}"`);
+    }
+  }
+  if (body.length === 0) fail(`${label}: body is empty`);
 }
 
 if (errors.length > 0) {
