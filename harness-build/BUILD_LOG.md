@@ -126,3 +126,21 @@ Notes: New packages/harness-core/src/doctor/index.ts — runDoctor() returns Doc
 Subagent attempts: 0 (inline)
 Compile: PASS (whole workspace); vsce package PASS (267 KB vsix produced)
 Notes: Added esbuild + @vscode/vsce as devDeps. New `bundle` script (esbuild → dist/extension.cjs, CJS, externals: vscode + fsevents) and `package` script (clean + bundle + vsce package --no-dependencies). Renamed package from @isaacriehm/harness-lens to harness-lens (vsce rejects scoped names; lens isn't depended on by other workspace packages). main → dist/extension.cjs. Added .vscodeignore (excludes src/, scripts/, loose tsc dist files) and README.md. isaacriehm-harness-lens-0.0.0.vsix produced; 1.4 MB extension.cjs bundles harness-core + transitive deps (yaml, simple-git, zod, pino, etc.). 3 esbuild warnings about `import.meta.url` in harness-core init/* paths are cosmetic — those code paths never execute from the Lens runtime.
+
+## Closing summary [2026-05-04T05:40]
+Tasks E, B, A, C, D, F: all DONE.
+Final compile: PASS for packages/harness-core, harness, packages/harness-lens.
+Total new files (this session, excluding lockfile): 12.
+  packages/harness-core/src/init/brand-setup.ts
+  packages/harness-core/src/init/daemon-autostart.ts
+  packages/harness-core/src/doctor/index.ts
+  packages/harness-core/templates/.harness/ground/brand/voice.md
+  packages/harness-core/templates/.harness/ground/product/personas.yaml
+  harness/src/cli/scope.ts
+  harness/src/cli/doctor.ts
+  packages/harness-lens/.gitignore
+  packages/harness-lens/.vscodeignore
+  packages/harness-lens/README.md
+  + harness-build/BUILD_LOG.md entries (this file)
+  + isaacriehm-harness-lens-0.0.0.vsix (gitignored artifact)
+BUILD_REPORT gaps closed: Gap 1 (scope rebuild), Gap 4 (gitignore audit confirmed correct), Gap 6 (cache content-hash). Gaps 2/3/5 are runtime/deployment concerns owned by harness-runtime — no state-layer change needed.
