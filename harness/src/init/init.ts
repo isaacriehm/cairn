@@ -20,12 +20,19 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { stringify as stringifyYaml } from "yaml";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { ensureMirror, normalizeProjectName } from "../mirror/index.js";
 import { logger } from "../logger.js";
-import { detectAll, detectEnvironment } from "./detect.js";
+import { detectAll } from "./detect.js";
+import {
+  runMapper,
+  validateMapperOutput,
+  type MapperOutput,
+  type MapperResult,
+} from "./mapper.js";
 import {
   done,
+  editYaml,
   freeTextWithDefault,
   header,
   info,
@@ -34,7 +41,7 @@ import {
   yesNo,
   type PromptMode,
 } from "./prompts.js";
-import { harnessEnvPath, upsertHarnessEnv } from "./secrets.js";
+import { upsertHarnessEnv } from "./secrets.js";
 import { seedHarnessLayout } from "./seed.js";
 import {
   downloadWhisperModel,
@@ -43,6 +50,8 @@ import {
   runHarnessSetupScript,
 } from "./setup-runners.js";
 import type { DetectionResult } from "./types.js";
+import { buildRepoSummary } from "./walker.js";
+import { updateWorkflowSlugBlock } from "./workflow-block.js";
 
 const log = logger("init");
 
@@ -63,6 +72,16 @@ export interface RunInitArgs {
   autoProceed?: "a" | "b";
   /** Skip guided setup (claude/whisper/ollama/discord) — smoke convenience. */
   skipGuidedSetup?: boolean;
+  /** Skip the Tier-2 init mapper. Default off in interactive mode (we run the
+   * mapper unless operator declines or claude is missing); always off in auto
+   * mode unless `mockMapperOutput` is provided. */
+  skipMapper?: boolean;
+  /**
+   * Substitute a canned MapperOutput for the LLM call. Used by smokes and any
+   * scripted adoption path that wants to exercise the apply-to-config and
+   * apply-to-workflow.md path without burning Sonnet tokens.
+   */
+  mockMapperOutput?: MapperOutput;
 }
 
 export interface InitResult {
@@ -74,6 +93,12 @@ export interface InitResult {
   config_path: string;
   mirror_path: string | null;
   e2e_setup: "now" | "defer" | "skip" | null;
+  /** Mapper outcome — null when skipped/failed, full output when applied. */
+  mapper_output: MapperOutput | null;
+  /** Whether mapper output reached the workflow.md slug block. */
+  mapper_applied_to_workflow: boolean;
+  /** Whether mapper output reached the new .harness/config.yaml. */
+  mapper_applied_to_config: boolean;
   warnings: string[];
 }
 
@@ -134,6 +159,9 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
       config_path: "",
       mirror_path: null,
       e2e_setup: null,
+      mapper_output: null,
+      mapper_applied_to_workflow: false,
+      mapper_applied_to_config: false,
       warnings,
     };
   }
@@ -143,6 +171,21 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   if (mode === "interactive" && args.skipGuidedSetup !== true) {
     envState = await runGuidedSetup({ envState, warnings, mode });
   }
+
+  // ── Init mapper (Tier 2 / Sonnet) — proposes pilot_module + project_globs.
+  // Without this, project_globs.{route_handler,dto,generator_source,high_stakes}
+  // sit empty and Layer-D sensors never fire on real diffs (rework brief §3.1).
+  const mapperOutput = await maybeRunMapper({
+    repoRoot,
+    detection,
+    mode,
+    skipMapper: args.skipMapper === true,
+    ...(args.mockMapperOutput !== undefined
+      ? { mockMapperOutput: args.mockMapperOutput }
+      : {}),
+    envClaudeAuth: envState.claude_auth,
+    warnings,
+  });
 
   // ── Step 2: seed templates ─────────────────────────────────────────
   header("Seeding .harness/ + .archive/");
@@ -157,17 +200,62 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     done(`= ${c}  (kept existing — pass --force to overwrite)`);
   }
 
+  // ── Step 2b: apply mapper output to workflow.md `<slug>:` block.
+  // Only when workflow.md was just seeded (or --force re-seeded). Re-runs that
+  // kept the existing workflow.md skip this so operator edits aren't clobbered.
+  const wfRelPath = ".harness/config/workflow.md";
+  const wfWasSeeded = seed.written_files.includes(wfRelPath);
+  let mapperAppliedToWorkflow = false;
+  if (mapperOutput !== null && wfWasSeeded) {
+    const wfPath = join(repoRoot, wfRelPath);
+    try {
+      const r = updateWorkflowSlugBlock({
+        workflowMdPath: wfPath,
+        slug: decidedSlug,
+        update: {
+          pilot_module: mapperOutput.pilot_module,
+          route_handler_globs: mapperOutput.route_handler_globs,
+          dto_globs: mapperOutput.dto_globs,
+          generator_source_globs: mapperOutput.generator_source_globs,
+          high_stakes_globs: mapperOutput.high_stakes_globs,
+          off_limits_append: mapperOutput.off_limits_globs,
+        },
+      });
+      done(
+        `+ patched <${decidedSlug}>: block in ${wfRelPath} (${r.applied_keys.join(", ")}; +${r.off_limits_added.length} off-limits)`,
+      );
+      mapperAppliedToWorkflow = true;
+    } catch (err) {
+      warnings.push(`workflow.md slug-block update failed: ${String(err)}`);
+    }
+  } else if (mapperOutput !== null && !wfWasSeeded) {
+    warnings.push(
+      `mapper output NOT applied to ${wfRelPath} — kept existing; re-run with --force to overwrite, or merge globs manually`,
+    );
+  }
+
   // ── Step 3: write project-overlay config.yaml ──────────────────────
   header("Writing .harness/config.yaml");
   const configPath = join(repoRoot, ".harness", "config.yaml");
   mkdirSync(join(repoRoot, ".harness"), { recursive: true });
+  let mapperAppliedToConfig = false;
   if (existsSync(configPath) && args.force !== true) {
     warnings.push(`.harness/config.yaml already exists — kept existing (use --force to overwrite)`);
     done(`= .harness/config.yaml (kept)`);
+    if (mapperOutput !== null) {
+      warnings.push(
+        `mapper output NOT applied to .harness/config.yaml — kept existing; project_globs may be stale`,
+      );
+    }
   } else {
-    const config = buildProjectOverlay({ detection, decidedSlug, repoRoot });
+    const config = buildProjectOverlay({
+      detection,
+      decidedSlug,
+      ...(mapperOutput !== null ? { mapperOutput } : {}),
+    });
     writeFileSync(configPath, stringifyYaml(config), "utf8");
     done(`+ .harness/config.yaml`);
+    if (mapperOutput !== null) mapperAppliedToConfig = true;
   }
 
   // ── Step 4: mirror ─────────────────────────────────────────────────
@@ -263,6 +351,9 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
       seeded: seed.written_files.length,
       collisions: seed.collisions.length,
       e2e: e2eChoice,
+      mapper_ran: mapperOutput !== null,
+      mapper_applied_to_workflow: mapperAppliedToWorkflow,
+      mapper_applied_to_config: mapperAppliedToConfig,
       warnings: warnings.length,
     },
     "init complete",
@@ -277,6 +368,9 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     config_path: ".harness/config.yaml",
     mirror_path: mirrorPath,
     e2e_setup: e2eChoice,
+    mapper_output: mapperOutput,
+    mapper_applied_to_workflow: mapperAppliedToWorkflow,
+    mapper_applied_to_config: mapperAppliedToConfig,
     warnings,
   };
 
@@ -461,7 +555,7 @@ async function runGuidedSetup(args: {
 function buildProjectOverlay(args: {
   detection: DetectionResult;
   decidedSlug: string;
-  repoRoot: string;
+  mapperOutput?: MapperOutput;
 }): Record<string, unknown> {
   const detected_sensor_commands = args.detection.proposed_sensors.map((s) => ({
     id: s.id,
@@ -471,7 +565,15 @@ function buildProjectOverlay(args: {
     reason: s.reason,
   }));
 
-  return {
+  const m = args.mapperOutput;
+  const offLimits = [...DEFAULT_OFF_LIMITS];
+  if (m !== undefined) {
+    for (const x of m.off_limits_globs) {
+      if (!offLimits.includes(x)) offLimits.push(x);
+    }
+  }
+
+  const overlay: Record<string, unknown> = {
     version: 1,
     slug: args.decidedSlug,
     origin_url: args.detection.origin_url,
@@ -479,15 +581,189 @@ function buildProjectOverlay(args: {
     hook_capability: args.detection.hook_capability,
     start_command: args.detection.start_command,
     detected_sensor_commands,
-    off_limits: DEFAULT_OFF_LIMITS,
-    high_stakes_globs: [] as string[],
+    off_limits: offLimits,
+    high_stakes_globs: m?.high_stakes_globs ?? [],
     project_globs: {
-      route_handler_globs: [] as string[],
-      dto_globs: [] as string[],
-      generator_source_globs: [] as string[],
-      high_stakes_globs: [] as string[],
+      route_handler_globs: m?.route_handler_globs ?? [],
+      dto_globs: m?.dto_globs ?? [],
+      generator_source_globs: m?.generator_source_globs ?? [],
+      high_stakes_globs: m?.high_stakes_globs ?? [],
     },
   };
+  if (m !== undefined) {
+    overlay["pilot_module"] = m.pilot_module;
+    overlay["domain_summary"] = m.domain_summary;
+    overlay["key_modules"] = m.key_modules;
+    overlay["mapper_proposed_sensors"] = m.proposed_sensors;
+    if (m.notes.trim().length > 0) overlay["mapper_notes"] = m.notes;
+  }
+  return overlay;
+}
+
+interface MaybeRunMapperArgs {
+  repoRoot: string;
+  detection: DetectionResult;
+  mode: PromptMode;
+  skipMapper: boolean;
+  mockMapperOutput?: MapperOutput;
+  envClaudeAuth: boolean;
+  warnings: string[];
+}
+
+async function maybeRunMapper(args: MaybeRunMapperArgs): Promise<MapperOutput | null> {
+  if (args.mockMapperOutput !== undefined) {
+    info("\n── Init mapper — using injected mockMapperOutput (smoke / scripted adoption)");
+    return args.mockMapperOutput;
+  }
+  if (args.skipMapper) {
+    info("\n── Init mapper skipped (--skip-mapper); project_globs left empty");
+    args.warnings.push("mapper skipped via --skip-mapper — project_globs left empty");
+    return null;
+  }
+  if (args.mode === "auto") {
+    info(
+      "\n── Init mapper skipped (--no-prompt mode; pass mockMapperOutput to test the apply path)",
+    );
+    return null;
+  }
+  if (!args.envClaudeAuth) {
+    args.warnings.push(
+      "mapper skipped — claude CLI not available; project_globs left empty",
+    );
+    info(
+      "\n── Init mapper skipped — claude CLI not available; re-run init after `claude` auth to fill project_globs",
+    );
+    return null;
+  }
+
+  header("Init mapper (Tier 2 / Sonnet) — proposing pilot_module + project_globs");
+  info("  Walking repo (gitignore-aware, depth ≤ 5, file cap 3000)...");
+  const summary = buildRepoSummary({ repoRoot: args.repoRoot });
+  info(
+    `  ${summary.total_files} files, ${summary.total_dirs} dirs, ${summary.package_manifests.length} manifests, ${summary.framework_signals.length} framework signals`,
+  );
+  if (summary.truncated_at_file_cap) info("  (truncated at file cap — pilot scope will be conservative)");
+  if (summary.truncated_at_depth_cap) info("  (truncated at depth cap)");
+
+  const dispatch = await squareIntoSquareHole<"go" | "skip">({
+    mode: args.mode,
+    prompt: "Dispatch mapper now (~$1-3 one-time, fills route_handler_globs / dto_globs / etc.)?",
+    choices: [
+      { id: "go", label: "yes — dispatch Sonnet", isDefault: true },
+      { id: "skip", label: "skip — keep globs empty (you can re-run init later)" },
+    ],
+    auto: "skip",
+  });
+  if (dispatch === "skip") {
+    args.warnings.push("mapper dispatch declined by operator — project_globs left empty");
+    return null;
+  }
+
+  let mapperResult: MapperResult;
+  try {
+    info("  Dispatching... (typically 30-90s)");
+    mapperResult = await runMapper({ detection: args.detection, summary });
+  } catch (err) {
+    args.warnings.push(`mapper dispatch failed: ${String(err)}`);
+    info(`  ✗ mapper failed: ${String(err)}`);
+    return null;
+  }
+  printMapperProposal(mapperResult);
+
+  const choice = await squareIntoSquareHole<"apply" | "edit" | "skip">({
+    mode: args.mode,
+    prompt: "Apply mapper proposal?",
+    choices: [
+      { id: "apply", label: "apply as-is", isDefault: true },
+      {
+        id: "edit",
+        label: "edit YAML before applying",
+        description: `opens ${process.env["EDITOR"] ?? "vi"} on the proposal`,
+      },
+      {
+        id: "skip",
+        label: "skip — keep globs empty (re-run init later to retry)",
+      },
+    ],
+    auto: "apply",
+  });
+  if (choice === "skip") {
+    args.warnings.push(
+      "mapper proposal declined at confirm — project_globs left empty",
+    );
+    return null;
+  }
+  if (choice === "edit") {
+    const initialYaml = stringifyYaml(mapperResult.output);
+    const edited = await editYaml({
+      mode: args.mode,
+      prompt: "Edit YAML proposal (save + exit to apply, leave empty to abort)",
+      initial: initialYaml,
+    });
+    if (edited.trim().length === 0) {
+      args.warnings.push(
+        "mapper proposal aborted at edit (empty input) — project_globs left empty",
+      );
+      return null;
+    }
+    let parsed: unknown;
+    try {
+      parsed = parseYaml(edited);
+    } catch (err) {
+      args.warnings.push(`mapper proposal edit returned invalid YAML: ${String(err)}`);
+      return null;
+    }
+    try {
+      return validateMapperOutput(parsed);
+    } catch (err) {
+      args.warnings.push(`edited mapper proposal failed shape check: ${String(err)}`);
+      return null;
+    }
+  }
+  return mapperResult.output;
+}
+
+function printMapperProposal(r: MapperResult): void {
+  const o = r.output;
+  info("");
+  info(
+    `Mapper proposal (${(r.duration_ms / 1000).toFixed(1)}s, in=${r.usage?.input_tokens ?? "?"} out=${r.usage?.output_tokens ?? "?"} tokens):`,
+  );
+  info(`  domain:           ${truncateOneLine(o.domain_summary, 90)}`);
+  info(`  pilot_module:     ${o.pilot_module}`);
+  info(`  key_modules (${o.key_modules.length}):`);
+  for (const km of o.key_modules) {
+    info(`    - ${km.name} (${km.path}) — ${truncateOneLine(km.purpose, 70)}`);
+  }
+  printGlobs(`route_handler_globs (${o.route_handler_globs.length})`, o.route_handler_globs);
+  printGlobs(`dto_globs (${o.dto_globs.length})`, o.dto_globs);
+  printGlobs(
+    `generator_source_globs (${o.generator_source_globs.length})`,
+    o.generator_source_globs,
+  );
+  printGlobs(`high_stakes_globs (${o.high_stakes_globs.length})`, o.high_stakes_globs);
+  printGlobs(`off_limits_globs (${o.off_limits_globs.length})`, o.off_limits_globs);
+  info(`  proposed_sensors (${o.proposed_sensors.length}):`);
+  for (const ps of o.proposed_sensors) {
+    info(
+      `    - ${ps.id} — ${truncateOneLine(ps.description, 80)}  [${ps.applies_to_globs.join(", ")}]`,
+    );
+  }
+  if (o.notes.trim().length > 0) info(`  notes: ${truncateOneLine(o.notes, 200)}`);
+}
+
+function printGlobs(label: string, globs: string[]): void {
+  info(`  ${label}:`);
+  if (globs.length === 0) {
+    info(`    (none)`);
+    return;
+  }
+  for (const g of globs) info(`    - ${g}`);
+}
+
+function truncateOneLine(s: string, max: number): string {
+  const collapsed = s.replace(/\s+/g, " ").trim();
+  return collapsed.length > max ? `${collapsed.slice(0, max - 1)}…` : collapsed;
 }
 
 function printSummary(d: DetectionResult, decidedSlug: string): void {
