@@ -21,6 +21,7 @@ import type { ProjectGlobs, SensorLanguage } from "../sensors/types.js";
 import { applyCommit } from "./apply.js";
 import { verifyBatchCanary, type BatchCanaryResult } from "./canary.js";
 import { classifyAutoMerge } from "./classify.js";
+import { runCompletionIntegrity } from "./completion-integrity.js";
 import { runDocGardening } from "./doc-gardening.js";
 import { runFrontmatterFreshness } from "./frontmatter.js";
 import { runGeneratorDrift } from "./generator-drift.js";
@@ -77,6 +78,7 @@ export async function runGcSweep(opts: RunGcSweepOptions): Promise<GcSweepResult
     "doc-gardening": 0,
     "quality-grades": 0,
     "scope-coverage": 0,
+    "completion-integrity": 0,
   };
 
   // 1. Frontmatter freshness.
@@ -137,7 +139,15 @@ export async function runGcSweep(opts: RunGcSweepOptions): Promise<GcSweepResult
     passDurations["quality-grades"] = Date.now() - t0;
   }
 
-  // 6. Scope coverage.
+  // 6. Completion integrity.
+  {
+    const t0 = Date.now();
+    const r = await runCompletionIntegrity({ repoRoot: opts.repoRoot });
+    findings.push(...r.findings);
+    passDurations["completion-integrity"] = Date.now() - t0;
+  }
+
+  // 7. Scope coverage.
   {
     const t0 = Date.now();
     const r = runScopeCoverage({ repoRoot: opts.repoRoot });
