@@ -271,11 +271,17 @@ function checkDaemonStatus(projectName: string): DoctorCheck {
       : null;
   const ageHint = ageHintFromIso(updatedAt);
   const pidHint = pidLabel(stateDir, parsed);
+  const attention =
+    typeof parsed["attention_count"] === "number"
+      ? (parsed["attention_count"] as number)
+      : 0;
+  const attentionHint = attention > 0 ? `, attention:${attention}` : "";
   return {
     group: "core",
     label: "status.json",
     status: "ok",
-    detail: `daemon alive${pidHint}${ageHint}`,
+    detail: `daemon alive${pidHint}${ageHint}${attentionHint}`,
+    ...(attention > 0 ? { fixCommand: "harness attention" } : {}),
   };
 }
 

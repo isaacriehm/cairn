@@ -19,6 +19,29 @@ export type {
   BrandAnswers,
   RunBrandSetupOptions,
 } from "./brand-setup.js";
+export {
+  defaultBaselineLanguages,
+  findLatestBaselineAudit,
+  runBaselineAudit,
+} from "./baseline-audit.js";
+export type {
+  BaselineAuditFinding,
+  BaselineAuditResult,
+  BaselineAuditSensorRow,
+  RunBaselineAuditArgs,
+} from "./baseline-audit.js";
+export {
+  discoverDocs,
+  runDocsIngestion,
+} from "./ingest-docs.js";
+export type {
+  ClassifiedDoc,
+  DocCandidate,
+  DocClassification,
+  DocClassificationKind,
+  IngestionResult,
+  RunDocsIngestionArgs,
+} from "./ingest-docs.js";
 export { tryStartDaemon } from "./daemon-autostart.js";
 export type { DaemonAutostartResult } from "./daemon-autostart.js";
 export { runInit } from "./init.js";

@@ -64,13 +64,17 @@ export function writeStatusJsonForSlug(
  * Default StatusJson all daemons should write on startup. Subsequent patches
  * (heartbeat updated_at, last_run_at, etc.) merge over this baseline so the
  * shape-validating reader always sees a complete object.
+ *
+ * `ctx_tokens_budget` defaults to 4000 — the SessionStart additionalContext
+ * cap (Section 0–7 budget). Daemon may overwrite once it computes a tighter
+ * per-session value; init seeds this so the status line never shows ctx:0/0.
  */
 export function defaultStatusJson(daemonAlive: boolean): StatusJson {
   return {
     updated_at: new Date().toISOString(),
     daemon_alive: daemonAlive,
     ctx_tokens_used: 0,
-    ctx_tokens_budget: 0,
+    ctx_tokens_budget: 4000,
     decisions_in_scope: 0,
     invariants_in_scope: 0,
     task_state: "idle",
