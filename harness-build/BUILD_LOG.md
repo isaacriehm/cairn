@@ -101,3 +101,8 @@ Notes: User-requested after the 14-task base was done. LENS_SPEC.md was original
 ## Task E — Gitignore exception audit [DONE 2026-05-04T04:45]
 Subagent attempts: 0 (inline audit, no code change)
 Notes: `git ls-files packages/harness-core/templates/.claude/` shows only the one expected file (settings.json). `git check-ignore -v .claude/` confirms root `.claude/` still ignored via .gitignore:25. `git check-ignore -v harness/.claude/` confirms sibling `.claude/` dirs still ignored. No other `.claude/` files have leaked into tracked set. Exception scope correct — no fix needed.
+
+## Task B — Scope index cache mtime → sha256 content hash [DONE 2026-05-04T04:50]
+Subagent attempts: 0 (inline)
+Compile: PASS (both packages); smoke-read-enrich PASS (4 steps)
+Notes: ledger-cache.ts getScopeIndexEntry now keys on sha256 of first 512 bytes via node:crypto createHash. Added hashFilePrefix() helper using openSync/readSync for fixed-size partial read (avoids loading full file when only the digest matters). ScopeIndexCacheEntry.mtimeMs replaced by contentHash: string. Closes BUILD_REPORT Gap 6 (clock-skew stale cache).

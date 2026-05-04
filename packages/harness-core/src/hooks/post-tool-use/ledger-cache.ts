@@ -5,7 +5,8 @@
  * the hook stays a no-op.
  */
 
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, openSync, readFileSync, readSync, closeSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import {
@@ -46,8 +47,40 @@ interface TasksDirCacheEntry {
 
 interface ScopeIndexCacheEntry {
   repoRoot: string;
-  mtimeMs: number;
+  /** sha256 of the first 512 bytes of scope-index.yaml — content-keyed cache. */
+  contentHash: string;
   index: ScopeIndex;
+}
+
+const SCOPE_INDEX_HASH_BYTES = 512;
+
+/**
+ * Hash the first N bytes of a file. Returns null when the file can't be read.
+ * Used as the cache key for scope-index — mtime is unreliable under clock skew
+ * (daemon writes can land with the same mtime as the previous read).
+ */
+function hashFilePrefix(path: string, bytes: number): string | null {
+  let fd: number;
+  try {
+    fd = openSync(path, "r");
+  } catch {
+    return null;
+  }
+  try {
+    const buf = Buffer.alloc(bytes);
+    const read = readSync(fd, buf, 0, bytes, 0);
+    return createHash("sha256")
+      .update(buf.subarray(0, read))
+      .digest("hex");
+  } catch {
+    return null;
+  } finally {
+    try {
+      closeSync(fd);
+    } catch {
+      // ignore — best-effort
+    }
+  }
 }
 
 let invariantsCache: InvariantsCacheEntry | null = null;
@@ -223,8 +256,10 @@ export function lookupTask(
 }
 
 /**
- * Cached scope-index reader. mtime-keyed so back-to-back hook invocations in
- * the same process don't re-parse the file.
+ * Cached scope-index reader. Content-keyed (sha256 of first 512 bytes) so
+ * back-to-back hook invocations in the same process don't re-parse the file
+ * AND so daemon writes that happen within the same mtime tick are not
+ * silently masked by a stale cache hit (Gap 6 in BUILD_REPORT).
  *
  * Returns null when the file is missing, when no entry matches the path,
  * when the entry is explicitly `unscoped: true`, or when the entry has no
@@ -236,23 +271,19 @@ export function getScopeIndexEntry(
 ): ScopeIndexEntry | null {
   const path = scopeIndexPath(repoRoot);
   if (!existsSync(path)) return null;
-  let mtimeMs: number;
-  try {
-    mtimeMs = statSync(path).mtimeMs;
-  } catch {
-    return null;
-  }
+  const contentHash = hashFilePrefix(path, SCOPE_INDEX_HASH_BYTES);
+  if (contentHash === null) return null;
   let index: ScopeIndex;
   if (
     scopeIndexCache !== null &&
     scopeIndexCache.repoRoot === repoRoot &&
-    scopeIndexCache.mtimeMs === mtimeMs
+    scopeIndexCache.contentHash === contentHash
   ) {
     index = scopeIndexCache.index;
   } else {
     const fresh = readScopeIndex(repoRoot);
     if (fresh === null) return null;
-    scopeIndexCache = { repoRoot, mtimeMs, index: fresh };
+    scopeIndexCache = { repoRoot, contentHash, index: fresh };
     index = fresh;
   }
   const entry = lookupScope(index, repoRelativePath);
