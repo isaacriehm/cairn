@@ -8,6 +8,7 @@ import {
 import type { McpContext } from "../context.js";
 import { decisionsDir } from "../../ground/index.js";
 import { DecisionAssertion } from "../../ground/index.js";
+import { withWriteLock } from "../../lock.js";
 import { mcpError } from "../errors.js";
 import { recordDecisionInput } from "../schemas.js";
 import type { ToolDef } from "./types.js";
@@ -28,7 +29,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
   const dir = decisionsDir(ctx.repoRoot);
   const inboxDir = join(dir, "_inbox");
 
-  // Validate assertions, if provided.
+  // Validate assertions, if provided. (Pre-lock — pure schema check.)
   if (input.assertions !== undefined) {
     for (const a of input.assertions) {
       const result = DecisionAssertion.safeParse(a);
@@ -41,60 +42,64 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     }
   }
 
-  // Existing-id index — single source via decision-capture/id.ts.
-  const existingIds = scanExistingDecisionIds(ctx.repoRoot);
+  return withWriteLock(ctx.repoRoot, () => {
+    // Re-scan inside the lock so concurrent allocators see each other's writes.
+    const existingIds = scanExistingDecisionIds(ctx.repoRoot);
 
-  let id: string;
-  if (input.id !== undefined) {
-    if (existingIds.has(input.id)) {
-      return mcpError("DECISION_ID_TAKEN", `${input.id} already exists`);
+    let id: string;
+    if (input.id !== undefined) {
+      if (existingIds.has(input.id)) {
+        return mcpError("DECISION_ID_TAKEN", `${input.id} already exists`);
+      }
+      id = input.id;
+    } else {
+      id = allocateDecisionId(ctx.repoRoot, existingIds);
     }
-    id = input.id;
-  } else {
-    id = allocateDecisionId(ctx.repoRoot, existingIds);
-  }
 
-  if (input.supersedes !== undefined && !existingIds.has(input.supersedes)) {
-    return mcpError(
-      "SUPERSEDES_NOT_FOUND",
-      `supersedes target "${input.supersedes}" not found`,
-    );
-  }
+    if (input.supersedes !== undefined && !existingIds.has(input.supersedes)) {
+      return mcpError(
+        "SUPERSEDES_NOT_FOUND",
+        `supersedes target "${input.supersedes}" not found`,
+      );
+    }
 
-  const target = input.target ?? "inbox";
-  const outDir = target === "accepted" ? dir : inboxDir;
-  mkdirSync(outDir, { recursive: true });
+    const target = input.target ?? "inbox";
+    const outDir = target === "accepted" ? dir : inboxDir;
+    mkdirSync(outDir, { recursive: true });
 
-  const frontmatter = {
-    id,
-    title: input.title,
-    type: "adr",
-    status: target === "accepted" ? "accepted" : "draft",
-    audience: "dual",
-    generated: new Date().toISOString(),
-    "verified-at": new Date().toISOString(),
-    decided_at: new Date().toISOString().slice(0, 10),
-    scope_globs: input.scope_globs,
-    ...(input.supersedes !== undefined ? { supersedes: input.supersedes } : {}),
-    ...(input.assertions !== undefined ? { assertions: input.assertions } : {}),
-    ...(input.human_review_hint !== undefined
-      ? { human_review_hint: input.human_review_hint }
-      : {}),
-  };
-  const body = input.body_markdown ?? `# ${id} — ${input.title}\n\n## Summary\n\n${input.summary}\n`;
-  const filename = target === "accepted" ? `${id}.md` : `${id}.draft.md`;
-  const path = join(outDir, filename);
-  const content = `---\n${stringifyYaml(frontmatter)}---\n\n${body}`;
-  writeFileSync(path, content, "utf8");
+    const frontmatter = {
+      id,
+      title: input.title,
+      type: "adr",
+      status: target === "accepted" ? "accepted" : "draft",
+      audience: "dual",
+      generated: new Date().toISOString(),
+      "verified-at": new Date().toISOString(),
+      decided_at: new Date().toISOString().slice(0, 10),
+      scope_globs: input.scope_globs,
+      ...(input.supersedes !== undefined ? { supersedes: input.supersedes } : {}),
+      ...(input.assertions !== undefined ? { assertions: input.assertions } : {}),
+      ...(input.human_review_hint !== undefined
+        ? { human_review_hint: input.human_review_hint }
+        : {}),
+    };
+    const body =
+      input.body_markdown ?? `# ${id} — ${input.title}\n\n## Summary\n\n${input.summary}\n`;
+    const filename = target === "accepted" ? `${id}.md` : `${id}.draft.md`;
+    const path = join(outDir, filename);
+    const content = `---\n${stringifyYaml(frontmatter)}---\n\n${body}`;
+    writeFileSync(path, content, "utf8");
 
-  return {
-    ok: true,
-    id,
-    target,
-    path: target === "accepted"
-      ? `.harness/ground/decisions/${filename}`
-      : `.harness/ground/decisions/_inbox/${filename}`,
-  };
+    return {
+      ok: true,
+      id,
+      target,
+      path:
+        target === "accepted"
+          ? `.harness/ground/decisions/${filename}`
+          : `.harness/ground/decisions/_inbox/${filename}`,
+    };
+  });
 }
 
 export const recordDecisionTool: ToolDef<Input> = {

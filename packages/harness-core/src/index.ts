@@ -7,6 +7,12 @@
 export const VERSION = "0.0.0";
 
 export { logger, setLogFile, setLogNull, setLogStderr } from "./logger.js";
+export {
+  withWriteLock,
+  acquireOperationLock,
+  OperationLockHeldError,
+} from "./lock.js";
+export type { WithLockOptions } from "./lock.js";
 
 export * from "./claude/index.js";
 export * from "./context/index.js";
