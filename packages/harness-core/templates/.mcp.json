@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "harness": {
-      "command": "npx",
-      "args": ["-y", "@isaacriehm/harness", "mcp", "serve"]
+      "command": "harness",
+      "args": ["mcp", "serve"]
     }
   }
 }

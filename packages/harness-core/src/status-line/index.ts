@@ -32,6 +32,10 @@ export interface StatusJson {
   last_run_at: string | null;
 }
 
-export { writeStatusJson } from "./writer.js";
+export {
+  defaultStatusJson,
+  writeStatusJson,
+  writeStatusJsonForSlug,
+} from "./writer.js";
 export { readStatusForCLI } from "./reader.js";
 export { formatStatus } from "./format.js";

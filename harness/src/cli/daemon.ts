@@ -24,7 +24,12 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, openSync, writeSync, closeSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
-import { logger, normalizeProjectName } from "@isaacriehm/harness-core";
+import {
+  defaultStatusJson,
+  logger,
+  normalizeProjectName,
+  writeStatusJsonForSlug,
+} from "@isaacriehm/harness-core";
 
 const log = logger("cli.daemon");
 
@@ -149,6 +154,16 @@ async function supervise(args: SuperviseArgs): Promise<void> {
     `── ${new Date().toISOString()} supervisor start · project=${args.project} · frontends=${args.frontends}`,
   );
 
+  // Initialise status.json with a complete default — Claude Code's
+  // `harness status-line` reader does strict shape validation, so a partial
+  // patch on first start would render as the placeholder "daemon:down".
+  // Best-effort write; status line is cosmetic.
+  try {
+    writeStatusJsonForSlug(args.project, defaultStatusJson(true));
+  } catch (err) {
+    log.warn({ err: String(err) }, "initial status.json write failed");
+  }
+
   const children: SupervisedChild[] = [
     {
       name: "watch",
@@ -178,6 +193,7 @@ async function supervise(args: SuperviseArgs): Promise<void> {
 
   let stopRequested = false;
   let gcTimer: NodeJS.Timeout | undefined;
+  let heartbeat: NodeJS.Timeout | undefined;
 
   const stopChild = async (child: SupervisedChild): Promise<void> => {
     child.stopped = true;
@@ -211,8 +227,19 @@ async function supervise(args: SuperviseArgs): Promise<void> {
     if (stopRequested) return;
     stopRequested = true;
     if (gcTimer !== undefined) clearInterval(gcTimer);
+    if (heartbeat !== undefined) clearInterval(heartbeat);
     writeLine(supervisorLogFd, `── ${new Date().toISOString()} stop signal received`);
     await Promise.all(children.map((c) => stopChild(c)));
+    // Mark the status file so Claude Code's status line shows "down" before
+    // the LaunchAgent (or operator) restarts us.
+    try {
+      writeStatusJsonForSlug(args.project, {
+        daemon_alive: false,
+        updated_at: new Date().toISOString(),
+      });
+    } catch {
+      // best-effort
+    }
     writeLine(supervisorLogFd, `── ${new Date().toISOString()} supervisor exit`);
     args.onEvent?.({ kind: "stopped" });
     closeSync(watchLogFd);
@@ -268,6 +295,22 @@ async function supervise(args: SuperviseArgs): Promise<void> {
   };
 
   for (const c of children) launch(c);
+
+  // Heartbeat — refresh `updated_at` every 30s so a crashed-without-shutdown
+  // daemon eventually appears stale to readers that check timestamp drift.
+  heartbeat = setInterval(() => {
+    try {
+      writeStatusJsonForSlug(args.project, {
+        daemon_alive: true,
+        updated_at: new Date().toISOString(),
+      });
+    } catch {
+      // best-effort
+    }
+  }, 30_000);
+  // Allow process to exit if everything else is done — heartbeat shouldn't
+  // hold the event loop open on its own.
+  heartbeat.unref();
 
   // Periodic GC tick.
   if (args.gcIntervalSec !== null) {
