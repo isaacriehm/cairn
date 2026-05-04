@@ -937,7 +937,7 @@ interface CompletionSummaryArgs {
 function printCompletionSummary(args: CompletionSummaryArgs): void {
   const groundCount = countGroundFiles(args.repoRoot);
   const sensorCount = countSensorEntries(args.repoRoot);
-  const scopeReport = describeScopeIndex(args.repoRoot);
+  const scopeReport = describeScopeIndex(args.repoRoot, args.submodules);
   const brandReport = describeBrandStatus(args.repoRoot);
   const daemonReport = describeDaemon(args.daemonAutostart);
   const hookReport = describeHooks(args.repoRoot);
@@ -951,7 +951,10 @@ function printCompletionSummary(args: CompletionSummaryArgs): void {
   info(`  Hooks             ${hookReport}`);
   info(`  Sensors           ${sensorCount} active`);
   info(`  Brand             ${brandReport}`);
-  info(`  Scope index       ${scopeReport}`);
+  info(`  Scope index       ${scopeReport.line}`);
+  if (scopeReport.followUp !== null) {
+    info(`                    ${scopeReport.followUp}`);
+  }
   info(`  Daemon            ${daemonReport}`);
   if (args.logFilePath !== null) {
     info(`  Log               ${shortenHomePath(args.logFilePath)}`);
@@ -1017,23 +1020,69 @@ function countSensorEntries(repoRoot: string): number {
   }
 }
 
-function describeScopeIndex(repoRoot: string): string {
+interface ScopeReport {
+  line: string;
+  followUp: string | null;
+}
+
+function describeScopeIndex(
+  repoRoot: string,
+  submodules: SubmoduleSummary | null,
+): ScopeReport {
   const path = join(repoRoot, ".harness", "ground", "scope-index.yaml");
-  if (!existsSync(path)) return "missing — run harness scope rebuild";
+  const submoduleNoteJustInitialized =
+    submodules !== null &&
+    submodules.initialized &&
+    submodules.success;
+  const partialFollowUp = submoduleNoteJustInitialized
+    ? "Run harness scope rebuild for full classification"
+    : null;
+
+  if (!existsSync(path)) {
+    return {
+      line: "missing — run harness scope rebuild",
+      followUp: null,
+    };
+  }
   try {
     const parsed = parseYaml(readFileSync(path, "utf8")) as unknown;
     if (typeof parsed !== "object" || parsed === null) {
-      return "empty — run harness scope rebuild";
+      return {
+        line: "empty — run harness scope rebuild",
+        followUp: null,
+      };
     }
     const filesRaw = (parsed as Record<string, unknown>)["files"];
     if (typeof filesRaw !== "object" || filesRaw === null) {
-      return "empty — run harness scope rebuild";
+      return {
+        line: "empty — run harness scope rebuild",
+        followUp: null,
+      };
     }
     const count = Object.keys(filesRaw as Record<string, unknown>).length;
-    if (count === 0) return "empty — run harness scope rebuild";
-    return `ready (${count} file${count === 1 ? "" : "s"} classified)`;
+    if (count === 0) {
+      return {
+        line: submoduleNoteJustInitialized
+          ? "empty — submodules now initialized, run harness scope rebuild"
+          : "empty — run harness scope rebuild",
+        followUp: null,
+      };
+    }
+    if (submoduleNoteJustInitialized) {
+      return {
+        line: `partial — ${count} file${count === 1 ? "" : "s"} classified (submodules now initialized)`,
+        followUp: partialFollowUp,
+      };
+    }
+    return {
+      line: `ready (${count} file${count === 1 ? "" : "s"} classified)`,
+      followUp: null,
+    };
   } catch {
-    return "unreadable — run harness scope rebuild";
+    return {
+      line: "unreadable — run harness scope rebuild",
+      followUp: null,
+    };
   }
 }
 
