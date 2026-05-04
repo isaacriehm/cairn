@@ -44,6 +44,12 @@ import {
   type BrandAnswers,
 } from "./brand-setup.js";
 import {
+  detectMonorepoContext,
+  findGitRoot,
+  isHarnessSourceRepo,
+  type MonorepoContext,
+} from "./preflight-guards.js";
+import {
   tryStartDaemon,
   type DaemonAutostartResult,
 } from "./daemon-autostart.js";
@@ -138,6 +144,22 @@ export interface RunInitArgs {
    * Default `"init"` matches the interactive default.
    */
   autoSubmodule?: "init" | "skip";
+  /**
+   * Skip the self-adoption hard-stop (Phase -1). Smokes set this so they
+   * can run init against the harness source repo for development.
+   */
+  skipSelfAdoptionGuard?: boolean;
+  /**
+   * Skip the monorepo-subdir warning (Phase 0a). Smokes set this so they
+   * don't trip on running from a temp dir nested under a workspace.
+   */
+  skipMonorepoGuard?: boolean;
+  /**
+   * When mode === "auto", how to answer the monorepo-subdir prompt.
+   *   "continue" — proceed with cwd-scoped init (the unsafe choice)
+   *   "abort"    — exit without writing anything (the default)
+   */
+  autoMonorepo?: "continue" | "abort";
 }
 
 export interface InitResult {
@@ -164,6 +186,8 @@ export interface InitResult {
   daemon_autostart: DaemonAutostartResult | null;
   /** Absolute path to the log file pino output was redirected to. */
   log_file_path: string | null;
+  /** Monorepo subdir context if init was launched from a sub-package. */
+  monorepo_context: MonorepoContext | null;
   /** Submodule check outcome (Phase 1). null when skipped or no .gitmodules. */
   submodules: {
     /** Submodule paths that were uninitialized when init started. */
@@ -193,8 +217,25 @@ const DEFAULT_OFF_LIMITS = [
 
 export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   const repoRoot = args.repoRoot ?? process.cwd();
+  const cwd = process.cwd();
   const mode: PromptMode = args.mode ?? "interactive";
   const warnings: string[] = [];
+
+  // ── Phase -1: self-adoption hard stop ──────────────────────────────
+  // If repoRoot or cwd looks like the Harness source repo itself, refuse —
+  // running init here would overwrite harness internals.
+  if (args.skipSelfAdoptionGuard !== true) {
+    if (isHarnessSourceRepo(repoRoot) || isHarnessSourceRepo(cwd)) {
+      info("");
+      info("  ✗  This looks like the Harness source repository.");
+      info("     Running init here would overwrite harness internals.");
+      info("");
+      info("  harness init is for projects that USE Harness, not for Harness itself.");
+      info("  If you're developing Harness, you don't need to run init.");
+      info("");
+      process.exit(1);
+    }
+  }
 
   // ── Phase 0: install cancel handlers + redirect pino logs to a file.
   // Cancel handlers are interactive-only; auto mode (smokes) skips them so
@@ -211,6 +252,19 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
       "no .git directory — mirror init will be skipped; the harness expects a git-tracked working tree",
     );
   }
+
+  // ── Phase 0a: monorepo subdir guard ────────────────────────────────
+  // Walk cwd → gitRoot looking for a workspace marker. If cwd is inside a
+  // monorepo PACKAGE rather than at the workspace root, the mapper would
+  // only see the package subtree — usually not what the operator wants.
+  const monorepoContext = await preflightMonorepoGuard({
+    cwd,
+    repoRoot,
+    mode,
+    skip: args.skipMonorepoGuard === true,
+    autoMonorepo: args.autoMonorepo ?? "abort",
+    warnings,
+  });
 
   // ── Phase 1: submodule pre-flight ──────────────────────────────────
   const submoduleSummary = await preflightSubmodules({
@@ -253,16 +307,17 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
       brand_setup: null,
       daemon_autostart: null,
       log_file_path: logFilePath,
+      monorepo_context: monorepoContext,
       submodules: submoduleSummary,
       warnings,
     };
   }
 
-  // ── Guided setup: fix each missing prerequisite ────────────────────
-  let envState = detection.environment;
-  if (mode === "interactive" && args.skipGuidedSetup !== true) {
-    envState = await runGuidedSetup({ envState, warnings, mode });
-  }
+  // ── Prerequisite state — derived from the discovery scan only. The
+  // pre-visual-overhaul "Guided setup" section that re-printed ✓ rows for
+  // each prereq was removed — the scanning section above is the sole place
+  // those checks appear.
+  const envState = detection.environment;
 
   // ── Init mapper (Tier 2 / Sonnet) — proposes pilot_module + project_globs.
   // Without this, project_globs.{route_handler,dto,generator_source,high_stakes}
@@ -516,6 +571,7 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     brand_setup: brandSetup,
     daemon_autostart: daemonAutostart,
     log_file_path: logFilePath,
+    monorepo_context: monorepoContext,
     submodules: submoduleSummary,
     warnings,
   };
@@ -538,107 +594,6 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
       );
     }
   }
-}
-
-/**
- * For each missing prerequisite, prompt the operator to fix it. Returns
- * the (possibly mutated) environment state.
- *
- * Order matters: claude → whisper → ollama → discord. Claude is the
- * hardest blocker (no Tier-1 calls without it); discord is the most
- * likely missing piece (operator hasn't pasted the bot token yet).
- */
-async function runGuidedSetup(args: {
-  envState: DetectionResult["environment"];
-  warnings: string[];
-  mode: PromptMode;
-}): Promise<DetectionResult["environment"]> {
-  const env = { ...args.envState };
-  header("Guided setup — fixing missing prerequisites");
-
-  // ── claude CLI: can't auto. ─────────────────────────────────────────
-  if (!env.claude_auth) {
-    info("");
-    info("✗ claude CLI is missing or unauthenticated.");
-    info("  Install:  https://docs.claude.com/claude-code");
-    info("  Then run: claude   (one-time interactive auth)");
-    const ack = await yesNo({
-      mode: args.mode,
-      prompt: "Continue without claude? (Tier-1+ LLM calls will fail.)",
-      defaultYes: false,
-    });
-    if (!ack) {
-      throw new Error(
-        "init aborted — operator declined to continue without claude",
-      );
-    }
-    args.warnings.push("claude CLI not available — Tier-1+ LLM calls will fail");
-  } else {
-    done("✓ claude CLI authenticated");
-  }
-
-  // ── whisper model. ──────────────────────────────────────────────────
-  if (!env.whisper_model) {
-    info("");
-    info("✗ whisper model not found at ~/.local/harness/models/.");
-    const action = await yesNo({
-      mode: args.mode,
-      prompt: "Download whisper model now (~800MB, ~2 min on fast wifi)?",
-      defaultYes: true,
-    });
-    if (action) {
-      const r = await downloadWhisperModel();
-      if (r.ok) {
-        env.whisper_model = true;
-        done("✓ whisper model downloaded");
-      } else {
-        args.warnings.push(`whisper download failed (${r.exit_code}) — re-run manually`);
-      }
-    } else {
-      args.warnings.push("whisper model not present — voice ingress disabled");
-    }
-  } else {
-    done("✓ whisper model present");
-  }
-
-  // ── ollama service. ─────────────────────────────────────────────────
-  if (!env.ollama_running) {
-    info("");
-    info("✗ ollama is not reachable on $OLLAMA_HOST (default http://localhost:11434).");
-    const action = await squareIntoSquareHole<"install" | "skip">({
-      mode: args.mode,
-      prompt: "Set up Ollama (Tier-0 classifier)?",
-      choices: [
-        { id: "install", label: "install via brew + pull llama3.2:3b", isDefault: true },
-        { id: "skip", label: "skip — Tier-0 falls back to regex" },
-      ],
-      auto: "skip",
-    });
-    if (action === "install") {
-      const installR = await offerInstallOllama();
-      if (installR.ok) done("✓ ollama installed");
-      else args.warnings.push(`brew install ollama failed (${installR.exit_code})`);
-      info("  starting ollama service in background — run `brew services start ollama`");
-      info("  then: ollama pull llama3.2:3b");
-      const pullR = await pullOllamaModel("llama3.2:3b");
-      if (pullR.ok) {
-        env.ollama_running = true;
-        done("✓ llama3.2:3b pulled");
-      } else {
-        args.warnings.push(
-          `ollama pull failed (${pullR.exit_code}) — start service then re-run`,
-        );
-      }
-    } else {
-      args.warnings.push("ollama skipped — Tier-0 uses regex fallback");
-    }
-  } else {
-    done("✓ ollama reachable");
-  }
-
-  // ── discord token + guild — silent skip per INIT_SPEC §3 single-confirm rule
-  // (warnings already pushed during printDiscovery — no prompt, no blocker).
-  return env;
 }
 
 function buildProjectOverlay(args: {
@@ -835,6 +790,64 @@ function redirectInitLogs(): string {
     // best-effort — falls through to whatever the default destination is.
     return path;
   }
+}
+
+interface PreflightMonorepoGuardArgs {
+  cwd: string;
+  repoRoot: string;
+  mode: PromptMode;
+  skip: boolean;
+  autoMonorepo: "continue" | "abort";
+  warnings: string[];
+}
+
+async function preflightMonorepoGuard(
+  args: PreflightMonorepoGuardArgs,
+): Promise<MonorepoContext | null> {
+  if (args.skip) return null;
+  // The guard applies only when the operator launched init at their cwd.
+  // When a different repoRoot is targeted (`--repo <path>`, smokes), the
+  // process.cwd() relationship to the workspace is irrelevant.
+  if (args.repoRoot !== args.cwd) return null;
+
+  const gitRoot = findGitRoot(args.cwd);
+  if (gitRoot === null) return null;
+  const ctx = detectMonorepoContext(args.cwd, gitRoot);
+  if (ctx === null) return null;
+
+  const relScope = relative(ctx.workspaceRoot, args.cwd) || ".";
+  info("");
+  info(`  ${visualC.yellow("⚠")}  You're inside a monorepo package.`);
+  info(
+    `     init from here will only analyse: ${visualC.bold(relScope + "/")}`,
+  );
+  info(
+    `     Monorepo root detected at:        ${visualC.dim(ctx.workspaceRoot)}`,
+  );
+  info("");
+  info("  Run from the monorepo root for full codebase analysis.");
+
+  const choice =
+    args.mode === "auto"
+      ? args.autoMonorepo === "continue"
+      : await yesNo({
+          mode: args.mode,
+          prompt: "Continue here anyway? (not recommended)",
+          defaultYes: false,
+        });
+
+  if (!choice) {
+    info("");
+    info(`  Aborted. To run from the workspace root:`);
+    info(`    cd ${ctx.workspaceRoot} && harness init`);
+    info("");
+    process.exit(1);
+  }
+
+  args.warnings.push(
+    `init ran from a monorepo sub-package (scope=${relScope}); workspace root at ${ctx.workspaceRoot} was bypassed. Re-run from there for full codebase analysis.`,
+  );
+  return ctx;
 }
 
 interface PreflightSubmodulesArgs {

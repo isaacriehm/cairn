@@ -178,6 +178,14 @@ Total new files (this session, excluding lockfile): 12.
   + devplusllc-harness-lens-0.0.0.vsix (gitignored artifact)
 BUILD_REPORT gaps closed: Gap 1 (scope rebuild), Gap 4 (gitignore audit confirmed correct), Gap 6 (cache content-hash). Gaps 2/3/5 are runtime/deployment concerns owned by harness-runtime — no state-layer change needed.
 
+## Fixes — duplicate prereqs section + monorepo guard + self-adoption guard [DONE 2026-05-04T06:50]
+Subagent attempts: 0 (inline)
+Compile: PASS (both packages); smoke-init PASS; self-adoption guard verified — `npx tsx harness/src/cli/index.ts init` from workspace root → ✗ message + exit 1; monorepo guard verified from harness/ subdir → prompt with default N + abort message.
+Notes:
+  Fix 1 — Removed runGuidedSetup() entirely. The "Guided setup — fixing missing prerequisites" header + `done("✓ claude / whisper / ollama …")` lines were dead duplicates of the discovery scanner. envState now derives directly from detection.environment.
+  Fix 2 — New init/preflight-guards.ts with detectMonorepoContext(startCwd, gitRoot) + findGitRoot(). Walks up from cwd; first ancestor with pnpm-workspace.yaml / yarn workspaces / lerna.json is the workspace root. Returns null when startCwd itself is a workspace root or no marker found. Init wires preflightMonorepoGuard() — gated to repoRoot === cwd so smokes / --repo invocations skip. Default-N prompt; on abort prints `cd <workspace> && harness init` then exit 1. On override: warning persists, monorepo_context surfaced in InitResult.
+  Fix 3 — isHarnessSourceRepo(repoRoot) checks all three markers (harness-build/, packages/harness-core/, pnpm-workspace.yaml). When repoRoot or cwd matches, prints ✗ block and process.exit(1) — Phase -1, before any other logic.
+
 ## Hotfix — Ctrl+C / Esc cancel during init [DONE 2026-05-04T06:35]
 Subagent attempts: 0 (inline)
 Compile: PASS (both packages); smoke-init PASS — auto mode does NOT install handlers (so smokes don't deadlock)
