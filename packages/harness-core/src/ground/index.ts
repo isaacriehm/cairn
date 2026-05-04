@@ -33,10 +33,16 @@ export type { QualityGradesOptions } from "./quality-grades.js";
 export {
   lookupScope,
   readScopeIndex,
+  rebuildScopeIndex,
   scopeIndexPath,
   writeScopeIndex,
 } from "./scope-index.js";
-export type { ScopeIndex, ScopeIndexEntry } from "./scope-index.js";
+export type {
+  RebuildScopeIndexOptions,
+  RebuildScopeIndexResult,
+  ScopeIndex,
+  ScopeIndexEntry,
+} from "./scope-index.js";
 export {
   Audience,
   ProvenanceFrontmatter,

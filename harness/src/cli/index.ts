@@ -8,6 +8,7 @@ import { installCli } from "./install.js";
 import { mcpCli } from "./mcp.js";
 import { mirrorCli } from "./mirror.js";
 import { runCli } from "./run.js";
+import { scopeCli } from "./scope.js";
 import { taskCli } from "./task.js";
 import { watchCli } from "./watch.js";
 
@@ -31,6 +32,9 @@ switch (subcommand) {
     break;
   case "gc":
     await gcCli(rest);
+    break;
+  case "scope":
+    await scopeCli(rest);
     break;
   case "hook":
     await hookCli(rest);
@@ -85,6 +89,8 @@ switch (subcommand) {
         "             (subcommands: serve)\n" +
         "  gc         garbage-collection passes against the canonical zone\n" +
         "             (subcommands: sweep | run)\n" +
+        "  scope      scope-index commands\n" +
+        "             (subcommands: rebuild [--repo <path>])\n" +
         "  hook       Claude Code hook runner (stdin = hook payload JSON)\n" +
         "             (subcommands: session-start | read-enrich | write-guard)\n" +
         "  status-line  print formatted status line for the daemon-maintained state file\n" +

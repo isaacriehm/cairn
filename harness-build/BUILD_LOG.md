@@ -106,3 +106,8 @@ Notes: `git ls-files packages/harness-core/templates/.claude/` shows only the on
 Subagent attempts: 0 (inline)
 Compile: PASS (both packages); smoke-read-enrich PASS (4 steps)
 Notes: ledger-cache.ts getScopeIndexEntry now keys on sha256 of first 512 bytes via node:crypto createHash. Added hashFilePrefix() helper using openSync/readSync for fixed-size partial read (avoids loading full file when only the digest matters). ScopeIndexCacheEntry.mtimeMs replaced by contentHash: string. Closes BUILD_REPORT Gap 6 (clock-skew stale cache).
+
+## Task A — harness scope rebuild command [DONE 2026-05-04T04:55]
+Subagent attempts: 0 (inline)
+Compile: PASS (both packages); CLI smokes: `harness scope` → usage; `harness scope rebuild --repo /no/such/dir` → error+exit2
+Notes: ground/scope-index.ts gains rebuildScopeIndex() that calls detectAll → buildRepoSummary → runClaude (sonnet tier) with the existing MAPPER_SYSTEM_PROMPT (extended to ask for scope_index per file). Coerces mapper-shape `unscoped: boolean` → ground-shape `unscoped: true` literal. Returns { path, filesClassified, mapperDurationMs, model }. New harness/src/cli/scope.ts dispatches to rebuildHandler. Root CLI usage gains `scope rebuild [--repo <path>]`. Closes BUILD_REPORT Gap 1.
