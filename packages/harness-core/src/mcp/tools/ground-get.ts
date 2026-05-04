@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { McpContext } from "../context.js";
 import {
@@ -82,14 +82,9 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
 
 function readDirShallow(dir: string): string[] {
   try {
-    return [
-      ...new Set(
-        require("node:fs")
-          .readdirSync(dir, { withFileTypes: true, encoding: "utf8" })
-          .filter((d: { isFile: () => boolean }) => d.isFile())
-          .map((d: { name: string }) => d.name),
-      ),
-    ] as string[];
+    return readdirSync(dir, { withFileTypes: true, encoding: "utf8" })
+      .filter((d) => d.isFile())
+      .map((d) => d.name);
   } catch {
     return [];
   }

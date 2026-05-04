@@ -67,7 +67,7 @@ export async function runGeneratorDrift(
       commit_message:
         `chore(gc): regenerate ${extractor.outputRelPath}\n\n` +
         `GC generator-drift pass — extractor \`${extractor.id}\` produces output that differs from on-disk.\n` +
-        `Auto-applied as safe-class per L16 (PRIMER §12.2).\n`,
+        `Auto-applied as safe-class per PRIMER §12.2.\n`,
       findings: [finding],
     });
   }

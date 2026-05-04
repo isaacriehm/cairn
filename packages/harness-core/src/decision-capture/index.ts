@@ -24,7 +24,7 @@ export type {
   RefinerOutput,
 } from "./types.js";
 
-export { allocateDecisionId } from "./id.js";
+export { allocateDecisionId, scanExistingDecisionIds } from "./id.js";
 export {
   DECISION_EXTRACTOR_SYSTEM_PROMPT,
   buildDecisionExtractorUserPrompt,

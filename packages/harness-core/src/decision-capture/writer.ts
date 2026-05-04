@@ -10,7 +10,7 @@
  *
  * `rejectDraft` removes the draft file entirely. The id remains burned —
  * `allocateDecisionId` always returns mark+1, so a rejected DEC-NNNN never
- * gets reissued (per L13.2 monotonic principle, applied to decisions).
+ * gets reissued (per monotonic-id principle, single source in decision-capture/id.ts).
  */
 
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
@@ -176,7 +176,7 @@ export function acceptDraft(args: {
 
 /**
  * Discard a draft. The DEC-id is NOT recycled — the allocator advances
- * past every existing DEC-NNNN.* file. Per L13.2 (monotonic ids), even
+ * past every existing DEC-NNNN.* file. Per the monotonic-id rule, even
  * rejected drafts burn their id, so we leave a tombstone at
  * `_inbox/<DEC-id>.rejected.md` rather than deleting outright. The
  * tombstone has `status: rejected` and is excluded from the ledger by

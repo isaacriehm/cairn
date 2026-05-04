@@ -81,9 +81,6 @@ importers:
       simple-git:
         specifier: ^3.36.0
         version: 3.36.0
-      smart-whisper:
-        specifier: ^0.8.1
-        version: 0.8.1
       yaml:
         specifier: ^2.8.4
         version: 2.8.4
@@ -100,6 +97,10 @@ importers:
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
+    optionalDependencies:
+      smart-whisper:
+        specifier: ^0.8.1
+        version: 0.8.1
 
   packages/harness-frontend-discord:
     dependencies:

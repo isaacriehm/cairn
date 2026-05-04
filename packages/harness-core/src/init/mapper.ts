@@ -7,8 +7,9 @@
  * generator-source-of-truth, what the high-stakes blast radius is. Those
  * answers are domain-specific and require an LLM that has read the project.
  *
- * Per `docs/INTEGRATION_PLAN.md` §16.2 line 471 + L37 + the rework brief
- * §3.1: this is the "deep mapper" promised by the docs. Without it, the
+ * Per `docs/ARCHITECTURE.md` §3.1 (init/) and the audit recommendation in
+ * `docs/_review/STATE_AUDIT_2026-05-04.md`: this is the "deep mapper"
+ * promised by the docs. Without it, the
  * orchestrator runs against a project it has never read — `project_globs.*`
  * sit empty, layered sensors (route-handler-non-empty / dto-no-fake-fields /
  * generator-drift) never trigger, and the harness produces vibe-coded slop.

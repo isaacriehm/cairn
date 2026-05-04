@@ -305,11 +305,24 @@ async function main(): Promise<void> {
     fail(`get_full decision: ${JSON.stringify(r.parsed)}`);
   }
 
-  header("Step 5: query_history — must return NOT_IMPLEMENTED");
+  header("Step 5: query_history — empty .archive/ returns historical_only with empty claims");
   r = await call(client, "harness_query_history", { scope: "anything" });
-  if (!r.isError) fail("query_history should return error envelope");
-  const errCode = (r.parsed as { error?: { code?: string } }).error?.code;
-  if (errCode !== "NOT_IMPLEMENTED") fail(`query_history wrong code: ${errCode}`);
+  if (r.isError) fail(`query_history (empty archive) should NOT error: ${JSON.stringify(r.parsed)}`);
+  const qhResult = r.parsed as {
+    historical_only?: boolean;
+    claims?: unknown[];
+    summary_caveat?: string;
+    summarizer_prompt_id?: string;
+  };
+  if (qhResult.historical_only !== true) {
+    fail(`query_history must return historical_only: true; got ${JSON.stringify(qhResult)}`);
+  }
+  if (!Array.isArray(qhResult.claims) || qhResult.claims.length !== 0) {
+    fail(`query_history empty-archive should return zero claims; got ${qhResult.claims?.length}`);
+  }
+  if (qhResult.summarizer_prompt_id !== "harness.history_summarize.v1") {
+    fail(`query_history must report version-locked prompt id; got ${qhResult.summarizer_prompt_id}`);
+  }
 
   header("Step 6: write tools");
   r = await call(client, "harness_append", {

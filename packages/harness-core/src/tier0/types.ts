@@ -1,5 +1,5 @@
 /**
- * Tier-0 classifier contract. Per L14 + L38: solo-dev cost-zero classification
+ * Tier-0 classifier contract. Per WORKFLOW_GUIDE §2 tier ladder: solo-dev cost-zero classification
  * via Ollama. Falls back to a regex matcher when Ollama is unreachable so
  * smoke tests + adapter pipelines stay green.
  */

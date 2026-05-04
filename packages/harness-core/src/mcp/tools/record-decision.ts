@@ -1,9 +1,13 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { stringify as stringifyYaml } from "yaml";
+import {
+  allocateDecisionId,
+  scanExistingDecisionIds,
+} from "../../decision-capture/index.js";
 import type { McpContext } from "../context.js";
-import { decisionsDir, parseFrontmatter } from "../../ground/index.js";
-import { DecisionAssertion, DecisionFrontmatter } from "../../ground/index.js";
+import { decisionsDir } from "../../ground/index.js";
+import { DecisionAssertion } from "../../ground/index.js";
 import { mcpError } from "../errors.js";
 import { recordDecisionInput } from "../schemas.js";
 import type { ToolDef } from "./types.js";
@@ -37,17 +41,8 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     }
   }
 
-  // Existing-id index — for ID allocation and DECISION_ID_TAKEN check.
-  const existingIds = new Set<string>();
-  for (const d of [dir, inboxDir]) {
-    if (!existsSync(d)) continue;
-    for (const e of readdirSync(d, { withFileTypes: true, encoding: "utf8" })) {
-      if (!e.isFile() || !e.name.endsWith(".md")) continue;
-      const fm = parseFrontmatter(readFileSync(join(d, e.name), "utf8")).frontmatter;
-      const parsed = DecisionFrontmatter.safeParse(fm);
-      if (parsed.success) existingIds.add(parsed.data.id);
-    }
-  }
+  // Existing-id index — single source via decision-capture/id.ts.
+  const existingIds = scanExistingDecisionIds(ctx.repoRoot);
 
   let id: string;
   if (input.id !== undefined) {
@@ -56,7 +51,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     }
     id = input.id;
   } else {
-    id = allocateNextId(existingIds);
+    id = allocateDecisionId(ctx.repoRoot, existingIds);
   }
 
   if (input.supersedes !== undefined && !existingIds.has(input.supersedes)) {
@@ -100,18 +95,6 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
       ? `.harness/ground/decisions/${filename}`
       : `.harness/ground/decisions/_inbox/${filename}`,
   };
-}
-
-function allocateNextId(existing: Set<string>): string {
-  let n = 0;
-  for (const id of existing) {
-    const m = id.match(/^DEC-(\d+)$/);
-    if (m?.[1]) {
-      const num = Number.parseInt(m[1], 10);
-      if (Number.isFinite(num) && num > n) n = num;
-    }
-  }
-  return `DEC-${String(n + 1).padStart(4, "0")}`;
 }
 
 export const recordDecisionTool: ToolDef<Input> = {

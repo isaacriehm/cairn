@@ -1,5 +1,23 @@
+/**
+ * harness_query_history — the only sanctioned read path into .archive/.
+ *
+ * Walks .archive/ matching path_hint + date window, runs a Tier-1 (Haiku)
+ * summarizer over the matched files, returns structured per-claim
+ * records with source citations and supersedes-tags. The agent never
+ * sees raw stale content — only the summary.
+ *
+ * Per MCP_SURFACE.md §"harness_query_history". Implementation lives in
+ * src/mcp/history/.
+ */
+
 import type { McpContext } from "../context.js";
 import { mcpError } from "../errors.js";
+import {
+  isQuotaKind,
+  ClaudeError,
+  classifyClaudeError,
+} from "../../claude/index.js";
+import { runQueryHistory } from "../history/summarizer.js";
 import { queryHistoryInput } from "../schemas.js";
 import type { ToolDef } from "./types.js";
 
@@ -10,39 +28,48 @@ interface Input {
   until?: string;
 }
 
-/**
- * NOT IMPLEMENTED. Phase 4 baseline placeholder.
- *
- * Per MCP_SURFACE.md §"harness_query_history", the real implementation must:
- *   1. Walk .archive/** matching path_hint and date window.
- *   2. Run a Tier-1 LLM summarization over the matched files.
- *   3. Return per-claim records carrying source_path, source_lines, as_of,
- *      superseded_by, currently_canonical_pointer, and the summary_caveat.
- *
- * The LLM call requires the harness's frontend-adapter / model-registry
- * scaffolding, which lands in Phase 5+. Until then this tool returns a
- * structured NOT_IMPLEMENTED error envelope so callers don't accidentally
- * consume a malformed payload.
- *
- * Returning an error from this tool is safer than returning raw archive
- * content — the entire point of the surface is to keep raw stale content
- * out of agent context windows.
- */
-async function handler(_ctx: McpContext, input: Input): Promise<unknown> {
-  return mcpError(
-    "NOT_IMPLEMENTED",
-    "harness_query_history awaits Tier-1 LLM integration (Phase 5+). Until then, all archive reads are denied; callers must wait or use harness_decision_get / harness_canonical_for_topic for current-canonical-only access.",
-    {
-      requested_scope: input.scope,
-      ...(input.path_hint !== undefined ? { requested_path_hint: input.path_hint } : {}),
-    },
-  );
+async function handler(ctx: McpContext, input: Input): Promise<unknown> {
+  try {
+    const args: Parameters<typeof runQueryHistory>[0] = {
+      repoRoot: ctx.repoRoot,
+      scope: input.scope,
+    };
+    if (input.path_hint !== undefined) args.pathHint = input.path_hint;
+    if (input.since !== undefined) args.since = input.since;
+    if (input.until !== undefined) args.until = input.until;
+    return await runQueryHistory(args);
+  } catch (err) {
+    if (err instanceof ClaudeError) {
+      if (isQuotaKind(err.kind)) {
+        return mcpError(
+          "DAEMON_UNAVAILABLE",
+          `history summarizer quota / rate-limit issue: ${err.message}`,
+          { kind: err.kind, exit_code: err.exitCode ?? null },
+        );
+      }
+      return mcpError(
+        "OPERATION_TIMEOUT",
+        `history summarizer call failed: ${err.message}`,
+        { kind: err.kind, exit_code: err.exitCode ?? null },
+      );
+    }
+    const kind = classifyClaudeError({
+      message: err instanceof Error ? err.message : String(err),
+      exitCode: null,
+      stderr: "",
+    });
+    return mcpError(
+      "OPERATION_TIMEOUT",
+      `history summarizer threw: ${err instanceof Error ? err.message : String(err)}`,
+      { kind },
+    );
+  }
 }
 
 export const queryHistoryTool: ToolDef<Input> = {
   name: "harness_query_history",
   description:
-    "Summarized historical claims from .archive/ via Tier-1 LLM. Currently NOT_IMPLEMENTED — awaits Phase 5 model integration.",
+    "Returns summarized historical claims from .archive/ via Tier-1 LLM. Walks the archive by path_hint + since/until, summarizes per-claim with source citations and supersedes-tags. Raw archive content never enters agent context — only the structured summary does. The only sanctioned path into .archive/.",
   inputSchema: queryHistoryInput,
   handler,
 };

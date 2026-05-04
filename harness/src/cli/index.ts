@@ -2,6 +2,7 @@
 import { VERSION } from "../index.js";
 import { daemonCli } from "./daemon.js";
 import { gcCli } from "./gc.js";
+import { hookCli } from "./hook.js";
 import { initCli } from "./init.js";
 import { installCli } from "./install.js";
 import { mcpCli } from "./mcp.js";
@@ -30,6 +31,9 @@ switch (subcommand) {
     break;
   case "gc":
     await gcCli(rest);
+    break;
+  case "hook":
+    await hookCli(rest);
     break;
   case "task":
     await taskCli(rest);
@@ -64,7 +68,9 @@ switch (subcommand) {
         "  mcp        MCP server (stdio transport)\n" +
         "             (subcommands: serve)\n" +
         "  gc         garbage-collection passes against the canonical zone\n" +
-        "             (subcommands: sweep | run)",
+        "             (subcommands: sweep | run)\n" +
+        "  hook       Claude Code hook runner (stdin = hook payload JSON)\n" +
+        "             (subcommands: session-start)",
     );
     process.exit(subcommand ? 2 : 1);
 }

@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import type { McpContext } from "../context.js";
 import {
@@ -172,7 +172,6 @@ function walkDocs(dir: string, repoRoot: string, q: string, out: ResultRecord[])
       }
     }
   }
-  void statSync;
 }
 
 export const searchTool: ToolDef<Input> = {

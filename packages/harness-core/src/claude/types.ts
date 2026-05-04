@@ -1,7 +1,7 @@
 /**
  * Subprocess wrapper for the `claude` CLI.
  *
- * Per L42 + operator answer T1: every Tier-1/2/3 LLM call goes through the
+ * Per WORKFLOW_GUIDE §2.2 budget metric (operator answer T1): every Tier-1/2/3 LLM call goes through the
  * operator's Claude Code coding-plan subscription via `claude --print
  * --model <tier> --output-format json`. No direct Anthropic SDK calls.
  *

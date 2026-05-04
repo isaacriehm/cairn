@@ -1,0 +1,558 @@
+/**
+ * `buildSessionStartContext` — composes the SessionStart payload from
+ * a harness-adopted repo's state. Read-only; no side effects beyond
+ * filesystem reads.
+ */
+
+import { type Dirent, existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { parse as parseYaml } from "yaml";
+import {
+  buildDecisionsLedger,
+  buildInvariantsLedger,
+  parseFrontmatter,
+} from "../ground/index.js";
+import {
+  SESSION_START_HEADER,
+  TOOL_QUICK_REFERENCE,
+  TWO_ZONE_REMINDER_BASE,
+} from "./templates.js";
+
+export type SessionStartSource = "startup" | "resume" | "clear" | "compact" | string;
+
+export type SessionStartSection =
+  | "header"
+  | "two_zone_reminder"
+  | "decisions_in_scope"
+  | "invariants_active"
+  | "current_task"
+  | "quality_grades_tail"
+  | "pending_drafts"
+  | "tool_quick_reference";
+
+export interface BuildSessionStartContextArgs {
+  /** Resolved repo root (the dir containing `.harness/`). */
+  repoRoot: string;
+  /** Optional cwd-relative subdir for narrowing decisions/invariants scope. */
+  scopeRelPath?: string;
+  /** Hook source per Claude Code SessionStart payload. */
+  source?: SessionStartSource;
+  /** Total char cap. Default 12000 (~3K tokens). */
+  maxChars?: number;
+  /** When false, omits the MCP tool quick-reference (e.g. when MCP is unregistered). */
+  includeToolReference?: boolean;
+  /**
+   * When true (default), the two-zone reminder cites
+   * harness_query_history as the escape valve for archive reads. Set
+   * false to omit the reminder line about query_history (e.g. for
+   * adopters who haven't enabled the MCP server).
+   */
+  queryHistoryAvailable?: boolean;
+}
+
+export interface BuildSessionStartContextResult {
+  /** Final assembled `additionalContext` string. */
+  additionalContext: string;
+  /** Sections that survived truncation, in render order. */
+  sectionsRendered: SessionStartSection[];
+  /** Sections that were dropped due to budget. */
+  sectionsDropped: SessionStartSection[];
+  /** Char count of the final string. */
+  totalChars: number;
+  /** Diagnostic counts for telemetry. */
+  counts: {
+    decisions: number;
+    invariants: number;
+    pendingDrafts: number;
+    qualityGrades: number;
+    activeTasks: number;
+  };
+  /** Soft warnings (e.g. malformed frontmatter). Logged, not blocking. */
+  warnings: string[];
+}
+
+const DEFAULT_MAX_CHARS = 12_000;
+const DECISIONS_CAP = 15;
+const INVARIANTS_CAP = 10;
+const DRAFTS_CAP = 5;
+const QUALITY_TAIL_CAP = 3;
+const TASK_BODY_CAP = 800;
+
+/**
+ * Walk up from `cwd` looking for a `.harness/` directory. Returns the
+ * dir containing it (the repo root) or null if none found within 12
+ * ancestors.
+ */
+export function resolveRepoRoot(cwd: string): string | null {
+  let dir = resolve(cwd);
+  for (let i = 0; i < 12; i++) {
+    if (existsSync(join(dir, ".harness")) && statSync(join(dir, ".harness")).isDirectory()) {
+      return dir;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+  return null;
+}
+
+export function buildSessionStartContext(
+  args: BuildSessionStartContextArgs,
+): BuildSessionStartContextResult {
+  const maxChars = args.maxChars ?? DEFAULT_MAX_CHARS;
+  const includeToolReference = args.includeToolReference !== false;
+  const queryHistoryAvailable = args.queryHistoryAvailable !== false;
+  const warnings: string[] = [];
+
+  const counts: BuildSessionStartContextResult["counts"] = {
+    decisions: 0,
+    invariants: 0,
+    pendingDrafts: 0,
+    qualityGrades: 0,
+    activeTasks: 0,
+  };
+
+  const sectionsRendered: SessionStartSection[] = [];
+  const sectionsDropped: SessionStartSection[] = [];
+
+  const fixedHeader = SESSION_START_HEADER;
+  const fixedTwoZone = composeTwoZoneReminder(queryHistoryAvailable);
+  const fixedToolReference = TOOL_QUICK_REFERENCE;
+
+  // ── Section 2 — decisions in scope ─────────────────────────────────
+  const decisionEntries = safeBuildDecisionsLedger(args.repoRoot, warnings);
+  counts.decisions = decisionEntries.length;
+  const filteredDecisions = filterDecisionsToScope(decisionEntries, args.scopeRelPath);
+  const decisionsSection = renderDecisionsSection(filteredDecisions);
+
+  // ── Section 3 — invariants active ──────────────────────────────────
+  const invariantEntries = safeBuildInvariantsLedger(args.repoRoot, warnings);
+  counts.invariants = invariantEntries.length;
+  const decisionScopeById = scopeMapFromDecisions(decisionEntries);
+  const filteredInvariants = filterInvariantsToScope(
+    invariantEntries,
+    decisionScopeById,
+    args.scopeRelPath,
+  );
+  const invariantsSection = renderInvariantsSection(filteredInvariants);
+
+  // ── Section 4 — current task ───────────────────────────────────────
+  const tasks = listActiveTasks(args.repoRoot);
+  counts.activeTasks = tasks.length;
+  const currentTaskSection = renderCurrentTaskSection(args.repoRoot, tasks);
+
+  // ── Section 5 — quality grades ─────────────────────────────────────
+  const grades = readQualityGrades(args.repoRoot, warnings);
+  counts.qualityGrades = grades.length;
+  const qualityGradesSection = renderQualityGradesSection(grades);
+
+  // ── Section 6 — pending drafts ─────────────────────────────────────
+  const drafts = listPendingDrafts(args.repoRoot, warnings);
+  counts.pendingDrafts = drafts.length;
+  const pendingDraftsSection = renderPendingDraftsSection(drafts);
+
+  // Truncation strategy per spec: always include 1 + 7; then 4, 2, 3,
+  // 6, 5; drop in reverse order if over cap.
+  const orderedSections: { id: SessionStartSection; body: string }[] = [];
+  orderedSections.push({ id: "header", body: fixedHeader });
+  orderedSections.push({ id: "two_zone_reminder", body: fixedTwoZone });
+  if (includeToolReference) {
+    orderedSections.push({ id: "tool_quick_reference", body: fixedToolReference });
+  } else {
+    sectionsDropped.push("tool_quick_reference");
+  }
+  if (currentTaskSection !== null) {
+    orderedSections.push({ id: "current_task", body: currentTaskSection });
+  }
+  if (decisionsSection !== null) {
+    orderedSections.push({ id: "decisions_in_scope", body: decisionsSection });
+  }
+  if (invariantsSection !== null) {
+    orderedSections.push({ id: "invariants_active", body: invariantsSection });
+  }
+  if (pendingDraftsSection !== null) {
+    orderedSections.push({ id: "pending_drafts", body: pendingDraftsSection });
+  }
+  if (qualityGradesSection !== null) {
+    orderedSections.push({ id: "quality_grades_tail", body: qualityGradesSection });
+  }
+
+  // Greedy fill within budget; dropping in reverse order lets us keep
+  // the load-bearing sections (header / reminder / tools) while
+  // shedding optional context first.
+  const dropPriority: SessionStartSection[] = [
+    "quality_grades_tail",
+    "pending_drafts",
+    "invariants_active",
+    "decisions_in_scope",
+    "current_task",
+    "tool_quick_reference",
+    "two_zone_reminder",
+    "header",
+  ];
+
+  let kept = orderedSections.slice();
+  while (computeTotalChars(kept) > maxChars && kept.length > 0) {
+    let dropped = false;
+    for (const candidate of dropPriority) {
+      const idx = kept.findIndex((s) => s.id === candidate);
+      if (idx !== -1) {
+        sectionsDropped.push(candidate);
+        kept.splice(idx, 1);
+        dropped = true;
+        break;
+      }
+    }
+    if (!dropped) break;
+  }
+
+  for (const s of kept) sectionsRendered.push(s.id);
+  // Anything in orderedSections that ended up not in `kept` is in
+  // sectionsDropped above; deduplicate while preserving order.
+  const seenDropped = new Set<SessionStartSection>(sectionsDropped);
+  for (const s of orderedSections) {
+    if (!sectionsRendered.includes(s.id) && !seenDropped.has(s.id)) {
+      sectionsDropped.push(s.id);
+      seenDropped.add(s.id);
+    }
+  }
+
+  const additionalContext = kept.map((s) => s.body).join("\n\n");
+  return {
+    additionalContext,
+    sectionsRendered,
+    sectionsDropped,
+    totalChars: additionalContext.length,
+    counts,
+    warnings,
+  };
+}
+
+function composeTwoZoneReminder(queryHistoryAvailable: boolean): string {
+  if (queryHistoryAvailable) return TWO_ZONE_REMINDER_BASE;
+  return `${TWO_ZONE_REMINDER_BASE}
+
+NOTE: harness_query_history is not registered in this project's MCP
+configuration; archive reads are unreachable. Use harness_decision_get
+or harness_canonical_for_topic for current-canonical access only.`;
+}
+
+function computeTotalChars(sections: { body: string }[]): number {
+  return sections.reduce((sum, s) => sum + s.body.length + 2, 0);
+}
+
+interface DecisionEntry {
+  id: string;
+  title: string;
+  status: string;
+  scope_globs?: string[];
+  supersedes?: string | null;
+  superseded_by?: string | null;
+}
+
+function safeBuildDecisionsLedger(repoRoot: string, warnings: string[]): DecisionEntry[] {
+  try {
+    return buildDecisionsLedger({ repoRoot }) as DecisionEntry[];
+  } catch (err) {
+    warnings.push(`decisions ledger read failed: ${err instanceof Error ? err.message : String(err)}`);
+    return [];
+  }
+}
+
+interface InvariantEntry {
+  id: string;
+  title: string;
+  status: string;
+  source_decision?: string | null;
+}
+
+function safeBuildInvariantsLedger(repoRoot: string, warnings: string[]): InvariantEntry[] {
+  try {
+    return buildInvariantsLedger({ repoRoot }) as InvariantEntry[];
+  } catch (err) {
+    warnings.push(`invariants ledger read failed: ${err instanceof Error ? err.message : String(err)}`);
+    return [];
+  }
+}
+
+function scopeMapFromDecisions(decisions: DecisionEntry[]): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const d of decisions) {
+    if (d.scope_globs && d.scope_globs.length > 0) out.set(d.id, d.scope_globs);
+  }
+  return out;
+}
+
+function filterDecisionsToScope(
+  decisions: DecisionEntry[],
+  scopeRelPath: string | undefined,
+): DecisionEntry[] {
+  if (!scopeRelPath || scopeRelPath.length === 0 || scopeRelPath === ".") return decisions;
+  const filtered = decisions.filter((d) => {
+    const globs = d.scope_globs ?? [];
+    if (globs.length === 0) return true;
+    return globs.some((g) => relPathOverlapsGlob(scopeRelPath, g));
+  });
+  return filtered.length > 0 ? filtered : decisions;
+}
+
+function filterInvariantsToScope(
+  invariants: InvariantEntry[],
+  decisionScopeById: Map<string, string[]>,
+  scopeRelPath: string | undefined,
+): InvariantEntry[] {
+  if (!scopeRelPath || scopeRelPath.length === 0 || scopeRelPath === ".") return invariants;
+  const filtered = invariants.filter((inv) => {
+    if (!inv.source_decision) return true;
+    const globs = decisionScopeById.get(inv.source_decision);
+    if (!globs || globs.length === 0) return true;
+    return globs.some((g) => relPathOverlapsGlob(scopeRelPath, g));
+  });
+  return filtered.length > 0 ? filtered : invariants;
+}
+
+function relPathOverlapsGlob(relPath: string, glob: string): boolean {
+  const globPrefix = glob.replace(/\*\*.*$/, "").replace(/\*+$/, "");
+  if (globPrefix.length === 0) return true;
+  return relPath.startsWith(globPrefix) || globPrefix.startsWith(relPath);
+}
+
+function renderDecisionsSection(decisions: DecisionEntry[]): string | null {
+  if (decisions.length === 0) return null;
+  const lines: string[] = [];
+  lines.push(`## Decisions in scope (${decisions.length} accepted)`);
+  lines.push("");
+  const slice = decisions.slice(0, DECISIONS_CAP);
+  for (const d of slice) {
+    const scope = d.scope_globs && d.scope_globs.length > 0 ? d.scope_globs.join(", ") : "(no scope)";
+    const supersedes = d.supersedes ? d.supersedes : "—";
+    lines.push(`- **${d.id}** — ${d.title}`);
+    lines.push(`  status: ${d.status}; scope: ${scope}; supersedes: ${supersedes}`);
+  }
+  if (decisions.length > DECISIONS_CAP) {
+    lines.push(
+      `…${decisions.length - DECISIONS_CAP} additional decision${decisions.length - DECISIONS_CAP === 1 ? "" : "s"} — call \`harness_decisions_in_scope(globs[])\` for the rest.`,
+    );
+  }
+  return lines.join("\n");
+}
+
+function renderInvariantsSection(invariants: InvariantEntry[]): string | null {
+  if (invariants.length === 0) return null;
+  const lines: string[] = [];
+  lines.push(`## §V invariants active (${invariants.length})`);
+  lines.push("");
+  const slice = invariants.slice(0, INVARIANTS_CAP);
+  for (const inv of slice) {
+    lines.push(
+      `- **${inv.id}** — ${inv.title}  source_decision: ${inv.source_decision ?? "(none)"}`,
+    );
+  }
+  if (invariants.length > INVARIANTS_CAP) {
+    lines.push(
+      `…${invariants.length - INVARIANTS_CAP} additional — call \`harness_invariants_in_scope(globs[])\`.`,
+    );
+  }
+  return lines.join("\n");
+}
+
+interface ActiveTask {
+  id: string;
+  specPath: string;
+  specBody: string;
+  status: string | null;
+  mtime: number;
+}
+
+function listActiveTasks(repoRoot: string): ActiveTask[] {
+  const dir = join(repoRoot, ".harness", "tasks", "active");
+  if (!existsSync(dir)) return [];
+  let entries: Dirent[];
+  try {
+    entries = readdirSync(dir, { withFileTypes: true, encoding: "utf8" });
+  } catch {
+    return [];
+  }
+  const out: ActiveTask[] = [];
+  for (const e of entries) {
+    if (!e.isDirectory()) continue;
+    const candidates = [
+      join(dir, e.name, "spec.tightened.md"),
+      join(dir, e.name, "spec.md"),
+    ];
+    let target: string | null = null;
+    for (const c of candidates) {
+      if (existsSync(c)) {
+        target = c;
+        break;
+      }
+    }
+    if (!target) continue;
+    let text = "";
+    let mtime = 0;
+    try {
+      text = readFileSync(target, "utf8");
+      mtime = statSync(target).mtimeMs;
+    } catch {
+      continue;
+    }
+    const parsed = parseFrontmatter(text);
+    const fm = (parsed.frontmatter ?? {}) as Record<string, unknown>;
+    const status = typeof fm["status"] === "string" ? (fm["status"] as string) : null;
+    out.push({
+      id: e.name,
+      specPath: target.startsWith(repoRoot) ? target.slice(repoRoot.length + 1) : target,
+      specBody: parsed.body,
+      status,
+      mtime,
+    });
+  }
+  out.sort((a, b) => b.mtime - a.mtime);
+  return out;
+}
+
+function renderCurrentTaskSection(_repoRoot: string, tasks: ActiveTask[]): string | null {
+  if (tasks.length === 0) return null;
+  const lines: string[] = [];
+  if (tasks.length === 1) {
+    const t = tasks[0];
+    if (t === undefined) return null;
+    lines.push("## Current task");
+    lines.push("");
+    lines.push(`ID: ${t.id}`);
+    if (t.status !== null) lines.push(`Status: ${t.status}`);
+    lines.push(`Path: ${t.specPath.replace(/\\/g, "/")}`);
+    lines.push("");
+    const body = t.specBody.trim();
+    const cap =
+      body.length > TASK_BODY_CAP
+        ? `${body.slice(0, TASK_BODY_CAP).trimEnd()}\n…[truncated; full spec via harness_get_full({id, kind:"task"})]`
+        : body;
+    lines.push(cap);
+    return lines.join("\n");
+  }
+  lines.push(`## Active tasks (${tasks.length})`);
+  lines.push("");
+  for (const t of tasks.slice(0, 8)) {
+    const titleMatch = t.specBody.match(/^#\s+(.+)$/m);
+    const title = titleMatch?.[1] ?? t.id;
+    lines.push(`- **${t.id}** — ${title}  status: ${t.status ?? "(unknown)"}`);
+  }
+  if (tasks.length > 8) lines.push(`…${tasks.length - 8} more.`);
+  lines.push("");
+  lines.push("Multiple active tasks; call `harness_get_full({id, kind:\"task\"})` to read any.");
+  return lines.join("\n");
+}
+
+interface QualityGrade {
+  module: string;
+  score: number;
+  pass_rate: number;
+  drift_count: number;
+}
+
+function readQualityGrades(repoRoot: string, warnings: string[]): QualityGrade[] {
+  const path = join(repoRoot, ".harness", "ground", "quality-grades.yaml");
+  if (!existsSync(path)) return [];
+  let parsed: unknown;
+  try {
+    parsed = parseYaml(readFileSync(path, "utf8"));
+  } catch (err) {
+    warnings.push(`quality-grades.yaml unparseable: ${err instanceof Error ? err.message : String(err)}`);
+    return [];
+  }
+  if (typeof parsed !== "object" || parsed === null) return [];
+  const modulesRaw = (parsed as { modules?: unknown }).modules;
+  if (!Array.isArray(modulesRaw)) return [];
+  const out: QualityGrade[] = [];
+  for (const m of modulesRaw) {
+    if (typeof m !== "object" || m === null) continue;
+    const mm = m as Record<string, unknown>;
+    if (typeof mm["module"] !== "string") continue;
+    if (typeof mm["score"] !== "number") continue;
+    out.push({
+      module: mm["module"],
+      score: mm["score"],
+      pass_rate: typeof mm["pass_rate"] === "number" ? mm["pass_rate"] : 0,
+      drift_count: typeof mm["drift_count"] === "number" ? mm["drift_count"] : 0,
+    });
+  }
+  out.sort((a, b) => a.score - b.score);
+  return out;
+}
+
+function renderQualityGradesSection(grades: QualityGrade[]): string | null {
+  if (grades.length === 0) return null;
+  const tail = grades.slice(0, QUALITY_TAIL_CAP);
+  const lines: string[] = [];
+  lines.push(`## Quality grades — weakest module${tail.length === 1 ? "" : "s"}`);
+  lines.push("");
+  for (const g of tail) {
+    lines.push(
+      `- ${g.module}: score ${g.score}/100, pass_rate ${g.pass_rate.toFixed(2)}, drift_count ${g.drift_count}`,
+    );
+  }
+  return lines.join("\n");
+}
+
+interface DraftEntry {
+  id: string;
+  title: string;
+  capture_source: string | null;
+  decided_at: string | null;
+}
+
+function listPendingDrafts(repoRoot: string, warnings: string[]): DraftEntry[] {
+  const dir = join(repoRoot, ".harness", "ground", "decisions", "_inbox");
+  if (!existsSync(dir)) return [];
+  let entries: Dirent[];
+  try {
+    entries = readdirSync(dir, { withFileTypes: true, encoding: "utf8" });
+  } catch {
+    return [];
+  }
+  const out: DraftEntry[] = [];
+  for (const e of entries) {
+    if (!e.isFile()) continue;
+    if (!e.name.endsWith(".draft.md")) continue;
+    const abs = join(dir, e.name);
+    let text: string;
+    try {
+      text = readFileSync(abs, "utf8");
+    } catch (err) {
+      warnings.push(`draft ${e.name} unreadable: ${err instanceof Error ? err.message : String(err)}`);
+      continue;
+    }
+    const parsed = parseFrontmatter(text);
+    const fm = (parsed.frontmatter ?? {}) as Record<string, unknown>;
+    const id = typeof fm["id"] === "string" ? (fm["id"] as string) : e.name.replace(/\.draft\.md$/, "");
+    const title = typeof fm["title"] === "string" ? (fm["title"] as string) : "(untitled draft)";
+    const captureSource = typeof fm["capture_source"] === "string" ? (fm["capture_source"] as string) : null;
+    const decidedAt = typeof fm["decided_at"] === "string" ? (fm["decided_at"] as string) : null;
+    out.push({ id, title, capture_source: captureSource, decided_at: decidedAt });
+  }
+  out.sort((a, b) => a.id.localeCompare(b.id));
+  return out;
+}
+
+function renderPendingDraftsSection(drafts: DraftEntry[]): string | null {
+  if (drafts.length === 0) return null;
+  const lines: string[] = [];
+  lines.push(`## Decision drafts pending operator confirm (${drafts.length})`);
+  lines.push("");
+  const slice = drafts.slice(0, DRAFTS_CAP);
+  for (const d of slice) {
+    const meta: string[] = [];
+    if (d.capture_source) meta.push(`capture_source: ${d.capture_source}`);
+    if (d.decided_at) meta.push(`received: ${d.decided_at}`);
+    lines.push(`- **${d.id}** (draft) — ${d.title}${meta.length > 0 ? `; ${meta.join("; ")}` : ""}`);
+  }
+  if (drafts.length > DRAFTS_CAP) {
+    lines.push(`…${drafts.length - DRAFTS_CAP} more in _inbox/.`);
+  }
+  lines.push("");
+  lines.push(
+    "These have been captured but not committed. The operator has not yet confirmed 🟢. Until they do, do not assume their content is binding.",
+  );
+  return lines.join("\n");
+}

@@ -1,13 +1,14 @@
 ---
 type: uat-pipeline
-status: draft-v2
+status: needs-revision
 audience: dual
 generated: 2026-05-02
+verified-at: 2026-05-03
 depends-on:
-  - PRIMER.md (§9 + §10 Layer U)
+  - PRIMER.md (§5 Layer U)
   - FILESYSTEM_LAYOUT.md (run artifacts)
-  - WORKFLOW_GUIDE.md (operator surfaces)
   - MCP_SURFACE.md (evidence-file surface)
+revision-note: Adapter-specific rendering sections (§5.2 Discord, §5.3 Notion) are stale — those are now frontend-adapter concerns. Core pipeline (§0–§4, §6) is current.
 ---
 
 # UAT Pipeline — Click-button-confirm UX
