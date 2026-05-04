@@ -10,9 +10,9 @@
  * SKIPS when the `claude` CLI is missing or not authenticated.
  */
 
-import { claudeIsAvailable } from "../src/claude/index.js";
-import { runReviewer } from "../src/reviewer/index.js";
-import type { DiffEntry } from "../src/sensors/index.js";
+import { claudeIsAvailable } from "@isaacriehm/harness-core";
+import { runReviewer } from "@isaacriehm/harness-runtime";
+import type { DiffEntry } from "@isaacriehm/harness-core";
 
 function header(line: string): void {
   console.log(`\n── ${line}`);

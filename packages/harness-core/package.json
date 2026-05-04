@@ -29,6 +29,8 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "chokidar": "^4.0.1",
     "pino": "^9.5.0",
+    "simple-git": "^3.36.0",
+    "smart-whisper": "^0.8.1",
     "yaml": "^2.8.4",
     "zod": "^4.4.2"
   },

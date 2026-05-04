@@ -13,7 +13,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { simpleGit } from "simple-git";
-import { ensureMirror, normalizeProjectName } from "../src/mirror/index.js";
+import { ensureMirror, normalizeProjectName } from "@isaacriehm/harness-core";
 
 interface PackageJson {
   name?: string;

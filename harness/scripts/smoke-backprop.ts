@@ -38,7 +38,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { claudeIsAvailable } from "../src/claude/index.js";
+import { claudeIsAvailable } from "@isaacriehm/harness-core";
 import {
   BACKPROP_OUTPUT_SCHEMA,
   BACKPROP_SYSTEM_PROMPT,
@@ -47,8 +47,8 @@ import {
   runBackprop,
   writeInvariantArtifacts,
   type BackpropOutput,
-} from "../src/backprop/index.js";
-import type { DiffEntry } from "../src/sensors/index.js";
+} from "@isaacriehm/harness-runtime";
+import type { DiffEntry } from "@isaacriehm/harness-core";
 
 const cleanups: string[] = [];
 

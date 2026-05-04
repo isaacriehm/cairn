@@ -34,10 +34,10 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import { ensureMirror, mirrorPath, mirrorRecordPath } from "../src/mirror/index.js";
-import { Orchestrator } from "../src/orchestrator/index.js";
-import { StubFrontendAdapter } from "../src/frontend/stub/index.js";
-import type { Approval, DialogResponse, SlashEvent } from "../src/frontend/types.js";
+import { ensureMirror, mirrorPath, mirrorRecordPath } from "@isaacriehm/harness-core";
+import { Orchestrator } from "@isaacriehm/harness-runtime";
+import { StubFrontendAdapter } from "@isaacriehm/harness-frontend-stub";
+import type { Approval, DialogResponse, SlashEvent } from "@isaacriehm/harness-core";
 
 const projectName = `smoke_steer_${Date.now()}`;
 let cleanupPaths: string[] = [];

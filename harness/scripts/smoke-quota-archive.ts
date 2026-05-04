@@ -29,15 +29,15 @@ import {
   ensureMirror,
   mirrorPath,
   mirrorRecordPath,
-} from "../src/mirror/index.js";
-import { Orchestrator } from "../src/orchestrator/index.js";
-import { StubFrontendAdapter } from "../src/frontend/stub/index.js";
+} from "@isaacriehm/harness-core";
+import { Orchestrator } from "@isaacriehm/harness-runtime";
+import { StubFrontendAdapter } from "@isaacriehm/harness-frontend-stub";
 import {
   classifyClaudeError,
   isQuotaKind,
-} from "../src/claude/error.js";
-import type { ClaudeErrorKind } from "../src/claude/error.js";
-import type { SlashEvent } from "../src/frontend/types.js";
+} from "@isaacriehm/harness-core";
+import type { ClaudeErrorKind } from "@isaacriehm/harness-core";
+import type { SlashEvent } from "@isaacriehm/harness-core";
 
 const projectName = `smoke_qa_${Date.now()}`;
 const cleanupPaths: string[] = [];

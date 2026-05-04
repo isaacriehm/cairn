@@ -16,6 +16,14 @@ revision-trigger: When QUESTIONS.md residual items are answered, regenerate the 
 
 # Integration Plan — Cairn for sample-project., portable to any project
 
+> **Superseded framing (2026-05-04):** Sections that describe Cairn as a single
+> `@isaacriehm/harness` package are historical. The product is now four
+> workspace packages (`harness-core`, `harness-runtime`,
+> `harness-frontend-discord`, `harness-frontend-stub`) plus the umbrella
+> `harness` re-export. See [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) for the
+> locked layered model. The phase plan below remains accurate as a record of
+> what was built and in what order, but the package boundary is wrong.
+
 ## 0. Goal
 
 Build a Symphony-shaped harness as a **generic monorepo workspace package** (`@isaacriehm/harness`) plus an in-repo `.harness/` configuration directory. Sample project is the proving ground; the package extracts cleanly to any other project via `npx @isaacriehm/harness init <repo-dir>`.

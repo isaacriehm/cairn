@@ -23,9 +23,9 @@ import {
   invariantsLedgerPath,
   manifestPath,
   qualityGradesPath,
-} from "../src/ground/index.js";
-import type { DecisionLedgerEntry, Manifest } from "../src/ground/index.js";
-import { startDaemon } from "../src/watch/index.js";
+} from "@isaacriehm/harness-core";
+import type { DecisionLedgerEntry, Manifest } from "@isaacriehm/harness-core";
+import { startDaemon } from "@isaacriehm/harness-runtime";
 
 const projectName = `smoke_watch_${Date.now()}`;
 let cleanupPaths: string[] = [];

@@ -37,7 +37,7 @@ import {
   writeEvidenceFile,
   writeSummary,
   type UatSummary,
-} from "../src/uat/index.js";
+} from "@isaacriehm/harness-runtime";
 
 const cleanups: string[] = [];
 const servers: Server[] = [];

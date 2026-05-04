@@ -18,14 +18,14 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import { StubFrontendAdapter } from "../src/frontend/stub/index.js";
+import { StubFrontendAdapter } from "@isaacriehm/harness-frontend-stub";
 import {
   captureUatRejection,
   extractAudioUrl,
   formatUatRejectionRemediation,
   writeRejectionYaml,
   type UatSummary,
-} from "../src/uat/index.js";
+} from "@isaacriehm/harness-runtime";
 
 const cleanups: string[] = [];
 

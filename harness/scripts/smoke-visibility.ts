@@ -38,20 +38,20 @@ import {
   appendRunLogEntry,
   formatRunLogTail,
   readRunLogTail,
-} from "../src/orchestrator/run-log.js";
+} from "@isaacriehm/harness-runtime";
 import {
   digestIsEmpty,
   extractToolDigest,
-} from "../src/orchestrator/tool-digest.js";
-import { Orchestrator } from "../src/orchestrator/index.js";
-import { StubFrontendAdapter } from "../src/frontend/stub/index.js";
+} from "@isaacriehm/harness-runtime";
+import { Orchestrator } from "@isaacriehm/harness-runtime";
+import { StubFrontendAdapter } from "@isaacriehm/harness-frontend-stub";
 import {
   ensureMirror,
   mirrorPath,
   mirrorRecordPath,
-} from "../src/mirror/index.js";
+} from "@isaacriehm/harness-core";
 import { execSync } from "node:child_process";
-import type { PostUpdate } from "../src/frontend/types.js";
+import type { PostUpdate } from "@isaacriehm/harness-core";
 
 const projectName = `smoke_vis_${Date.now()}`;
 const cleanupPaths: string[] = [];

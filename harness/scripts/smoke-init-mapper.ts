@@ -46,10 +46,10 @@ import {
   runMapper,
   updateWorkflowSlugBlock,
   type MapperOutput,
-} from "../src/init/index.js";
-import { templatesRoot } from "../src/init/seed.js";
-import { detectAll } from "../src/init/detect.js";
-import { claudeIsAvailable } from "../src/claude/runner.js";
+} from "@isaacriehm/harness-core";
+import { templatesRoot } from "@isaacriehm/harness-core";
+import { detectAll } from "@isaacriehm/harness-core";
+import { claudeIsAvailable } from "@isaacriehm/harness-core";
 
 const cleanups: string[] = [];
 

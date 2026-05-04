@@ -1,16 +1,10 @@
 #!/usr/bin/env tsx
 /**
- * check-layout — Phase 1 sensor.
+ * check-layout — Phase 1 sensor (post-split layout).
  *
- * The Cairn package source repo is NOT self-hosted. It only ships:
- *   1. The runtime code under harness/src/
- *   2. The init-time templates under harness/templates/, which the init script
- *      copies into adopting projects' .harness/ and .archive/ directories.
- *
- * This sensor validates that:
- *   • the templates tree is present and well-formed
- *   • the workspace package's source files exist
- *   • the repo root config (tsconfig, package.json, etc.) is in place
+ * Validates the four-package skeleton + the umbrella + the templates that
+ * ship with the published harness-core package. See docs/ARCHITECTURE.md
+ * §3 for the layered model.
  *
  * Run: pnpm -F @isaacriehm/harness check:layout
  */
@@ -70,8 +64,8 @@ function checkFile(
   }
 }
 
-// ── Templates that ship with the published npm package ────────────────────
-const templateRoot = "harness/templates";
+// ── Templates that ship inside harness-core ───────────────────────────────
+const templateRoot = "packages/harness-core/templates";
 
 const requiredTemplateDirs: string[] = [
   templateRoot,
@@ -92,10 +86,17 @@ checkFile(`${templateRoot}/.harness/config/trust-policy.yaml`, { requireYaml: tr
 checkFile(`${templateRoot}/.harness/ground/manifest.yaml`, { requireYaml: true });
 checkFile(`${templateRoot}/.archive/README.md`, { requireFrontmatter: true });
 
-// ── Project-agnostic check: no hardcoded "sample-project" string in any pkg / template
-// (per L50, operator answer S1).
+// ── Project-agnostic check: no hardcoded "sample-project" string in pkg / template ─
 const banned = ["sample-project", "Sample project", "SAMPLE-PROJECT"];
-const pkgScanGlobs = ["harness/src", "harness/scripts", "harness/templates"];
+const pkgScanGlobs = [
+  "packages/harness-core/src",
+  "packages/harness-core/templates",
+  "packages/harness-runtime/src",
+  "packages/harness-frontend-discord/src",
+  "packages/harness-frontend-stub/src",
+  "harness/src",
+  "harness/scripts",
+];
 function walk(absDir: string, files: string[] = []): string[] {
   for (const entry of readdirSync(absDir, { withFileTypes: true })) {
     const abs = resolve(absDir, entry.name);
@@ -135,60 +136,71 @@ checkFile(".nvmrc");
 checkFile("AGENTS.md");
 checkFile("README.md");
 
-// ── Required harness/ workspace files ──────────────────────────────────────
+// ── Umbrella harness/ ──────────────────────────────────────────────────────
 checkFile("harness/package.json");
 checkFile("harness/tsconfig.json");
-checkFile("harness/.env.example");
 checkFile("harness/README.md");
 checkFile("harness/src/index.ts");
-checkFile("harness/src/logger.ts");
 checkFile("harness/src/cli/index.ts");
-checkFile("harness/src/cli/mirror.ts");
-
-// ── Phase 2 — mirror module ─────────────────────────────────────────────────
-checkFile("harness/src/mirror/index.ts");
-checkFile("harness/src/mirror/types.ts");
-checkFile("harness/src/mirror/paths.ts");
-checkFile("harness/src/mirror/state.ts");
-checkFile("harness/src/mirror/clone.ts");
-checkFile("harness/src/mirror/sync.ts");
-checkFile("harness/src/mirror/push.ts");
-checkFile("harness/src/mirror/dirty-overlap.ts");
-checkFile("harness/scripts/setup-mirror.ts");
-checkFile("harness/scripts/smoke-mirror.ts");
-
-// ── Phase 3 — ground / profiles / watch ─────────────────────────────────────
-checkFile("harness/src/ground/index.ts");
-checkFile("harness/src/ground/schemas.ts");
-checkFile("harness/src/ground/paths.ts");
-checkFile("harness/src/ground/glob.ts");
-checkFile("harness/src/ground/walk.ts");
-checkFile("harness/src/ground/frontmatter.ts");
-checkFile("harness/src/ground/manifest.ts");
-checkFile("harness/src/ground/ledgers.ts");
-checkFile("harness/src/ground/drift.ts");
-checkFile("harness/src/ground/quality-grades.ts");
-checkFile("harness/src/profiles/index.ts");
-checkFile("harness/src/profiles/types.ts");
-checkFile("harness/src/profiles/registry.ts");
-checkFile("harness/src/profiles/unknown.ts");
-checkFile("harness/src/watch/index.ts");
-checkFile("harness/src/watch/regenerate.ts");
-checkFile("harness/src/watch/daemon.ts");
+checkFile("harness/src/cli/init.ts");
+checkFile("harness/src/cli/run.ts");
 checkFile("harness/src/cli/watch.ts");
-checkFile("harness/scripts/smoke-watch.ts");
+checkFile("harness/src/cli/mirror.ts");
+checkFile("harness/src/cli/mcp.ts");
+checkFile("harness/src/cli/gc.ts");
+checkFile("harness/src/cli/task.ts");
+checkFile("harness/src/cli/daemon.ts");
+checkFile("harness/src/cli/install.ts");
 
-// ── Phase 4 — MCP server ────────────────────────────────────────────────────
-checkFile("harness/src/mcp/index.ts");
-checkFile("harness/src/mcp/server.ts");
-checkFile("harness/src/mcp/context.ts");
-checkFile("harness/src/mcp/errors.ts");
-checkFile("harness/src/mcp/result.ts");
-checkFile("harness/src/mcp/path-allowlist.ts");
-checkFile("harness/src/mcp/telemetry.ts");
-checkFile("harness/src/mcp/schemas.ts");
-checkFile("harness/src/mcp/tools/index.ts");
-checkFile("harness/src/mcp/tools/types.ts");
+// ── harness-core (state + context) ─────────────────────────────────────────
+const corePkg = "packages/harness-core";
+checkFile(`${corePkg}/package.json`);
+checkFile(`${corePkg}/tsconfig.json`);
+checkFile(`${corePkg}/src/index.ts`);
+checkFile(`${corePkg}/src/logger.ts`);
+checkFile(`${corePkg}/src/prompt.ts`);
+checkFile(`${corePkg}/src/inbox.ts`);
+checkFile(`${corePkg}/src/frontend-types.ts`);
+
+// mirror
+checkFile(`${corePkg}/src/mirror/index.ts`);
+checkFile(`${corePkg}/src/mirror/types.ts`);
+checkFile(`${corePkg}/src/mirror/paths.ts`);
+checkFile(`${corePkg}/src/mirror/state.ts`);
+checkFile(`${corePkg}/src/mirror/clone.ts`);
+checkFile(`${corePkg}/src/mirror/sync.ts`);
+checkFile(`${corePkg}/src/mirror/push.ts`);
+checkFile(`${corePkg}/src/mirror/dirty-overlap.ts`);
+
+// ground
+checkFile(`${corePkg}/src/ground/index.ts`);
+checkFile(`${corePkg}/src/ground/schemas.ts`);
+checkFile(`${corePkg}/src/ground/paths.ts`);
+checkFile(`${corePkg}/src/ground/glob.ts`);
+checkFile(`${corePkg}/src/ground/walk.ts`);
+checkFile(`${corePkg}/src/ground/frontmatter.ts`);
+checkFile(`${corePkg}/src/ground/manifest.ts`);
+checkFile(`${corePkg}/src/ground/ledgers.ts`);
+checkFile(`${corePkg}/src/ground/drift.ts`);
+checkFile(`${corePkg}/src/ground/quality-grades.ts`);
+
+// profiles
+checkFile(`${corePkg}/src/profiles/index.ts`);
+checkFile(`${corePkg}/src/profiles/types.ts`);
+checkFile(`${corePkg}/src/profiles/registry.ts`);
+checkFile(`${corePkg}/src/profiles/unknown.ts`);
+
+// mcp
+checkFile(`${corePkg}/src/mcp/index.ts`);
+checkFile(`${corePkg}/src/mcp/server.ts`);
+checkFile(`${corePkg}/src/mcp/context.ts`);
+checkFile(`${corePkg}/src/mcp/errors.ts`);
+checkFile(`${corePkg}/src/mcp/result.ts`);
+checkFile(`${corePkg}/src/mcp/path-allowlist.ts`);
+checkFile(`${corePkg}/src/mcp/telemetry.ts`);
+checkFile(`${corePkg}/src/mcp/schemas.ts`);
+checkFile(`${corePkg}/src/mcp/tools/index.ts`);
+checkFile(`${corePkg}/src/mcp/tools/types.ts`);
 for (const tool of [
   "decision-get",
   "decisions-in-scope",
@@ -208,20 +220,61 @@ for (const tool of [
   "archive",
   "record-decision",
 ]) {
-  checkFile(`harness/src/mcp/tools/${tool}.ts`);
+  checkFile(`${corePkg}/src/mcp/tools/${tool}.ts`);
 }
-checkFile("harness/src/cli/mcp.ts");
-checkFile("harness/scripts/smoke-mcp.ts");
-checkFile("harness/templates/.harness/ground/canonical-map/topics.yaml", { requireYaml: true });
+checkFile(`${corePkg}/templates/.harness/ground/canonical-map/topics.yaml`, {
+  requireYaml: true,
+});
 
-// ── Pkg's `files` field must include templates so they ship on npm publish ─
-const pkg = JSON.parse(readFileSync(resolve(repoRoot, "harness/package.json"), "utf8")) as {
-  files?: string[];
-};
-if (!pkg.files?.includes("templates")) {
+// claude / tier0 / tightener / decision-capture / gc / init / sensors / voice
+for (const sub of [
+  "claude",
+  "decision-capture",
+  "gc",
+  "init",
+  "sensors",
+  "tier0",
+  "tightener",
+  "voice",
+]) {
+  checkFile(`${corePkg}/src/${sub}/index.ts`);
+}
+
+// ── harness-runtime (orchestration) ────────────────────────────────────────
+const runtimePkg = "packages/harness-runtime";
+checkFile(`${runtimePkg}/package.json`);
+checkFile(`${runtimePkg}/tsconfig.json`);
+checkFile(`${runtimePkg}/src/index.ts`);
+for (const sub of ["backprop", "orchestrator", "reviewer", "uat", "watch"]) {
+  checkFile(`${runtimePkg}/src/${sub}/index.ts`);
+}
+
+// ── harness-frontend-discord ───────────────────────────────────────────────
+const discordPkg = "packages/harness-frontend-discord";
+checkFile(`${discordPkg}/package.json`);
+checkFile(`${discordPkg}/tsconfig.json`);
+checkFile(`${discordPkg}/src/index.ts`);
+checkFile(`${discordPkg}/src/discord/index.ts`);
+checkFile(`${discordPkg}/src/discord/acl.ts`);
+checkFile(`${discordPkg}/src/discord/channels.ts`);
+checkFile(`${discordPkg}/src/discord/classifier.ts`);
+checkFile(`${discordPkg}/src/discord/slash.ts`);
+
+// ── harness-frontend-stub ──────────────────────────────────────────────────
+const stubPkg = "packages/harness-frontend-stub";
+checkFile(`${stubPkg}/package.json`);
+checkFile(`${stubPkg}/tsconfig.json`);
+checkFile(`${stubPkg}/src/index.ts`);
+checkFile(`${stubPkg}/src/stub/index.ts`);
+
+// ── harness-core's `files` field must include templates so they ship ──────
+const corePkgJson = JSON.parse(
+  readFileSync(resolve(repoRoot, `${corePkg}/package.json`), "utf8"),
+) as { files?: string[] };
+if (!corePkgJson.files?.includes("templates")) {
   fail(
     "hard",
-    "harness/package.json",
+    `${corePkg}/package.json`,
     'missing "templates" in `files` field — templates would not ship on npm publish',
   );
 }

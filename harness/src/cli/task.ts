@@ -19,11 +19,11 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
-import { writeInboxRow } from "../frontend/index.js";
 import {
   normalizeProjectName,
   readMirrorRecord,
-} from "../mirror/index.js";
+  writeInboxRow,
+} from "@isaacriehm/harness-core";
 
 interface ParsedFlags {
   positional: string[];

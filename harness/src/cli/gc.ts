@@ -14,8 +14,13 @@
  */
 
 import { resolve } from "node:path";
-import { runGcBatch, runGcSweep } from "../gc/index.js";
-import type { GcAutoMergeClass } from "../gc/types.js";
+import {
+  runGcBatch,
+  runGcSweep,
+  type GcAutoMergeClass,
+  type GcBatchResult,
+  type GcSweepResult,
+} from "@isaacriehm/harness-core";
 
 interface ParsedFlags {
   positional: string[];
@@ -114,7 +119,7 @@ export async function gcCli(argv: string[]): Promise<void> {
   }
 }
 
-function printSweep(result: import("../gc/types.js").GcSweepResult): void {
+function printSweep(result: GcSweepResult): void {
   const byPass: Record<string, number> = {};
   for (const f of result.findings) byPass[f.pass] = (byPass[f.pass] ?? 0) + 1;
   console.log(`gc sweep — ${result.findings.length} findings, ${result.proposals.length} proposals`);
@@ -135,7 +140,7 @@ function printSweep(result: import("../gc/types.js").GcSweepResult): void {
   }
 }
 
-function printBatch(result: import("../gc/types.js").GcBatchResult): void {
+function printBatch(result: GcBatchResult): void {
   console.log(
     `gc run — ${result.applied.length} applied, ${result.surfaced.length} surfaced, canary ${result.canary_ok ? "ok" : "FAIL"}${result.rolled_back ? " (rolled back)" : ""}`,
   );

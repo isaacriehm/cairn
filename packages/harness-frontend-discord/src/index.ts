@@ -1,18 +1,26 @@
 /**
- * @isaacriehm/harness-frontend-discord — Discord frontend adapter.
+ * @isaacriehm/harness-frontend-discord — Discord adapter.
  *
- * SKELETON: this file will become the public API surface once the file
- * moves land. See docs/ARCHITECTURE.md §3.3 for what belongs here, and
- * RESUME_PROMPT.md for the migration plan.
- *
- * Expected exports (post-move):
- *   - DiscordFrontendAdapter class implementing FrontendAdapter from core
- *   - channels/: ensureCategories, createTaskChannel, moveChannelToCategory,
- *     slugifyForChannel, CATEGORY_NAMES, CategoryKey
- *   - slash/: registerSlashCommands, SLASH_COMMAND_NAMES, buildSlashCommands
- *   - acl/: parseOwnerIds, isOwner
- *   - voice/: transcribeUrl, whisperModelExists (Whisper pipeline)
- *   - embed builder + phase color/emoji map
+ * See docs/ARCHITECTURE.md §3.3.
  */
 
-export const __SKELETON__ = "harness-frontend-discord";
+export {
+  DiscordFrontendAdapter,
+  type DiscordFrontendAdapterOptions,
+} from "./discord/index.js";
+export { isOwner, parseOwnerIds } from "./discord/acl.js";
+export {
+  CATEGORY_NAMES,
+  createTaskChannel,
+  ensureCategories,
+  moveChannelToCategory,
+  slugifyForChannel,
+  type CategoryKey,
+} from "./discord/channels.js";
+export { classifyFreeText } from "./discord/classifier.js";
+export {
+  buildSlashCommands,
+  registerSlashCommands,
+  SLASH_COMMAND_NAMES,
+  type SlashCommandName,
+} from "./discord/slash.js";

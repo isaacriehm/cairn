@@ -12,8 +12,8 @@
  * missing (e.g. CI without authenticated Claude Code).
  */
 
-import { claudeIsAvailable } from "../src/claude/index.js";
-import { tightenSpec } from "../src/tightener/index.js";
+import { claudeIsAvailable } from "@isaacriehm/harness-core";
+import { tightenSpec } from "@isaacriehm/harness-core";
 
 function header(line: string): void {
   console.log(`\n── ${line}`);

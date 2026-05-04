@@ -1,26 +1,26 @@
 /**
  * @isaacriehm/harness-core — state + context-loading layer.
  *
- * SKELETON: this file will become the public API surface once the file
- * moves land. See docs/ARCHITECTURE.md §3.1 for what belongs here, and
- * RESUME_PROMPT.md for the migration plan.
- *
- * Expected exports (post-move):
- *   - init: runInit, buildRepoSummary, runMapper, validateMapperOutput,
- *     updateWorkflowSlugBlock, MAPPER_OUTPUT_SCHEMA, types
- *   - mcp: server bootstrap + 18 tool registrations
- *   - ground: writers for decisions, invariants, canonical-map,
- *     quality-grades, manifest
- *   - decision-capture: extractor + refinement-proposer
- *   - gc: drift-sweep daemon + auto-merge classifier
- *   - tightener: spec quality gate
- *   - stub-pattern: catalog evaluator
- *   - decision-assertion: evaluator
- *   - claude: subprocess runner + error classifier
- *   - tier0: Ollama classifier
- *   - types: RunPhase, DialogSpec, PostUpdate, FrontendAdapter contract,
- *     ProjectGlobs, …
- *   - logger: pino setup
+ * See docs/ARCHITECTURE.md §3.1.
  */
 
-export const __SKELETON__ = "harness-core";
+export const VERSION = "0.0.0";
+
+export { logger } from "./logger.js";
+
+export * from "./claude/index.js";
+export * from "./decision-capture/index.js";
+export * from "./gc/index.js";
+export * from "./ground/index.js";
+export * from "./init/index.js";
+export * from "./mcp/index.js";
+export * from "./mirror/index.js";
+export * from "./profiles/index.js";
+export * from "./sensors/index.js";
+export * from "./tier0/index.js";
+export * from "./tightener/index.js";
+export * from "./voice/index.js";
+export * from "./frontend-types.js";
+export { writeInboxRow } from "./inbox.js";
+export { loadWorkflowTemplate, renderTemplate } from "./prompt.js";
+export type { TemplateContext } from "./prompt.js";

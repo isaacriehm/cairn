@@ -35,7 +35,7 @@ import {
 import { homedir, platform } from "node:os";
 import { dirname, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
-import { normalizeProjectName } from "../mirror/index.js";
+import { normalizeProjectName } from "@isaacriehm/harness-core";
 
 interface ParsedFlags {
   positional: string[];

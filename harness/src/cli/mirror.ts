@@ -5,7 +5,7 @@ import {
   pushMirror,
   readMirrorRecord,
   syncMirror,
-} from "../mirror/index.js";
+} from "@isaacriehm/harness-core";
 
 interface ParsedFlags {
   positional: string[];

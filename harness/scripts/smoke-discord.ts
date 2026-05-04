@@ -12,14 +12,14 @@
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { StubFrontendAdapter } from "../src/frontend/index.js";
-import { parseOwnerIds, isOwner } from "../src/frontend/discord/acl.js";
-import { classifyFreeText } from "../src/frontend/discord/classifier.js";
-import { slugifyForChannel } from "../src/frontend/discord/channels.js";
+import { StubFrontendAdapter } from "@isaacriehm/harness-frontend-stub";
+import { parseOwnerIds, isOwner } from "@isaacriehm/harness-frontend-discord";
+import { classifyFreeText } from "@isaacriehm/harness-frontend-discord";
+import { slugifyForChannel } from "@isaacriehm/harness-frontend-discord";
 import {
   SLASH_COMMAND_NAMES,
   buildSlashCommands,
-} from "../src/frontend/discord/slash.js";
+} from "@isaacriehm/harness-frontend-discord";
 
 let cleanupPaths: string[] = [];
 
@@ -59,10 +59,10 @@ async function main(): Promise<void> {
   cleanupPaths.push(repoRoot);
 
   header("Step 1: pure helpers");
-  if (SLASH_COMMAND_NAMES.length !== 13)
-    fail(`expected 13 slash commands, got ${SLASH_COMMAND_NAMES.length}`);
+  if (SLASH_COMMAND_NAMES.length !== 14)
+    fail(`expected 14 slash commands, got ${SLASH_COMMAND_NAMES.length}`);
   const builders = buildSlashCommands();
-  if (builders.length !== 13) fail(`builders mismatch: ${builders.length}`);
+  if (builders.length !== 14) fail(`builders mismatch: ${builders.length}`);
   const taskBuilder = builders.find((b) => b.name === "task");
   if (!taskBuilder) fail("/task builder not found");
   const taskJson = taskBuilder.toJSON();

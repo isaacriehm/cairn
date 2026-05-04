@@ -17,7 +17,7 @@ import {
   DEFAULT_OLLAMA_MODEL,
   ollamaHasModel,
   ollamaIsAvailable,
-} from "../src/tier0/index.js";
+} from "@isaacriehm/harness-core";
 
 function header(line: string): void {
   console.log(`\n── ${line}`);

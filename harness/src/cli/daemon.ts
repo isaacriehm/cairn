@@ -24,8 +24,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, openSync, writeSync, closeSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
-import { logger } from "../logger.js";
-import { normalizeProjectName } from "../mirror/index.js";
+import { logger, normalizeProjectName } from "@isaacriehm/harness-core";
 
 const log = logger("cli.daemon");
 

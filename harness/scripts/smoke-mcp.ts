@@ -25,7 +25,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stringify as stringifyYaml } from "yaml";
-import { startMcpServer, createContext } from "../src/mcp/index.js";
+import { startMcpServer, createContext } from "@isaacriehm/harness-core";
 
 interface CallToolResultText {
   content: { type: "text"; text: string }[];

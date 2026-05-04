@@ -8,5 +8,11 @@
     "types": ["node"]
   },
   "include": ["src/**/*"],
-  "exclude": ["dist", "node_modules"]
+  "exclude": ["dist", "node_modules"],
+  "references": [
+    { "path": "../packages/harness-core" },
+    { "path": "../packages/harness-runtime" },
+    { "path": "../packages/harness-frontend-discord" },
+    { "path": "../packages/harness-frontend-stub" }
+  ]
 }

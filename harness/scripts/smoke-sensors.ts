@@ -33,7 +33,7 @@ import {
   runStubCatalog,
   type Attestation,
   type DiffEntry,
-} from "../src/sensors/index.js";
+} from "@isaacriehm/harness-core";
 
 const cleanups: string[] = [];
 

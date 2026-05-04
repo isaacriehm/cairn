@@ -19,7 +19,6 @@
   },
   "files": [
     "dist",
-    "templates",
     "README.md"
   ],
   "scripts": {
@@ -60,25 +59,22 @@
     "setup:uat-docker": "tsx scripts/setup-uat-docker.ts"
   },
   "dependencies": {
-    "@inquirer/prompts": "^8.4.2",
-    "@modelcontextprotocol/sdk": "^1.29.0",
-    "chokidar": "^4.0.1",
-    "discord.js": "^14.26.4",
+    "@isaacriehm/harness-core": "workspace:*",
+    "@isaacriehm/harness-runtime": "workspace:*",
+    "@isaacriehm/harness-frontend-discord": "workspace:*",
+    "@isaacriehm/harness-frontend-stub": "workspace:*",
     "dotenv": "^17.4.2",
-    "fastify": "^5.8.5",
-    "pino": "^9.5.0",
-    "simple-git": "^3.36.0",
-    "smart-whisper": "^0.8.1",
-    "ws": "^8.20.0",
-    "yaml": "^2.8.4",
-    "zod": "^4.4.2"
+    "yaml": "^2.8.4"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.6.0",
-    "@types/ws": "^8.18.1",
     "better-sqlite3": "^11.10.0",
+    "chokidar": "^4.0.1",
     "playwright-core": "^1.50.0",
+    "simple-git": "^3.36.0",
+    "smart-whisper": "^0.8.1",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3"
   }

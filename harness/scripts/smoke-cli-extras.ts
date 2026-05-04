@@ -38,7 +38,7 @@ import {
   ensureMirror,
   mirrorPath,
   mirrorRecordPath,
-} from "../src/mirror/index.js";
+} from "@isaacriehm/harness-core";
 
 const projectName = `smoke_cli_${Date.now()}`;
 const cleanupPaths: string[] = [];

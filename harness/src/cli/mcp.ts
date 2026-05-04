@@ -1,6 +1,5 @@
 import { resolve } from "node:path";
-import { logger } from "../logger.js";
-import { createContext, startMcpServer } from "../mcp/index.js";
+import { logger, createContext, startMcpServer } from "@isaacriehm/harness-core";
 
 const log = logger("cli.mcp");
 
