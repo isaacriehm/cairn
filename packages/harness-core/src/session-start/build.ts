@@ -25,6 +25,7 @@ export type SessionStartSection =
   | "run_handoff"
   | "header"
   | "two_zone_reminder"
+  | "brand_and_positioning"
   | "decisions_in_scope"
   | "invariants_active"
   | "current_task"
@@ -168,6 +169,9 @@ export async function buildSessionStartContext(
   counts.pendingDrafts = drafts.length;
   const pendingDraftsSection = renderPendingDraftsSection(drafts);
 
+  // ── Section 1.5 — brand + product positioning (always injected) ───
+  const brandAndPositioningSection = readBrandAndPositioning(args.repoRoot, warnings);
+
   // Truncation strategy per spec: always include 1 + 7; then 4, 2, 3,
   // 6, 5; drop in reverse order if over cap.
   const orderedSections: { id: SessionStartSection; body: string }[] = [];
@@ -176,6 +180,9 @@ export async function buildSessionStartContext(
   }
   orderedSections.push({ id: "header", body: fixedHeader });
   orderedSections.push({ id: "two_zone_reminder", body: fixedTwoZone });
+  if (brandAndPositioningSection !== null) {
+    orderedSections.push({ id: "brand_and_positioning", body: brandAndPositioningSection });
+  }
   if (includeToolReference) {
     orderedSections.push({ id: "tool_quick_reference", body: fixedToolReference });
   } else {
@@ -203,6 +210,7 @@ export async function buildSessionStartContext(
   const dropPriority: SessionStartSection[] = [
     "quality_grades_tail",
     "pending_drafts",
+    "brand_and_positioning",
     "invariants_active",
     "decisions_in_scope",
     "current_task",
@@ -256,6 +264,37 @@ function composeTwoZoneReminder(queryHistoryAvailable: boolean): string {
 NOTE: harness_query_history is not registered in this project's MCP
 configuration; archive reads are unreachable. Use harness_decision_get
 or harness_canonical_for_topic for current-canonical access only.`;
+}
+
+function readBrandAndPositioning(repoRoot: string, warnings: string[]): string | null {
+  const brandPath = join(repoRoot, ".harness", "ground", "brand", "overview.md");
+  const positioningPath = join(repoRoot, ".harness", "ground", "product", "positioning.md");
+  const parts: string[] = [];
+  for (const [label, path] of [
+    ["Brand overview", brandPath] as const,
+    ["Product positioning", positioningPath] as const,
+  ]) {
+    if (!existsSync(path)) continue;
+    try {
+      const text = readFileSync(path, "utf8");
+      const parsed = parseFrontmatter(text);
+      const fm = (parsed.frontmatter ?? {}) as Record<string, unknown>;
+      const status = typeof fm["status"] === "string" ? (fm["status"] as string) : null;
+      const body = parsed.body.trim();
+      if (body.length === 0) continue;
+      const draftHint =
+        status === "draft"
+          ? "  [DRAFT — operator has not filled this in; ask before making design decisions]"
+          : "";
+      parts.push(`### ${label}${draftHint}\n\n${body}`);
+    } catch (err) {
+      warnings.push(
+        `${label} read failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+  if (parts.length === 0) return null;
+  return `## Brand and product context\n\n${parts.join("\n\n")}`;
 }
 
 function computeTotalChars(sections: { body: string }[]): number {

@@ -341,6 +341,60 @@ unbalanced: [
     console.log("  ✓ Step 6 — malformed frontmatter survives");
   }
 
+  // ── Step 7 — brand_and_positioning injection ─────────────────────
+  {
+    const repoRoot = mkFixture();
+    const groundDir = join(repoRoot, ".harness", "ground");
+    mkdirSync(join(groundDir, "brand"), { recursive: true });
+    mkdirSync(join(groundDir, "product"), { recursive: true });
+    writeFileSync(
+      join(groundDir, "brand", "overview.md"),
+      `---\nstatus: accepted\n---\n\n# Brand overview\n\nWe are bold and minimal.\n`,
+      "utf8",
+    );
+    writeFileSync(
+      join(groundDir, "product", "positioning.md"),
+      `---\nstatus: draft\n---\n\n# Positioning\n\nFor solo developers.\n`,
+      "utf8",
+    );
+    const result = await buildSessionStartContext({ repoRoot });
+    assert(
+      result.sectionsRendered.includes("brand_and_positioning"),
+      "Step 7: brand_and_positioning section missing",
+    );
+    assert(
+      result.additionalContext.includes("We are bold and minimal."),
+      "Step 7: brand body missing from context",
+    );
+    assert(
+      result.additionalContext.includes("For solo developers."),
+      "Step 7: positioning body missing from context",
+    );
+    assert(
+      result.additionalContext.includes("[DRAFT"),
+      "Step 7: draft hint should appear when product/positioning.md is draft",
+    );
+    console.log("  ✓ Step 7 — brand + positioning injection");
+  }
+
+  // ── Step 8 — absent files: no section, no warnings ───────────────
+  {
+    const repoRoot = mkFixture();
+    mkdirSync(join(repoRoot, ".harness"), { recursive: true });
+    const result = await buildSessionStartContext({ repoRoot });
+    assert(
+      !result.sectionsRendered.includes("brand_and_positioning"),
+      "Step 8: brand_and_positioning should be absent when files don't exist",
+    );
+    assert(
+      !result.warnings.some(
+        (w) => w.includes("Brand overview") || w.includes("Product positioning"),
+      ),
+      `Step 8: no brand/positioning warnings expected, got ${JSON.stringify(result.warnings)}`,
+    );
+    console.log("  ✓ Step 8 — brand absent");
+  }
+
   console.log("smoke-session-start — pass");
 }
 
