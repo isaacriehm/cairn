@@ -1,0 +1,65 @@
+{
+  "name": "@isaacriehm/cairn",
+  "version": "0.1.0",
+  "description": "Cairn — state + context-loading layer for AI coding agents.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "bin": {
+    "cairn": "./dist/cli/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --noEmit",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "dev": "tsx src/cli/index.ts",
+    "check:layout": "tsx scripts/check-layout.ts",
+    "smoke:tier0": "tsx scripts/smoke-tier0.ts",
+    "smoke:gc": "tsx scripts/smoke-gc.ts",
+    "smoke:init": "tsx scripts/smoke-init.ts",
+    "smoke:session-start": "tsx scripts/smoke-session-start.ts",
+    "smoke:status-line": "tsx scripts/smoke-status-line.ts",
+    "smoke:handoff": "tsx scripts/smoke-handoff.ts",
+    "smoke:scope-index": "tsx scripts/smoke-scope-index.ts",
+    "smoke:read-enrich": "tsx scripts/smoke-read-enrich.ts",
+    "smoke:ingestion-baseline": "tsx scripts/smoke-ingestion-baseline.ts",
+    "smoke:lock": "tsx scripts/smoke-lock.ts",
+    "smoke:session-state": "tsx scripts/smoke-session-state.ts",
+    "smoke:events": "tsx scripts/smoke-events.ts",
+    "smoke:plugin-layout": "tsx scripts/smoke-plugin-layout.ts",
+    "smoke:resolve-attention": "tsx scripts/smoke-resolve-attention.ts",
+    "smoke:stop-hook": "tsx scripts/smoke-stop-hook.ts",
+    "smoke:source-comments": "tsx scripts/smoke-source-comments.ts",
+    "smoke:rules-merge": "tsx scripts/smoke-rules-merge.ts",
+    "smoke:join": "tsx scripts/smoke-join.ts",
+    "smoke:bypass-detection": "tsx scripts/smoke-bypass-detection.ts",
+    "smoke:bootstrap-guard": "tsx scripts/smoke-bootstrap-guard.ts",
+    "smoke:e2e-adoption": "tsx scripts/smoke-e2e-adoption.ts",
+    "smoke:e2e-daily-flow": "tsx scripts/smoke-e2e-daily-flow.ts"
+  },
+  "dependencies": {
+    "@isaacriehm/cairn-core": "workspace:*",
+    "@isaacriehm/cairn-frontend-stub": "workspace:*",
+    "simple-git": "^3.36.0",
+    "yaml": "^2.8.4"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@types/node": "^25.6.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
+  }
+}

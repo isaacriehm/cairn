@@ -1,0 +1,35 @@
+{
+  "name": "@isaacriehm/cairn-frontend-stub",
+  "version": "0.1.0",
+  "description": "In-memory stub frontend adapter for Cairn smokes + dry-runs. Records every postTaskUpdate / requestApproval / requestDialog / notify call. Programmable response for dialogs.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@isaacriehm/cairn-core": "workspace:*",
+    "pino": "^9.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
+  }
+}

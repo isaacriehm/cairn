@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "cairn": {
+      "command": "node",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/../cairn-core/dist/mcp/serve.js"
+      ]
+    }
+  }
+}

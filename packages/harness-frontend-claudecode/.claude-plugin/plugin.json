@@ -1,8 +1,0 @@
-{
-  "name": "harness",
-  "version": "0.1.0",
-  "description": "Project-state + context-loading layer — the invisible project maintainer",
-  "author": { "name": "Isaac Riehm" },
-  "repository": "https://github.com/isaacriehm/harness",
-  "license": "MIT"
-}
