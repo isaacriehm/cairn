@@ -108,6 +108,12 @@ importers:
         specifier: ^0.8.1
         version: 0.8.1
 
+  packages/harness-frontend-claudecode:
+    dependencies:
+      '@devplusllc/harness-core':
+        specifier: workspace:*
+        version: link:../harness-core
+
   packages/harness-frontend-stub:
     dependencies:
       '@devplusllc/harness-core':

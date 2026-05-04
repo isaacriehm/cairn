@@ -246,6 +246,39 @@ Notes:
   Files added:
     harness/src/cli/attention.ts
 
+## Step 4 — Plugin scaffold + hook bin entrypoints [DONE 2026-05-04T22:00]
+Subagent attempts: 0 (inline)
+Compile: PASS (workspace-wide tsc -b clean across 5 packages now)
+Smokes: PASS — smoke:plugin-layout (5/5 new), smoke:events (6/6), smoke:session-state (5/5), smoke:status-line (6/6), smoke:session-start (8/8), smoke:handoff (3/3), smoke:scope-index (3/3), smoke:read-enrich (4/4), smoke:init OK, smoke:ingestion-baseline (4/4), smoke:tier0 OK, smoke:gc OK, smoke:lock OK. Direct-bin spawns via `node packages/harness-core/dist/hooks/<name>.js` with piped JSON stdin emit valid Shape-B output (verified for session-start, stop, session-end).
+Notes:
+  Implements PLUGIN_ARCHITECTURE §4 (manifest), §9 (MCP), §10 (hooks). Plugin manifest invokes harness-core compiled JS directly, so harness-frontend-claudecode does not depend on `harness` umbrella CLI being on PATH. Step 4 scope per RESUME §19 was scaffold + manifest + hooks/mcp wiring + empty skills/agents/commands dirs + verify clean build. Skill/agent/command bodies arrive in steps 5–6.
+  Hook entrypoint refactor (load-bearing): runners moved out of `packages/harness/src/cli/hook.ts` into `packages/harness-core/src/hooks/runners/` so both routes (plugin bins + umbrella CLI) call the same code. New bin entry scripts at `packages/harness-core/src/hooks/{session-start,session-end,stop,read-enrich,write-guard}.ts` are tiny (`#!/usr/bin/env node` + `import { runX } from './runners/index.js'; runX().catch(...)`); compiled to `dist/hooks/*.js` so `node ${CLAUDE_PLUGIN_ROOT}/../harness-core/dist/hooks/<event>.js` works literally per spec.
+  Stop hook (new in this step): drains events since `marker.last_polled_ts`, stamps poll cursor, patches `status.json.updated_at` heartbeat. Emits empty additionalContext — surface text comes from harness-attention skill in step 5. Telemetry row records `events_drained` count.
+  MCP bin: spec text says `dist/mcp/server.js` — diverged to `dist/mcp/serve.js` because `server.js` is the library export of `startMcpServer` and shouldn't auto-execute on import. New `packages/harness-core/src/mcp/serve.ts` bin parses `--repo-root`/`--session-id`/`--run-id`, builds an McpContext, calls `startMcpServer({ ctx })`. Plugin's `.mcp.json` references serve.js. Logged in BUILD_LOG; not a load-bearing operator decision.
+  Files added (harness-core):
+    src/hooks/runners/payload.ts (readHookStdin, parseHookPayload, emitShapeB, recordHookTelemetry — shared by all runners)
+    src/hooks/runners/session-start.ts (runSessionStartHook — composes additionalContext, ensures session dir, seeds events marker, GCs stale sessions/events)
+    src/hooks/runners/session-end.ts (runSessionEndHook — cleanupSession; best-effort)
+    src/hooks/runners/stop.ts (runStopHook — events drain + stamp + heartbeat; future steps add sensor run, attestation reviewer spawn, bypass detection)
+    src/hooks/runners/index.ts (barrel)
+    src/hooks/index.ts (top-level barrel — re-exports runners + post-tool-use)
+    src/hooks/{session-start,session-end,stop,read-enrich,write-guard}.ts (bin entrypoints)
+    src/mcp/serve.ts (MCP bin entrypoint)
+  Files added (plugin):
+    packages/harness-frontend-claudecode/package.json (workspace member, depends on harness-core; build runs `node scripts/check-layout.mjs`)
+    packages/harness-frontend-claudecode/.claude-plugin/plugin.json (name=harness, version=0.1.0, repo, license)
+    packages/harness-frontend-claudecode/.mcp.json (registers harness MCP via dist/mcp/serve.js)
+    packages/harness-frontend-claudecode/hooks/hooks.json (SessionStart, SessionEnd, Stop, PostToolUse[Read|Grep|Glob, Write|Edit] — all node-direct paths)
+    packages/harness-frontend-claudecode/skills/.gitkeep, agents/.gitkeep, commands/.gitkeep
+    packages/harness-frontend-claudecode/scripts/check-layout.mjs (validates plugin.json + .mcp.json + hooks.json shape; verifies every node bin path resolves to an existing dist file)
+    packages/harness-frontend-claudecode/README.md (layout + bin paths + distribution notes)
+  Files modified:
+    packages/harness/src/cli/hook.ts — replaced inline session-start/session-end/sub-bodies with calls to runners; added `harness hook stop` subcommand. Both routes (plugin bin + umbrella CLI) now share runner code.
+    packages/harness-core/src/index.ts — re-exports `./hooks/runners/index.js` (in addition to the existing `./hooks/post-tool-use/index.js`).
+  New smoke `smoke-plugin-layout.ts` (5 steps): plugin.json shape, .mcp.json + bin resolves, hooks.json wires all four event classes with valid bins (matchers Read|Grep|Glob and Write|Edit asserted), component dirs scaffolded, harness-core exports the runner functions.
+  Direct-spawn sanity: piped `{"session_id":"test-123","cwd":"/tmp/notharness","source":"startup"}` to `node dist/hooks/session-start.js` returns `{"continue":true,"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":""}}` (no .harness/ found, falls through cleanly). stop and session-end also emit valid Shape-B JSON.
+  Step 5 (skills: harness-adopt, harness-direction, harness-attention) and step 6 (reviewer agent) consume the scaffolding.
+
 ## Step 3c — Invalidation events + per-session marker [DONE 2026-05-04T21:30]
 Subagent attempts: 0 (inline)
 Compile: PASS (workspace-wide tsc -b clean)

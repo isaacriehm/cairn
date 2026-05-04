@@ -1,0 +1,152 @@
+#!/usr/bin/env tsx
+/**
+ * smoke-plugin-layout — verifies harness-frontend-claudecode shape
+ * and that all hook/MCP bin paths resolve to existing dist files.
+ *
+ * Spec: PLUGIN_ARCHITECTURE §4 (manifest), §9 (MCP), §10 (hooks).
+ */
+
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import * as core from "@devplusllc/harness-core";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = resolve(HERE, "..", "..", "..");
+const PLUGIN_ROOT = join(REPO_ROOT, "packages", "harness-frontend-claudecode");
+const HARNESS_CORE_DIST = join(REPO_ROOT, "packages", "harness-core", "dist");
+
+function assert(cond: unknown, message: string): asserts cond {
+  if (!cond) {
+    console.error(`✗ ${message}`);
+    process.exit(1);
+  }
+}
+
+interface ManifestShape {
+  name: string;
+  version: string;
+  description: string;
+  repository?: string;
+  license?: string;
+}
+
+interface McpShape {
+  mcpServers: {
+    harness: {
+      command: string;
+      args: string[];
+    };
+  };
+}
+
+interface HookEntry {
+  matcher?: string;
+  hooks: { type: string; command: string }[];
+}
+
+interface HooksJsonShape {
+  SessionStart: HookEntry[];
+  SessionEnd: HookEntry[];
+  Stop: HookEntry[];
+  PostToolUse: HookEntry[];
+}
+
+function readJson<T>(path: string): T {
+  assert(existsSync(path), `expected file at ${path}`);
+  return JSON.parse(readFileSync(path, "utf8")) as T;
+}
+
+function resolveBin(arg: string): string {
+  // ${CLAUDE_PLUGIN_ROOT} resolves to PLUGIN_ROOT at runtime; in the
+  // monorepo, ../harness-core points to packages/harness-core.
+  return arg
+    .replace("${CLAUDE_PLUGIN_ROOT}/../harness-core/dist/", `${HARNESS_CORE_DIST}/`)
+    .replace("${CLAUDE_PLUGIN_ROOT}/../harness-core/dist", HARNESS_CORE_DIST);
+}
+
+function runSmoke(): void {
+  console.log("smoke-plugin-layout — start");
+
+  // ── Step 1 — plugin.json shape ───────────────────────────────────
+  {
+    const manifest = readJson<ManifestShape>(join(PLUGIN_ROOT, ".claude-plugin", "plugin.json"));
+    assert(manifest.name === "harness", `Step 1: name must be "harness", got ${manifest.name}`);
+    assert(/^\d+\.\d+\.\d+/.test(manifest.version), `Step 1: version must be semver, got ${manifest.version}`);
+    assert(manifest.description.length > 0, "Step 1: description required");
+    console.log("  ✓ Step 1 — plugin.json shape");
+  }
+
+  // ── Step 2 — .mcp.json wires harness MCP ─────────────────────────
+  {
+    const mcp = readJson<McpShape>(join(PLUGIN_ROOT, ".mcp.json"));
+    assert(mcp.mcpServers?.harness !== undefined, "Step 2: mcpServers.harness required");
+    const server = mcp.mcpServers.harness;
+    assert(server.command === "node", `Step 2: harness.command must be 'node', got ${server.command}`);
+    assert(Array.isArray(server.args) && server.args.length === 1, "Step 2: harness.args must be 1-arg array");
+    const binPath = resolveBin(server.args[0]!);
+    assert(existsSync(binPath), `Step 2: MCP bin missing at ${binPath}`);
+    console.log("  ✓ Step 2 — .mcp.json + bin resolves");
+  }
+
+  // ── Step 3 — hooks.json wires SessionStart, SessionEnd, Stop, PostToolUse ──
+  {
+    const hooks = readJson<HooksJsonShape>(join(PLUGIN_ROOT, "hooks", "hooks.json"));
+    for (const event of ["SessionStart", "SessionEnd", "Stop", "PostToolUse"] as const) {
+      assert(Array.isArray(hooks[event]) && hooks[event].length > 0, `Step 3: ${event} must be non-empty array`);
+    }
+    const allHookCommands: string[] = [];
+    for (const event of ["SessionStart", "SessionEnd", "Stop", "PostToolUse"] as const) {
+      for (const entry of hooks[event]) {
+        for (const hook of entry.hooks) {
+          assert(hook.type === "command", `Step 3: ${event} hook.type must be 'command'`);
+          allHookCommands.push(hook.command);
+        }
+      }
+    }
+    // Each command must be a node invocation referencing
+    // harness-core/dist/hooks/<x>.js — and that path must exist.
+    for (const cmd of allHookCommands) {
+      assert(cmd.startsWith("node "), `Step 3: command must start with 'node ', got ${cmd}`);
+      const m = cmd.match(/\$\{CLAUDE_PLUGIN_ROOT\}\/\.\.\/harness-core\/dist\/(hooks\/[a-z-]+\.js)/);
+      assert(m !== null, `Step 3: command must reference harness-core/dist/hooks/<x>.js, got ${cmd}`);
+      const binPath = join(HARNESS_CORE_DIST, m[1]!);
+      assert(existsSync(binPath), `Step 3: hook bin missing at ${binPath}`);
+    }
+    // PostToolUse must include both Read|Grep|Glob and Write|Edit matchers.
+    const matchers = hooks.PostToolUse.flatMap((e) => (e.matcher !== undefined ? [e.matcher] : []));
+    const hasReadMatcher = matchers.some((m) => /Read|Grep|Glob/.test(m));
+    const hasWriteMatcher = matchers.some((m) => /Write|Edit/.test(m));
+    assert(hasReadMatcher, "Step 3: PostToolUse must match Read|Grep|Glob");
+    assert(hasWriteMatcher, "Step 3: PostToolUse must match Write|Edit");
+    console.log("  ✓ Step 3 — hooks.json wires SessionStart/SessionEnd/Stop/PostToolUse with valid bins");
+  }
+
+  // ── Step 4 — component dirs exist (empty for step 4) ─────────────
+  {
+    for (const dir of ["skills", "agents", "commands"]) {
+      assert(existsSync(join(PLUGIN_ROOT, dir)), `Step 4: missing component dir ${dir}/`);
+    }
+    console.log("  ✓ Step 4 — skills/agents/commands dirs scaffolded");
+  }
+
+  // ── Step 5 — every hook bin export accepts payload via stdin ─────
+  // Sanity-check that the runners barrel exports the expected symbols.
+  {
+    const ns = core as Record<string, unknown>;
+    for (const symbol of [
+      "runSessionStartHook",
+      "runSessionEndHook",
+      "runStopHook",
+      "runReadEnricher",
+      "runWriteGuardian",
+    ]) {
+      assert(typeof ns[symbol] === "function", `Step 5: harness-core must export ${symbol}`);
+    }
+    console.log("  ✓ Step 5 — runner exports present");
+  }
+
+  console.log("smoke-plugin-layout — pass");
+}
+
+runSmoke();

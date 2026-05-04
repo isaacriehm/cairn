@@ -57,7 +57,8 @@
     "setup:uat-docker": "tsx scripts/setup-uat-docker.ts",
     "smoke:lock": "tsx scripts/smoke-lock.ts",
     "smoke:session-state": "tsx scripts/smoke-session-state.ts",
-    "smoke:events": "tsx scripts/smoke-events.ts"
+    "smoke:events": "tsx scripts/smoke-events.ts",
+    "smoke:plugin-layout": "tsx scripts/smoke-plugin-layout.ts"
   },
   "dependencies": {
     "@devplusllc/harness-core": "workspace:*",

@@ -1,0 +1,8 @@
+{
+  "name": "harness",
+  "version": "0.1.0",
+  "description": "Project-state + context-loading layer — the invisible project maintainer",
+  "author": { "name": "DevPlus LLC" },
+  "repository": "https://github.com/devplusllc/harness",
+  "license": "MIT"
+}
