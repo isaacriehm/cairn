@@ -1,7 +1,9 @@
 /**
- * Tier-0 classifier contract. Per WORKFLOW_GUIDE §2 tier ladder: solo-dev cost-zero classification
- * via Ollama. Falls back to a regex matcher when Ollama is unreachable so
- * smoke tests + adapter pipelines stay green.
+ * Tier-0 classifier contract. Per docs/PLUGIN_ARCHITECTURE.md §14: Haiku
+ * (escalating to Sonnet for complex prompts) via the Claude binary
+ * subprocess. Falls back to a deterministic regex matcher if the Claude
+ * binary is unavailable so smoke tests + scripted callers stay green.
+ * Production flows assume the Claude binary is present.
  */
 
 export type Tier0Intent =
@@ -16,7 +18,7 @@ export type Tier0Intent =
 export interface ClassificationResult {
   intent: Tier0Intent;
   confidence: number;
-  source: "ollama" | "regex_fallback";
+  source: "claude" | "fallback";
 }
 
 export interface Tier0RegexFallback {
@@ -24,9 +26,7 @@ export interface Tier0RegexFallback {
 }
 
 export interface Tier0ClassifyOptions {
-  host?: string;
-  model?: string;
   timeoutMs?: number;
-  /** Used when Ollama is unreachable or returns malformed output. */
+  /** Used when the Claude binary is unreachable or returns malformed output. */
   regexFallback?: Tier0RegexFallback;
 }
