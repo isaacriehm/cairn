@@ -93,16 +93,16 @@ function resolveRepoRoot(args: { flag?: string; project: string }): string {
 
 function loadEnvFiles(): string[] {
   // Try, in order: ~/.local/harness/.env (operator-scoped, written by
-  // `harness init`), explicit .env at cwd, harness/.env (when invoked
-  // from the monorepo root above the package), then the pkg's own .env
-  // (npm-link dev).
+  // `harness init`), explicit .env at cwd, packages/harness/.env (when
+  // invoked from the monorepo root above the package), then the pkg's own
+  // .env (npm-link dev).
   const here = dirname(fileURLToPath(import.meta.url));
   const pkgRoot = resolve(here, "..", "..");
   const candidates = Array.from(
     new Set([
       harnessEnvPath(),
       resolve(process.cwd(), ".env"),
-      resolve(process.cwd(), "harness", ".env"),
+      resolve(process.cwd(), "packages", "harness", ".env"),
       resolve(pkgRoot, ".env"),
     ]),
   );

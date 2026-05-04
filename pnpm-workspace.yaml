@@ -1,5 +1,4 @@
 packages:
-  - "harness"
   - "packages/*"
 allowBuilds:
   esbuild: true

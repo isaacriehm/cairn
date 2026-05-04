@@ -7,6 +7,6 @@
     { "path": "./packages/harness-frontend-discord" },
     { "path": "./packages/harness-frontend-stub" },
     { "path": "./packages/harness-lens" },
-    { "path": "./harness" }
+    { "path": "./packages/harness" }
   ]
 }

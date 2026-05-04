@@ -15,7 +15,7 @@ import { resolve } from "node:path";
 type Severity = "hard" | "soft";
 type Finding = { severity: Severity; path: string; reason: string };
 
-const repoRoot = resolve(import.meta.dirname, "..", "..");
+const repoRoot = resolve(import.meta.dirname, "..", "..", "..");
 const findings: Finding[] = [];
 
 function fail(severity: Severity, path: string, reason: string): void {
@@ -94,8 +94,8 @@ const pkgScanGlobs = [
   "packages/harness-runtime/src",
   "packages/harness-frontend-discord/src",
   "packages/harness-frontend-stub/src",
-  "harness/src",
-  "harness/scripts",
+  "packages/harness/src",
+  "packages/harness/scripts",
 ];
 function walk(absDir: string, files: string[] = []): string[] {
   for (const entry of readdirSync(absDir, { withFileTypes: true })) {
@@ -105,7 +105,7 @@ function walk(absDir: string, files: string[] = []): string[] {
   }
   return files;
 }
-const selfPath = resolve(repoRoot, "harness/scripts/check-layout.ts");
+const selfPath = resolve(repoRoot, "packages/harness/scripts/check-layout.ts");
 for (const g of pkgScanGlobs) {
   const abs = resolve(repoRoot, g);
   if (!existsSync(abs)) continue;
@@ -136,21 +136,21 @@ checkFile(".nvmrc");
 checkFile("AGENTS.md");
 checkFile("README.md");
 
-// ── Umbrella harness/ ──────────────────────────────────────────────────────
-checkFile("harness/package.json");
-checkFile("harness/tsconfig.json");
-checkFile("harness/README.md");
-checkFile("harness/src/index.ts");
-checkFile("harness/src/cli/index.ts");
-checkFile("harness/src/cli/init.ts");
-checkFile("harness/src/cli/run.ts");
-checkFile("harness/src/cli/watch.ts");
-checkFile("harness/src/cli/mirror.ts");
-checkFile("harness/src/cli/mcp.ts");
-checkFile("harness/src/cli/gc.ts");
-checkFile("harness/src/cli/task.ts");
-checkFile("harness/src/cli/daemon.ts");
-checkFile("harness/src/cli/install.ts");
+// ── Umbrella packages/harness/ ─────────────────────────────────────────────
+checkFile("packages/harness/package.json");
+checkFile("packages/harness/tsconfig.json");
+checkFile("packages/harness/README.md");
+checkFile("packages/harness/src/index.ts");
+checkFile("packages/harness/src/cli/index.ts");
+checkFile("packages/harness/src/cli/init.ts");
+checkFile("packages/harness/src/cli/run.ts");
+checkFile("packages/harness/src/cli/watch.ts");
+checkFile("packages/harness/src/cli/mirror.ts");
+checkFile("packages/harness/src/cli/mcp.ts");
+checkFile("packages/harness/src/cli/gc.ts");
+checkFile("packages/harness/src/cli/task.ts");
+checkFile("packages/harness/src/cli/daemon.ts");
+checkFile("packages/harness/src/cli/install.ts");
 
 // ── harness-core (state + context) ─────────────────────────────────────────
 const corePkg = "packages/harness-core";

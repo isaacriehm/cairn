@@ -12,20 +12,20 @@ importers:
         specifier: ^5.6.0
         version: 5.9.3
 
-  harness:
+  packages/harness:
     dependencies:
       '@isaacriehm/harness-core':
         specifier: workspace:*
-        version: link:../packages/harness-core
+        version: link:../harness-core
       '@isaacriehm/harness-frontend-discord':
         specifier: workspace:*
-        version: link:../packages/harness-frontend-discord
+        version: link:../harness-frontend-discord
       '@isaacriehm/harness-frontend-stub':
         specifier: workspace:*
-        version: link:../packages/harness-frontend-stub
+        version: link:../harness-frontend-stub
       '@isaacriehm/harness-runtime':
         specifier: workspace:*
-        version: link:../packages/harness-runtime
+        version: link:../harness-runtime
       dotenv:
         specifier: ^17.4.2
         version: 17.4.2
