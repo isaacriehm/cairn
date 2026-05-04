@@ -92,3 +92,8 @@ Notes: New mcp/tools/append-run-note.ts. APPEND_ALLOWLIST gains .harness/tasks/a
 Subagent attempts: 0 (inline)
 Compile: PASS; all 4 new smokes PASS; existing smoke-session-start still PASS (8 steps)
 Notes: 4 new smoke scripts under harness/scripts/: smoke-status-line.ts (4 steps incl. priority ordering), smoke-handoff.ts (3 steps null-cases), smoke-scope-index.ts (3 steps incl. unscoped flag), smoke-read-enrich.ts (4 steps incl. scope-hint integration). package.json gets four new pnpm scripts. The Task 4b session-start smoke step was already added during Task 4b — no additional changes needed there.
+
+## Bonus — Lens VS Code extension [DONE 2026-05-04T04:30]
+Subagent attempts: 0 (inline)
+Compile: PASS (whole workspace); smoke-resolver PASS (5 steps)
+Notes: User-requested after the 14-task base was done. LENS_SPEC.md was originally marked out-of-scope for the overnight build. Created packages/harness-lens/ with package.json (VS Code extension manifest), tsconfig referencing harness-core, src/{extension,resolver}.ts, src/providers/{hover,decoration,lens}-provider.ts, src/panel/dec-explorer.ts, scripts/smoke-resolver.ts. Resolver wraps harness-core ledger-cache + scope-index reader. Activates on workspaces with .harness/. Hover (§V/TSK), inlay-style ghost text + gutter health icons (●/◐/○), CodeLens above first function-like line when file in scope, optional DEC explorer TreeDataProvider. ESM extension (main = dist/extension.js), VS Code 1.85+. All 6 LENS_SPEC §2 features implemented except live file-watcher invalidation pings — wired but not unit-tested (needs vscode runtime).
