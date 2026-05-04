@@ -1,37 +1,56 @@
 /**
- * Init mapper agent (Tier 2 / Sonnet) — fills the project_globs gap.
+ * Init mapper orchestrator (Tier 2 / Sonnet, with cheap Haiku merge).
  *
- * The init wizard does mechanical stack-signature detection (`detect.ts`) and
- * proposes a sensor list, but cannot infer the project's CANONICAL paths:
- * where route handlers live, what the DTO files look like, which dirs are
- * generator-source-of-truth, what the high-stakes blast radius is. Those
- * answers are domain-specific and require an LLM that has read the project.
+ * Per `docs/INIT_SPEC.md` §3, init no longer makes a single Sonnet call with a
+ * flat ~20k-token repo summary. The new shape:
  *
- * Per `docs/ARCHITECTURE.md` §3.1 (init/) and the audit recommendation in
- * `docs/_review/STATE_AUDIT_2026-05-04.md`: this is the "deep mapper"
- * promised by the docs. Without it, the
- * orchestrator runs against a project it has never read — `project_globs.*`
- * sit empty, layered sensors (route-handler-non-empty / dto-no-fake-fields /
- * generator-drift) never trigger, and the harness produces vibe-coded slop.
+ *   1. `module-slicer` partitions the repo into ModuleSlices (one per
+ *      detected module — submodules, workspace packages, top-level packages,
+ *      or fallback heuristic). Single-package repos collapse to one slice.
+ *   2. `mapper-parallel` dispatches one Sonnet call per slice in parallel
+ *      (Promise.allSettled, 4-at-a-time batches when >8). Each call sees
+ *      ~8k tokens of focused module input.
+ *   3. `mapper-merge` runs a cheap Haiku call to pick the pilot module and
+ *      synthesize the project domain summary; the rest of the merge is
+ *      mechanical (union of arrays, dedupe sensors by id).
+ *   4. If the parallel path fails (no slices, or every per-module call
+ *      threw), fall back to `mapper-legacy` — the original single-call
+ *      flat-summary path, preserved unchanged.
  *
- * Pipeline:
- *   `walker.buildRepoSummary()` produces a structural inventory →
- *   this module sends it to `runClaude({ tier: "sonnet", jsonSchema })` →
- *   parsed `MapperOutput` is returned to the init wizard for operator confirm.
- *
- * Cost expectation: ~$1-3 per adoption, one-time. Tier 2 per
- * `init_mapper: 2` in `templates/.harness/config/workflow.md`.
- *
- * Smokes mock the LLM by passing `mockMapperOutput` straight into the wizard
- * (see `init.ts`); this module's only side effect is the claude subprocess.
+ * Public surface (`MapperOutput`, `MapperResult`, validators, the legacy
+ * prompt + schema constants) is unchanged so downstream init writers and the
+ * separate `harness scope rebuild` command don't break.
  */
 
-import { runClaude } from "../claude/index.js";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { logger } from "../logger.js";
+import {
+  buildDecisionsLedger,
+  buildInvariantsLedger,
+} from "../ground/ledgers.js";
+import type {
+  DecisionLedgerEntry,
+  InvariantLedgerEntry,
+} from "../ground/schemas.js";
+import {
+  LEGACY_OUTPUT_SCHEMA,
+  LEGACY_SYSTEM_PROMPT,
+  buildLegacyUserPrompt,
+  runLegacyMapper,
+} from "./mapper-legacy.js";
+import {
+  mapModulesParallel,
+  type ModuleProposal,
+} from "./mapper-parallel.js";
+import { mergeModuleProposals } from "./mapper-merge.js";
+import { sliceModules, type ModuleSlice } from "./module-slicer.js";
 import type { DetectionResult } from "./types.js";
 import type { RepoSummary } from "./walker.js";
 
 const log = logger("init.mapper");
+
+// ── Public types (unchanged shape) ──────────────────────────────────────────
 
 export interface MapperKeyModule {
   name: string;
@@ -74,203 +93,26 @@ export interface MapperResult {
   duration_ms: number;
   tier: "sonnet";
   model: string;
+  /** Which path produced this result. */
+  path: "parallel" | "legacy";
+  /** Per-module proposals when path === "parallel"; empty otherwise. */
+  module_proposals?: ModuleProposal[];
   usage?: {
     input_tokens?: number;
     output_tokens?: number;
   };
 }
 
-export const MAPPER_OUTPUT_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    pilot_module: { type: "string" },
-    domain_summary: { type: "string" },
-    key_modules: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          name: { type: "string" },
-          path: { type: "string" },
-          purpose: { type: "string" },
-        },
-        required: ["name", "path", "purpose"],
-      },
-    },
-    route_handler_globs: { type: "array", items: { type: "string" } },
-    dto_globs: { type: "array", items: { type: "string" } },
-    generator_source_globs: { type: "array", items: { type: "string" } },
-    high_stakes_globs: { type: "array", items: { type: "string" } },
-    off_limits_globs: { type: "array", items: { type: "string" } },
-    proposed_sensors: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          id: { type: "string" },
-          description: { type: "string" },
-          applies_to_globs: {
-            type: "array",
-            items: { type: "string" },
-          },
-        },
-        required: ["id", "description", "applies_to_globs"],
-      },
-    },
-    notes: { type: "string" },
-    scope_index: {
-      type: "object",
-      additionalProperties: false,
-      properties: {
-        files: {
-          type: "object",
-          additionalProperties: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              decisions: { type: "array", items: { type: "string" } },
-              invariants: { type: "array", items: { type: "string" } },
-              unscoped: { type: "boolean" },
-            },
-            required: ["decisions", "invariants"],
-          },
-        },
-      },
-      required: ["files"],
-    },
-  },
-  required: [
-    "pilot_module",
-    "domain_summary",
-    "key_modules",
-    "route_handler_globs",
-    "dto_globs",
-    "generator_source_globs",
-    "high_stakes_globs",
-    "off_limits_globs",
-    "proposed_sensors",
-    "notes",
-  ],
-} as const;
+// ── Backcompat re-exports ──────────────────────────────────────────────────
+// `harness scope rebuild` and other consumers import these names from this
+// module; route them to the legacy implementations so behavior is identical
+// to the pre-chunked path.
 
-export const MAPPER_SYSTEM_PROMPT = [
-  "You are the INIT MAPPER for a code-agent harness adopting a new project.",
-  "",
-  "Your job: read a structural inventory of an unknown project (top-level dirs, package manifests, framework signals, file-extension breakdown, notable files and dirs) and produce a structured proposal that lets the harness run useful sensors against the project's diffs.",
-  "",
-  "You DO NOT execute code. You DO NOT modify files. You produce one JSON object.",
-  "",
-  "Required outputs:",
-  "",
-  "- `pilot_module` — a glob like `core/src/integrations/**` for the initial scope where the harness should focus, OR the literal `ALL` if the project is small enough to harness end-to-end on day one. Bias toward a focused module — operators add scope as confidence grows.",
-  "- `domain_summary` — one paragraph (~80-200 words). What does this codebase appear to do? Inferred from package name, README contents (when in a manifest preview), top-level dirs, and manifest deps. State only what the inventory supports; if uncertain, say so.",
-  "- `key_modules` — 3-8 modules the harness should know about. Each `{ name, path, purpose }`. `path` is a directory path that EXISTS in the inventory (no glob); `purpose` is one short sentence.",
-  "- `route_handler_globs` — file glob patterns matching HTTP / CLI / RPC / route handlers. Examples: `core/src/**/*.controller.ts` (NestJS), `app/controllers/**/*.rb` (Rails), `apps/api/routes/**/*.py` (FastAPI), `internal/handlers/**/*.go`. EMPTY array if no handlers detected.",
-  "- `dto_globs` — globs matching DTO / schema / form-input / request-validator definitions. Examples: `**/*.dto.ts`, `apps/api/schemas/**/*.py`, `core/src/**/zod.ts`, `app/forms/**/*.rb`.",
-  "- `generator_source_globs` — globs whose changes mean a generator must re-run. Examples: `core/openapi.json`, `core/src/db/schema.ts` (Drizzle), `**/*.proto`, `prisma/schema.prisma`, `db/structure.sql`. EMPTY if no generators apparent.",
-  "- `high_stakes_globs` — globs for high-risk surfaces (auth, billing, multi-tenant boundaries, payments, integrations storing tokens, telephony, anything where a regression leaks user data or charges money). Be conservative; over-flagging dilutes the gate. EMPTY if not clear.",
-  "- `off_limits_globs` — globs the harness MUST NOT touch beyond the generic defaults already in place (`node_modules/**`, `dist/**`, `.git/**`, `.harness/**`, `.archive/**`, generated artifact dirs are already excluded). Add things like vendored third-party code, copied snapshots, large binary fixtures, anything under a directory the operator should not let an agent rewrite. EMPTY if nothing extra.",
-  "- `proposed_sensors` — project-specific sensors beyond the generic harness Layer A/B/C/D. Each `{ id, description, applies_to_globs }`. Examples: `event-emit-coverage` (every emit() has a label), `migration-naming-convention`, `auth-guard-on-controllers`, `dto-discriminator-coverage`. EMPTY if nothing project-specific is obvious.",
-  "- `notes` — anything notable that didn't fit a structured field — e.g., \"truncated at file cap; pilot scope conservative\", \"no test infra detected\", \"monorepo with pnpm-workspace; harness should adopt one package at a time\".",
-  "- `scope_index` — forward map from repo-relative file paths to the decisions and invariants whose `scope_globs` apply, keyed by file. Shape: `{ files: { \"<repo-relative-path>\": { decisions: [\"DEC-NNNN\"], invariants: [\"V-NNNN\"], unscoped?: true } } }`. The user prompt provides a list of in-scope decisions + invariants when ground state already exists; classify which apply to each meaningful source file. Use `unscoped: true` for files that should never carry rules (lockfiles, generated, vendored, dotfile config) so the GC scope-coverage pass doesn't re-flag them. EMPTY `{ files: {} }` is acceptable on first-run adopters with no decisions yet.",
-  "",
-  "Rules:",
-  "- Globs MUST start from repo root, no leading slash.",
-  "- Use forward slashes only (`/`), never backslashes.",
-  "- Use `**` for any-depth wildcards, `*` for single-segment.",
-  "- Do not invent paths that aren't in the inventory.",
-  "- Prefer EMPTY arrays over guessed entries. The harness propagates empty fields to operator review; guessed entries silently mislead and the operator may not catch them at adoption time.",
-  "- Avoid overly-broad globs like `**/*.ts` for `route_handler_globs` — narrow to the controller / route directory.",
-  "- For `pilot_module`: if the repo has a clear modular layout (packages/, apps/, services/, core/src/<feature>/), name one. If it's a flat single-app codebase, use the literal `ALL` and let the operator narrow later.",
-  "- `key_modules.path` MUST appear in the inventory's notable directories or the file-count breakdown.",
-  "- Return ONLY the JSON object. No prose, no preamble, no code fences.",
-].join("\n");
+export const MAPPER_OUTPUT_SCHEMA = LEGACY_OUTPUT_SCHEMA;
+export const MAPPER_SYSTEM_PROMPT = LEGACY_SYSTEM_PROMPT;
+export const buildMapperUserPrompt = buildLegacyUserPrompt;
 
-export function buildMapperUserPrompt(args: {
-  detection: DetectionResult;
-  summary: RepoSummary;
-}): string {
-  const d = args.detection;
-  const s = args.summary;
-  const parts: string[] = [];
-  parts.push(`# Project inventory`);
-  parts.push("");
-  parts.push(`Project slug: ${d.project_slug}`);
-  parts.push(`Origin URL: ${d.origin_url ?? "(none — local-only repo)"}`);
-  parts.push(
-    `Stack signatures (mechanical): ${
-      d.stack_signatures.map((sig) => sig.kind).join(", ") || "(none)"
-    }`,
-  );
-  if (d.start_command !== null) {
-    parts.push(
-      `Start command (detected): ${[d.start_command.command, ...d.start_command.args].join(" ")}`,
-    );
-  }
-  if (d.proposed_sensors.length > 0) {
-    parts.push("Generic stack-detected sensors already proposed:");
-    for (const sensor of d.proposed_sensors) {
-      parts.push(
-        `  - ${sensor.id} (${sensor.command} ${sensor.args.join(" ")}) — ${sensor.reason}`,
-      );
-    }
-  }
-  parts.push("");
-  parts.push(`## Repo summary`);
-  parts.push(`Total files (after caps): ${s.total_files}`);
-  parts.push(`Total dirs: ${s.total_dirs}`);
-  parts.push(
-    `Listing source: ${s.used_git_ls_files ? "git ls-files (gitignore-aware)" : "filesystem walk"}`,
-  );
-  if (s.truncated_at_file_cap) parts.push(`(truncated at file cap)`);
-  if (s.truncated_at_depth_cap) parts.push(`(truncated at depth cap — pilot scope should be conservative)`);
-  parts.push("");
-  parts.push(`## Top-level entries`);
-  parts.push(s.top_level.length === 0 ? "(none)" : s.top_level.join(", "));
-  parts.push("");
-  parts.push(`## Files per top-level dir (top 30)`);
-  for (const [dir, count] of Object.entries(s.by_top_dir)) {
-    parts.push(`  - ${dir}/  (${count} files)`);
-  }
-  parts.push("");
-  parts.push(`## File extensions (top 25)`);
-  for (const [ext, count] of Object.entries(s.by_extension)) {
-    parts.push(`  - ${ext}  (${count})`);
-  }
-  parts.push("");
-  if (s.notable_files.length > 0) {
-    parts.push(`## Notable files`);
-    for (const f of s.notable_files) parts.push(`  - ${f}`);
-    parts.push("");
-  }
-  if (s.notable_dir_paths.length > 0) {
-    parts.push(`## Notable directories (matching framework conventions)`);
-    for (const dir of s.notable_dir_paths.slice(0, 80)) parts.push(`  - ${dir}/`);
-    parts.push("");
-  }
-  if (s.framework_signals.length > 0) {
-    parts.push(`## Framework signals from manifests`);
-    for (const f of s.framework_signals) parts.push(`  - ${f}`);
-    parts.push("");
-  }
-  if (s.package_manifests.length > 0) {
-    parts.push(`## Package manifest previews (first 80 lines each)`);
-    for (const m of s.package_manifests) {
-      parts.push(`### ${m.path}`);
-      parts.push("```");
-      parts.push(m.preview);
-      parts.push("```");
-      parts.push("");
-    }
-  }
-  parts.push(`Now produce the JSON object per the schema. No preamble.`);
-  return parts.join("\n");
-}
-
-function isMapperOutput(value: unknown): value is MapperOutput {
+export function isMapperOutput(value: unknown): value is MapperOutput {
   if (typeof value !== "object" || value === null) return false;
   const v = value as Record<string, unknown>;
   if (
@@ -289,8 +131,6 @@ function isMapperOutput(value: unknown): value is MapperOutput {
   ) {
     return false;
   }
-  // scope_index is optional (older mappers won't produce it). When present,
-  // it must be `{ files: {...} }`.
   const scopeIdxRaw = v["scope_index"];
   if (scopeIdxRaw !== undefined) {
     if (typeof scopeIdxRaw !== "object" || scopeIdxRaw === null) return false;
@@ -306,9 +146,6 @@ export function validateMapperOutput(value: unknown): MapperOutput {
       `mapper output failed shape validation: ${JSON.stringify(value).slice(0, 200)}`,
     );
   }
-  // value passed isMapperOutput, but scope_index may still be missing.
-  // Default it to `{ files: {} }` so the rest of the pipeline can rely on
-  // the field being present and shaped.
   const v = value as unknown as Record<string, unknown>;
   if (v["scope_index"] === undefined) {
     v["scope_index"] = { files: {} };
@@ -316,52 +153,121 @@ export function validateMapperOutput(value: unknown): MapperOutput {
   return value;
 }
 
+// ── Orchestrator ────────────────────────────────────────────────────────────
+
 export interface RunMapperArgs {
   detection: DetectionResult;
+  /**
+   * Pre-built repo summary from the Phase-1 walker. Used by both the chunked
+   * path (its merge step references the workspace top-level package.json
+   * via repoRoot) and the legacy fallback (consumes summary directly).
+   */
   summary: RepoSummary;
-  /** Hard timeout for the claude call (ms). Default 300000. */
-  timeoutMs?: number;
+  /** Repo root absolute path — slicer + ledger read from here. */
+  repoRoot: string;
+  /** Fires once after slicing, before any module call goes out. */
+  onSlicesDetected?: (slices: ModuleSlice[]) => void;
+  /** Optional progress callback fired as each module proposal completes. */
+  onModuleStart?: (slice: ModuleSlice) => void;
+  onModuleEnd?: (slice: ModuleSlice, proposal: ModuleProposal) => void;
+  /** Hard timeout for the legacy single-call path (ms). Default 300000. */
+  legacyTimeoutMs?: number;
 }
 
 export async function runMapper(args: RunMapperArgs): Promise<MapperResult> {
-  const userPrompt = buildMapperUserPrompt({
-    detection: args.detection,
-    summary: args.summary,
-  });
+  const startedAt = Date.now();
+
+  // 1. Slice the repo into modules. The slicer always returns at least one
+  //    slice (single-package repos get one whole-repo slice).
+  const slices = sliceModules({ repoRoot: args.repoRoot });
+  const decisions = readLedgerSafely<DecisionLedgerEntry>(args.repoRoot, "decisions");
+  const invariants = readLedgerSafely<InvariantLedgerEntry>(args.repoRoot, "invariants");
+  if (args.onSlicesDetected !== undefined) args.onSlicesDetected(slices);
+
   log.info(
     {
-      slug: args.detection.project_slug,
-      total_files: args.summary.total_files,
-      manifests: args.summary.package_manifests.length,
-      truncated_file_cap: args.summary.truncated_at_file_cap,
-      truncated_depth_cap: args.summary.truncated_at_depth_cap,
+      slices: slices.length,
+      slice_slugs: slices.map((s) => s.moduleSlug),
+      decisions: decisions.length,
+      invariants: invariants.length,
     },
-    "mapper dispatch",
+    "chunked mapper dispatch",
   );
-  const result = await runClaude({
-    tier: "sonnet",
-    prompt: userPrompt,
-    system: MAPPER_SYSTEM_PROMPT,
-    jsonSchema: MAPPER_OUTPUT_SCHEMA as object,
-    timeoutMs: args.timeoutMs ?? 300_000,
+
+  // 2. Parallel module calls.
+  const proposals = await mapModulesParallel({
+    slices,
+    decisions,
+    invariants,
+    ...(args.onModuleStart !== undefined ? { onModuleStart: args.onModuleStart } : {}),
+    ...(args.onModuleEnd !== undefined ? { onModuleEnd: args.onModuleEnd } : {}),
   });
-  const output = validateMapperOutput(result.parsed);
+
+  // 3. If every module call failed, fall back to legacy.
+  const allFailed = proposals.length > 0 && proposals.every((p) => p.failed);
+  if (allFailed) {
+    log.warn(
+      { slices: slices.length },
+      "all module calls failed — falling back to legacy single-call path",
+    );
+    const legacy = await runLegacyMapper({
+      detection: args.detection,
+      summary: args.summary,
+      ...(args.legacyTimeoutMs !== undefined ? { timeoutMs: args.legacyTimeoutMs } : {}),
+    });
+    return { ...legacy, path: "legacy" };
+  }
+
+  // 4. Merge call (Haiku).
+  const workspacePackageJson = readIfExists(join(args.repoRoot, "package.json"));
+  const merged = await mergeModuleProposals({
+    proposals,
+    workspacePackageJson,
+    projectSlug: args.detection.project_slug,
+  });
+
+  log.info(
+    {
+      proposals: proposals.length,
+      successful: proposals.filter((p) => !p.failed).length,
+      pilot_module: merged.pilot_module,
+      total_sensors: merged.proposed_sensors.length,
+    },
+    "chunked mapper complete",
+  );
+
   return {
-    output,
+    output: merged,
     tier: "sonnet",
-    model: result.model,
-    duration_ms: result.durationMs,
-    ...(result.usage !== undefined
-      ? {
-          usage: {
-            ...(result.usage.input_tokens !== undefined
-              ? { input_tokens: result.usage.input_tokens }
-              : {}),
-            ...(result.usage.output_tokens !== undefined
-              ? { output_tokens: result.usage.output_tokens }
-              : {}),
-          },
-        }
-      : {}),
+    model: "haiku+sonnet",
+    duration_ms: Date.now() - startedAt,
+    path: "parallel",
+    module_proposals: proposals,
   };
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+function readIfExists(path: string): string | null {
+  if (!existsSync(path)) return null;
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+function readLedgerSafely<T>(repoRoot: string, kind: "decisions" | "invariants"): T[] {
+  // Ground state may not exist on first-run adopters. Empty list is fine —
+  // mapper just gets no in-scope ledger context to classify against.
+  try {
+    const groundDir = join(repoRoot, ".harness", "ground");
+    if (!existsSync(groundDir)) return [];
+    return (kind === "decisions"
+      ? buildDecisionsLedger({ repoRoot })
+      : buildInvariantsLedger({ repoRoot })) as unknown as T[];
+  } catch (err) {
+    log.warn({ err: String(err), kind }, "ledger read failed; using empty list");
+    return [];
+  }
 }
