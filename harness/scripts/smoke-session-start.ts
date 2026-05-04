@@ -213,7 +213,7 @@ capture_confidence: medium
   );
 }
 
-function runSmoke(): void {
+async function runSmoke(): Promise<void> {
   console.log("smoke-session-start — start");
 
   // ── Step 1 — resolveRepoRoot finds the fixture from nested cwd ───
@@ -235,7 +235,7 @@ function runSmoke(): void {
   {
     const repoRoot = mkFixture();
     mkdirSync(join(repoRoot, ".harness"), { recursive: true });
-    const result = buildSessionStartContext({ repoRoot });
+    const result = await buildSessionStartContext({ repoRoot });
     assert(result.sectionsRendered.includes("header"), "Step 2: header missing");
     assert(result.sectionsRendered.includes("two_zone_reminder"), "Step 2: two_zone_reminder missing");
     assert(result.sectionsRendered.includes("tool_quick_reference"), "Step 2: tool_quick_reference missing");
@@ -251,7 +251,7 @@ function runSmoke(): void {
   {
     const repoRoot = mkFixture();
     seedFullFixture(repoRoot);
-    const result = buildSessionStartContext({ repoRoot });
+    const result = await buildSessionStartContext({ repoRoot });
 
     const expected: typeof result.sectionsRendered = [
       "header",
@@ -289,7 +289,7 @@ function runSmoke(): void {
   {
     const repoRoot = mkFixture();
     seedFullFixture(repoRoot);
-    const result = buildSessionStartContext({ repoRoot, maxChars: 1_500 });
+    const result = await buildSessionStartContext({ repoRoot, maxChars: 1_500 });
     assert(result.totalChars <= 1_500, `Step 4: totalChars ${result.totalChars} exceeds cap 1500`);
     assert(result.sectionsRendered.includes("header"), "Step 4: header should survive truncation");
     assert(result.sectionsRendered.includes("two_zone_reminder"), "Step 4: two_zone_reminder should survive truncation");
@@ -306,7 +306,7 @@ function runSmoke(): void {
   {
     const repoRoot = mkFixture();
     seedFullFixture(repoRoot);
-    const result = buildSessionStartContext({ repoRoot, maxChars: 4_000 });
+    const result = await buildSessionStartContext({ repoRoot, maxChars: 4_000 });
     assert(result.sectionsRendered.includes("header"), "Step 5: header missing");
     assert(result.sectionsRendered.includes("two_zone_reminder"), "Step 5: two_zone_reminder missing");
     assert(result.sectionsRendered.includes("tool_quick_reference"), "Step 5: tool_quick_reference missing");
@@ -334,7 +334,7 @@ unbalanced: [
 `,
       "utf8",
     );
-    const result = buildSessionStartContext({ repoRoot });
+    const result = await buildSessionStartContext({ repoRoot });
     // Either it parses (passthrough) or it warns; both are acceptable.
     // What's NOT acceptable is a crash. Since we got a result, we're fine.
     assert(result.totalChars > 0, "Step 6: result.totalChars should be > 0");
@@ -345,7 +345,7 @@ unbalanced: [
 }
 
 try {
-  runSmoke();
+  await runSmoke();
 } finally {
   cleanup();
 }

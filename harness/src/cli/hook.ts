@@ -148,10 +148,11 @@ async function sessionStartHook(): Promise<void> {
     repoRoot,
   };
   if (isResume) buildArgs.maxChars = 4_000;
+  if (source !== null) buildArgs.source = source;
   if (cwdInput !== repoRoot && cwdInput.startsWith(repoRoot)) {
     buildArgs.scopeRelPath = cwdInput.slice(repoRoot.length + 1);
   }
-  const result = buildSessionStartContext(buildArgs);
+  const result = await buildSessionStartContext(buildArgs);
 
   emitShapeB({
     continue: true,

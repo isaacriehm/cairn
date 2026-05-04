@@ -7,6 +7,7 @@
 import { type Dirent, existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
+import { buildHandoffBlock } from "../context/index.js";
 import {
   buildDecisionsLedger,
   buildInvariantsLedger,
@@ -21,6 +22,7 @@ import {
 export type SessionStartSource = "startup" | "resume" | "clear" | "compact" | string;
 
 export type SessionStartSection =
+  | "run_handoff"
   | "header"
   | "two_zone_reminder"
   | "decisions_in_scope"
@@ -96,9 +98,9 @@ export function resolveRepoRoot(cwd: string): string | null {
   return null;
 }
 
-export function buildSessionStartContext(
+export async function buildSessionStartContext(
   args: BuildSessionStartContextArgs,
-): BuildSessionStartContextResult {
+): Promise<BuildSessionStartContextResult> {
   const maxChars = args.maxChars ?? DEFAULT_MAX_CHARS;
   const includeToolReference = args.includeToolReference !== false;
   const queryHistoryAvailable = args.queryHistoryAvailable !== false;
@@ -114,6 +116,21 @@ export function buildSessionStartContext(
 
   const sectionsRendered: SessionStartSection[] = [];
   const sectionsDropped: SessionStartSection[] = [];
+
+  // ── Section 0 — run handoff (CONTEXT_CONTINUITY_SPEC §4) ─────────────
+  // Inject the prior-run handoff block when the hook source indicates a
+  // boundary that benefits from it. `null` → no in-flight run / no
+  // commits since sha_pin → section omitted entirely.
+  let runHandoffSection: string | null = null;
+  if (args.source === "resume" || args.source === "compact" || args.source === "startup") {
+    try {
+      runHandoffSection = await buildHandoffBlock(args.repoRoot);
+    } catch (err) {
+      warnings.push(
+        `handoff builder failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
 
   const fixedHeader = SESSION_START_HEADER;
   const fixedTwoZone = composeTwoZoneReminder(queryHistoryAvailable);
@@ -154,6 +171,9 @@ export function buildSessionStartContext(
   // Truncation strategy per spec: always include 1 + 7; then 4, 2, 3,
   // 6, 5; drop in reverse order if over cap.
   const orderedSections: { id: SessionStartSection; body: string }[] = [];
+  if (runHandoffSection !== null) {
+    orderedSections.push({ id: "run_handoff", body: runHandoffSection });
+  }
   orderedSections.push({ id: "header", body: fixedHeader });
   orderedSections.push({ id: "two_zone_reminder", body: fixedTwoZone });
   if (includeToolReference) {
@@ -189,6 +209,7 @@ export function buildSessionStartContext(
     "tool_quick_reference",
     "two_zone_reminder",
     "header",
+    "run_handoff",
   ];
 
   let kept = orderedSections.slice();
