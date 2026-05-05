@@ -273,20 +273,16 @@ function renderAdoptionBanner(cwd: string): string | null {
   );
   lines.push("");
   lines.push(
-    "Surface this inline to the operator on their first message — even " +
-      "a casual greeting like \"hi\". Use AskUserQuestion or a markdown " +
-      "blockquote with the three options:",
+    "Invoke the `cairn-adopt` skill on the operator's first message — " +
+      "even a casual greeting like \"hi\". The skill renders the " +
+      "yes / not now / never prompt through `AskUserQuestion`; do not " +
+      "duplicate the prompt as inline markdown.",
   );
   lines.push("");
-  lines.push("> Adopt this project with cairn?");
-  lines.push("> `[a]` yes — walk adoption now (~30-60s, streamed)");
-  lines.push("> `[b]` not now — ask again next session");
-  lines.push("> `[c]` never — mark this project opted-out (writes `.cairn-skip`)");
-  lines.push("");
   lines.push(
-    "On `[a]`, invoke the `cairn-adopt` skill (it auto-detects). On " +
-      "`[c]`, write a one-line `.cairn-skip` file at the repo root so " +
-      "future sessions don't re-prompt.",
+    "On `never for this project`, the skill writes a one-line " +
+      "`.cairn-skip` file at the repo root so future sessions don't " +
+      "re-prompt.",
   );
   lines.push("");
   lines.push(

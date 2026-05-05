@@ -7,7 +7,11 @@ description: |
   decisions as DEC drafts; writes a consolidated attestation.yaml at
   `.cairn/tasks/active/<task_id>/attestation.yaml`. Returns a short
   attestation summary the main Claude relays to the operator.
-tools: Bash, Read, Glob, Grep
+tools:
+  - Bash
+  - Read
+  - Glob
+  - Grep
 ---
 
 # Reviewer subagent

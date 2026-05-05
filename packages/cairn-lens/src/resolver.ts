@@ -24,6 +24,12 @@ import {
   type ScopeIndexEntry,
 } from "@isaacriehm/cairn-core";
 
+export interface DecisionResolution {
+  id: string;
+  title: string;
+  status: "accepted" | "unknown";
+}
+
 export interface InvariantResolution {
   id: string;
   title: string;
@@ -67,6 +73,26 @@ export class LensResolver {
       dir = parent;
     }
     return null;
+  }
+
+  /**
+   * Resolve a §DEC-NNNN citation to a structured result.
+   *
+   * Reads directly from the decisions .md frontmatter via buildDecisionsLedger
+   * (which tolerates a missing or empty decisions dir). Returns status "unknown"
+   * when no matching accepted decision is found.
+   */
+  resolveDecision(id: string): DecisionResolution {
+    try {
+      for (const d of buildDecisionsLedger({ repoRoot: this.repoRoot })) {
+        if (d.id === id) {
+          return { id, title: d.title, status: "accepted" };
+        }
+      }
+    } catch {
+      // ignore — fall through to unknown
+    }
+    return { id, title: id, status: "unknown" };
   }
 
   /**

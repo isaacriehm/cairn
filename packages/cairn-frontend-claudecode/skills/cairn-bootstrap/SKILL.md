@@ -1,13 +1,11 @@
 ---
 name: cairn-bootstrap
-description: |
+description: Per-clone bootstrap for an already-adopted Cairn project.
+when_to_use: |
   Use when the SessionStart context flagged `bootstrap_required` for
-  this clone — the project is cairn-adopted (`.cairn/config.yaml`
-  present) but the local clone has not run the per-clone join step
-  (no `core.hooksPath` set). Walks the operator through bootstrap
-  inline by spawning the bundled `cli.mjs join` subprocess and
-  surfacing the result. Skip when the SessionStart banner did not
-  include the bootstrap warning.
+  this clone — the project has `.cairn/config.yaml` but no
+  `core.hooksPath` set. Skip when that signal is absent.
+effort: low
 ---
 
 # Skill: cairn-bootstrap
@@ -26,19 +24,21 @@ Before doing anything, verify the SessionStart context included the
 `bootstrap_required` warning. If not, exit with no output. The skill
 is only meaningful when the SessionStart banner explicitly invited it.
 
-## Step 1 — surface the inline prompt
+## Step 1 — surface the prompt
 
-Render exactly:
+Call `AskUserQuestion` with the prompt
+"This project uses Cairn, but your clone isn't bootstrapped yet."
+and two options:
 
-> This project uses Cairn, but your clone isn't bootstrapped yet.
-> `[a]` bootstrap now (~5s)
-> `[b]` skip — write surface disabled
+- **`bootstrap now`** — wires git hooks (~5s)
+- **`skip`** — write surface stays disabled
 
-Use `AskUserQuestion`. Do not preamble; the question is the entire
-turn.
+Do not preamble; the question is the entire turn. Do not also render
+an inline `[a]/[b]` blockquote — `AskUserQuestion` is the only
+render path.
 
-- **`[a]`** → continue to Step 2.
-- **`[b]`** → end the turn. The MCP write tools will continue to
+- **`bootstrap now`** → continue to Step 2.
+- **`skip`** → end the turn. The MCP write tools will continue to
   refuse with `BOOTSTRAP_REQUIRED`; the operator can re-trigger this
   skill from the next session's banner.
 
@@ -73,10 +73,8 @@ When the subprocess exits 0:
 > Bootstrap complete. Cairn's write surface is unblocked for this
 > clone; commits will attest automatically.
 
-When it exits non-zero, surface the failure inline:
-
-> Bootstrap failed at step <X>. `[a]` retry  `[b]` abort + open
-> `.cairn/JOIN.md` for manual recovery
+When it exits non-zero, surface the failure inline (one line of
+prose) and call `AskUserQuestion` with `retry` / `abort + open JOIN.md`.
 
 ## Hard rules
 

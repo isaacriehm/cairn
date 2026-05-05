@@ -1,17 +1,25 @@
 /**
- * Decoration manager — inlay-style ghost text after §V tokens + a left-gutter
- * health icon column.
+ * Decoration manager — inlay-style ghost text after §V / §DEC tokens plus a
+ * left-gutter health icon column.
  *
  * Per LENS_SPEC §2.2 + §2.3:
- *   - Active invariant  → ✓ <title>   (muted green) + ● gutter
- *   - Superseded        → ⚠ superseded by §V<M>  (muted yellow) + ◐ gutter
- *   - Not in ledger     → ? not in ledger          (muted red)   + ○ gutter
+ *   §V<N> tokens:
+ *     - Active invariant   -> checkmark + title  (muted green) + filled circle gutter
+ *     - Superseded         -> warning + superseded by §V<M>   (muted yellow) + half-circle
+ *     - Not in ledger      -> ? not in ledger    (muted red)   + empty circle
+ *
+ *   §DEC-NNNN tokens (new format emitted by strip-replace):
+ *     - Accepted decision  -> checkmark + title  (muted blue)
+ *     - Not in ledger      -> (unresolved)        (muted red)
  */
 
 import * as vscode from "vscode";
 import { LensResolver } from "../resolver.js";
 
-const INVARIANT_TOKEN_RE = /§V(\d+)/g;
+// §DEC-NNNN — new bare-token format from strip-replace
+const DECISION_TOKEN_RE = /§(DEC-\d+)/g;
+// §V<N> — invariant token
+const INVARIANT_TOKEN_RE = /§(V\d+)/g;
 
 interface DecorationKit {
   inlineActive: vscode.TextEditorDecorationType;
@@ -20,6 +28,9 @@ interface DecorationKit {
   gutterActive: vscode.TextEditorDecorationType;
   gutterSuperseded: vscode.TextEditorDecorationType;
   gutterUnknown: vscode.TextEditorDecorationType;
+  // Decision-specific decorations
+  inlineDecAccepted: vscode.TextEditorDecorationType;
+  inlineDecUnknown: vscode.TextEditorDecorationType;
 }
 
 function makeKit(): DecorationKit {
@@ -44,13 +55,19 @@ function makeKit(): DecorationKit {
       inlineCommon("#e26d6d"),
     ),
     gutterActive: vscode.window.createTextEditorDecorationType(
-      gutterCommon("●"),
+      gutterCommon("●"), // filled circle
     ),
     gutterSuperseded: vscode.window.createTextEditorDecorationType(
-      gutterCommon("◐"),
+      gutterCommon("◐"), // half-circle
     ),
     gutterUnknown: vscode.window.createTextEditorDecorationType(
-      gutterCommon("○"),
+      gutterCommon("○"), // empty circle
+    ),
+    inlineDecAccepted: vscode.window.createTextEditorDecorationType(
+      inlineCommon("#7aa2d4"),
+    ),
+    inlineDecUnknown: vscode.window.createTextEditorDecorationType(
+      inlineCommon("#e26d6d"),
     ),
   };
 }
@@ -94,6 +111,8 @@ export class CitationDecorationManager implements vscode.Disposable {
     const gutterActive: vscode.Range[] = [];
     const gutterSuperseded: vscode.Range[] = [];
     const gutterUnknown: vscode.Range[] = [];
+    const inlineDecAccepted: vscode.DecorationOptions[] = [];
+    const inlineDecUnknown: vscode.DecorationOptions[] = [];
 
     const doc = editor.document;
     if (!shouldDecorate(doc)) {
@@ -104,11 +123,36 @@ export class CitationDecorationManager implements vscode.Disposable {
     const lineCount = Math.min(doc.lineCount, 5_000);
     for (let lineIdx = 0; lineIdx < lineCount; lineIdx++) {
       const lineText = doc.lineAt(lineIdx).text;
+
+      // §DEC-NNNN tokens
+      for (const m of lineText.matchAll(DECISION_TOKEN_RE)) {
+        const start = m.index ?? -1;
+        if (start < 0) continue;
+        const end = start + m[0].length;
+        const id = m[1] as string; // "DEC-0001"
+        const r = this.resolver.resolveDecision(id);
+        const range = new vscode.Range(lineIdx, start, lineIdx, end);
+
+        if (inlineEnabled) {
+          const trailerText =
+            r.status === "accepted"
+              ? `✓ ${truncate(r.title, 60)}`
+              : "(unresolved)";
+          const opt: vscode.DecorationOptions = {
+            range,
+            renderOptions: { after: { contentText: trailerText } },
+          };
+          if (r.status === "accepted") inlineDecAccepted.push(opt);
+          else inlineDecUnknown.push(opt);
+        }
+      }
+
+      // §V<N> tokens
       for (const m of lineText.matchAll(INVARIANT_TOKEN_RE)) {
         const start = m.index ?? -1;
         if (start < 0) continue;
         const end = start + m[0].length;
-        const id = m[0].slice(1); // "V0023"
+        const id = m[1] as string; // "V0023"
         const r = this.resolver.resolveInvariant(id);
         const range = new vscode.Range(lineIdx, start, lineIdx, end);
 
@@ -118,7 +162,7 @@ export class CitationDecorationManager implements vscode.Disposable {
               ? `✓ ${truncate(r.title, 60)}`
               : r.status === "superseded"
                 ? `⚠ superseded by §${r.supersededBy ?? "?"}`
-                : "? not in ledger";
+                : "(unresolved)";
           const opt: vscode.DecorationOptions = {
             range,
             renderOptions: {
@@ -143,6 +187,8 @@ export class CitationDecorationManager implements vscode.Disposable {
     editor.setDecorations(this.kit.gutterActive, gutterActive);
     editor.setDecorations(this.kit.gutterSuperseded, gutterSuperseded);
     editor.setDecorations(this.kit.gutterUnknown, gutterUnknown);
+    editor.setDecorations(this.kit.inlineDecAccepted, inlineDecAccepted);
+    editor.setDecorations(this.kit.inlineDecUnknown, inlineDecUnknown);
   }
 
   private applyEmpty(editor: vscode.TextEditor): void {
@@ -152,6 +198,8 @@ export class CitationDecorationManager implements vscode.Disposable {
     editor.setDecorations(this.kit.gutterActive, []);
     editor.setDecorations(this.kit.gutterSuperseded, []);
     editor.setDecorations(this.kit.gutterUnknown, []);
+    editor.setDecorations(this.kit.inlineDecAccepted, []);
+    editor.setDecorations(this.kit.inlineDecUnknown, []);
   }
 }
 

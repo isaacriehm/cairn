@@ -1,15 +1,12 @@
 ---
 name: cairn-direction
-description: |
-  Use when the operator's user message looks like a task — verbs like
+description: Question-asker, spec-tightener, and subagent dispatcher for task-shaped prompts.
+when_to_use: |
+  Use when the operator's message looks like a task — verbs like
   "build", "add", "fix", "refactor", "implement", "change", "rip out",
-  "wire up" — and there is no active task already in flight for this
-  session. Runs the question-asker / spec-tightener / dispatch pipeline:
-  reads in-scope decisions and invariants, asks load-bearing questions
-  if the prompt is ambiguous, writes a tightened spec, and dispatches
-  one or more subagents via the Task tool. Skip for questions, read-
-  only requests, conversational messages, and explicit one-shot
-  operations the operator has already detailed.
+  "wire up" — and no active task is in flight. Skip for questions,
+  read-only requests, conversational messages, and one-shot ops the
+  operator has already detailed.
 ---
 
 # Skill: cairn-direction

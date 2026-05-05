@@ -2,9 +2,9 @@
  * Cairn Lens — VS Code extension entry point.
  *
  * Wires up:
- *   - Hover provider for §V / TSK tokens
+ *   - Hover provider for §DEC-NNNN, §V / TSK tokens
  *   - Decoration provider (inlay-style ghost text + gutter icons)
- *   - Code Lens provider (decisions-in-scope above functions)
+ *   - Code Lens provider (decisions in scope above functions)
  *   - DEC Explorer tree view (optional, behind config flag)
  *
  * Spec: docs/LENS_SPEC.md.
@@ -37,39 +37,42 @@ export function activate(context: vscode.ExtensionContext): void {
   }
   const resolver = new LensResolver(repoRoot);
 
-  // ── Hover provider ─────────────────────────────────────────────────
+  // Hover provider
   const hoverProvider = new CitationHoverProvider(resolver);
   context.subscriptions.push(
     vscode.languages.registerHoverProvider(SOURCE_LANG_SELECTOR, hoverProvider),
   );
 
-  // ── Decorations (inlay text + gutter icons) ────────────────────────
+  // Decorations (inlay text + gutter icons)
   const decorations = new CitationDecorationManager(resolver, context);
   context.subscriptions.push(decorations);
 
-  // ── Code Lens (decisions in scope above functions) ─────────────────
+  // Code Lens (decisions in scope above functions)
   const lensProvider = new ScopeCodeLensProvider(resolver);
   context.subscriptions.push(
     vscode.languages.registerCodeLensProvider(SOURCE_LANG_SELECTOR, lensProvider),
   );
 
-  // ── DEC Explorer sidebar (gated by config) ─────────────────────────
-  if (config.get<boolean>("lens.decExplorer") === true) {
-    const explorer = new DecExplorerProvider(resolver);
-    context.subscriptions.push(
-      vscode.window.registerTreeDataProvider(
-        "cairnLens.decExplorer",
-        explorer,
-      ),
-    );
-    // Refresh the tree whenever the active editor changes — the DEC list is
-    // scoped to the file in focus.
-    context.subscriptions.push(
-      vscode.window.onDidChangeActiveTextEditor(() => explorer.refresh()),
-    );
-  }
+  // DEC Explorer sidebar
+  //
+  // Register unconditionally so VS Code always has a provider for the
+  // "cairnLens.decExplorer" view id declared in package.json contributes.views.
+  // The view panel itself is hidden/shown via the `when` clause in package.json.
+  // If the view is visible but no provider is registered VS Code throws
+  // "There is no data provider registered that can provide view data."
+  const explorer = new DecExplorerProvider(resolver);
+  context.subscriptions.push(
+    vscode.window.registerTreeDataProvider(
+      "cairnLens.decExplorer",
+      explorer,
+    ),
+  );
+  // Refresh the tree whenever the active editor changes.
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveTextEditor(() => explorer.refresh()),
+  );
 
-  // ── File watchers — ledgers + scope-index drive cache invalidation ─
+  // File watchers — ledgers + scope-index drive cache invalidation.
   // The cairn-core ledger-cache module already keys on mtime, so the only
   // visible-side concern is forcing the editor's decoration / lens views to
   // re-render. The cheapest signal is `onDidChangeTextDocument` plus a
@@ -83,6 +86,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const onLedgerChange = (): void => {
     decorations.refreshAllVisible();
     lensProvider.fire();
+    explorer.refresh();
   };
   context.subscriptions.push(
     watcher.onDidChange(onLedgerChange),

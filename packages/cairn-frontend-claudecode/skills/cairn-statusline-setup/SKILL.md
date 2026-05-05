@@ -1,13 +1,11 @@
 ---
 name: cairn-statusline-setup
-description: |
-  Use when the operator asks to enable the cairn statusline badge
-  (the `⬡ cairn …` summary in Claude Code's status row), or when
-  the SessionStart context flags `statusline_unset`. Writes a
-  user-level `~/.claude/settings.json` `statusLine` entry that
-  resolves the active plugin bundle via a shim file the plugin's
-  SessionStart hook keeps current. One-time setup; survives plugin
-  upgrades because the shim file's path is stable.
+description: Wire the Cairn `⬡` statusline badge into user-level Claude Code settings.
+when_to_use: |
+  Use when the operator asks to enable the cairn statusline badge or
+  when the SessionStart context flags `statusline_unset`. One-time
+  setup per machine; survives plugin upgrades via the shim path.
+effort: low
 ---
 
 # Skill: cairn-statusline-setup
@@ -67,10 +65,15 @@ Read `~/.claude/settings.json` (create with `{}` if missing). Set the
 {
   "statusLine": {
     "type": "command",
-    "command": "node \"$(cat ~/.claude/plugins/cache/isaacriehm-cairn/.active-version-path)\" status-line"
+    "command": "node \"$(cat ~/.claude/plugins/cache/isaacriehm-cairn/.active-version-path)\" status-line",
+    "refreshInterval": 30
   }
 }
 ```
+
+The `refreshInterval: 30` keeps the badge live during long subagent
+runs — without it the row goes stale because main-session events
+don't tick while a subagent is in flight.
 
 Preserve any other top-level fields. Use the `Edit` tool with the
 existing file content as `old_string` to do the merge atomically.

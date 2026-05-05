@@ -25718,6 +25718,9 @@ function decisionsDir(repoRoot) {
 function invariantsDir(repoRoot) {
   return join2(groundDir(repoRoot), "invariants");
 }
+function decisionsLedgerPath(repoRoot) {
+  return join2(decisionsDir(repoRoot), "decisions.ledger.yaml");
+}
 function invariantsLedgerPath(repoRoot) {
   return join2(invariantsDir(repoRoot), "invariants.ledger.yaml");
 }
@@ -40665,6 +40668,14 @@ function buildDecisionsLedger(opts) {
   }
   entries.sort((a, b2) => a.id.localeCompare(b2.id));
   return entries;
+}
+function writeDecisionsLedger(opts) {
+  const entries = buildDecisionsLedger(opts);
+  const path2 = decisionsLedgerPath(opts.repoRoot);
+  mkdirSync3(decisionsDir(opts.repoRoot), { recursive: true });
+  writeFileSync2(path2, (0, import_yaml3.stringify)(entries), "utf8");
+  log3.debug({ path: path2, count: entries.length }, "wrote decisions ledger");
+  return { entries, path: path2 };
 }
 function buildInvariantsLedger(opts) {
   const dir = invariantsDir(opts.repoRoot);
@@ -56234,26 +56245,25 @@ async function runPhase4Pilot(state) {
   }
   const out = mapper.output;
   const candidates = [];
-  if (out.pilot_module.length > 0) {
-    candidates.push({
-      id: out.pilot_module,
-      label: out.pilot_module,
-      detail: "Mapper's first pick"
-    });
-  }
+  const pretty = (p2) => p2.length === 0 ? "." : p2;
+  candidates.push({
+    id: out.pilot_module.length > 0 ? out.pilot_module : ".",
+    label: pretty(out.pilot_module),
+    detail: "Mapper's first pick"
+  });
   for (const km of out.key_modules) {
     if (candidates.length >= MAX_OPTIONS)
       break;
     if (km.path === out.pilot_module)
       continue;
     candidates.push({
-      id: km.path,
-      label: km.path,
+      id: km.path.length > 0 ? km.path : ".",
+      label: pretty(km.path),
       detail: km.purpose
     });
   }
   if (candidates.length === 0) {
-    candidates.push({ id: "ALL", label: "ALL", detail: "Whole repo as the pilot scope" });
+    candidates.push({ id: ".", label: ".", detail: "Whole repo as the pilot scope" });
   }
   const question = {
     id: "4-pilot",
@@ -66950,36 +66960,40 @@ async function handler4(ctx, input) {
   if (!existsSync46(dir)) {
     return mcpError("DECISION_NOT_FOUND", `No decisions directory at ${dir}`);
   }
-  const files = readdirSync20(dir, { withFileTypes: true, encoding: "utf8" });
-  for (const f of files) {
-    if (!f.isFile() || !f.name.endsWith(".md"))
-      continue;
-    const abs = join50(dir, f.name);
-    const parsed = parseFrontmatter(readFileSync42(abs, "utf8"));
-    const fm = DecisionFrontmatter.safeParse(parsed.frontmatter);
-    if (!fm.success)
-      continue;
-    if (fm.data.id !== input.id)
-      continue;
-    return {
-      id: fm.data.id,
-      title: fm.data.title,
-      status: fm.data.status,
-      ...fm.data.scope_globs !== void 0 ? { scope_globs: fm.data.scope_globs } : {},
-      ...fm.data.supersedes !== void 0 ? { supersedes: fm.data.supersedes } : {},
-      ...fm.data.superseded_by !== void 0 ? { superseded_by: fm.data.superseded_by } : {},
-      ...fm.data.decided_at !== void 0 ? { decided_at: fm.data.decided_at } : {},
-      ...fm.data.assertions !== void 0 ? { assertions: fm.data.assertions } : {},
-      ...fm.data.human_review_hint !== void 0 ? { human_review_hint: fm.data.human_review_hint } : {},
-      ...fm.data.related_invariants !== void 0 ? { related_invariants: fm.data.related_invariants } : {},
-      body_markdown: parsed.body
-    };
+  const inboxDir = join50(dir, "_inbox");
+  const searchDirs = [dir, inboxDir].filter((d) => existsSync46(d));
+  for (const searchDir of searchDirs) {
+    const files = readdirSync20(searchDir, { withFileTypes: true, encoding: "utf8" });
+    for (const f of files) {
+      if (!f.isFile() || !f.name.endsWith(".md"))
+        continue;
+      const abs = join50(searchDir, f.name);
+      const parsed = parseFrontmatter(readFileSync42(abs, "utf8"));
+      const fm = DecisionFrontmatter.safeParse(parsed.frontmatter);
+      if (!fm.success)
+        continue;
+      if (fm.data.id !== input.id)
+        continue;
+      return {
+        id: fm.data.id,
+        title: fm.data.title,
+        status: fm.data.status,
+        ...fm.data.scope_globs !== void 0 ? { scope_globs: fm.data.scope_globs } : {},
+        ...fm.data.supersedes !== void 0 ? { supersedes: fm.data.supersedes } : {},
+        ...fm.data.superseded_by !== void 0 ? { superseded_by: fm.data.superseded_by } : {},
+        ...fm.data.decided_at !== void 0 ? { decided_at: fm.data.decided_at } : {},
+        ...fm.data.assertions !== void 0 ? { assertions: fm.data.assertions } : {},
+        ...fm.data.human_review_hint !== void 0 ? { human_review_hint: fm.data.human_review_hint } : {},
+        ...fm.data.related_invariants !== void 0 ? { related_invariants: fm.data.related_invariants } : {},
+        body_markdown: parsed.body
+      };
+    }
   }
   return mcpError("DECISION_NOT_FOUND", `No decision with id ${input.id}`);
 }
 var decisionGetTool = {
   name: "cairn_decision_get",
-  description: "Returns full ADR + assertions block for a decision id.",
+  description: "Returns full ADR + assertions block for a decision id. Resolves both accepted decisions (`.cairn/ground/decisions/<id>.md`) and pending drafts (`_inbox/<id>.draft.md`); the response's `status` field tells the caller which layer the decision came from.",
   inputSchema: decisionGetInput,
   handler: handler4
 };
@@ -68025,6 +68039,11 @@ function resolveDecisionDraft(ctx, input) {
         emitEvent(ctx, "decision_accepted", input.item_id, `.cairn/ground/decisions/${input.item_id}.md`);
       } catch {
       }
+      try {
+        writeDecisionsLedger({ repoRoot: ctx.repoRoot });
+      } catch (err) {
+        log25.warn({ err: err instanceof Error ? err.message : String(err) }, "decisions ledger rebuild failed");
+      }
       let stripOutcome = null;
       if (draftMeta?.captureSource === "init-source-comments" && draftMeta.blockId !== null) {
         stripOutcome = runSourceStrip(ctx.repoRoot, input.item_id, draftMeta);
@@ -68224,13 +68243,11 @@ function extractAuditBlocks(body) {
   return out;
 }
 var HASH_LANGS = /* @__PURE__ */ new Set(["py", "rb", "sh", "lua"]);
-function formatCitation(lang, decId, title) {
-  const trimmedTitle = title.trim();
-  const tail = trimmedTitle.length > 0 ? `: ${trimmedTitle}` : "";
+function formatCitation(lang, decId, _title) {
   if (HASH_LANGS.has(lang)) {
-    return `# See ${decId}${tail}`;
+    return `# \xA7${decId}`;
   }
-  return `// See ${decId}${tail}`;
+  return `// \xA7${decId}`;
 }
 function emitEvent(ctx, kind, decId, path2) {
   writeInvalidationEvent(ctx.repoRoot, {
@@ -69126,14 +69143,9 @@ function renderAdoptionBanner(cwd) {
   lines.push("");
   lines.push("This project is a git repo with no `.cairn/` directory. Cairn is installed and can adopt it: a one-time visual pass that ingests existing decisions, source-comment essays, and `CLAUDE.md` / `AGENTS.md` rules into queryable ground state.");
   lines.push("");
-  lines.push('Surface this inline to the operator on their first message \u2014 even a casual greeting like "hi". Use AskUserQuestion or a markdown blockquote with the three options:');
+  lines.push('Invoke the `cairn-adopt` skill on the operator\'s first message \u2014 even a casual greeting like "hi". The skill renders the yes / not now / never prompt through `AskUserQuestion`; do not duplicate the prompt as inline markdown.');
   lines.push("");
-  lines.push("> Adopt this project with cairn?");
-  lines.push("> `[a]` yes \u2014 walk adoption now (~30-60s, streamed)");
-  lines.push("> `[b]` not now \u2014 ask again next session");
-  lines.push("> `[c]` never \u2014 mark this project opted-out (writes `.cairn-skip`)");
-  lines.push("");
-  lines.push("On `[a]`, invoke the `cairn-adopt` skill (it auto-detects). On `[c]`, write a one-line `.cairn-skip` file at the repo root so future sessions don't re-prompt.");
+  lines.push("On `never for this project`, the skill writes a one-line `.cairn-skip` file at the repo root so future sessions don't re-prompt.");
   lines.push("");
   lines.push("If the operator asks what cairn does, summarize: persistent ground state for AI agents \u2014 decisions, invariants, canonical map, sensors. Stops re-debating settled choices across sessions.");
   return lines.join("\n");

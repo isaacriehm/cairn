@@ -1,19 +1,22 @@
 /**
  * Hover provider for cairn citation tokens.
  *
- * Triggers on §V<N> and TODO(TSK-<id>) tokens. Renders a Markdown card with
- * resolved title, status, and links to the underlying ground file.
+ * Triggers on §DEC-NNNN, §V<N>, and TODO(TSK-<id>) tokens. Renders a
+ * Markdown card with resolved title, status, and links to the underlying
+ * ground file.
  */
 
 import * as vscode from "vscode";
 import { LensResolver } from "../resolver.js";
 
-const INVARIANT_TOKEN_RE = /§V\d+/g;
+// Matches the new bare-token format:  §DEC-0001  or  # §DEC-0001
+const DECISION_TOKEN_RE = /§(DEC-\d+)/g;
+const INVARIANT_TOKEN_RE = /§(V\d+)/g;
 const TASK_TOKEN_RE = /TODO\(TSK-[A-Za-z0-9_-]+\)/g;
 
 interface TokenMatch {
-  kind: "invariant" | "task";
-  id: string; // "V0023" or "TSK-foo"
+  kind: "decision" | "invariant" | "task";
+  id: string; // "DEC-0001", "V0023", or "TSK-foo"
   range: vscode.Range;
 }
 
@@ -23,6 +26,18 @@ function findTokenAt(
 ): TokenMatch | null {
   const line = doc.lineAt(position.line).text;
 
+  for (const m of line.matchAll(DECISION_TOKEN_RE)) {
+    const start = m.index ?? -1;
+    if (start < 0) continue;
+    const end = start + m[0].length;
+    if (position.character >= start && position.character <= end) {
+      return {
+        kind: "decision",
+        id: m[1] as string, // "DEC-0001"
+        range: new vscode.Range(position.line, start, position.line, end),
+      };
+    }
+  }
   for (const m of line.matchAll(INVARIANT_TOKEN_RE)) {
     const start = m.index ?? -1;
     if (start < 0) continue;
@@ -30,7 +45,7 @@ function findTokenAt(
     if (position.character >= start && position.character <= end) {
       return {
         kind: "invariant",
-        id: m[0].slice(1), // strip leading §
+        id: m[1] as string, // "V0023"
         range: new vscode.Range(position.line, start, position.line, end),
       };
     }
@@ -40,7 +55,7 @@ function findTokenAt(
     if (start < 0) continue;
     const end = start + m[0].length;
     if (position.character >= start && position.character <= end) {
-      // Inner: TODO(TSK-foo) → "TSK-foo"
+      // Inner: TODO(TSK-foo) -> "TSK-foo"
       const inner = m[0].slice(5, -1);
       return {
         kind: "task",
@@ -66,7 +81,18 @@ export class CitationHoverProvider implements vscode.HoverProvider {
     md.isTrusted = false;
     md.supportThemeIcons = true;
 
-    if (token.kind === "invariant") {
+    if (token.kind === "decision") {
+      const r = this.resolver.resolveDecision(token.id);
+      const statusLabel =
+        r.status === "accepted"
+          ? "$(check) accepted"
+          : "$(question) not in ledger — run `cairn init` or re-adopt to generate decisions.ledger.yaml";
+      md.appendMarkdown(`**§${r.id}** — ${escapeMd(r.title)}\n\n`);
+      md.appendMarkdown(`${statusLabel}\n\n`);
+      md.appendMarkdown(
+        `[Open decisions ledger](${vscode.Uri.file(this.resolver.decisionsLedgerFilePath()).toString()})`,
+      );
+    } else if (token.kind === "invariant") {
       const r = this.resolver.resolveInvariant(token.id);
       const statusLabel =
         r.status === "active"

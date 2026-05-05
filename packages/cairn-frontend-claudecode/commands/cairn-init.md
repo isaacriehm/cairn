@@ -1,5 +1,6 @@
 ---
 description: Adopt this project with Cairn — runs the one-time init pipeline inline.
+argument-hint: "[--force]"
 ---
 
 # /cairn-init

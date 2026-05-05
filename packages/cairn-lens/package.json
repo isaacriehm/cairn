@@ -73,7 +73,9 @@
     "clean": "rm -rf dist *.tsbuildinfo *.vsix",
     "bundle": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node22 --outfile=dist/extension.cjs --external:vscode --external:fsevents",
     "package": "pnpm clean && pnpm bundle && vsce package --no-dependencies",
-    "smoke:resolver": "tsx scripts/smoke-resolver.ts"
+    "smoke:resolver": "tsx scripts/smoke-resolver.ts",
+    "smoke:dec-tokens": "tsx scripts/smoke-dec-tokens.ts",
+    "smoke:empty-ground": "tsx scripts/smoke-empty-ground.ts"
   },
   "dependencies": {
     "@isaacriehm/cairn-core": "workspace:*"

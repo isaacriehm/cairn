@@ -36,6 +36,7 @@ import { dirname, join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { writeInvalidationEvent } from "../../events/index.js";
 import { decisionsDir } from "../../ground/index.js";
+import { writeDecisionsLedger } from "../../ground/ledgers.js";
 import {
   clearDeferState,
   writeDeferState,
@@ -212,6 +213,18 @@ function resolveDecisionDraft(ctx: McpContext, input: Input): Promise<unknown> {
         emitEvent(ctx, "decision_accepted", input.item_id, `.cairn/ground/decisions/${input.item_id}.md`);
       } catch {
         // event emission must never roll back the resolution
+      }
+      // Rebuild `.cairn/ground/decisions/decisions.ledger.yaml` from
+      // every accepted DEC on disk. Cairn Lens reads the ledger to
+      // resolve `// DEC-NNNN` citations inline; without this rebuild
+      // the ledger sits empty and lens renders nothing.
+      try {
+        writeDecisionsLedger({ repoRoot: ctx.repoRoot });
+      } catch (err) {
+        log.warn(
+          { err: err instanceof Error ? err.message : String(err) },
+          "decisions ledger rebuild failed",
+        );
       }
       let stripOutcome: StripOutcomeSummary | null = null;
       if (draftMeta?.captureSource === "init-source-comments" && draftMeta.blockId !== null) {
@@ -475,13 +488,18 @@ function extractAuditBlocks(body: unknown): AuditBlock[] {
 
 const HASH_LANGS = new Set(["py", "rb", "sh", "lua"]);
 
-function formatCitation(lang: string, decId: string, title: string): string {
-  const trimmedTitle = title.trim();
-  const tail = trimmedTitle.length > 0 ? `: ${trimmedTitle}` : "";
+/**
+ * Bare-symbol citation: `§DEC-NNNN` inside a single-line comment.
+ * The `§` prefix matches the invariant convention (`§V<N>`) so a
+ * single grep / lens regex catches both kinds. Cairn Lens resolves
+ * the title + body from the ledger and renders inline / on hover;
+ * the source file carries only the symbol so prose can't go stale.
+ */
+function formatCitation(lang: string, decId: string, _title: string): string {
   if (HASH_LANGS.has(lang)) {
-    return `# See ${decId}${tail}`;
+    return `# §${decId}`;
   }
-  return `// See ${decId}${tail}`;
+  return `// §${decId}`;
 }
 
 function emitEvent(

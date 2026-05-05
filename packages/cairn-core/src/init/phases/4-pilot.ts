@@ -47,27 +47,28 @@ export async function runPhase4Pilot(state: PhaseState): Promise<PhaseResult> {
 
   const out = mapper.output;
   const candidates: PhaseOption[] = [];
-  // Pilot first.
-  if (out.pilot_module.length > 0) {
-    candidates.push({
-      id: out.pilot_module,
-      label: out.pilot_module,
-      detail: "Mapper's first pick",
-    });
-  }
+  // Empty path = repo root. Render as `.` so the operator sees a
+  // meaningful label instead of an empty string between backticks.
+  const pretty = (p: string): string => (p.length === 0 ? "." : p);
+  // Pilot first (always at least repo-root, even when empty).
+  candidates.push({
+    id: out.pilot_module.length > 0 ? out.pilot_module : ".",
+    label: pretty(out.pilot_module),
+    detail: "Mapper's first pick",
+  });
   // Top 2 key_modules other than pilot.
   for (const km of out.key_modules) {
     if (candidates.length >= MAX_OPTIONS) break;
     if (km.path === out.pilot_module) continue;
     candidates.push({
-      id: km.path,
-      label: km.path,
+      id: km.path.length > 0 ? km.path : ".",
+      label: pretty(km.path),
       detail: km.purpose,
     });
   }
   // Fallback if mapper produced nothing.
   if (candidates.length === 0) {
-    candidates.push({ id: "ALL", label: "ALL", detail: "Whole repo as the pilot scope" });
+    candidates.push({ id: ".", label: ".", detail: "Whole repo as the pilot scope" });
   }
 
   const question: PhaseQuestion = {
