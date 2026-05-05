@@ -3,7 +3,7 @@
  * check-layout — validates the cairn-frontend-claudecode plugin layout.
  *
  * Confirms manifest + mcp + hooks files parse as JSON with expected
- * shape, and that referenced bin scripts exist under cairn-core/dist.
+ * shape, and that hook commands reference the published `cairn` CLI.
  * Runs as the package's `build` step so `pnpm -r build` flags layout
  * regressions.
  */
@@ -14,7 +14,6 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = resolve(HERE, "..");
-const CAIRN_CORE_DIST = resolve(PKG_ROOT, "..", "cairn-core", "dist");
 
 const errors = [];
 
@@ -49,24 +48,24 @@ if (manifest) {
 }
 
 // ── .mcp.json ───────────────────────────────────────────────────────
+// Plugin shells out to the published `cairn` CLI on PATH (installed via
+// `npm install -g @isaacriehm/cairn`). This avoids the pre-v0.1.2 problem
+// where the plugin manifest pointed at `${CLAUDE_PLUGIN_ROOT}/../cairn-core`
+// — Claude Code's plugin cache only stores the plugin dir, not sibling
+// workspace packages, so the path didn't resolve in production installs.
 const mcp = readJson(join(PKG_ROOT, ".mcp.json"));
 if (mcp) {
   const server = mcp?.mcpServers?.cairn;
   if (!server || typeof server !== "object") {
     fail(".mcp.json: mcpServers.cairn must be an object");
   } else {
-    if (server.command !== "node") fail(".mcp.json: cairn.command must be 'node'");
-    if (!Array.isArray(server.args) || server.args.length !== 1) {
-      fail(".mcp.json: cairn.args must be a single-arg array");
-    } else {
-      const arg = server.args[0];
-      if (!arg.includes("${CLAUDE_PLUGIN_ROOT}/../cairn-core/dist/mcp/")) {
-        fail(`.mcp.json: cairn.args[0] must reference cairn-core/dist/mcp, got ${arg}`);
-      }
-      const localBin = arg.replace("${CLAUDE_PLUGIN_ROOT}/../cairn-core/dist/", "");
-      if (!existsSync(join(CAIRN_CORE_DIST, localBin))) {
-        fail(`.mcp.json: bin not found at ${join(CAIRN_CORE_DIST, localBin)}`);
-      }
+    if (server.command !== "cairn") {
+      fail(`.mcp.json: cairn.command must be 'cairn' (the npm-installed CLI), got ${server.command}`);
+    }
+    if (!Array.isArray(server.args) || server.args.length !== 2) {
+      fail(".mcp.json: cairn.args must be ['mcp', 'serve']");
+    } else if (server.args[0] !== "mcp" || server.args[1] !== "serve") {
+      fail(`.mcp.json: cairn.args must be ['mcp', 'serve'], got ${JSON.stringify(server.args)}`);
     }
   }
 }
@@ -84,7 +83,15 @@ if (hooksFile) {
         fail(`hooks.json: hooks.${event} must be a non-empty array`);
       }
     }
-    // Walk every command and verify it points at an existing dist/hooks/<x>.js.
+    // Walk every command. Each must invoke `cairn hook <event>` so the
+    // hook resolves against the npm-installed `cairn` binary on PATH.
+    const ALLOWED = new Set([
+      "cairn hook session-start",
+      "cairn hook session-end",
+      "cairn hook stop",
+      "cairn hook read-enrich",
+      "cairn hook write-guard",
+    ]);
     const visit = (event, entries) => {
       for (const entry of entries) {
         for (const hook of entry.hooks ?? []) {
@@ -92,14 +99,8 @@ if (hooksFile) {
             fail(`hooks.json: ${event}: each hook must have type=command + string command`);
             continue;
           }
-          const m = hook.command.match(/\$\{CLAUDE_PLUGIN_ROOT\}\/\.\.\/cairn-core\/dist\/(hooks\/[a-z-]+\.js)/);
-          if (!m) {
-            fail(`hooks.json: ${event}: command must reference cairn-core/dist/hooks/<x>.js, got ${hook.command}`);
-            continue;
-          }
-          const localBin = m[1];
-          if (!existsSync(join(CAIRN_CORE_DIST, localBin))) {
-            fail(`hooks.json: ${event}: bin missing at ${join(CAIRN_CORE_DIST, localBin)}`);
+          if (!ALLOWED.has(hook.command)) {
+            fail(`hooks.json: ${event}: command must be one of ${[...ALLOWED].join(", ")} — got ${hook.command}`);
           }
         }
       }

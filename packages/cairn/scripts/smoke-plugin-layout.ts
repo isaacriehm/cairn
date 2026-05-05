@@ -14,7 +14,6 @@ import * as core from "@isaacriehm/cairn-core";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "..", "..", "..");
 const PLUGIN_ROOT = join(REPO_ROOT, "packages", "cairn-frontend-claudecode");
-const CAIRN_CORE_DIST = join(REPO_ROOT, "packages", "cairn-core", "dist");
 
 function assert(cond: unknown, message: string): asserts cond {
   if (!cond) {
@@ -59,14 +58,6 @@ function readJson<T>(path: string): T {
   return JSON.parse(readFileSync(path, "utf8")) as T;
 }
 
-function resolveBin(arg: string): string {
-  // ${CLAUDE_PLUGIN_ROOT} resolves to PLUGIN_ROOT at runtime; in the
-  // monorepo, ../cairn-core points to packages/cairn-core.
-  return arg
-    .replace("${CLAUDE_PLUGIN_ROOT}/../cairn-core/dist/", `${CAIRN_CORE_DIST}/`)
-    .replace("${CLAUDE_PLUGIN_ROOT}/../cairn-core/dist", CAIRN_CORE_DIST);
-}
-
 function runSmoke(): void {
   console.log("smoke-plugin-layout — start");
 
@@ -79,16 +70,17 @@ function runSmoke(): void {
     console.log("  ✓ Step 1 — plugin.json shape");
   }
 
-  // ── Step 2 — .mcp.json wires cairn MCP ───────────────────────────
+  // ── Step 2 — .mcp.json wires cairn MCP via the published CLI ─────
   {
     const mcp = readJson<McpShape>(join(PLUGIN_ROOT, ".mcp.json"));
     assert(mcp.mcpServers?.cairn !== undefined, "Step 2: mcpServers.cairn required");
     const server = mcp.mcpServers.cairn;
-    assert(server.command === "node", `Step 2: cairn.command must be 'node', got ${server.command}`);
-    assert(Array.isArray(server.args) && server.args.length === 1, "Step 2: cairn.args must be 1-arg array");
-    const binPath = resolveBin(server.args[0]!);
-    assert(existsSync(binPath), `Step 2: MCP bin missing at ${binPath}`);
-    console.log("  ✓ Step 2 — .mcp.json + bin resolves");
+    assert(server.command === "cairn", `Step 2: cairn.command must be 'cairn', got ${server.command}`);
+    assert(
+      Array.isArray(server.args) && server.args.length === 2 && server.args[0] === "mcp" && server.args[1] === "serve",
+      `Step 2: cairn.args must be ['mcp', 'serve'], got ${JSON.stringify(server.args)}`,
+    );
+    console.log("  ✓ Step 2 — .mcp.json shells out to `cairn mcp serve`");
   }
 
   // ── Step 3 — hooks.json wires SessionStart, SessionEnd, Stop, PostToolUse ──
@@ -99,23 +91,23 @@ function runSmoke(): void {
     for (const event of ["SessionStart", "SessionEnd", "Stop", "PostToolUse"] as const) {
       assert(Array.isArray(hooks[event]) && hooks[event].length > 0, `Step 3: ${event} must be non-empty array`);
     }
-    const allHookCommands: string[] = [];
+    const ALLOWED = new Set([
+      "cairn hook session-start",
+      "cairn hook session-end",
+      "cairn hook stop",
+      "cairn hook read-enrich",
+      "cairn hook write-guard",
+    ]);
     for (const event of ["SessionStart", "SessionEnd", "Stop", "PostToolUse"] as const) {
       for (const entry of hooks[event]) {
         for (const hook of entry.hooks) {
           assert(hook.type === "command", `Step 3: ${event} hook.type must be 'command'`);
-          allHookCommands.push(hook.command);
+          assert(
+            ALLOWED.has(hook.command),
+            `Step 3: ${event} command must be one of ${[...ALLOWED].join(", ")} — got ${hook.command}`,
+          );
         }
       }
-    }
-    // Each command must be a node invocation referencing
-    // cairn-core/dist/hooks/<x>.js — and that path must exist.
-    for (const cmd of allHookCommands) {
-      assert(cmd.startsWith("node "), `Step 3: command must start with 'node ', got ${cmd}`);
-      const m = cmd.match(/\$\{CLAUDE_PLUGIN_ROOT\}\/\.\.\/cairn-core\/dist\/(hooks\/[a-z-]+\.js)/);
-      assert(m !== null, `Step 3: command must reference cairn-core/dist/hooks/<x>.js, got ${cmd}`);
-      const binPath = join(CAIRN_CORE_DIST, m[1]!);
-      assert(existsSync(binPath), `Step 3: hook bin missing at ${binPath}`);
     }
     // PostToolUse must include both Read|Grep|Glob and Write|Edit matchers.
     const matchers = hooks.PostToolUse.flatMap((e) => (e.matcher !== undefined ? [e.matcher] : []));
@@ -123,7 +115,7 @@ function runSmoke(): void {
     const hasWriteMatcher = matchers.some((m) => /Write|Edit/.test(m));
     assert(hasReadMatcher, "Step 3: PostToolUse must match Read|Grep|Glob");
     assert(hasWriteMatcher, "Step 3: PostToolUse must match Write|Edit");
-    console.log("  ✓ Step 3 — hooks.json wires SessionStart/SessionEnd/Stop/PostToolUse with valid bins");
+    console.log("  ✓ Step 3 — hooks.json shells out to `cairn hook <event>`");
   }
 
   // ── Step 4 — component dirs exist ────────────────────────────────

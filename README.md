@@ -11,8 +11,9 @@ Stop AI agents from drifting.
 [![Node](https://img.shields.io/badge/node-%E2%89%A522-brightgreen?style=flat-square)](https://nodejs.org)
 
 ```bash
-/plugin marketplace add isaacriehm/cairn
-/plugin install cairn@isaacriehm-cairn
+npm install -g @isaacriehm/cairn          # the CLI the plugin shells out to
+/plugin marketplace add isaacriehm/cairn  # inside Claude Code
+/plugin install cairn@isaacriehm-cairn    # inside Claude Code
 ```
 
 [Quick Start](#quick-start) · [Why](#why) · [How It Works](#how-it-works) · [Editor Extension](#editor-extension--cairn-lens) · [Multi-Dev](#multi-developer-enforcement) · [Docs](#documentation)
@@ -32,17 +33,28 @@ live?"
 
 ## Quick Start
 
+**One-time setup** (any shell):
+
 ```bash
-# Inside Claude Code, in any project:
-/plugin marketplace add isaacriehm/cairn
-/plugin install cairn@isaacriehm-cairn
+npm install -g @isaacriehm/cairn
 ```
 
-(First command registers the GitHub repo as a marketplace; second
-installs the plugin from it. One-time setup.)
+This puts the `cairn` binary on your PATH. The Claude Code plugin
+shells out to it for the MCP server and lifecycle hooks.
 
-After install, open Claude Code in any project. The plugin auto-detects
-on session start and offers `[a] adopt now`. Pick `[a]` once. Done.
+**Then inside Claude Code**:
+
+```bash
+/plugin marketplace add isaacriehm/cairn
+/plugin install cairn@isaacriehm-cairn
+/reload-plugins
+```
+
+(First registers the GitHub repo as a marketplace; second installs the
+plugin from it; third loads it.)
+
+Open Claude Code in any project. The plugin auto-detects on session
+start and offers `[a] adopt now`. Pick `[a]` once. Done.
 
 Adoption is a single visual pass — submodule init, repo walk, mapper,
 brand setup, doc ingestion, source-comment ingestion, rules merge,

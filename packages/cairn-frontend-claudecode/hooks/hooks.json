@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/../cairn-core/dist/hooks/session-start.js"
+            "command": "cairn hook session-start"
           }
         ]
       }
@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/../cairn-core/dist/hooks/session-end.js"
+            "command": "cairn hook session-end"
           }
         ]
       }
@@ -25,7 +25,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/../cairn-core/dist/hooks/stop.js"
+            "command": "cairn hook stop"
           }
         ]
       }
@@ -36,7 +36,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/../cairn-core/dist/hooks/read-enrich.js"
+            "command": "cairn hook read-enrich"
           }
         ]
       },
@@ -45,7 +45,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/../cairn-core/dist/hooks/write-guard.js"
+            "command": "cairn hook write-guard"
           }
         ]
       }
