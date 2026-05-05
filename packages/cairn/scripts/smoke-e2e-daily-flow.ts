@@ -84,10 +84,17 @@ function writeFile(repoRoot: string, rel: string, body: string): void {
 
 interface HookOutput {
   continue: boolean;
-  hookSpecificOutput: {
-    hookEventName: string;
-    additionalContext: string;
+  /** SessionStart shape — hookSpecificOutput.additionalContext. */
+  hookSpecificOutput?: {
+    hookEventName?: string;
+    additionalContext?: string;
   };
+  /** Stop hook shape — top-level systemMessage. */
+  systemMessage?: string;
+}
+
+function ctxOf(out: HookOutput): string {
+  return out.systemMessage ?? out.hookSpecificOutput?.additionalContext ?? "";
 }
 
 function runHookBin(
@@ -100,10 +107,9 @@ function runHookBin(
     timeout: 10_000,
   });
   return {
-    parsed: result.stdout ? (JSON.parse(result.stdout.trim()) as HookOutput) : ({
-      continue: true,
-      hookSpecificOutput: { hookEventName: "?", additionalContext: "" },
-    }),
+    parsed: result.stdout
+      ? (JSON.parse(result.stdout.trim()) as HookOutput)
+      : { continue: true },
     status: result.status ?? -1,
     stderr: result.stderr ?? "",
   };
@@ -227,7 +233,7 @@ async function main(): Promise<void> {
   assert(existsSync(join(sessionDir, "events-marker.json")), "events-marker written");
   // No bootstrap banner expected since join ran in adoptFixture.
   assert(
-    !ssOut.parsed.hookSpecificOutput.additionalContext.includes("bootstrap required"),
+    !ctxOf(ssOut.parsed).includes("bootstrap required"),
     "no bootstrap banner after join",
   );
   console.log("  ✓ Step 1 — SessionStart wires per-session state");
@@ -242,11 +248,11 @@ async function main(): Promise<void> {
   const stop1 = runHookBin(STOP_BIN, { session_id: sessionId, cwd: repoRoot });
   assert(stop1.status === 0, `stop exit 0; stderr=${stop1.stderr}`);
   assert(
-    /Reviewer pending/.test(stop1.parsed.hookSpecificOutput.additionalContext),
-    `expected reviewer-pending hint, got: ${stop1.parsed.hookSpecificOutput.additionalContext}`,
+    /Reviewer pending/.test(ctxOf(stop1.parsed)),
+    `expected reviewer-pending hint, got: ${ctxOf(stop1.parsed)}`,
   );
   assert(
-    stop1.parsed.hookSpecificOutput.additionalContext.includes(taskId),
+    ctxOf(stop1.parsed).includes(taskId),
     "hint cites taskId",
   );
   console.log("  ✓ Step 2 — reviewer-pending hint surfaces");
@@ -259,8 +265,8 @@ async function main(): Promise<void> {
   );
   const stop2 = runHookBin(STOP_BIN, { session_id: sessionId, cwd: repoRoot });
   assert(
-    !/Reviewer pending/.test(stop2.parsed.hookSpecificOutput.additionalContext),
-    `expected no reviewer-pending hint, got: ${stop2.parsed.hookSpecificOutput.additionalContext}`,
+    !/Reviewer pending/.test(ctxOf(stop2.parsed)),
+    `expected no reviewer-pending hint, got: ${ctxOf(stop2.parsed)}`,
   );
   console.log("  ✓ Step 3 — hint clears post-attestation");
 
@@ -309,22 +315,36 @@ async function main(): Promise<void> {
   );
   console.log("  ✓ Step 4 — resolve_attention accepted draft, canonical wired");
 
-  step("Step 5 — bypass detection surfaces --no-verify commit");
-  // Make a commit that does NOT get appended to .attested-commits (modeling --no-verify).
+  step("Step 5 — bypass detection surfaces unattested commit");
+  // Make a commit. `git commit --no-verify` skips pre-commit + commit-msg
+  // but NOT post-commit, so post-commit still attests the SHA. Strip it
+  // from .attested-commits manually to simulate a real bypass — e.g. a
+  // commit made on a clone without `core.hooksPath` set, or via a
+  // different git binary that didn't see the hook.
   writeFile(repoRoot, "src/extra.ts", "export const y = 2;\n");
   execFileSync("git", ["add", "src/extra.ts"], { cwd: repoRoot });
-  // Use --no-verify explicitly so even if a real hook ran, it'd skip.
   execFileSync("git", ["commit", "-q", "--no-verify", "-m", "bypass: untracked"], {
     cwd: repoRoot,
   });
+  const bypassSha = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  }).trim();
+  const attestedPath = join(repoRoot, ".cairn", ".attested-commits");
+  if (existsSync(attestedPath)) {
+    const filtered = readFileSync(attestedPath, "utf8")
+      .split("\n")
+      .filter((s) => s.trim() !== bypassSha);
+    writeFileSync(attestedPath, filtered.join("\n"), "utf8");
+  }
   const stop3 = runHookBin(STOP_BIN, { session_id: sessionId, cwd: repoRoot });
   assert(stop3.status === 0, `stop exit 0; stderr=${stop3.stderr}`);
   assert(
-    /Bypass detection/.test(stop3.parsed.hookSpecificOutput.additionalContext),
-    `expected bypass-detection hint, got: ${stop3.parsed.hookSpecificOutput.additionalContext}`,
+    /Bypass detection/.test(ctxOf(stop3.parsed)),
+    `expected bypass-detection hint, got: ${ctxOf(stop3.parsed)}`,
   );
   assert(
-    stop3.parsed.hookSpecificOutput.additionalContext.includes("[a]"),
+    ctxOf(stop3.parsed).includes("[a]"),
     "bypass hint includes [a] backfill",
   );
   console.log("  ✓ Step 5 — bypass hint surfaces with new SHA");

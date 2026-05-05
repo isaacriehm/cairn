@@ -4,7 +4,7 @@ description: |
   Use when the operator opens Claude Code in a project that does not yet
   have a `.cairn/` directory and Cairn has not been declined for
   this project. Walks the operator through one-time adoption inline,
-  orchestrates the `cairn init` pipeline as a subprocess, and surfaces
+  orchestrates the `npx -y @isaacriehm/cairn init` pipeline as a subprocess, and surfaces
   every phase choice as A/B/C inside the conversation. Skip when
   `.cairn/` already exists, or when the operator has previously
   selected "never" for this project.
@@ -69,39 +69,48 @@ If the directory is not a git working tree, surface inline:
 
 ## Step 3 — launch the init pipeline
 
-Spawn `cairn init` as a Bash subprocess. Stream its rich terminal
-output (chalk + ora + cli-progress) verbatim into the conversation
-inside a fenced ```` ```text ```` block so the operator sees every
-phase progress. The init pipeline owns Phases 1–13 of §6 — submodule
-detect, priority walk, per-module Sonnet calls, pilot module pick,
-brand setup, ground skeleton, docs ingestion (7a), source-comment
-ingestion (7b), project-rules merge (7c), baseline sensor audit,
-inconsistency detection, comment policy enforcement (10), and CI
-gate install (12).
+Spawn `npx -y @isaacriehm/cairn init --no-prompt --auto-e2e defer` as a
+Bash subprocess. The `--no-prompt` flag is required: Claude Code's Bash
+tool runs without a TTY, so inquirer prompts crash with `ExitPromptError`
+the moment init asks anything. Defaults used:
 
-When the init pipeline pauses for an A/B/C choice (it emits a
-recognizable sentinel line), translate it into an `AskUserQuestion`
-call with the same labels and forward the operator's pick back into
-the subprocess via stdin.
+- Proceed: yes (auto-pick `[a]`)
+- Pilot: `.` (whole repo)
+- Brand setup: skipped (operator runs `cairn configure brand` later)
+- E2E heavy probes: defer
+- Source-comment + rules ingestion: enabled
+
+Stream stdout verbatim into the conversation inside a fenced
+```` ```text ```` block so the operator sees every phase progress. The
+init pipeline owns Phases 1–13 of §6 — submodule detect, priority walk,
+per-module Sonnet calls, pilot module pick, brand setup, ground
+skeleton, docs ingestion (7a), source-comment ingestion (7b),
+project-rules merge (7c), baseline sensor audit, inconsistency
+detection, comment policy enforcement (10), and CI gate install (12).
+
+(Future: when init grows a streaming protocol that emits sentinel lines
+for inline A/B/C choices, this skill can re-add the per-question
+`AskUserQuestion` round-trip. Today, init runs end-to-end with defaults
+and the operator reviews the resulting drafts via `cairn attention`.)
 
 ## Step 4 — final summary
 
 When init exits 0, summarize in one short message:
 
 - Pilot module
-- DEC drafts proposed (count + link to `cairn attention`)
+- DEC drafts proposed (count + link to `npx -y @isaacriehm/cairn attention`)
 - §V invariants seeded
 - Baseline sensor findings (count)
 - CI workflow + git hooks installed (yes/no)
 
 Then suggest:
 
-> Cairn is now active. Pending review: N items. `[a]` review now (`cairn attention`)  `[b]` later
+> Cairn is now active. Pending review: N items. `[a]` review now (`npx -y @isaacriehm/cairn attention`)  `[b]` later
 
 If init exits non-zero, surface the failure phase and exit code, then
 ask:
 
-> Adoption failed at phase X. `[a]` retry  `[b]` abort + diagnose with `cairn doctor`
+> Adoption failed at phase X. `[a]` retry  `[b]` abort + diagnose with `npx -y @isaacriehm/cairn doctor`
 
 ## Hard rules
 

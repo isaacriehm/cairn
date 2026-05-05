@@ -3,7 +3,7 @@
  * check-layout — validates the cairn-frontend-claudecode plugin layout.
  *
  * Confirms manifest + mcp + hooks files parse as JSON with expected
- * shape, and that referenced bin scripts exist under cairn-core/dist.
+ * shape, and that hook commands reference the published `cairn` CLI.
  * Runs as the package's `build` step so `pnpm -r build` flags layout
  * regressions.
  */
@@ -14,7 +14,6 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = resolve(HERE, "..");
-const CAIRN_CORE_DIST = resolve(PKG_ROOT, "..", "cairn-core", "dist");
 
 const errors = [];
 
@@ -49,58 +48,64 @@ if (manifest) {
 }
 
 // ── .mcp.json ───────────────────────────────────────────────────────
+// Plugin invokes the CLI via npx — no separate `npm install -g` step
+// for users. npx auto-downloads on first use, then hits the local cache.
+// Avoids the pre-v0.1.2 problem where the plugin manifest pointed at
+// `${CLAUDE_PLUGIN_ROOT}/../cairn-core` (sibling not in plugin cache).
 const mcp = readJson(join(PKG_ROOT, ".mcp.json"));
 if (mcp) {
   const server = mcp?.mcpServers?.cairn;
   if (!server || typeof server !== "object") {
     fail(".mcp.json: mcpServers.cairn must be an object");
   } else {
-    if (server.command !== "node") fail(".mcp.json: cairn.command must be 'node'");
-    if (!Array.isArray(server.args) || server.args.length !== 1) {
-      fail(".mcp.json: cairn.args must be a single-arg array");
-    } else {
-      const arg = server.args[0];
-      if (!arg.includes("${CLAUDE_PLUGIN_ROOT}/../cairn-core/dist/mcp/")) {
-        fail(`.mcp.json: cairn.args[0] must reference cairn-core/dist/mcp, got ${arg}`);
-      }
-      const localBin = arg.replace("${CLAUDE_PLUGIN_ROOT}/../cairn-core/dist/", "");
-      if (!existsSync(join(CAIRN_CORE_DIST, localBin))) {
-        fail(`.mcp.json: bin not found at ${join(CAIRN_CORE_DIST, localBin)}`);
-      }
+    if (server.command !== "npx") {
+      fail(`.mcp.json: cairn.command must be 'npx', got ${server.command}`);
+    }
+    const expected = ["-y", "@isaacriehm/cairn", "mcp", "serve"];
+    if (!Array.isArray(server.args) || server.args.length !== expected.length || server.args.some((a, i) => a !== expected[i])) {
+      fail(`.mcp.json: cairn.args must be ${JSON.stringify(expected)}, got ${JSON.stringify(server.args)}`);
     }
   }
 }
 
 // ── hooks/hooks.json ────────────────────────────────────────────────
-const hooks = readJson(join(PKG_ROOT, "hooks", "hooks.json"));
-if (hooks) {
-  for (const event of ["SessionStart", "SessionEnd", "Stop", "PostToolUse"]) {
-    if (!Array.isArray(hooks[event]) || hooks[event].length === 0) {
-      fail(`hooks.json: ${event} must be a non-empty array`);
-    }
-  }
-  // Walk every command and verify it points at an existing dist/hooks/<x>.js.
-  const visit = (event, entries) => {
-    for (const entry of entries) {
-      for (const hook of entry.hooks ?? []) {
-        if (hook.type !== "command" || typeof hook.command !== "string") {
-          fail(`hooks.json: ${event}: each hook must have type=command + string command`);
-          continue;
-        }
-        const m = hook.command.match(/\$\{CLAUDE_PLUGIN_ROOT\}\/\.\.\/cairn-core\/dist\/(hooks\/[a-z-]+\.js)/);
-        if (!m) {
-          fail(`hooks.json: ${event}: command must reference cairn-core/dist/hooks/<x>.js, got ${hook.command}`);
-          continue;
-        }
-        const localBin = m[1];
-        if (!existsSync(join(CAIRN_CORE_DIST, localBin))) {
-          fail(`hooks.json: ${event}: bin missing at ${join(CAIRN_CORE_DIST, localBin)}`);
-        }
+const hooksFile = readJson(join(PKG_ROOT, "hooks", "hooks.json"));
+if (hooksFile) {
+  // Claude Code's plugin loader expects a top-level `hooks` record.
+  if (typeof hooksFile.hooks !== "object" || hooksFile.hooks === null) {
+    fail(`hooks.json: top-level "hooks" record required (zod loader rejects without it)`);
+  } else {
+    const hooks = hooksFile.hooks;
+    for (const event of ["SessionStart", "SessionEnd", "Stop", "PostToolUse"]) {
+      if (!Array.isArray(hooks[event]) || hooks[event].length === 0) {
+        fail(`hooks.json: hooks.${event} must be a non-empty array`);
       }
     }
-  };
-  for (const event of ["SessionStart", "SessionEnd", "Stop", "PostToolUse"]) {
-    if (Array.isArray(hooks[event])) visit(event, hooks[event]);
+    // Walk every command. Each must invoke the CLI via npx so users
+    // don't need a separate `npm install -g` step.
+    const ALLOWED = new Set([
+      "npx -y @isaacriehm/cairn hook session-start",
+      "npx -y @isaacriehm/cairn hook session-end",
+      "npx -y @isaacriehm/cairn hook stop",
+      "npx -y @isaacriehm/cairn hook read-enrich",
+      "npx -y @isaacriehm/cairn hook write-guard",
+    ]);
+    const visit = (event, entries) => {
+      for (const entry of entries) {
+        for (const hook of entry.hooks ?? []) {
+          if (hook.type !== "command" || typeof hook.command !== "string") {
+            fail(`hooks.json: ${event}: each hook must have type=command + string command`);
+            continue;
+          }
+          if (!ALLOWED.has(hook.command)) {
+            fail(`hooks.json: ${event}: command must be one of ${[...ALLOWED].join(", ")} — got ${hook.command}`);
+          }
+        }
+      }
+    };
+    for (const event of ["SessionStart", "SessionEnd", "Stop", "PostToolUse"]) {
+      if (Array.isArray(hooks[event])) visit(event, hooks[event]);
+    }
   }
 }
 

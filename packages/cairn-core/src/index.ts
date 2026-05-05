@@ -4,7 +4,21 @@
  * See docs/ARCHITECTURE.md §3.1.
  */
 
-export const VERSION = "0.0.0";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+// VERSION is the single source of truth for what `cairn --version` prints,
+// what gets stamped into `.cairn/config.yaml`'s `cairn_version`, and what
+// the bootstrap-guard reports back to the operator. Read from package.json
+// at module load so it can never drift from the published artifact.
+//
+// Layout: this file ships as `dist/index.js`; package.json is one level up.
+const _here = dirname(fileURLToPath(import.meta.url));
+const _pkg = JSON.parse(
+  readFileSync(join(_here, "..", "package.json"), "utf8"),
+) as { version: string };
+export const VERSION: string = _pkg.version;
 
 export { logger, setLogFile, setLogNull, setLogStderr } from "./logger.js";
 export {

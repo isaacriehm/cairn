@@ -16,7 +16,8 @@
  * inline; nothing is written outside `package.json` automatically.
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const PREPARE_SCRIPT_FRAGMENT = "cairn join || true";
@@ -99,11 +100,81 @@ export function installMultiDev(args: InstallMultiDevArgs): MultiDevInstallResul
     );
   }
 
+  // Seed `.cairn/.attested-commits` with every commit reachable from
+  // HEAD at adoption time. Without this, the Stop-hook bypass detector
+  // flags every pre-adoption commit as "not attested" — false positives
+  // for projects with prior history. Per PLUGIN_ARCHITECTURE §17 "Edge
+  // case: legacy commits before adoption", pre-existing history is
+  // grandfathered: it goes to the baseline audit, not the bypass
+  // surface. Future commits flow through the post-commit hook + go on
+  // top of this seeded list.
+  steps.push(seedAttestedCommits(repoRoot, args.dryRun === true));
+
   const preparePatched = steps.some(
     (s) => s.step === "patch-package-prepare" && s.status === "ok",
   );
 
   return { hostKinds, preparePatched, manualHints, steps };
+}
+
+/* -------------------------------------------------------------------------- */
+/* attested-commits seed                                                      */
+/* -------------------------------------------------------------------------- */
+
+function seedAttestedCommits(repoRoot: string, dryRun: boolean): MultiDevInstallStep {
+  const path = join(repoRoot, ".cairn", ".attested-commits");
+  if (existsSync(path)) {
+    return {
+      step: "seed-attested-commits",
+      status: "skipped",
+      detail: ".cairn/.attested-commits already exists — leaving as-is",
+    };
+  }
+  if (!existsSync(join(repoRoot, ".git"))) {
+    return {
+      step: "seed-attested-commits",
+      status: "skipped",
+      detail: "no .git/ — bypass detection is git-only, nothing to seed",
+    };
+  }
+  let shas: string[] = [];
+  try {
+    const out = execFileSync("git", ["log", "--format=%H"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    shas = out.split("\n").filter((s) => s.length > 0);
+  } catch (err) {
+    return {
+      step: "seed-attested-commits",
+      status: "error",
+      detail: `git log failed: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+  if (dryRun) {
+    return {
+      step: "seed-attested-commits",
+      status: "ok",
+      detail: `(dry-run) would seed ${shas.length} pre-adoption SHA${shas.length === 1 ? "" : "s"}`,
+    };
+  }
+  try {
+    mkdirSync(join(repoRoot, ".cairn"), { recursive: true });
+    writeFileSync(path, `${shas.join("\n")}\n`, "utf8");
+  } catch (err) {
+    return {
+      step: "seed-attested-commits",
+      status: "error",
+      detail: `write ${path} failed: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+  return {
+    step: "seed-attested-commits",
+    status: "ok",
+    detail: `seeded ${shas.length} pre-adoption SHA${shas.length === 1 ? "" : "s"} — bypass detection grandfathers them`,
+  };
 }
 
 /* -------------------------------------------------------------------------- */

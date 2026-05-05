@@ -14,7 +14,6 @@ import * as core from "@isaacriehm/cairn-core";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "..", "..", "..");
 const PLUGIN_ROOT = join(REPO_ROOT, "packages", "cairn-frontend-claudecode");
-const CAIRN_CORE_DIST = join(REPO_ROOT, "packages", "cairn-core", "dist");
 
 function assert(cond: unknown, message: string): asserts cond {
   if (!cond) {
@@ -46,23 +45,17 @@ interface HookEntry {
 }
 
 interface HooksJsonShape {
-  SessionStart: HookEntry[];
-  SessionEnd: HookEntry[];
-  Stop: HookEntry[];
-  PostToolUse: HookEntry[];
+  hooks: {
+    SessionStart: HookEntry[];
+    SessionEnd: HookEntry[];
+    Stop: HookEntry[];
+    PostToolUse: HookEntry[];
+  };
 }
 
 function readJson<T>(path: string): T {
   assert(existsSync(path), `expected file at ${path}`);
   return JSON.parse(readFileSync(path, "utf8")) as T;
-}
-
-function resolveBin(arg: string): string {
-  // ${CLAUDE_PLUGIN_ROOT} resolves to PLUGIN_ROOT at runtime; in the
-  // monorepo, ../cairn-core points to packages/cairn-core.
-  return arg
-    .replace("${CLAUDE_PLUGIN_ROOT}/../cairn-core/dist/", `${CAIRN_CORE_DIST}/`)
-    .replace("${CLAUDE_PLUGIN_ROOT}/../cairn-core/dist", CAIRN_CORE_DIST);
 }
 
 function runSmoke(): void {
@@ -77,41 +70,45 @@ function runSmoke(): void {
     console.log("  ✓ Step 1 — plugin.json shape");
   }
 
-  // ── Step 2 — .mcp.json wires cairn MCP ───────────────────────────
+  // ── Step 2 — .mcp.json wires cairn MCP via npx ───────────────────
   {
     const mcp = readJson<McpShape>(join(PLUGIN_ROOT, ".mcp.json"));
     assert(mcp.mcpServers?.cairn !== undefined, "Step 2: mcpServers.cairn required");
     const server = mcp.mcpServers.cairn;
-    assert(server.command === "node", `Step 2: cairn.command must be 'node', got ${server.command}`);
-    assert(Array.isArray(server.args) && server.args.length === 1, "Step 2: cairn.args must be 1-arg array");
-    const binPath = resolveBin(server.args[0]!);
-    assert(existsSync(binPath), `Step 2: MCP bin missing at ${binPath}`);
-    console.log("  ✓ Step 2 — .mcp.json + bin resolves");
+    assert(server.command === "npx", `Step 2: cairn.command must be 'npx', got ${server.command}`);
+    const expected = ["-y", "@isaacriehm/cairn", "mcp", "serve"];
+    assert(
+      Array.isArray(server.args) && server.args.length === expected.length && server.args.every((a, i) => a === expected[i]),
+      `Step 2: cairn.args must be ${JSON.stringify(expected)}, got ${JSON.stringify(server.args)}`,
+    );
+    console.log("  ✓ Step 2 — .mcp.json invokes `npx -y @isaacriehm/cairn mcp serve`");
   }
 
   // ── Step 3 — hooks.json wires SessionStart, SessionEnd, Stop, PostToolUse ──
   {
-    const hooks = readJson<HooksJsonShape>(join(PLUGIN_ROOT, "hooks", "hooks.json"));
+    const hooksFile = readJson<HooksJsonShape>(join(PLUGIN_ROOT, "hooks", "hooks.json"));
+    assert(typeof hooksFile.hooks === "object" && hooksFile.hooks !== null, "Step 3: top-level 'hooks' record required");
+    const hooks = hooksFile.hooks;
     for (const event of ["SessionStart", "SessionEnd", "Stop", "PostToolUse"] as const) {
       assert(Array.isArray(hooks[event]) && hooks[event].length > 0, `Step 3: ${event} must be non-empty array`);
     }
-    const allHookCommands: string[] = [];
+    const ALLOWED = new Set([
+      "npx -y @isaacriehm/cairn hook session-start",
+      "npx -y @isaacriehm/cairn hook session-end",
+      "npx -y @isaacriehm/cairn hook stop",
+      "npx -y @isaacriehm/cairn hook read-enrich",
+      "npx -y @isaacriehm/cairn hook write-guard",
+    ]);
     for (const event of ["SessionStart", "SessionEnd", "Stop", "PostToolUse"] as const) {
       for (const entry of hooks[event]) {
         for (const hook of entry.hooks) {
           assert(hook.type === "command", `Step 3: ${event} hook.type must be 'command'`);
-          allHookCommands.push(hook.command);
+          assert(
+            ALLOWED.has(hook.command),
+            `Step 3: ${event} command must be one of ${[...ALLOWED].join(", ")} — got ${hook.command}`,
+          );
         }
       }
-    }
-    // Each command must be a node invocation referencing
-    // cairn-core/dist/hooks/<x>.js — and that path must exist.
-    for (const cmd of allHookCommands) {
-      assert(cmd.startsWith("node "), `Step 3: command must start with 'node ', got ${cmd}`);
-      const m = cmd.match(/\$\{CLAUDE_PLUGIN_ROOT\}\/\.\.\/cairn-core\/dist\/(hooks\/[a-z-]+\.js)/);
-      assert(m !== null, `Step 3: command must reference cairn-core/dist/hooks/<x>.js, got ${cmd}`);
-      const binPath = join(CAIRN_CORE_DIST, m[1]!);
-      assert(existsSync(binPath), `Step 3: hook bin missing at ${binPath}`);
     }
     // PostToolUse must include both Read|Grep|Glob and Write|Edit matchers.
     const matchers = hooks.PostToolUse.flatMap((e) => (e.matcher !== undefined ? [e.matcher] : []));
@@ -119,7 +116,7 @@ function runSmoke(): void {
     const hasWriteMatcher = matchers.some((m) => /Write|Edit/.test(m));
     assert(hasReadMatcher, "Step 3: PostToolUse must match Read|Grep|Glob");
     assert(hasWriteMatcher, "Step 3: PostToolUse must match Write|Edit");
-    console.log("  ✓ Step 3 — hooks.json wires SessionStart/SessionEnd/Stop/PostToolUse with valid bins");
+    console.log("  ✓ Step 3 — hooks.json invokes `npx -y @isaacriehm/cairn hook <event>`");
   }
 
   // ── Step 4 — component dirs exist ────────────────────────────────
