@@ -8,6 +8,7 @@ import { initCli } from "./init.js";
 import { joinCli } from "./join.js";
 import { mcpCli } from "./mcp.js";
 import { scopeCli } from "./scope.js";
+import { sensorRunCli } from "./sensor-run.js";
 
 async function readSessionIdFromStdin(): Promise<string | null> {
   return new Promise((resolveP) => {
@@ -67,6 +68,9 @@ switch (subcommand) {
   case "hook":
     await hookCli(rest);
     break;
+  case "sensor-run":
+    await sensorRunCli(rest);
+    break;
   case "status-line": {
     const projectRootIdx = rest.indexOf("--project-root");
     let projectRoot: string;
@@ -118,6 +122,7 @@ switch (subcommand) {
         "             (--repo <path>?)\n" +
         "  hook       Claude Code hook runner (stdin = hook payload JSON)\n" +
         "             (subcommands: session-start | read-enrich | write-guard)\n" +
+        "  sensor-run git-hook sensor sweep (--staged | --commit-msg <path>)\n" +
         "  status-line  print formatted status line\n" +
         "               (--project-root <path>? --session-id <id>?\n" +
         "                or pipe Claude Code status-line payload JSON on stdin)",

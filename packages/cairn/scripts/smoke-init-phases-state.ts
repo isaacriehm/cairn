@@ -95,21 +95,30 @@ function runSmoke(): void {
     console.log("  ✓ Step 3 — writePhaseState ⇄ readPhaseState round-trip");
   }
 
-  // ── Step 4 — resumePhases reads persisted state + returns next ───
+  // ── Step 4 — resumePhases returns persisted.currentPhase as next ─
+  // Contract (post-v0.2.0): the persisted `currentPhase` IS the phase
+  // the skill driver should re-invoke. Phase functions advance via
+  // `advancePhase` BEFORE the MCP tool persists, so the file's
+  // `currentPhase` already names the phase that hasn't run yet.
   {
     const repo = mkRepo();
     writePhaseState({
       ...freshPhaseState(repo),
-      currentPhase: "3-mapper",
+      currentPhase: "3b-seed",
     });
     const r = resumePhases(repo);
     assert(r.status === "ready", `Step 4: should report ready, got ${r.status}`);
-    assert(r.nextPhase === "3b-seed", `Step 4: after 3-mapper next should be 3b-seed, got ${r.nextPhase}`);
-    assert(r.state.currentPhase === "3-mapper", "Step 4: state should preserve currentPhase");
-    console.log("  ✓ Step 4 — resumePhases reads persisted state + advances");
+    assert(r.nextPhase === "3b-seed", `Step 4: nextPhase should mirror currentPhase, got ${r.nextPhase}`);
+    assert(r.state.currentPhase === "3b-seed", "Step 4: state should preserve currentPhase");
+    console.log("  ✓ Step 4 — resumePhases mirrors persisted currentPhase");
   }
 
-  // ── Step 5 — last phase reports done with nextPhase=null ─────────
+  // ── Step 5 — terminal-phase recovery (clearPhaseState lost) ──────
+  // After phase 12-multidev completes, init-phases.ts calls
+  // clearPhaseState. If the cleanup itself fails (filesystem error),
+  // the file persists with currentPhase="12-multidev". Resume returns
+  // "ready" pointing at the last phase id; the skill re-invokes
+  // (idempotent) and clearPhaseState runs again on success.
   {
     const repo = mkRepo();
     writePhaseState({
@@ -117,9 +126,9 @@ function runSmoke(): void {
       currentPhase: "12-multidev",
     });
     const r = resumePhases(repo);
-    assert(r.status === "done", `Step 5: terminal phase should report done, got ${r.status}`);
-    assert(r.nextPhase === null, `Step 5: terminal nextPhase should be null, got ${r.nextPhase}`);
-    console.log("  ✓ Step 5 — terminal phase → done / null");
+    assert(r.status === "ready", `Step 5: terminal-phase recovery should report ready, got ${r.status}`);
+    assert(r.nextPhase === "12-multidev", `Step 5: terminal-phase recovery nextPhase should be 12-multidev, got ${r.nextPhase}`);
+    console.log("  ✓ Step 5 — terminal-phase recovery → ready / 12-multidev");
   }
 
   // ── Step 6 — schema validation rejects malformed state ──────────

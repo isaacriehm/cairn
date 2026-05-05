@@ -71,6 +71,10 @@ export interface BuildSessionStartContextResult {
     pendingDrafts: number;
     qualityGrades: number;
     activeTasks: number;
+    /** Findings in the latest baseline sensor audit (un-suppressed). */
+    baselineFindings: number;
+    /** Sum of `drift_count` across all quality grades. */
+    driftFindings: number;
   };
   /** Soft warnings (e.g. malformed frontmatter). Logged, not blocking. */
   warnings: string[];
@@ -115,6 +119,8 @@ export async function buildSessionStartContext(
     pendingDrafts: 0,
     qualityGrades: 0,
     activeTasks: 0,
+    baselineFindings: 0,
+    driftFindings: 0,
   };
 
   const sectionsRendered: SessionStartSection[] = [];
@@ -164,12 +170,18 @@ export async function buildSessionStartContext(
   // ── Section 5 — quality grades ─────────────────────────────────────
   const grades = readQualityGrades(args.repoRoot, warnings);
   counts.qualityGrades = grades.length;
+  counts.driftFindings = grades.reduce((n, g) => n + g.drift_count, 0);
   const qualityGradesSection = renderQualityGradesSection(grades);
 
   // ── Section 6 — pending drafts ─────────────────────────────────────
   const drafts = listPendingDrafts(args.repoRoot, warnings);
   counts.pendingDrafts = drafts.length;
   const pendingDraftsSection = renderPendingDraftsSection(drafts);
+
+  // Baseline findings drive the attention surface alongside drafts +
+  // drift; read the latest audit's total_findings count if present.
+  const latestBaseline = readLatestBaselineAudit(args.repoRoot, warnings);
+  counts.baselineFindings = latestBaseline?.totalFindings ?? 0;
 
   // ── Section 1.5 — brand + product positioning (always injected) ───
   const brandAndPositioningSection = readBrandAndPositioning(args.repoRoot, warnings);

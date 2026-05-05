@@ -135,11 +135,11 @@ function runSmoke(): void {
     const out = runStopHook(repoRoot, "session-pending");
     assert(out.status === 0, `Step 2: exit 0 expected, got ${out.status}; stderr=${out.stderr}`);
     const parsed = parseOutput(out.stdout);
-    assert(/awaiting reviewer attestation/.test(ctxOf(parsed)), `Step 2: additionalContext missing reviewer hint, got: ${ctxOf(parsed)}`);
+    assert(/awaiting review attestation/.test(ctxOf(parsed)), `Step 2: additionalContext missing reviewer hint, got: ${ctxOf(parsed)}`);
     assert(ctxOf(parsed).includes("TSK-2026-05-04-test-12345"), "Step 2: task id should appear");
     // Reviewer agent path lives in the cairn-attention skill body, not the
     // user-facing Stop hint — assert the hint shows the A/B/C choice line.
-    assert(/spawn reviewer/.test(ctxOf(parsed)), "Step 2: hint should surface spawn-reviewer choice");
+    assert(/run review/.test(ctxOf(parsed)), "Step 2: hint should surface run-review choice");
     console.log("  ✓ Step 2 — pending review surfaced");
   }
 
@@ -175,7 +175,7 @@ function runSmoke(): void {
     assert(ctx.includes("TSK-A"), "Step 5: TSK-A should surface");
     assert(ctx.includes("TSK-B"), "Step 5: TSK-B should surface");
     assert(!ctx.includes("TSK-C"), "Step 5: TSK-C (attested) should NOT surface");
-    assert(/2 tasks awaiting reviewer attestation/.test(ctx), `Step 5: header should report 2 tasks; got: ${ctx}`);
+    assert(/2 tasks awaiting review attestation/.test(ctx), `Step 5: header should report 2 tasks; got: ${ctx}`);
     console.log("  ✓ Step 5 — multiple pending tasks listed correctly");
   }
 

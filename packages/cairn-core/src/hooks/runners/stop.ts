@@ -46,6 +46,21 @@ function isInitInProgress(repoRoot: string): boolean {
   return existsSync(join(repoRoot, ".cairn", "init-state.json"));
 }
 
+/**
+ * Cap the systemMessage that flows back to Claude Code. Both the
+ * reviewer hint and the bypass hint can fire on the same Stop tick;
+ * with many tasks/SHAs the combined render could blow past the
+ * envelope budget. 4 KB is generous for two A/B/C strips with their
+ * facts but small enough that overflow is structurally impossible.
+ */
+const MAX_ADDITIONAL_CONTEXT_CHARS = 4_000;
+
+function clampAdditionalContext(body: string): string {
+  if (body.length <= MAX_ADDITIONAL_CONTEXT_CHARS) return body;
+  const head = body.slice(0, MAX_ADDITIONAL_CONTEXT_CHARS - 80);
+  return `${head}\n\n…(truncated; resolve via cairn-attention)`;
+}
+
 interface StopShapeBOutput {
   continue: boolean;
   systemMessage?: string;
@@ -163,7 +178,9 @@ export async function runStopHook(): Promise<void> {
   // Claude Code's Stop hook schema rejects hookSpecificOutput. Surface
   // text via the top-level systemMessage field; empty payload is fine.
   const out: StopShapeBOutput = { continue: true };
-  if (additionalContext.length > 0) out.systemMessage = additionalContext;
+  if (additionalContext.length > 0) {
+    out.systemMessage = clampAdditionalContext(additionalContext);
+  }
   emitShapeB(out);
 
   recordHookTelemetry({
@@ -228,7 +245,7 @@ function renderReviewerHint(pending: PendingReview[]): string {
   const lines: string[] = [];
   const noun = pending.length === 1 ? "task" : "tasks";
   lines.push(
-    `**Cairn — ${pending.length} ${noun} awaiting reviewer attestation.**`,
+    `**Cairn — ${pending.length} ${noun} awaiting review attestation.**`,
   );
   lines.push("");
   for (const p of pending) {
@@ -236,7 +253,7 @@ function renderReviewerHint(pending: PendingReview[]): string {
   }
   lines.push("");
   lines.push(
-    "`[a]` spawn reviewer · `[b]` skip · `[c]` defer 24h",
+    "`[a]` run review · `[b]` skip · `[c]` defer 24h",
   );
   return lines.join("\n");
 }

@@ -48,6 +48,7 @@ interface SeedPhaseOutput {
   config_path: string;
   scope_index_path: string;
   workflow_slug_patched: boolean;
+  workflow_patch_error: string | null;
   attested_seeded: number;
   attested_seed_status: "ok" | "skipped" | "error";
 }
@@ -77,6 +78,7 @@ export async function runPhase3bSeed(state: PhaseState): Promise<PhaseResult> {
     const wfRel = ".cairn/config/workflow.md";
     const wfWasSeeded = seed.written_files.includes(wfRel);
     let workflowSlugPatched = false;
+    let workflowPatchError: string | null = null;
     if (mapperOutput !== undefined && wfWasSeeded) {
       try {
         updateWorkflowSlugBlock({
@@ -93,19 +95,11 @@ export async function runPhase3bSeed(state: PhaseState): Promise<PhaseResult> {
         });
         workflowSlugPatched = true;
       } catch (err) {
-        // Soft fail — config.yaml still gets written below; the operator
-        // can hand-edit workflow.md after init. Don't abort adoption for
-        // a workflow patch error.
-        return {
-          status: "error",
-          error: {
-            code: "workflow-patch-failed",
-            message: `workflow.md slug-block update failed for ${projectSlug}`,
-            detail:
-              err instanceof Error ? err.stack ?? err.message : String(err),
-          },
-          state,
-        };
+        // Soft fail — record the error and continue. config.yaml +
+        // scope-index still get written below; the operator can
+        // hand-edit workflow.md after init if needed.
+        workflowPatchError =
+          err instanceof Error ? err.stack ?? err.message : String(err);
       }
     }
 
@@ -151,6 +145,7 @@ export async function runPhase3bSeed(state: PhaseState): Promise<PhaseResult> {
       config_path: ".cairn/config.yaml",
       scope_index_path: ".cairn/ground/scope-index.yaml",
       workflow_slug_patched: workflowSlugPatched,
+      workflow_patch_error: workflowPatchError,
       attested_seeded: attestedSeed.count ?? 0,
       attested_seed_status: attestedSeed.status,
     };

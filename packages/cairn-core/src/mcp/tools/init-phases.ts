@@ -112,7 +112,7 @@ function makePhaseTool(id: PhaseId): ToolDef<PhaseToolInput> {
         writePhaseState(result.state);
       } catch (err) {
         return mcpError(
-          "OPERATION_TIMEOUT",
+          "INTERNAL_ERROR",
           `failed to persist init state: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
@@ -183,7 +183,7 @@ function phaseDescription(id: PhaseId): string {
     case "10-strip":
       return "Phase 10-strip — per-module strip-replace consent for source-comment essays. Operator picks strip / keep / skip per flagged module.";
     case "12-multidev":
-      return "Phase 12-multidev — install per-clone enforcement (git hooks + package.json prepare patch + .attested-commits seed). Idempotent.";
+      return "Phase 12-multidev — detect per-host package manager(s) and emit JOIN.md hints for new contributors. No filesystem mutations. Idempotent.";
   }
 }
 

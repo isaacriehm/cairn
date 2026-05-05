@@ -1,9 +1,5 @@
 /**
- * Phase types for the v0.2.0 MCP-native init pipeline.
- *
- * Replaces the v0.1.x Bash subprocess + inquirer approach (which
- * forced --no-prompt under Claude Code's no-TTY Bash tool, neutering
- * the mapper, brand wizard, and Phase 10 strip-replace consent UI).
+ * Phase types for the MCP-native init pipeline.
  *
  * Each phase is a function `(ctx, state) → PhaseResult` registered as
  * an MCP tool. The cairn-adopt skill drives the pipeline by invoking

@@ -8,9 +8,7 @@
  * proposals, etc.
  *
  * No operator input — the mapper runs unattended (Sonnet via the
- * cairn runner), with the caveat that under v0.1.x the bash
- * subprocess + --no-prompt path skipped this entirely. The phase
- * function is what restores it under MCP-native init.
+ * cairn runner).
  */
 
 import { runMapper, type MapperResult } from "../mapper.js";

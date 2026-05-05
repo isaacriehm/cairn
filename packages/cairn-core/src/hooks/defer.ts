@@ -1,11 +1,8 @@
 /**
  * Stop-hook signal debounce.
  *
- * v0.1.x's Stop hook re-emitted the bypass-detection and reviewer-
- * pending warnings on every assistant turn — operators had no way to
- * say "I see this, leave me alone for now." v0.2.0 wires a per-kind
- * defer file: when the operator picks `[c]` defer on the inline
- * A/B/C, cairn_resolve_attention writes
+ * Per-kind defer file: when the operator picks `[c]` defer on the
+ * inline A/B/C, cairn_resolve_attention writes
  * `.cairn/.{bypass,review}-deferred-until` with the snapshot of
  * SHAs / task-ids that were flagged. Subsequent Stop hooks suppress
  * the warning while:
