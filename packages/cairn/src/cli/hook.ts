@@ -34,9 +34,9 @@ function usage(): never {
       "  write-guard      PostToolUse on Write/Edit — copy-safety + scope reminder\n" +
       "\n" +
       "Reads the Claude Code hook payload JSON on stdin, emits the\n" +
-      "Shape-B response on stdout. Designed to be wired in\n" +
-      "`.claude/settings.json` under `hooks.SessionStart` /\n" +
-      "`hooks.PostToolUse` / `hooks.Stop` / `hooks.SessionEnd`.\n",
+      "Shape-B response on stdout. Wired by the Claude Code plugin's\n" +
+      "hooks/hooks.json — adopted projects do not need their own\n" +
+      "`.claude/settings.json` hook entries.\n",
   );
   process.exit(1);
 }

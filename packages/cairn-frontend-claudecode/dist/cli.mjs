@@ -25691,7 +25691,6 @@ import { join as join2 } from "node:path";
 var CANONICAL_GLOBS = [
   "AGENTS.md",
   "CLAUDE.md",
-  ".claude/settings.json",
   ".claude/agents/**/*.md",
   ".claude/skills/**/*.md",
   ".claude/rules/**/*.md",
@@ -40616,8 +40615,6 @@ function classify(rel) {
     return "agent-def";
   if (rel.startsWith(".claude/skills/"))
     return "skill";
-  if (rel === ".claude/settings.json")
-    return "config";
   if (rel.startsWith(".cairn/ground/decisions/"))
     return "decision";
   if (rel.startsWith(".cairn/ground/invariants/"))
@@ -43518,7 +43515,6 @@ function runDoctor(opts) {
   const checks = [];
   checks.push(checkCairnLayout(repoRoot));
   checks.push(checkMcpRegistration(repoRoot));
-  checks.push(checkClaudeHooks(repoRoot));
   checks.push(checkDecisions(repoRoot));
   checks.push(checkBrandOverview(repoRoot));
   checks.push(checkScopeIndex(repoRoot));
@@ -43622,62 +43618,6 @@ function checkMcpRegistration(repoRoot) {
     label: ".mcp.json",
     status: "ok",
     detail: "cairn MCP server registered"
-  };
-}
-function checkClaudeHooks(repoRoot) {
-  const path2 = join13(repoRoot, ".claude", "settings.json");
-  if (!existsSync10(path2)) {
-    return {
-      group: "core",
-      label: ".claude/",
-      status: "error",
-      detail: "missing settings.json \u2014 re-run cairn init",
-      fixCommand: "cairn init --force"
-    };
-  }
-  let parsed;
-  try {
-    parsed = JSON.parse(readFileSync11(path2, "utf8"));
-  } catch {
-    return {
-      group: "core",
-      label: ".claude/",
-      status: "error",
-      detail: "settings.json unreadable",
-      fixCommand: "cairn init --force"
-    };
-  }
-  const hooks = parsed["hooks"];
-  if (typeof hooks !== "object" || hooks === null) {
-    return {
-      group: "core",
-      label: ".claude/",
-      status: "warn",
-      detail: "no hooks block \u2014 re-run cairn init",
-      fixCommand: "cairn init --force"
-    };
-  }
-  const labels = [];
-  if (Array.isArray(hooks["SessionStart"])) {
-    labels.push("SessionStart");
-  }
-  if (Array.isArray(hooks["PostToolUse"])) {
-    labels.push("PostToolUse");
-  }
-  if (labels.length === 0) {
-    return {
-      group: "core",
-      label: ".claude/",
-      status: "warn",
-      detail: "no SessionStart / PostToolUse entries",
-      fixCommand: "cairn init --force"
-    };
-  }
-  return {
-    group: "core",
-    label: ".claude/",
-    status: "ok",
-    detail: `${labels.join(" + ")} registered`
   };
 }
 function checkDecisions(repoRoot) {
@@ -55354,14 +55294,12 @@ function printCompletionSummary(args) {
   const sensorCount = countSensorEntries(args.repoRoot);
   const scopeReport = describeScopeIndex(args.repoRoot, args.submodules, args.scanTruncated);
   const brandReport = describeBrandStatus(args.repoRoot);
-  const hookReport = describeHooks(args.repoRoot);
   const mcpReport = describeMcpRegistration(args.repoRoot);
   info2("");
   info2(`  \u2713 Cairn ready \u2014 ${args.projectName}`);
   info2("");
   info2(`  Ground state      .cairn/ground/ (${groundCount} files)`);
   info2(`  MCP server        ${mcpReport}`);
-  info2(`  Hooks             ${hookReport}`);
   info2(`  Sensors           ${sensorCount} active`);
   if (args.mapperFallbackSlugs.length > 0) {
     const head = args.mapperFallbackSlugs.slice(0, 3).join(", ");
@@ -55550,29 +55488,6 @@ function readFrontmatterStatus2(path2) {
     return sm && sm[1] ? sm[1] : null;
   } catch {
     return null;
-  }
-}
-function describeHooks(repoRoot) {
-  const path2 = join35(repoRoot, ".claude", "settings.json");
-  if (!existsSync33(path2))
-    return "missing .claude/settings.json";
-  try {
-    const parsed = JSON.parse(readFileSync35(path2, "utf8"));
-    const hooks = parsed["hooks"];
-    if (typeof hooks !== "object" || hooks === null)
-      return "missing entries";
-    const sessionStart = hooks["SessionStart"];
-    const postToolUse = hooks["PostToolUse"];
-    const labels = [];
-    if (Array.isArray(sessionStart) && sessionStart.length > 0) {
-      labels.push("SessionStart");
-    }
-    if (Array.isArray(postToolUse) && postToolUse.length > 0) {
-      labels.push("PostToolUse (read-enricher, write-guardian)");
-    }
-    return labels.length === 0 ? "no entries" : labels.join(" \xB7 ");
-  } catch {
-    return "unreadable";
   }
 }
 function describeMcpRegistration(repoRoot) {
@@ -68733,7 +68648,7 @@ function printBatch(result) {
 
 // ../cairn/dist/cli/hook.js
 function usage2() {
-  console.error("Usage: cairn hook <event>\n  session-start    SessionStart hook (default)\n  session-end      SessionEnd cleanup of per-session state dir\n  stop             Stop hook \u2014 drain events + status heartbeat\n  read-enrich      PostToolUse on Read \u2014 citation legend enricher\n  write-guard      PostToolUse on Write/Edit \u2014 copy-safety + scope reminder\n\nReads the Claude Code hook payload JSON on stdin, emits the\nShape-B response on stdout. Designed to be wired in\n`.claude/settings.json` under `hooks.SessionStart` /\n`hooks.PostToolUse` / `hooks.Stop` / `hooks.SessionEnd`.\n");
+  console.error("Usage: cairn hook <event>\n  session-start    SessionStart hook (default)\n  session-end      SessionEnd cleanup of per-session state dir\n  stop             Stop hook \u2014 drain events + status heartbeat\n  read-enrich      PostToolUse on Read \u2014 citation legend enricher\n  write-guard      PostToolUse on Write/Edit \u2014 copy-safety + scope reminder\n\nReads the Claude Code hook payload JSON on stdin, emits the\nShape-B response on stdout. Wired by the Claude Code plugin's\nhooks/hooks.json \u2014 adopted projects do not need their own\n`.claude/settings.json` hook entries.\n");
   process.exit(1);
 }
 async function hookCli(argv) {
@@ -68914,7 +68829,7 @@ function parseArgs4(argv) {
   return { positional, flags };
 }
 function usage5() {
-  console.error("Usage: cairn mcp serve [options]\n  --repo-root <path>   adopted-project repo root (default: CAIRN_REPO_ROOT or cwd)\n  --run-id <id>        scope telemetry to a run id (default: top-level)\n\nSpeaks MCP over stdio. Register in .claude/settings.json mcpServers block.");
+  console.error("Usage: cairn mcp serve [options]\n  --repo-root <path>   adopted-project repo root (default: CAIRN_REPO_ROOT or cwd)\n  --run-id <id>        scope telemetry to a run id (default: top-level)\n\nSpeaks MCP over stdio. The Claude Code plugin's .mcp.json wires this in;\nfor other clients, register the bundled cli.mjs as the cairn server.");
   process.exit(1);
 }
 async function mcpCli(argv) {

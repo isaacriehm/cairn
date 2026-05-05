@@ -9,7 +9,6 @@ import { join } from "node:path";
 export const CANONICAL_GLOBS = [
   "AGENTS.md",
   "CLAUDE.md",
-  ".claude/settings.json",
   ".claude/agents/**/*.md",
   ".claude/skills/**/*.md",
   ".claude/rules/**/*.md",

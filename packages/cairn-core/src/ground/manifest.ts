@@ -76,7 +76,6 @@ function classify(rel: string): string {
   if (rel.startsWith(".claude/rules/")) return "rule";
   if (rel.startsWith(".claude/agents/")) return "agent-def";
   if (rel.startsWith(".claude/skills/")) return "skill";
-  if (rel === ".claude/settings.json") return "config";
   if (rel.startsWith(".cairn/ground/decisions/")) return "decision";
   if (rel.startsWith(".cairn/ground/invariants/")) return "invariant";
   if (rel.startsWith(".cairn/config/")) return "cairn-config";
