@@ -69,20 +69,29 @@ If the directory is not a git working tree, surface inline:
 
 ## Step 3 — launch the init pipeline
 
-Spawn `npx -y @isaacriehm/cairn init` as a Bash subprocess. Stream its rich terminal
-output (chalk + ora + cli-progress) verbatim into the conversation
-inside a fenced ```` ```text ```` block so the operator sees every
-phase progress. The init pipeline owns Phases 1–13 of §6 — submodule
-detect, priority walk, per-module Sonnet calls, pilot module pick,
-brand setup, ground skeleton, docs ingestion (7a), source-comment
-ingestion (7b), project-rules merge (7c), baseline sensor audit,
-inconsistency detection, comment policy enforcement (10), and CI
-gate install (12).
+Spawn `npx -y @isaacriehm/cairn init --no-prompt --auto-e2e defer` as a
+Bash subprocess. The `--no-prompt` flag is required: Claude Code's Bash
+tool runs without a TTY, so inquirer prompts crash with `ExitPromptError`
+the moment init asks anything. Defaults used:
 
-When the init pipeline pauses for an A/B/C choice (it emits a
-recognizable sentinel line), translate it into an `AskUserQuestion`
-call with the same labels and forward the operator's pick back into
-the subprocess via stdin.
+- Proceed: yes (auto-pick `[a]`)
+- Pilot: `.` (whole repo)
+- Brand setup: skipped (operator runs `cairn configure brand` later)
+- E2E heavy probes: defer
+- Source-comment + rules ingestion: enabled
+
+Stream stdout verbatim into the conversation inside a fenced
+```` ```text ```` block so the operator sees every phase progress. The
+init pipeline owns Phases 1–13 of §6 — submodule detect, priority walk,
+per-module Sonnet calls, pilot module pick, brand setup, ground
+skeleton, docs ingestion (7a), source-comment ingestion (7b),
+project-rules merge (7c), baseline sensor audit, inconsistency
+detection, comment policy enforcement (10), and CI gate install (12).
+
+(Future: when init grows a streaming protocol that emits sentinel lines
+for inline A/B/C choices, this skill can re-add the per-question
+`AskUserQuestion` round-trip. Today, init runs end-to-end with defaults
+and the operator reviews the resulting drafts via `cairn attention`.)
 
 ## Step 4 — final summary
 
