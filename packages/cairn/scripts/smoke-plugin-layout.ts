@@ -70,17 +70,18 @@ function runSmoke(): void {
     console.log("  ✓ Step 1 — plugin.json shape");
   }
 
-  // ── Step 2 — .mcp.json wires cairn MCP via the published CLI ─────
+  // ── Step 2 — .mcp.json wires cairn MCP via npx ───────────────────
   {
     const mcp = readJson<McpShape>(join(PLUGIN_ROOT, ".mcp.json"));
     assert(mcp.mcpServers?.cairn !== undefined, "Step 2: mcpServers.cairn required");
     const server = mcp.mcpServers.cairn;
-    assert(server.command === "cairn", `Step 2: cairn.command must be 'cairn', got ${server.command}`);
+    assert(server.command === "npx", `Step 2: cairn.command must be 'npx', got ${server.command}`);
+    const expected = ["-y", "@isaacriehm/cairn", "mcp", "serve"];
     assert(
-      Array.isArray(server.args) && server.args.length === 2 && server.args[0] === "mcp" && server.args[1] === "serve",
-      `Step 2: cairn.args must be ['mcp', 'serve'], got ${JSON.stringify(server.args)}`,
+      Array.isArray(server.args) && server.args.length === expected.length && server.args.every((a, i) => a === expected[i]),
+      `Step 2: cairn.args must be ${JSON.stringify(expected)}, got ${JSON.stringify(server.args)}`,
     );
-    console.log("  ✓ Step 2 — .mcp.json shells out to `cairn mcp serve`");
+    console.log("  ✓ Step 2 — .mcp.json invokes `npx -y @isaacriehm/cairn mcp serve`");
   }
 
   // ── Step 3 — hooks.json wires SessionStart, SessionEnd, Stop, PostToolUse ──
@@ -92,11 +93,11 @@ function runSmoke(): void {
       assert(Array.isArray(hooks[event]) && hooks[event].length > 0, `Step 3: ${event} must be non-empty array`);
     }
     const ALLOWED = new Set([
-      "cairn hook session-start",
-      "cairn hook session-end",
-      "cairn hook stop",
-      "cairn hook read-enrich",
-      "cairn hook write-guard",
+      "npx -y @isaacriehm/cairn hook session-start",
+      "npx -y @isaacriehm/cairn hook session-end",
+      "npx -y @isaacriehm/cairn hook stop",
+      "npx -y @isaacriehm/cairn hook read-enrich",
+      "npx -y @isaacriehm/cairn hook write-guard",
     ]);
     for (const event of ["SessionStart", "SessionEnd", "Stop", "PostToolUse"] as const) {
       for (const entry of hooks[event]) {
@@ -115,7 +116,7 @@ function runSmoke(): void {
     const hasWriteMatcher = matchers.some((m) => /Write|Edit/.test(m));
     assert(hasReadMatcher, "Step 3: PostToolUse must match Read|Grep|Glob");
     assert(hasWriteMatcher, "Step 3: PostToolUse must match Write|Edit");
-    console.log("  ✓ Step 3 — hooks.json shells out to `cairn hook <event>`");
+    console.log("  ✓ Step 3 — hooks.json invokes `npx -y @isaacriehm/cairn hook <event>`");
   }
 
   // ── Step 4 — component dirs exist ────────────────────────────────

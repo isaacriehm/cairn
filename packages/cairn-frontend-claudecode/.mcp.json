@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "cairn": {
-      "command": "cairn",
-      "args": ["mcp", "serve"]
+      "command": "npx",
+      "args": ["-y", "@isaacriehm/cairn", "mcp", "serve"]
     }
   }
 }

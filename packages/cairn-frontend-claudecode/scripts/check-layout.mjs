@@ -48,24 +48,22 @@ if (manifest) {
 }
 
 // ── .mcp.json ───────────────────────────────────────────────────────
-// Plugin shells out to the published `cairn` CLI on PATH (installed via
-// `npm install -g @isaacriehm/cairn`). This avoids the pre-v0.1.2 problem
-// where the plugin manifest pointed at `${CLAUDE_PLUGIN_ROOT}/../cairn-core`
-// — Claude Code's plugin cache only stores the plugin dir, not sibling
-// workspace packages, so the path didn't resolve in production installs.
+// Plugin invokes the CLI via npx — no separate `npm install -g` step
+// for users. npx auto-downloads on first use, then hits the local cache.
+// Avoids the pre-v0.1.2 problem where the plugin manifest pointed at
+// `${CLAUDE_PLUGIN_ROOT}/../cairn-core` (sibling not in plugin cache).
 const mcp = readJson(join(PKG_ROOT, ".mcp.json"));
 if (mcp) {
   const server = mcp?.mcpServers?.cairn;
   if (!server || typeof server !== "object") {
     fail(".mcp.json: mcpServers.cairn must be an object");
   } else {
-    if (server.command !== "cairn") {
-      fail(`.mcp.json: cairn.command must be 'cairn' (the npm-installed CLI), got ${server.command}`);
+    if (server.command !== "npx") {
+      fail(`.mcp.json: cairn.command must be 'npx', got ${server.command}`);
     }
-    if (!Array.isArray(server.args) || server.args.length !== 2) {
-      fail(".mcp.json: cairn.args must be ['mcp', 'serve']");
-    } else if (server.args[0] !== "mcp" || server.args[1] !== "serve") {
-      fail(`.mcp.json: cairn.args must be ['mcp', 'serve'], got ${JSON.stringify(server.args)}`);
+    const expected = ["-y", "@isaacriehm/cairn", "mcp", "serve"];
+    if (!Array.isArray(server.args) || server.args.length !== expected.length || server.args.some((a, i) => a !== expected[i])) {
+      fail(`.mcp.json: cairn.args must be ${JSON.stringify(expected)}, got ${JSON.stringify(server.args)}`);
     }
   }
 }
@@ -83,14 +81,14 @@ if (hooksFile) {
         fail(`hooks.json: hooks.${event} must be a non-empty array`);
       }
     }
-    // Walk every command. Each must invoke `cairn hook <event>` so the
-    // hook resolves against the npm-installed `cairn` binary on PATH.
+    // Walk every command. Each must invoke the CLI via npx so users
+    // don't need a separate `npm install -g` step.
     const ALLOWED = new Set([
-      "cairn hook session-start",
-      "cairn hook session-end",
-      "cairn hook stop",
-      "cairn hook read-enrich",
-      "cairn hook write-guard",
+      "npx -y @isaacriehm/cairn hook session-start",
+      "npx -y @isaacriehm/cairn hook session-end",
+      "npx -y @isaacriehm/cairn hook stop",
+      "npx -y @isaacriehm/cairn hook read-enrich",
+      "npx -y @isaacriehm/cairn hook write-guard",
     ]);
     const visit = (event, entries) => {
       for (const entry of entries) {

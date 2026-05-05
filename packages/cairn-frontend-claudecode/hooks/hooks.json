@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cairn hook session-start"
+            "command": "npx -y @isaacriehm/cairn hook session-start"
           }
         ]
       }
@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cairn hook session-end"
+            "command": "npx -y @isaacriehm/cairn hook session-end"
           }
         ]
       }
@@ -25,7 +25,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cairn hook stop"
+            "command": "npx -y @isaacriehm/cairn hook stop"
           }
         ]
       }
@@ -36,7 +36,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cairn hook read-enrich"
+            "command": "npx -y @isaacriehm/cairn hook read-enrich"
           }
         ]
       },
@@ -45,7 +45,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cairn hook write-guard"
+            "command": "npx -y @isaacriehm/cairn hook write-guard"
           }
         ]
       }

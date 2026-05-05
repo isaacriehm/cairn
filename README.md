@@ -11,9 +11,9 @@ Stop AI agents from drifting.
 [![Node](https://img.shields.io/badge/node-%E2%89%A522-brightgreen?style=flat-square)](https://nodejs.org)
 
 ```bash
-npm install -g @isaacriehm/cairn          # the CLI the plugin shells out to
-/plugin marketplace add isaacriehm/cairn  # inside Claude Code
-/plugin install cairn@isaacriehm-cairn    # inside Claude Code
+/plugin marketplace add isaacriehm/cairn
+/plugin install cairn@isaacriehm-cairn
+/reload-plugins
 ```
 
 [Quick Start](#quick-start) · [Why](#why) · [How It Works](#how-it-works) · [Editor Extension](#editor-extension--cairn-lens) · [Multi-Dev](#multi-developer-enforcement) · [Docs](#documentation)
@@ -33,16 +33,7 @@ live?"
 
 ## Quick Start
 
-**One-time setup** (any shell):
-
-```bash
-npm install -g @isaacriehm/cairn
-```
-
-This puts the `cairn` binary on your PATH. The Claude Code plugin
-shells out to it for the MCP server and lifecycle hooks.
-
-**Then inside Claude Code**:
+Inside Claude Code, in any project:
 
 ```bash
 /plugin marketplace add isaacriehm/cairn
@@ -51,10 +42,20 @@ shells out to it for the MCP server and lifecycle hooks.
 ```
 
 (First registers the GitHub repo as a marketplace; second installs the
-plugin from it; third loads it.)
+plugin; third loads it. The plugin invokes the CLI via `npx -y` so npm
+auto-fetches it on first use — no separate `npm install -g` step.)
 
 Open Claude Code in any project. The plugin auto-detects on session
 start and offers `[a] adopt now`. Pick `[a]` once. Done.
+
+If you want `cairn` directly on your shell PATH (for `cairn doctor`,
+`cairn attention`, etc.):
+
+```bash
+npm install -g @isaacriehm/cairn
+```
+
+…but the plugin doesn't require it.
 
 Adoption is a single visual pass — submodule init, repo walk, mapper,
 brand setup, doc ingestion, source-comment ingestion, rules merge,
