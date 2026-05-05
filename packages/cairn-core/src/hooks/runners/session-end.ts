@@ -16,9 +16,6 @@ import {
 
 interface SessionEndShapeBOutput {
   continue: boolean;
-  hookSpecificOutput: {
-    hookEventName: "SessionEnd";
-  };
 }
 
 export async function runSessionEndHook(): Promise<void> {
@@ -41,10 +38,7 @@ export async function runSessionEndHook(): Promise<void> {
     }
   }
 
-  const out: SessionEndShapeBOutput = {
-    continue: true,
-    hookSpecificOutput: { hookEventName: "SessionEnd" },
-  };
+  const out: SessionEndShapeBOutput = { continue: true };
   emitShapeB(out);
 
   recordHookTelemetry({
