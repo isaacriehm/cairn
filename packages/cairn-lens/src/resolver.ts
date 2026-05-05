@@ -73,7 +73,7 @@ export class LensResolver {
    * Resolve a §V<N> citation to a structured result.
    *
    * The cached `getInvariantsLedger` reader from cairn-core only carries
-   * active entries; superseded ids appear ONLY when the daemon-written ledger
+   * active entries; superseded ids appear only when the invariants-ledger
    * file lists them. For Lens purposes that means: if `getInvariantsLedger`
    * has the id with `superseded_by` set → superseded; absent → unknown.
    */

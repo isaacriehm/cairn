@@ -1,37 +1,39 @@
 import type { StatusJson } from "./index.js";
 
 /**
- * Render a StatusJson as the single-line string Claude Code's status_line hook
- * displays. Pure function; no I/O.
+ * Render a StatusJson as the single-line string Claude Code's status_line
+ * hook displays. Pure function; no I/O.
  *
- * Field priority for the "state" slot (single field):
- *   daemon down  >  attention > 0  >  gc running  >  task_state
+ * Format: `⬡ cairn  decisions:N  inv:N  <state>  <icon>`
+ *
+ * <state> reports the most operator-actionable signal: pending attention
+ * count first (ranks above tasks), GC sweep state second, task state
+ * last; falls back to "ready" when nothing else is happening.
  *
  * Health icon:
- *   daemon down  → ○
- *   attention    → ⚑
- *   else         → ●
+ *   attention > 0  → ⚑
+ *   gc running     → ◐
+ *   idle / running → ●
  */
 export function formatStatus(s: StatusJson): string {
   const parts: string[] = ["⬡ cairn"];
 
-  parts.push(`ctx:${s.ctx_tokens_used}/${s.ctx_tokens_budget}`);
   parts.push(`decisions:${s.decisions_in_scope}`);
   parts.push(`inv:${s.invariants_in_scope}`);
 
   let stateField: string;
   let icon: string;
-  if (!s.daemon_alive) {
-    stateField = "daemon:down";
-    icon = "○";
-  } else if (s.attention_count > 0) {
+  if (s.attention_count > 0) {
     stateField = `attention:${s.attention_count}`;
     icon = "⚑";
   } else if (s.gc_running) {
     stateField = "gc:active";
+    icon = "◐";
+  } else if (s.task_state !== "idle") {
+    stateField = `task:${s.task_state}`;
     icon = "●";
   } else {
-    stateField = `task:${s.task_state}`;
+    stateField = "ready";
     icon = "●";
   }
   parts.push(stateField);

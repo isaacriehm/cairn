@@ -101,6 +101,7 @@ import {
 } from "./prompts.js";
 import { seedCairnLayout } from "./seed.js";
 import type { DetectionResult } from "./types.js";
+import { buildProjectOverlay } from "./overlay.js";
 import { buildRepoSummary, type RepoSummary } from "./walker.js";
 import { updateWorkflowSlugBlock } from "./workflow-block.js";
 
@@ -247,20 +248,8 @@ export interface InitResult {
   warnings: string[];
 }
 
-const DEFAULT_OFF_LIMITS = [
-  ".env",
-  ".env.*",
-  "node_modules/",
-  "dist/",
-  "build/",
-  "target/",
-  "__pycache__/",
-  "vendor/",
-  ".venv/",
-  ".direnv/",
-  ".cache/",
-  "coverage/",
-];
+// DEFAULT_OFF_LIMITS + buildProjectOverlay live in ./overlay.js so the
+// MCP-native phase pipeline (phases/3b-seed.ts) can call them too.
 
 export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   const repoRoot = args.repoRoot ?? process.cwd();
@@ -340,10 +329,10 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   }
   printDiscovery(detection, decidedSlug, warnings, repoSummary);
 
-  // ── Dialog 1 (legacy proceed?) — only fired in auto mode for smoke compat.
-  // Interactive runs skip the explicit confirm per INIT_SPEC.md §3 (single
-  // confirm). The pilot-module prompt at the end of mapper proposal is the
-  // single operator gate.
+  // ── Dialog 1 (auto-mode proceed sentinel) — only fired in --no-prompt
+  // smoke runs. Interactive runs skip the explicit confirm per INIT_SPEC
+  // §3 (single confirm). The pilot-module prompt at the end of mapper
+  // proposal is the single operator gate.
   const proceedChoice =
     mode === "auto"
       ? args.autoProceed ?? "a"
@@ -710,54 +699,6 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   };
 }
 
-function buildProjectOverlay(args: {
-  detection: DetectionResult;
-  decidedSlug: string;
-  mapperOutput?: MapperOutput;
-}): Record<string, unknown> {
-  const detected_sensor_commands = args.detection.proposed_sensors.map((s) => ({
-    id: s.id,
-    command: s.command,
-    args: s.args,
-    applies_to: s.applies_to,
-    reason: s.reason,
-  }));
-
-  const m = args.mapperOutput;
-  const offLimits = [...DEFAULT_OFF_LIMITS];
-  if (m !== undefined) {
-    for (const x of m.off_limits_globs) {
-      if (!offLimits.includes(x)) offLimits.push(x);
-    }
-  }
-
-  const overlay: Record<string, unknown> = {
-    version: 1,
-    cairn_version: VERSION,
-    slug: args.decidedSlug,
-    origin_url: args.detection.origin_url,
-    stack_signatures: args.detection.stack_signatures.map((s) => s.kind),
-    hook_capability: args.detection.hook_capability,
-    start_command: args.detection.start_command,
-    detected_sensor_commands,
-    off_limits: offLimits,
-    high_stakes_globs: m?.high_stakes_globs ?? [],
-    project_globs: {
-      route_handler_globs: m?.route_handler_globs ?? [],
-      dto_globs: m?.dto_globs ?? [],
-      generator_source_globs: m?.generator_source_globs ?? [],
-      high_stakes_globs: m?.high_stakes_globs ?? [],
-    },
-  };
-  if (m !== undefined) {
-    overlay["pilot_module"] = m.pilot_module;
-    overlay["domain_summary"] = m.domain_summary;
-    overlay["key_modules"] = m.key_modules;
-    overlay["mapper_proposed_sensors"] = m.proposed_sensors;
-    if (m.notes.trim().length > 0) overlay["mapper_notes"] = m.notes;
-  }
-  return overlay;
-}
 
 interface MaybeRunMapperArgs {
   repoRoot: string;
@@ -809,7 +750,7 @@ async function maybeRunMapper(
 
   // Mapper dispatches automatically per INIT_SPEC §3 — no per-run cost prompt.
   // The orchestrator handles parallel module calls + Haiku merge internally;
-  // legacy single-call path is its own fallback when every module call fails.
+  // the single-call path is the fallback when every module call fails.
   let mapperResult: MapperResult;
   const spinner = startSpinner("Analyzing codebase…");
   let totalSlices = 0;
@@ -1129,7 +1070,6 @@ function printCompletionSummary(args: CompletionSummaryArgs): void {
     args.scanTruncated,
   );
   const brandReport = describeBrandStatus(args.repoRoot);
-  const hookReport = describeHooks(args.repoRoot);
   const mcpReport = describeMcpRegistration(args.repoRoot);
 
   info("");
@@ -1137,7 +1077,6 @@ function printCompletionSummary(args: CompletionSummaryArgs): void {
   info("");
   info(`  Ground state      .cairn/ground/ (${groundCount} files)`);
   info(`  MCP server        ${mcpReport}`);
-  info(`  Hooks             ${hookReport}`);
   info(`  Sensors           ${sensorCount} active`);
   if (args.mapperFallbackSlugs.length > 0) {
     const head = args.mapperFallbackSlugs.slice(0, 3).join(", ");
@@ -1353,28 +1292,6 @@ function readFrontmatterStatus(path: string): string | null {
     return sm && sm[1] ? sm[1] : null;
   } catch {
     return null;
-  }
-}
-
-function describeHooks(repoRoot: string): string {
-  const path = join(repoRoot, ".claude", "settings.json");
-  if (!existsSync(path)) return "missing .claude/settings.json";
-  try {
-    const parsed = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
-    const hooks = parsed["hooks"];
-    if (typeof hooks !== "object" || hooks === null) return "missing entries";
-    const sessionStart = (hooks as Record<string, unknown>)["SessionStart"];
-    const postToolUse = (hooks as Record<string, unknown>)["PostToolUse"];
-    const labels: string[] = [];
-    if (Array.isArray(sessionStart) && sessionStart.length > 0) {
-      labels.push("SessionStart");
-    }
-    if (Array.isArray(postToolUse) && postToolUse.length > 0) {
-      labels.push("PostToolUse (read-enricher, write-guardian)");
-    }
-    return labels.length === 0 ? "no entries" : labels.join(" · ");
-  } catch {
-    return "unreadable";
   }
 }
 

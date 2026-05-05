@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "cairn": {
-      "command": "npx",
-      "args": ["-y", "@isaacriehm/cairn", "mcp", "serve"]
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs", "mcp", "serve"]
     }
   }
 }

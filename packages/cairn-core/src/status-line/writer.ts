@@ -54,21 +54,10 @@ export function writeStatusJson(
  * Subsequent patches (heartbeat updated_at, attention_count, etc.)
  * merge over this baseline so the shape-validating reader always sees
  * a complete object.
- *
- * `ctx_tokens_budget` defaults to 4000 — the SessionStart
- * additionalContext cap (Section 0–7 budget). Hooks may overwrite once
- * a tighter per-session value is computed.
- *
- * `daemon_alive` is retained on the wire for status-line format
- * back-compat; the daemon itself is dormant. SessionStart writes
- * `true` to indicate the session is live.
  */
-export function defaultStatusJson(sessionAlive: boolean): StatusJson {
+export function defaultStatusJson(): StatusJson {
   return {
     updated_at: new Date().toISOString(),
-    daemon_alive: sessionAlive,
-    ctx_tokens_used: 0,
-    ctx_tokens_budget: 4000,
     decisions_in_scope: 0,
     invariants_in_scope: 0,
     task_state: "idle",

@@ -103,11 +103,8 @@ jobs:
 
             ## Installs
 
+            - **Claude Code plugin** (recommended): `/plugin marketplace add isaacriehm/cairn` then `/plugin install cairn@isaacriehm-cairn`
             - **CLI**: `npm install -g @isaacriehm/cairn`
             - **Library**: `npm install @isaacriehm/cairn-core`
             - **Editor extension** (Cairn Lens): download the `.vsix` below
               and install via `Cmd/Ctrl+Shift+P` → `Extensions: Install from VSIX…`.
-
-            ## Highlights
-
-            See the auto-generated notes below for the commit-level changelog.

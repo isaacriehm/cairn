@@ -42,8 +42,9 @@ Inside Claude Code, in any project:
 ```
 
 (First registers the GitHub repo as a marketplace; second installs the
-plugin; third loads it. The plugin invokes the CLI via `npx -y` so npm
-auto-fetches it on first use — no separate `npm install -g` step.)
+plugin; third loads it. The plugin ships a self-contained bundle —
+hooks, MCP server, and CLI all run from `dist/cli.mjs` inside the
+plugin cache. No `npx`, no `npm install -g`, no PATH dependency.)
 
 Open Claude Code in any project. The plugin auto-detects on session
 start and offers `[a] adopt now`. Pick `[a]` once. Done.

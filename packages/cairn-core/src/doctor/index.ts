@@ -5,7 +5,7 @@
  * Returns a structured `DoctorReport` the CLI renders. Exit-code mapping:
  *   0 — all checks pass
  *   1 — at least one error (missing core file, broken layout)
- *   2 — at least one warning (drafty brand, empty scope, daemon not running, …)
+ *   2 — at least one warning (drafty brand, empty scope, GC overdue, …)
  *
  * Spec: BUILD_REPORT.md "Task D — cairn doctor command".
  */
@@ -56,9 +56,11 @@ export function runDoctor(opts: RunDoctorOptions): DoctorReport {
   const checks: DoctorCheck[] = [];
 
   // ── Core checks ────────────────────────────────────────────────────
+  // .claude/settings.json hooks are no longer written into adopted
+  // projects — the Claude Code plugin owns hooks via its own
+  // hooks/hooks.json, so a check here would always fire false negatives.
   checks.push(checkCairnLayout(repoRoot));
   checks.push(checkMcpRegistration(repoRoot));
-  checks.push(checkClaudeHooks(repoRoot));
 
   // ── Ground state checks ────────────────────────────────────────────
   checks.push(checkDecisions(repoRoot));
@@ -167,63 +169,6 @@ function checkMcpRegistration(repoRoot: string): DoctorCheck {
     label: ".mcp.json",
     status: "ok",
     detail: "cairn MCP server registered",
-  };
-}
-
-function checkClaudeHooks(repoRoot: string): DoctorCheck {
-  const path = join(repoRoot, ".claude", "settings.json");
-  if (!existsSync(path)) {
-    return {
-      group: "core",
-      label: ".claude/",
-      status: "error",
-      detail: "missing settings.json — re-run cairn init",
-      fixCommand: "cairn init --force",
-    };
-  }
-  let parsed: Record<string, unknown>;
-  try {
-    parsed = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
-  } catch {
-    return {
-      group: "core",
-      label: ".claude/",
-      status: "error",
-      detail: "settings.json unreadable",
-      fixCommand: "cairn init --force",
-    };
-  }
-  const hooks = parsed["hooks"];
-  if (typeof hooks !== "object" || hooks === null) {
-    return {
-      group: "core",
-      label: ".claude/",
-      status: "warn",
-      detail: "no hooks block — re-run cairn init",
-      fixCommand: "cairn init --force",
-    };
-  }
-  const labels: string[] = [];
-  if (Array.isArray((hooks as Record<string, unknown>)["SessionStart"])) {
-    labels.push("SessionStart");
-  }
-  if (Array.isArray((hooks as Record<string, unknown>)["PostToolUse"])) {
-    labels.push("PostToolUse");
-  }
-  if (labels.length === 0) {
-    return {
-      group: "core",
-      label: ".claude/",
-      status: "warn",
-      detail: "no SessionStart / PostToolUse entries",
-      fixCommand: "cairn init --force",
-    };
-  }
-  return {
-    group: "core",
-    label: ".claude/",
-    status: "ok",
-    detail: `${labels.join(" + ")} registered`,
   };
 }
 

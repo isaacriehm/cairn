@@ -57,7 +57,7 @@ interface InvariantLedgerEntryLike {
   superseded_by?: string | null;
 }
 
-/** Brand/product paths the daemon should stat for mtime newer than cutoff. */
+/** Brand/product paths SessionStart's spec-delta scan stats for mtime newer than cutoff. */
 const BRAND_FILES = [
   ".cairn/ground/brand/overview.md",
   ".cairn/ground/brand/voice.md",

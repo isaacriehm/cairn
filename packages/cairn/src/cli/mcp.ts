@@ -36,7 +36,8 @@ function usage(): never {
       "  --repo-root <path>   adopted-project repo root (default: CAIRN_REPO_ROOT or cwd)\n" +
       "  --run-id <id>        scope telemetry to a run id (default: top-level)\n" +
       "\n" +
-      "Speaks MCP over stdio. Register in .claude/settings.json mcpServers block.",
+      "Speaks MCP over stdio. The Claude Code plugin's .mcp.json wires this in;\n" +
+      "for other clients, register the bundled cli.mjs as the cairn server.",
   );
   process.exit(1);
 }

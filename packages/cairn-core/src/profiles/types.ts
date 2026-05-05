@@ -20,7 +20,7 @@ export interface ProfileSensorRef {
 }
 
 export interface ProfileExtractorContext {
-  /** The repo root the daemon is operating against (mirror path). */
+  /** The repo root the GC / MCP server is operating against (mirror path). */
   repoRoot: string;
 }
 

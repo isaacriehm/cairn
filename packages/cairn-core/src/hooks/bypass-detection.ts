@@ -32,6 +32,7 @@ export interface ScanBypassResult {
 }
 
 const HEAD_LOOKBACK = 5;
+const NUL = "\x00";
 
 export function scanBypassedCommits(repoRoot: string): ScanBypassResult {
   if (!existsSync(join(repoRoot, ".git"))) {
@@ -56,28 +57,18 @@ export function scanBypassedCommits(repoRoot: string): ScanBypassResult {
 
 export function renderBypassHint(bypassed: BypassedCommit[]): string {
   const lines: string[] = [];
+  const noun = bypassed.length === 1 ? "commit" : "commits";
   lines.push(
-    `## Bypass detection — ${bypassed.length} commit${bypassed.length === 1 ? "" : "s"} not attested`,
-  );
-  lines.push("");
-  lines.push(
-    "The following HEAD commit" +
-      (bypassed.length === 1 ? " was" : "s were") +
-      " not recorded by cairn's post-commit hook. Likely cause: " +
-      "`git commit --no-verify` (or the hook ran before `cairn join` " +
-      "set `core.hooksPath`).",
+    `**Cairn — ${bypassed.length} ${noun} not attested.** Likely a \`--no-verify\` commit or a missing per-clone bootstrap.`,
   );
   lines.push("");
   for (const c of bypassed) {
     lines.push(`- \`${c.shortSha}\` — ${c.subject}`);
   }
   lines.push("");
-  lines.push("Surface inline to the operator now:");
-  lines.push("");
-  lines.push("> Some recent commits weren't attested by cairn. Pick one:");
-  lines.push("> `[a]` backfill — run `cairn sweep` to attest sensors retroactively");
-  lines.push("> `[b]` accept — record a DEC noting the bypass + reason");
-  lines.push("> `[c]` defer — keep the warning, address later");
+  lines.push(
+    "`[a]` record bypass · `[b]` acknowledge · `[c]` defer 24h",
+  );
   return lines.join("\n");
 }
 
@@ -87,18 +78,22 @@ export function renderBypassHint(bypassed: BypassedCommit[]): string {
 
 function readRecentHead(repoRoot: string): BypassedCommit[] {
   try {
+    // NUL (%x00) as the SHA/subject separator. Tabs and any other
+    // printable byte can legitimately appear inside a commit subject;
+    // NUL cannot. Records are newline-separated; the subject (`%s`) is
+    // a single line by definition, so split("\n") is safe.
     const out = execFileSync(
       "git",
-      ["log", `-n${HEAD_LOOKBACK}`, "--format=%H%x09%s"],
+      ["log", `-n${HEAD_LOOKBACK}`, "--format=%H%x00%s"],
       { cwd: repoRoot, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
     );
     const result: BypassedCommit[] = [];
     for (const line of out.split("\n")) {
       if (line.length === 0) continue;
-      const tabIdx = line.indexOf("\t");
-      if (tabIdx === -1) continue;
-      const sha = line.slice(0, tabIdx);
-      const subject = line.slice(tabIdx + 1);
+      const sepIdx = line.indexOf(NUL);
+      if (sepIdx === -1) continue;
+      const sha = line.slice(0, sepIdx);
+      const subject = line.slice(sepIdx + 1);
       if (sha.length < 7) continue;
       result.push({ sha, shortSha: sha.slice(0, 7), subject });
     }

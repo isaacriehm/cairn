@@ -11,6 +11,8 @@
 
 import { appendFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { withWriteLock } from "../../lock.js";
+import { requireBootstrap } from "../bootstrap-guard.js";
 import type { McpContext } from "../context.js";
 import { mcpError } from "../errors.js";
 import { isAppendAllowed, relPosix, safeJoin } from "../path-allowlist.js";
@@ -26,6 +28,9 @@ interface Input {
 const RUN_ID_RE = /^[A-Za-z0-9_-]+$/;
 
 async function handler(ctx: McpContext, input: Input): Promise<unknown> {
+  const block = requireBootstrap(ctx.repoRoot);
+  if (block !== null) return block;
+
   if (!RUN_ID_RE.test(input.run_id) || input.run_id.length > 80) {
     return mcpError(
       "VALIDATION_FAILED",
@@ -54,12 +59,14 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
   }
 
   const entry = `\n## ${new Date().toISOString()} [${input.phase}]\n${input.note}\n`;
-  appendFileSync(abs, entry, "utf8");
-  return {
-    ok: true,
-    path: relCanon,
-    bytes_written: Buffer.byteLength(entry, "utf8"),
-  };
+  return withWriteLock(ctx.repoRoot, () => {
+    appendFileSync(abs, entry, "utf8");
+    return {
+      ok: true,
+      path: relCanon,
+      bytes_written: Buffer.byteLength(entry, "utf8"),
+    };
+  });
 }
 
 export const appendRunNoteTool: ToolDef<Input> = {

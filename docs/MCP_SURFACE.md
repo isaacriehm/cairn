@@ -253,7 +253,7 @@ The walker caps total bytes (default 200 KB) and file count (default 40) to keep
 | `human_review_hint` | string | Optional |
 | `body_markdown` | string | Optional; inferred from title+summary if absent |
 
-Drops to `.cairn/ground/decisions/_inbox/<DEC-id>.draft.md`. Daemon picks it up, notifies operator via active frontend adapter for confirm. Operator confirm moves draft to canonical zone and updates `decisions.ledger.yaml`.
+Drops to `.cairn/ground/decisions/_inbox/<DEC-id>.draft.md`. The cairn-attention skill surfaces the draft inline at the next assistant turn for accept / reject / edit; on accept the file moves to the canonical zone and `decisions.ledger.yaml` updates atomically under the per-write `flock`.
 
 Errors: `DECISION_ID_TAKEN`, `INVALID_ASSERTION_KIND`, `SUPERSEDES_NOT_FOUND`.
 
@@ -285,7 +285,6 @@ All tool inputs validated with zod at server entry. Invalid input returns `{ err
 | Path in historical zone (read tools) | `PATH_HISTORICAL_USE_QUERY_HISTORY` |
 | Path not in allowlist (write tools) | `PATH_NOT_ALLOWED` |
 | Underlying file not found | `FILE_NOT_FOUND` |
-| Daemon temporarily unavailable | `DAEMON_UNAVAILABLE`; agent should retry once |
 | Long-running operation timeout | `OPERATION_TIMEOUT` |
 
 ## Telemetry
@@ -320,7 +319,7 @@ Deliberate omissions, with reasons:
 | `cairn_run_create` / `cairn_record_run_event` / `cairn_drop_task` | Runtime concerns — run lifecycle and task queuing are owned by `cairn-runtime`, not the core MCP surface. |
 | `cairn_ask_operator` | Runtime concern — blocking on operator input mid-run is an orchestrator responsibility, not a state-layer primitive. |
 | `cairn_append` | Direct-append to run artifact paths was removed; runtime writes to runs/ directly via fs, no MCP round-trip needed. |
-| `cairn_set_quality_grade` | GC daemon owns quality grades; agents don't write them. |
+| `cairn_set_quality_grade` | The GC sweep owns quality grades; agents don't write them. |
 | `cairn_modify_workflow` | `workflow.md` is operator-edited only; agents read via canonical extracts. |
 | `cairn_decision_update` | Decisions are append-only via supersedes chain. No in-place edits. |
 | `cairn_invariant_disable` | Invariants are superseded with new entries, not disabled. |

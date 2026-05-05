@@ -1,7 +1,7 @@
 /**
  * Context module — handoff builder, checkpoint writer, and spec-delta
- * computation. Consumed by the SessionStart Section-0 injector and the
- * orchestrator daemon.
+ * computation. Consumed by the SessionStart Section-0 injector + the
+ * Stop hook checkpoint pass.
  *
  * Spec: docs/CONTEXT_CONTINUITY_SPEC.md §2.2 (handoff) + §10 (spec delta).
  */

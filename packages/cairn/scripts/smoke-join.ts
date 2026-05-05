@@ -123,28 +123,24 @@ async function main(): Promise<void> {
   assert(state.projectCairnVersion === "9.9.9", "version reported");
   console.log("  ✓ Step 5 — inspectJoinState");
 
-  step("Step 6 — multi-dev: package.json prepare patch");
+  step("Step 6 — multi-dev: detects node-package-json without patching");
   const repoRoot2 = mkRepoRoot();
-  writeFileSync(
-    join(repoRoot2, "package.json"),
-    JSON.stringify({ name: "x", scripts: { test: "echo" } }, null, 2) + "\n",
-    "utf8",
-  );
+  const originalPkg =
+    JSON.stringify({ name: "x", scripts: { test: "echo" } }, null, 2) + "\n";
+  writeFileSync(join(repoRoot2, "package.json"), originalPkg, "utf8");
   const mres = installMultiDev({ repoRoot: repoRoot2 });
-  assert(mres.preparePatched === true, "prepare patched");
-  const patched = JSON.parse(
-    readFileSync(join(repoRoot2, "package.json"), "utf8"),
-  ) as { scripts?: Record<string, string> };
+  assert(mres.hostKinds.includes("node-package-json"), "node host detected");
   assert(
-    typeof patched.scripts?.["prepare"] === "string" &&
-      patched.scripts?.["prepare"].includes("cairn join || true"),
-    "prepare contains cairn join",
+    mres.preparePatched === false,
+    "phase 12 no longer auto-patches prepare (plugin owns bootstrap)",
   );
-  // Re-run — should detect existing fragment and skip.
-  const mres2 = installMultiDev({ repoRoot: repoRoot2 });
-  const patchStep2 = mres2.steps.find((s) => s.step === "patch-package-prepare");
-  assert(patchStep2?.status === "skipped", "second run skips");
-  console.log("  ✓ Step 6 — package.json prepare patch + idempotent");
+  const afterPkg = readFileSync(join(repoRoot2, "package.json"), "utf8");
+  assert(afterPkg === originalPkg, "package.json untouched");
+  assert(
+    mres.manualHints.some((h) => h.includes("SessionStart bootstrap banner")),
+    "manual hint cites SessionStart path",
+  );
+  console.log("  ✓ Step 6 — node host detected, package.json untouched");
 
   step("Step 7 — multi-dev: non-Node hint surfaces");
   const repoRoot3 = mkRepoRoot();

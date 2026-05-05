@@ -20,9 +20,17 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
+import { seedAttestedCommits } from "../hooks/seed-attested.js";
 import { VERSION } from "../index.js";
 import { logger } from "../logger.js";
 
@@ -100,7 +108,7 @@ export function runJoin(args: RunJoinArgs = {}): JoinResult {
     steps.push({
       step: "version-check",
       status: "skipped",
-      detail: ".cairn/config.yaml missing cairn_version (legacy adoption?)",
+      detail: ".cairn/config.yaml missing cairn_version — re-run init",
     });
   } else if (projectVersion !== VERSION) {
     steps.push({
@@ -155,6 +163,25 @@ export function runJoin(args: RunJoinArgs = {}): JoinResult {
 
   const sessionStep = ensureSessionDir(repoRoot);
   steps.push(sessionStep);
+
+  // `.cairn/.attested-commits` is gitignored + per-clone, so each fresh
+  // clone needs its own seed of all reachable HEAD SHAs. Without this,
+  // the Stop-hook bypass detector flags every pre-existing commit as a
+  // `--no-verify` bypass on the contributor's first session.
+  const attestedSeed = seedAttestedCommits(repoRoot);
+  steps.push({
+    step: "seed-attested-commits",
+    status: attestedSeed.status,
+    detail: attestedSeed.detail,
+  });
+
+  // `.cairn/.cli-path` lets the git hooks resolve the bundled
+  // `dist/cli.mjs` path without requiring a global `cairn` binary on
+  // PATH (the plugin model has none). Gitignored, per-clone — hooks
+  // read it on every commit; if absent they fall back to `command -v
+  // cairn`.
+  const cliPathStep = writeCliPathFile(repoRoot);
+  steps.push(cliPathStep);
 
   const bootstrapped = steps.every((s) => s.status !== "error");
   return {
@@ -249,6 +276,35 @@ function chmodHooks(hooksDir: string): JoinStep {
     step: "chmod-hooks",
     status: "ok",
     detail: `${okCount} hook${okCount === 1 ? "" : "s"} marked executable`,
+  };
+}
+
+function writeCliPathFile(repoRoot: string): JoinStep {
+  const cliArgv = process.argv[1];
+  if (typeof cliArgv !== "string" || cliArgv.length === 0) {
+    return {
+      step: "write-cli-path",
+      status: "skipped",
+      detail: "process.argv[1] empty — hooks will fall back to global cairn",
+    };
+  }
+  const isModule = /\.[mc]?js$/.test(cliArgv);
+  const invocation = isModule ? `node ${cliArgv}` : cliArgv;
+  const path = join(repoRoot, ".cairn", ".cli-path");
+  try {
+    mkdirSync(join(repoRoot, ".cairn"), { recursive: true });
+    writeFileSync(path, `${invocation}\n`, "utf8");
+  } catch (err) {
+    return {
+      step: "write-cli-path",
+      status: "error",
+      detail: `write ${path} failed: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+  return {
+    step: "write-cli-path",
+    status: "ok",
+    detail: `cli invocation: ${invocation}`,
   };
 }
 

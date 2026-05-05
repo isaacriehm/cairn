@@ -79,7 +79,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
 export const dropTaskTool: ToolDef<Input> = {
   name: "cairn_drop_task",
   description:
-    "Create a new active task — writes spec.md + status.yaml under .cairn/tasks/active/<id>/. Used by spec-planner subagent. Operator-issued tasks come via the frontend adapter, not this tool.",
+    "Create a new active task — writes spec.md + status.yaml under .cairn/tasks/active/<id>/.",
   inputSchema: dropTaskInput,
   handler,
 };

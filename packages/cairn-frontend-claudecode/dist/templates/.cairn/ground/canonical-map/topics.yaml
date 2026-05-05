@@ -1,0 +1,54 @@
+# Canonical-map — topic → canonical-doc-path.
+#
+# Curated registry. Agents call `cairn_canonical_for_topic(<topic>)` to get
+# the authoritative path for a topic — no fuzzy match, no hallucinated paths.
+#
+# Adopters extend this registry as their codebase grows. Unknown topics
+# return TOPIC_NOT_REGISTERED — agents must NOT invent topics. Add via
+# /direction confirmation when an operator references a recurring topic
+# the Cairn agents should know about.
+#
+# Below is a baseline that ships with `cairn init` so every adoption
+# has a non-empty registry on day one. Trim or extend per project.
+
+version: 1
+topics:
+  - topic: agents-md
+    canonical_path: AGENTS.md
+    audience: dual
+  - topic: claude-md
+    canonical_path: CLAUDE.md
+    audience: dual
+  - topic: cairn-architecture
+    canonical_path: docs/ARCHITECTURE.md
+    audience: dual
+  - topic: cairn-primer
+    canonical_path: docs/PRIMER.md
+    audience: dual
+  - topic: cairn-mcp-surface
+    canonical_path: docs/MCP_SURFACE.md
+    audience: dual
+  - topic: cairn-filesystem-layout
+    canonical_path: docs/FILESYSTEM_LAYOUT.md
+    audience: dual
+  - topic: cairn-workflow-guide
+    canonical_path: docs/WORKFLOW_GUIDE.md
+    audience: dual
+  - topic: cairn-uat-pipeline
+    canonical_path: docs/UAT_PIPELINE.md
+    audience: dual
+  - topic: cairn-sessionstart-spec
+    canonical_path: docs/SESSIONSTART_SPEC.md
+    audience: dual
+  - topic: two-zone-separation
+    canonical_path: docs/PRIMER.md
+    audience: dual
+  - topic: backprop-protocol
+    canonical_path: docs/PRIMER.md
+    audience: dual
+  - topic: garbage-collection-cadence
+    canonical_path: docs/PRIMER.md
+    audience: dual
+  - topic: anti-patterns
+    canonical_path: docs/PRIMER.md
+    audience: dual

@@ -42,7 +42,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     if (err instanceof ClaudeError) {
       if (isQuotaKind(err.kind)) {
         return mcpError(
-          "DAEMON_UNAVAILABLE",
+          "OPERATION_TIMEOUT",
           `history summarizer quota / rate-limit issue: ${err.message}`,
           { kind: err.kind, exit_code: err.exitCode ?? null },
         );

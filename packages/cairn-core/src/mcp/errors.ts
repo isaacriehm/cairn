@@ -13,7 +13,6 @@ export type McpErrorCode =
   | "PATH_HISTORICAL_USE_QUERY_HISTORY"
   | "PATH_NOT_ALLOWED"
   | "FILE_NOT_FOUND"
-  | "DAEMON_UNAVAILABLE"
   | "OPERATION_TIMEOUT"
   | "DECISION_NOT_FOUND"
   | "DECISION_ID_TAKEN"
@@ -25,7 +24,8 @@ export type McpErrorCode =
   | "TASK_NOT_FOUND"
   | "NOT_ALLOWED"
   | "NOT_IMPLEMENTED"
-  | "BOOTSTRAP_REQUIRED";
+  | "BOOTSTRAP_REQUIRED"
+  | "INTERNAL_ERROR";
 
 export interface McpErrorPayload {
   error: {

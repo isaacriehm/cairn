@@ -7,6 +7,7 @@ import { decisionsForSymbolTool } from "./decisions-for-symbol.js";
 import { decisionsInScopeTool } from "./decisions-in-scope.js";
 import { getFullTool } from "./get-full.js";
 import { groundGetTool } from "./ground-get.js";
+import { initPhaseTools, initResumeTool } from "./init-phases.js";
 import { invariantGetTool } from "./invariant-get.js";
 import { invariantsInScopeTool } from "./invariants-in-scope.js";
 import { queryHistoryTool } from "./query-history.js";
@@ -38,6 +39,9 @@ export const allTools: ToolDef<unknown>[] = [
   archiveTool as ToolDef<unknown>,
   // Write — plugin-era
   resolveAttentionTool as ToolDef<unknown>,
+  // Write — init pipeline (v0.2.0 MCP-native init)
+  initResumeTool as ToolDef<unknown>,
+  ...(initPhaseTools as ToolDef<unknown>[]),
 ];
 
 export type { ToolDef };

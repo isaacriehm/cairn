@@ -32,17 +32,23 @@ Skip when:
 
 ## Step 1 — read attention sources
 
-Run these in parallel:
+Run these in parallel. Use the MCP tools exclusively for DEC content;
+**never** `cat`, `Read`, or otherwise inline-read draft files — that
+wastes thousands of tokens on body text the operator never sees.
 
-- List drafts: `Bash: ls .cairn/ground/decisions/_inbox/*.draft.md 2>/dev/null`
-- Latest baseline audit:
-  `Bash: ls -1t .cairn/baseline/sensor-audit-*.yaml | head -1`
-- Drift events: `cairn_search({query: "drift"})` against the staleness
-  log if any.
-- Recent invalidation events: read the per-session events marker, then
-  list `.cairn/events/*.json` newer than `last_polled_ts`.
+1. List draft paths only (no contents): `Bash: ls .cairn/ground/decisions/_inbox/*.draft.md 2>/dev/null`
+2. For each path, call `cairn_decision_get({path: "<path>"})` — returns
+   parsed `{id, title, source_file, status, capture_source}`. Use that
+   to build the surface tuple. Do not Read/cat the draft body.
+3. Latest baseline audit (path only):
+   `Bash: ls -1t .cairn/baseline/sensor-audit-*.yaml | head -1`
+4. Drift events: `cairn_search({query: "drift"})` against the staleness
+   log if any.
+5. Recent invalidation events: read the per-session events marker, then
+   list `.cairn/events/*.json` newer than `last_polled_ts`.
 
-For each item, build a tuple `{kind, id, title, source, severity}`.
+For each item, build a tuple `{kind, id, title, source, severity}` from
+the MCP responses.
 
 ## Step 2 — sort and cap
 
@@ -81,17 +87,15 @@ Use `AskUserQuestion` with the labels. After the operator picks, call
 the resolver:
 
 ```
-cairn_resolve_attention({item_id: "<DEC-0042>", choice: "a"})
+cairn_resolve_attention({kind: "decision_draft", item_id: "DEC-0042", choice: "a"})
 ```
 
-> NOTE — `cairn_resolve_attention` is the plugin-era write tool
-> documented in §9. It is added in step 6 alongside the reviewer
-> subagent. Until step 6 ships, fall back to the existing tools:
->   - DEC accept → `cairn_record_decision({id, target: "accepted", ...})`
->   - DEC reject → `cairn_archive({path: "...draft.md", reason: "rejected"})`
->   - Baseline accept → append to `.cairn/baseline/suppressions.yaml`
->     via `cairn_append`
->   - Defer → no-op (it stays in the queue)
+The tool dispatches by kind: `decision_draft` for accept/reject/edit,
+`baseline_finding` for triage/suppress/defer, `invalidation_event` for
+refresh/continue/abort, `bypass` and `review` for Stop-hook surfaces.
+On `decision_draft + a`, the tool also strips the originating source
+comment and replaces it with a `// See DEC-NNNN` citation when the DEC
+came from `init-source-comments`.
 
 ## Step 4 — stamp the events poll cursor
 

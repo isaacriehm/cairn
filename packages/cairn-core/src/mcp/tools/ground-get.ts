@@ -21,7 +21,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     case "manifest": {
       const path = manifestPath(ctx.repoRoot);
       if (!existsSync(path)) {
-        return mcpError("FILE_NOT_FOUND", "manifest.yaml not present (daemon not run yet?)");
+        return mcpError("FILE_NOT_FOUND", "manifest.yaml not present (init not run yet?)");
       }
       return { path: ".cairn/ground/manifest.yaml", content: readFileSync(path, "utf8") };
     }
@@ -30,7 +30,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
       if (!existsSync(path)) {
         return mcpError(
           "FILE_NOT_FOUND",
-          "quality-grades.yaml not present (daemon not run yet?)",
+          "quality-grades.yaml not present (init not run yet?)",
         );
       }
       return { path: ".cairn/ground/quality-grades.yaml", content: readFileSync(path, "utf8") };

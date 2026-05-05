@@ -1,0 +1,4 @@
+# MCP servers registered alongside Cairn in .mcp.json.
+# Includes name + description so the agent knows what's available without
+# listing every tool exhaustively.
+mcp_tools: []

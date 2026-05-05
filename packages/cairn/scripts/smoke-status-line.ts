@@ -47,9 +47,6 @@ function mkFixture(): string {
 function syntheticStatus(overrides: Partial<StatusJson> = {}): StatusJson {
   return {
     updated_at: "2026-05-04T14:32:00Z",
-    daemon_alive: true,
-    ctx_tokens_used: 847,
-    ctx_tokens_budget: 4000,
     decisions_in_scope: 12,
     invariants_in_scope: 8,
     task_state: "idle",
@@ -68,7 +65,7 @@ function runSmoke(): void {
   // ── Step 1 — placeholder when state file missing ─────────────────
   {
     const out = readStatusForCLI("/no/such/dir/that/exists/anywhere", "abc-123");
-    assert(out.includes("daemon:down"), `Step 1: expected daemon:down placeholder, got ${out}`);
+    assert(out.includes("no session"), `Step 1: expected 'no session' placeholder, got ${out}`);
     console.log("  ✓ Step 1 — missing state → placeholder");
   }
 
@@ -77,9 +74,9 @@ function runSmoke(): void {
     const repoRoot = mkFixture();
     writeStatusJson(repoRoot, "session-x", syntheticStatus());
     const noId = readStatusForCLI(repoRoot, null);
-    assert(noId.includes("daemon:down"), `Step 2: null id should yield placeholder, got ${noId}`);
+    assert(noId.includes("no session"), `Step 2: null id should yield placeholder, got ${noId}`);
     const empty = readStatusForCLI(repoRoot, "");
-    assert(empty.includes("daemon:down"), `Step 2: empty id should yield placeholder, got ${empty}`);
+    assert(empty.includes("no session"), `Step 2: empty id should yield placeholder, got ${empty}`);
     console.log("  ✓ Step 2 — null/empty session id → placeholder");
   }
 
@@ -89,8 +86,9 @@ function runSmoke(): void {
     writeStatusJson(repoRoot, "session-a", syntheticStatus());
     const out = readStatusForCLI(repoRoot, "session-a");
     assert(out.startsWith("⬡ cairn"), `Step 3: should start with ⬡ cairn, got ${out}`);
-    assert(out.includes("ctx:847/4000"), `Step 3: ctx fragment missing, got ${out}`);
-    assert(out.includes("task:idle"), `Step 3: task:idle fragment missing, got ${out}`);
+    assert(out.includes("decisions:12"), `Step 3: decisions fragment missing, got ${out}`);
+    assert(out.includes("inv:8"), `Step 3: inv fragment missing, got ${out}`);
+    assert(out.includes("ready"), `Step 3: ready state missing for idle/no-attention, got ${out}`);
     console.log("  ✓ Step 3 — round-trip + format");
   }
 
@@ -101,7 +99,7 @@ function runSmoke(): void {
     writeStatusJson(repoRoot, "session-b", syntheticStatus({ task_state: "running" }));
     const a = readStatusForCLI(repoRoot, "session-a");
     const b = readStatusForCLI(repoRoot, "session-b");
-    assert(a.includes("task:idle"), `Step 4: session-a task:idle missing, got ${a}`);
+    assert(a.includes("ready"), `Step 4: session-a idle should render ready, got ${a}`);
     assert(b.includes("task:running"), `Step 4: session-b task:running missing, got ${b}`);
     console.log("  ✓ Step 4 — concurrent sessions write isolated files");
   }
@@ -110,7 +108,6 @@ function runSmoke(): void {
   {
     const out = formatStatus(
       syntheticStatus({
-        ctx_tokens_used: 100,
         decisions_in_scope: 0,
         invariants_in_scope: 0,
         task_state: "running",
@@ -124,24 +121,22 @@ function runSmoke(): void {
     console.log("  ✓ Step 5 — attention priority");
   }
 
-  // ── Step 6 — daemon down beats everything ───────────────────────
+  // ── Step 6 — gc beats task ──────────────────────────────────────
   {
     const out = formatStatus(
       syntheticStatus({
-        daemon_alive: false,
-        ctx_tokens_used: 100,
         decisions_in_scope: 0,
         invariants_in_scope: 0,
         task_state: "running",
         gc_running: true,
-        attention_count: 5,
+        attention_count: 0,
         last_run_result: null,
         last_run_at: null,
       }),
     );
-    assert(out.includes("daemon:down"), `Step 6: daemon:down should win, got ${out}`);
-    assert(out.includes("○"), `Step 6: down icon ○ missing, got ${out}`);
-    console.log("  ✓ Step 6 — daemon-down priority");
+    assert(out.includes("gc:active"), `Step 6: gc:active should beat task, got ${out}`);
+    assert(out.includes("◐"), `Step 6: gc icon ◐ missing, got ${out}`);
+    console.log("  ✓ Step 6 — gc priority");
   }
 
   console.log("smoke-status-line — pass");

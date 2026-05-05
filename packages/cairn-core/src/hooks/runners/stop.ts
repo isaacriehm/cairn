@@ -27,6 +27,7 @@ import {
   scanBypassedCommits,
   type BypassedCommit,
 } from "../bypass-detection.js";
+import { isDeferActive, readDeferState } from "../defer.js";
 import { resolveRepoRoot } from "../../session-start/index.js";
 import {
   readEventsMarker,
@@ -39,6 +40,26 @@ import {
   readHookStdin,
   recordHookTelemetry,
 } from "./payload.js";
+
+/** Init in progress means `.cairn/init-state.json` exists at repoRoot. */
+function isInitInProgress(repoRoot: string): boolean {
+  return existsSync(join(repoRoot, ".cairn", "init-state.json"));
+}
+
+/**
+ * Cap the systemMessage that flows back to Claude Code. Both the
+ * reviewer hint and the bypass hint can fire on the same Stop tick;
+ * with many tasks/SHAs the combined render could blow past the
+ * envelope budget. 4 KB is generous for two A/B/C strips with their
+ * facts but small enough that overflow is structurally impossible.
+ */
+const MAX_ADDITIONAL_CONTEXT_CHARS = 4_000;
+
+function clampAdditionalContext(body: string): string {
+  if (body.length <= MAX_ADDITIONAL_CONTEXT_CHARS) return body;
+  const head = body.slice(0, MAX_ADDITIONAL_CONTEXT_CHARS - 80);
+  return `${head}\n\n…(truncated; resolve via cairn-attention)`;
+}
 
 interface StopShapeBOutput {
   continue: boolean;
@@ -80,30 +101,67 @@ export async function runStopHook(): Promise<void> {
       );
     }
 
-    try {
-      pendingReviews = scanPendingReviews(repoRoot);
-      if (pendingReviews.length > 0) {
-        additionalContext = renderReviewerHint(pendingReviews);
-      }
-    } catch (err) {
-      warnings.push(
-        `pending_review_scan_failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
+    const now = new Date();
+    // Suppress reviewer + bypass surfaces while init is mid-flight —
+    // `.cairn/.attested-commits` may not yet be seeded, and the
+    // adoption skill owns the operator's attention until phase 12
+    // returns nextPhase=null. The MCP init-phases tool clears the
+    // state file as soon as the final phase completes, after which
+    // the next Stop tick scans normally.
+    const initInProgress = isInitInProgress(repoRoot);
+    if (initInProgress) {
+      warnings.push("init_in_progress:scans_suppressed");
     }
 
-    try {
-      const bypassResult = scanBypassedCommits(repoRoot);
-      bypassed = bypassResult.bypassed;
-      if (bypassed.length > 0) {
-        const hint = renderBypassHint(bypassed);
-        additionalContext = additionalContext.length > 0
-          ? `${additionalContext}\n\n${hint}`
-          : hint;
+    if (!initInProgress) {
+      try {
+        pendingReviews = scanPendingReviews(repoRoot);
+        if (pendingReviews.length > 0) {
+          const reviewDefer = readDeferState(repoRoot, "review");
+          const suppressed =
+            reviewDefer !== null &&
+            isDeferActive(reviewDefer, now, {
+              kind: "task_ids",
+              values: pendingReviews.map((p) => p.task_id),
+            });
+          if (suppressed) {
+            warnings.push(`review_suppressed_until:${reviewDefer.deferred_at}`);
+          } else {
+            additionalContext = renderReviewerHint(pendingReviews);
+          }
+        }
+      } catch (err) {
+        warnings.push(
+          `pending_review_scan_failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
-    } catch (err) {
-      warnings.push(
-        `bypass_scan_failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
+
+      try {
+        const bypassResult = scanBypassedCommits(repoRoot);
+        bypassed = bypassResult.bypassed;
+        if (bypassed.length > 0) {
+          const bypassDefer = readDeferState(repoRoot, "bypass");
+          const suppressed =
+            bypassDefer !== null &&
+            isDeferActive(bypassDefer, now, {
+              kind: "shas",
+              values: bypassed.map((b) => b.sha),
+            });
+          if (suppressed) {
+            warnings.push(`bypass_suppressed_until:${bypassDefer.deferred_at}`);
+          } else {
+            const hint = renderBypassHint(bypassed);
+            additionalContext =
+              additionalContext.length > 0
+                ? `${additionalContext}\n\n${hint}`
+                : hint;
+          }
+        }
+      } catch (err) {
+        warnings.push(
+          `bypass_scan_failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }
 
     try {
@@ -120,7 +178,9 @@ export async function runStopHook(): Promise<void> {
   // Claude Code's Stop hook schema rejects hookSpecificOutput. Surface
   // text via the top-level systemMessage field; empty payload is fine.
   const out: StopShapeBOutput = { continue: true };
-  if (additionalContext.length > 0) out.systemMessage = additionalContext;
+  if (additionalContext.length > 0) {
+    out.systemMessage = clampAdditionalContext(additionalContext);
+  }
   emitShapeB(out);
 
   recordHookTelemetry({
@@ -183,16 +243,17 @@ function scanPendingReviews(repoRoot: string): PendingReview[] {
 
 function renderReviewerHint(pending: PendingReview[]): string {
   const lines: string[] = [];
+  const noun = pending.length === 1 ? "task" : "tasks";
   lines.push(
-    `## Reviewer pending (${pending.length} task${pending.length === 1 ? "" : "s"})`,
+    `**Cairn — ${pending.length} ${noun} awaiting review attestation.**`,
   );
   lines.push("");
   for (const p of pending) {
-    lines.push(`- **${p.task_id}** — ${p.spec_path}`);
+    lines.push(`- \`${p.task_id}\``);
   }
   lines.push("");
   lines.push(
-    "Spawn the `reviewer` subagent (defined at `agents/reviewer.md` in the cairn plugin) via the Task tool to attest each pending task. The subagent reads the diff, collects subagent attestation files, extracts non-obvious DECs, and writes the consolidated `attestation.yaml`. Once written, this hook will stop surfacing the reminder.",
+    "`[a]` run review · `[b]` skip · `[c]` defer 24h",
   );
   return lines.join("\n");
 }
