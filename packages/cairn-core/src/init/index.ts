@@ -160,3 +160,25 @@ export type {
   UpdateResult as WorkflowSlugUpdateResult,
   WorkflowSlugBlockUpdate,
 } from "./workflow-block.js";
+export {
+  PHASE_IDS,
+  INIT_STATE_PATH,
+  phaseStateAbsPath,
+  readPhaseState,
+  writePhaseState,
+  clearPhaseState,
+  freshPhaseState,
+  resumePhases,
+  nextPhaseAfter,
+  advancePhase,
+} from "./phases/index.js";
+export type {
+  PhaseId,
+  PhaseState,
+  PhaseOutputs,
+  PhaseResult,
+  PhaseQuestion,
+  PhaseOption,
+  PhaseError,
+  ResumeReport,
+} from "./phases/index.js";

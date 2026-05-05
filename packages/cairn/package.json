@@ -62,7 +62,8 @@
     "smoke:bootstrap-guard": "tsx scripts/smoke-bootstrap-guard.ts",
     "smoke:e2e-adoption": "tsx scripts/smoke-e2e-adoption.ts",
     "smoke:e2e-daily-flow": "tsx scripts/smoke-e2e-daily-flow.ts",
-    "smoke:plugin-bundle": "tsx scripts/smoke-plugin-bundle.ts"
+    "smoke:plugin-bundle": "tsx scripts/smoke-plugin-bundle.ts",
+    "smoke:init-phases-state": "tsx scripts/smoke-init-phases-state.ts"
   },
   "dependencies": {
     "@isaacriehm/cairn-core": "workspace:*",
