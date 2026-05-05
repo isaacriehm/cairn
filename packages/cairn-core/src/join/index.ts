@@ -39,7 +39,12 @@ export interface JoinStep {
 export interface JoinResult {
   /** Repo root we acted on, or null when none was found. */
   repoRoot: string | null;
-  /** True iff every step is "ok" or "skipped". */
+  /**
+   * True iff no step errored. Warnings (e.g. version mismatch) are
+   * advisory and do not flip this to false — the hooks still get
+   * activated, the sessions dir still lands. Caller can inspect `steps`
+   * for individual statuses to decide whether to print the warnings.
+   */
   bootstrapped: boolean;
   steps: JoinStep[];
   /** Convenience: from `.cairn/config.yaml`'s cairn_version. */
@@ -151,9 +156,7 @@ export function runJoin(args: RunJoinArgs = {}): JoinResult {
   const sessionStep = ensureSessionDir(repoRoot);
   steps.push(sessionStep);
 
-  const bootstrapped = steps.every(
-    (s) => s.status === "ok" || s.status === "skipped",
-  );
+  const bootstrapped = steps.every((s) => s.status !== "error");
   return {
     repoRoot,
     bootstrapped,

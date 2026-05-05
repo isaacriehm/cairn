@@ -17,9 +17,6 @@ importers:
       '@isaacriehm/cairn-core':
         specifier: workspace:*
         version: link:../cairn-core
-      '@isaacriehm/cairn-frontend-stub':
-        specifier: workspace:*
-        version: link:../cairn-frontend-stub
       simple-git:
         specifier: ^3.36.0
         version: 3.36.0
@@ -27,6 +24,9 @@ importers:
         specifier: ^2.8.4
         version: 2.8.4
     devDependencies:
+      '@isaacriehm/cairn-frontend-stub':
+        specifier: workspace:*
+        version: link:../cairn-frontend-stub
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(zod@4.4.2)
