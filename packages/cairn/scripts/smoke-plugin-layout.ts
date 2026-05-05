@@ -46,10 +46,12 @@ interface HookEntry {
 }
 
 interface HooksJsonShape {
-  SessionStart: HookEntry[];
-  SessionEnd: HookEntry[];
-  Stop: HookEntry[];
-  PostToolUse: HookEntry[];
+  hooks: {
+    SessionStart: HookEntry[];
+    SessionEnd: HookEntry[];
+    Stop: HookEntry[];
+    PostToolUse: HookEntry[];
+  };
 }
 
 function readJson<T>(path: string): T {
@@ -91,7 +93,9 @@ function runSmoke(): void {
 
   // ── Step 3 — hooks.json wires SessionStart, SessionEnd, Stop, PostToolUse ──
   {
-    const hooks = readJson<HooksJsonShape>(join(PLUGIN_ROOT, "hooks", "hooks.json"));
+    const hooksFile = readJson<HooksJsonShape>(join(PLUGIN_ROOT, "hooks", "hooks.json"));
+    assert(typeof hooksFile.hooks === "object" && hooksFile.hooks !== null, "Step 3: top-level 'hooks' record required");
+    const hooks = hooksFile.hooks;
     for (const event of ["SessionStart", "SessionEnd", "Stop", "PostToolUse"] as const) {
       assert(Array.isArray(hooks[event]) && hooks[event].length > 0, `Step 3: ${event} must be non-empty array`);
     }

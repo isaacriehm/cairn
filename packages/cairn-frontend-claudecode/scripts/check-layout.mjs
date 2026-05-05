@@ -72,35 +72,41 @@ if (mcp) {
 }
 
 // ── hooks/hooks.json ────────────────────────────────────────────────
-const hooks = readJson(join(PKG_ROOT, "hooks", "hooks.json"));
-if (hooks) {
-  for (const event of ["SessionStart", "SessionEnd", "Stop", "PostToolUse"]) {
-    if (!Array.isArray(hooks[event]) || hooks[event].length === 0) {
-      fail(`hooks.json: ${event} must be a non-empty array`);
-    }
-  }
-  // Walk every command and verify it points at an existing dist/hooks/<x>.js.
-  const visit = (event, entries) => {
-    for (const entry of entries) {
-      for (const hook of entry.hooks ?? []) {
-        if (hook.type !== "command" || typeof hook.command !== "string") {
-          fail(`hooks.json: ${event}: each hook must have type=command + string command`);
-          continue;
-        }
-        const m = hook.command.match(/\$\{CLAUDE_PLUGIN_ROOT\}\/\.\.\/cairn-core\/dist\/(hooks\/[a-z-]+\.js)/);
-        if (!m) {
-          fail(`hooks.json: ${event}: command must reference cairn-core/dist/hooks/<x>.js, got ${hook.command}`);
-          continue;
-        }
-        const localBin = m[1];
-        if (!existsSync(join(CAIRN_CORE_DIST, localBin))) {
-          fail(`hooks.json: ${event}: bin missing at ${join(CAIRN_CORE_DIST, localBin)}`);
-        }
+const hooksFile = readJson(join(PKG_ROOT, "hooks", "hooks.json"));
+if (hooksFile) {
+  // Claude Code's plugin loader expects a top-level `hooks` record.
+  if (typeof hooksFile.hooks !== "object" || hooksFile.hooks === null) {
+    fail(`hooks.json: top-level "hooks" record required (zod loader rejects without it)`);
+  } else {
+    const hooks = hooksFile.hooks;
+    for (const event of ["SessionStart", "SessionEnd", "Stop", "PostToolUse"]) {
+      if (!Array.isArray(hooks[event]) || hooks[event].length === 0) {
+        fail(`hooks.json: hooks.${event} must be a non-empty array`);
       }
     }
-  };
-  for (const event of ["SessionStart", "SessionEnd", "Stop", "PostToolUse"]) {
-    if (Array.isArray(hooks[event])) visit(event, hooks[event]);
+    // Walk every command and verify it points at an existing dist/hooks/<x>.js.
+    const visit = (event, entries) => {
+      for (const entry of entries) {
+        for (const hook of entry.hooks ?? []) {
+          if (hook.type !== "command" || typeof hook.command !== "string") {
+            fail(`hooks.json: ${event}: each hook must have type=command + string command`);
+            continue;
+          }
+          const m = hook.command.match(/\$\{CLAUDE_PLUGIN_ROOT\}\/\.\.\/cairn-core\/dist\/(hooks\/[a-z-]+\.js)/);
+          if (!m) {
+            fail(`hooks.json: ${event}: command must reference cairn-core/dist/hooks/<x>.js, got ${hook.command}`);
+            continue;
+          }
+          const localBin = m[1];
+          if (!existsSync(join(CAIRN_CORE_DIST, localBin))) {
+            fail(`hooks.json: ${event}: bin missing at ${join(CAIRN_CORE_DIST, localBin)}`);
+          }
+        }
+      }
+    };
+    for (const event of ["SessionStart", "SessionEnd", "Stop", "PostToolUse"]) {
+      if (Array.isArray(hooks[event])) visit(event, hooks[event]);
+    }
   }
 }
 
