@@ -155,7 +155,10 @@ export async function runSessionStartHook(): Promise<void> {
     writeStatusJson(repoRoot, sessionId, {
       decisions_in_scope: result.counts.decisions,
       invariants_in_scope: result.counts.invariants,
-      attention_count: result.counts.pendingDrafts,
+      attention_count:
+        result.counts.pendingDrafts +
+        result.counts.baselineFindings +
+        result.counts.driftFindings,
       updated_at: new Date().toISOString(),
     });
   } catch (err) {

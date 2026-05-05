@@ -32,6 +32,7 @@ export interface ScanBypassResult {
 }
 
 const HEAD_LOOKBACK = 5;
+const NUL = "\x00";
 
 export function scanBypassedCommits(repoRoot: string): ScanBypassResult {
   if (!existsSync(join(repoRoot, ".git"))) {
@@ -77,18 +78,22 @@ export function renderBypassHint(bypassed: BypassedCommit[]): string {
 
 function readRecentHead(repoRoot: string): BypassedCommit[] {
   try {
+    // NUL (%x00) as the SHA/subject separator. Tabs and any other
+    // printable byte can legitimately appear inside a commit subject;
+    // NUL cannot. Records are newline-separated; the subject (`%s`) is
+    // a single line by definition, so split("\n") is safe.
     const out = execFileSync(
       "git",
-      ["log", `-n${HEAD_LOOKBACK}`, "--format=%H%x09%s"],
+      ["log", `-n${HEAD_LOOKBACK}`, "--format=%H%x00%s"],
       { cwd: repoRoot, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
     );
     const result: BypassedCommit[] = [];
     for (const line of out.split("\n")) {
       if (line.length === 0) continue;
-      const tabIdx = line.indexOf("\t");
-      if (tabIdx === -1) continue;
-      const sha = line.slice(0, tabIdx);
-      const subject = line.slice(tabIdx + 1);
+      const sepIdx = line.indexOf(NUL);
+      if (sepIdx === -1) continue;
+      const sha = line.slice(0, sepIdx);
+      const subject = line.slice(sepIdx + 1);
       if (sha.length < 7) continue;
       result.push({ sha, shortSha: sha.slice(0, 7), subject });
     }

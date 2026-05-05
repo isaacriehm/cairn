@@ -37,7 +37,7 @@ If either gate fails, exit immediately with no output.
 
 Render exactly:
 
-> Adopt this project with Cairn? `[a]` yes  `[b]` not now  `[c]` never (mark and skip on future opens)
+> Adopt this project with Cairn? `[a]` yes  `[b]` not now  `[c]` never for this project
 
 Then call the `AskUserQuestion` tool with those three options as
 labels. Do not preamble; the question is the entire turn.

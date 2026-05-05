@@ -32,8 +32,19 @@ export function freshPhaseState(repoRoot: string): PhaseState {
 /**
  * Read whatever init state is on disk for `repoRoot` and return the
  * next phase the skill driver should invoke. If no state exists, the
- * first phase becomes "ready"; if `currentPhase` is the last id, the
- * pipeline reports "done".
+ * first phase becomes "ready".
+ *
+ * The persisted `state.currentPhase` IS the next phase to run:
+ *   - On "complete", the phase function calls `advancePhase` to
+ *     increment `currentPhase` to the successor before persisting.
+ *   - On "needs_input", `currentPhase` stays put — the operator's
+ *     answer feeds back into the same phase.
+ *
+ * The init-phases MCP tool clears the state file as soon as the final
+ * phase returns nextPhase=null, so a "done" report only fires when
+ * cleanup itself failed. We model that as "ready" pointing at the last
+ * phase id; the skill re-invokes (idempotent) and then clearPhaseState
+ * runs again.
  */
 export function resumePhases(repoRoot: string): ResumeReport {
   const persisted = readPhaseState(repoRoot);
@@ -44,10 +55,9 @@ export function resumePhases(repoRoot: string): ResumeReport {
       state: freshPhaseState(repoRoot),
     };
   }
-  const next = nextPhaseAfter(persisted.currentPhase);
   return {
-    status: next === null ? "done" : "ready",
-    nextPhase: next,
+    status: "ready",
+    nextPhase: persisted.currentPhase,
     state: persisted,
   };
 }

@@ -28,6 +28,7 @@ import {
   readFileSync,
   readdirSync,
   renameSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -200,14 +201,12 @@ function resolveDecisionDraft(ctx: McpContext, input: Input): Promise<unknown> {
       const promoted = promoteDraftStatus(draft);
       writeFileSync(acceptedPath, promoted, "utf8");
       // Remove the draft after promoting so the inbox stays clean.
-      renameSync(inboxPath, `${inboxPath}.accepted`);
-      // Best-effort: delete the .accepted suffix file. We keep the
-      // rename + cleanup as two steps so an interrupt mid-rename leaves
-      // a recoverable trail rather than a vanished draft.
+      // The canonical accepted file at <decDir>/<id>.md is the
+      // recoverable copy if the rmSync interrupts.
       try {
-        renameSync(`${inboxPath}.accepted`, `${inboxPath}.accepted.bak`);
+        rmSync(inboxPath, { force: true });
       } catch {
-        // ignore — file already gone
+        // ignore — best effort, the accepted file is what matters
       }
       try {
         emitEvent(ctx, "decision_accepted", input.item_id, `.cairn/ground/decisions/${input.item_id}.md`);
@@ -269,7 +268,23 @@ function resolveBaselineFinding(ctx: McpContext, input: Input): Promise<unknown>
   return withWriteLock(ctx.repoRoot, () => {
     const suppressionsPath = join(ctx.repoRoot, ".cairn", "baseline", "suppressions.yaml");
     mkdirSync(dirname(suppressionsPath), { recursive: true });
-    const initial = existsSync(suppressionsPath) ? "" : "suppressions:\n";
+    // Empty / missing file → seed the YAML root key so the appended
+    // entries land under a valid `suppressions:` list. statSync may
+    // throw on race; treat any error as "needs header".
+    let needsHeader = !existsSync(suppressionsPath);
+    if (!needsHeader) {
+      try {
+        const sz = statSync(suppressionsPath).size;
+        if (sz === 0) needsHeader = true;
+        else {
+          const head = readFileSync(suppressionsPath, "utf8");
+          if (!/^suppressions\s*:/m.test(head)) needsHeader = true;
+        }
+      } catch {
+        needsHeader = true;
+      }
+    }
+    const initial = needsHeader ? "suppressions:\n" : "";
     const entry =
       `  - id: ${JSON.stringify(input.item_id)}\n` +
       `    suppressed_at: ${JSON.stringify(new Date().toISOString())}\n` +
@@ -458,7 +473,7 @@ function extractAuditBlocks(body: unknown): AuditBlock[] {
   return out;
 }
 
-const HASH_LANGS = new Set(["py", "rb", "sh"]);
+const HASH_LANGS = new Set(["py", "rb", "sh", "lua"]);
 
 function formatCitation(lang: string, decId: string, title: string): string {
   const trimmedTitle = title.trim();

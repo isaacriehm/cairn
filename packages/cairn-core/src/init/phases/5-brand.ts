@@ -1,17 +1,10 @@
 /**
  * Phase 5-brand — adopt brand DEC drafts inline.
  *
- * v0.1.x's 4-question wizard required a TTY and was skipped under
- * --no-prompt, leaving brand status at "draft" forever. v0.2.0 cuts
- * the synchronous wizard: the seeded brand DEC drafts stay drafts
- * until the operator either edits them directly or accepts the
- * mapper-derived auto-fill.
- *
- * This phase emits ONE A/B/C choice. b/auto-fill substitutes
- * positioning + voice from the mapper's domain summary; a/skip
- * leaves status: draft for later editing; c/manual hands off to
- * the operator (drafts stay draft, summary surfaces the file paths
- * to edit).
+ * Emits ONE A/B/C choice. `auto-fill` substitutes positioning + voice
+ * from the mapper's domain summary; `skip` leaves status: draft for
+ * later editing; `manual` hands off to the operator (drafts stay
+ * draft, summary surfaces the file paths to edit).
  */
 
 import { applyBrandAnswers, type BrandAnswers } from "../brand-setup.js";
@@ -61,18 +54,18 @@ export async function runPhase5Brand(state: PhaseState): Promise<PhaseResult> {
     options: [
       {
         id: "skip",
-        label: "skip — keep drafts blank, edit later",
+        label: "skip — keep drafts blank",
         detail: ".cairn/ground/brand/* stays status: draft",
       },
       {
         id: "auto-fill",
-        label: "auto-fill from mapper's domain summary",
+        label: "auto-fill from mapper summary",
         detail: "positioning.md gets the mapper's summary, status flips to current",
       },
       {
         id: "manual",
-        label: "manual — I'll edit the drafts before accepting",
-        detail: "Drafts stay status: draft; cairn-attention surfaces them later",
+        label: "manual — edit drafts first",
+        detail: "Drafts stay status: draft; you can populate them later",
       },
     ],
     default: "skip",

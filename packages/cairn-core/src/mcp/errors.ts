@@ -24,7 +24,8 @@ export type McpErrorCode =
   | "TASK_NOT_FOUND"
   | "NOT_ALLOWED"
   | "NOT_IMPLEMENTED"
-  | "BOOTSTRAP_REQUIRED";
+  | "BOOTSTRAP_REQUIRED"
+  | "INTERNAL_ERROR";
 
 export interface McpErrorPayload {
   error: {

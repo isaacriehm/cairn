@@ -14,3 +14,7 @@ events/
 # Per-clone attested-commits log — written by post-commit hook, read by
 # Stop hook bypass detection. Per PLUGIN_ARCHITECTURE §17 Layer 1.
 .attested-commits
+
+# Per-clone CLI invocation path — written by `cairn join`, read by the
+# git hooks to resolve the bundled cli.mjs or fall back to a global cairn.
+.cli-path

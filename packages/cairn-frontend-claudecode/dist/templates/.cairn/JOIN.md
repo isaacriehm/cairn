@@ -14,10 +14,12 @@ If you opened this project with Claude Code and the Cairn plugin is
 enabled, the SessionStart hook detects an unbootstrapped clone and surfaces
 an inline `[a]` bootstrap prompt. Pick `[a]` once and you are done.
 
-If the plugin isn't installed yet:
+If the plugin isn't installed yet, register the marketplace once and
+install:
 
 ```bash
 # Inside Claude Code
+/plugin marketplace add isaacriehm/cairn
 /plugin install cairn@isaacriehm-cairn
 ```
 
@@ -39,14 +41,6 @@ cairn join                          # idempotent; safe to re-run
 2. Sets `git config core.hooksPath .cairn/git-hooks` on this clone so the
    versioned pre-commit / post-commit / commit-msg hooks run.
 3. Creates `.cairn/sessions/` for this clone if missing.
-
-## Path C — `package.json` `prepare` (Node projects only)
-
-For Node projects the adoption flow already wires
-`prepare: cairn join || true` into `package.json`. Running
-`npm install` / `pnpm install` runs `cairn join` for you. The `|| true`
-lets the install succeed even if Cairn isn't yet on PATH; the failure
-surfaces at first commit attempt instead.
 
 ## Verifying
 

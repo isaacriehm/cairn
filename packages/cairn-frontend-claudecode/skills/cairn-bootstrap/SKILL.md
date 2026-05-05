@@ -31,8 +31,8 @@ is only meaningful when the SessionStart banner explicitly invited it.
 Render exactly:
 
 > This project uses Cairn, but your clone isn't bootstrapped yet.
-> `[a]` bootstrap now — wires git hooks for this clone (~5s)
-> `[b]` skip — cairn write surface stays disabled
+> `[a]` bootstrap now (~5s)
+> `[b]` skip — write surface disabled
 
 Use `AskUserQuestion`. Do not preamble; the question is the entire
 turn.

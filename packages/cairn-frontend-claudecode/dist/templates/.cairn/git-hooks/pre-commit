@@ -3,22 +3,31 @@
 #
 # Spec: PLUGIN_ARCHITECTURE §17 Layer 1.
 #
-# Fails the commit when:
-#   - Cairn CLI is missing from PATH
-#   - sensor-run --staged exits non-zero
+# Fails the commit when sensor-run --staged returns non-zero.
 #
-# To opt out a project: rm .cairn/  (irreversible).
-# Bypass for a single commit: git commit --no-verify (CI gate still catches).
+# Resolution order:
+#   1. .cairn/.cli-path (written by `cairn join`; points at the bundled
+#      cli.mjs for plugin users, the global cairn shim for CLI users).
+#   2. global `cairn` binary on PATH.
+#   3. exit 0 — no enforcement available; SessionStart bootstrap banner
+#      will surface on next Claude Code session and re-run join.
 
 set -e
 
-if ! command -v cairn > /dev/null 2>&1; then
-  echo "✗ Cairn CLI not on PATH"
-  echo "  This project requires Cairn. Install:"
-  echo "    /plugin install cairn@isaacriehm-cairn   (Claude Code)"
-  echo "    npm install -g @isaacriehm/cairn            (CLI)"
-  echo "  Or: rm -rf .cairn/  to opt the project out (irreversible)"
-  exit 1
+REPO_ROOT="$(git rev-parse --show-toplevel 2> /dev/null || true)"
+if [ -z "$REPO_ROOT" ] || [ ! -d "$REPO_ROOT/.cairn" ]; then
+  exit 0
 fi
 
-exec cairn sensor-run --staged "$@"
+CAIRN_CMD=""
+if [ -f "$REPO_ROOT/.cairn/.cli-path" ]; then
+  CAIRN_CMD="$(head -n1 "$REPO_ROOT/.cairn/.cli-path")"
+fi
+if [ -z "$CAIRN_CMD" ] && command -v cairn > /dev/null 2>&1; then
+  CAIRN_CMD="cairn"
+fi
+if [ -z "$CAIRN_CMD" ]; then
+  exit 0
+fi
+
+eval "$CAIRN_CMD sensor-run --staged"

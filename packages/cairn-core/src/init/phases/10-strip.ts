@@ -1,17 +1,11 @@
 /**
  * Phase 10-strip — per-module strip-replace consent.
  *
- * v0.1.x's --no-prompt path skipped this entirely; v0.2.0 surfaces
- * each ingestion-flagged module as an A/B/C choice (strip / keep /
- * skip). The phase tracks which modules still need a decision in
+ * Surfaces each ingestion-flagged module as an A/B/C choice (strip /
+ * keep / skip). Tracks remaining modules in
  * `outputs["10-strip"].pending` and emits one question at a time
- * until the queue is empty.
- *
- * In commit 4 the modules-to-strip list is constructed from any
- * docs-ingest / source-comments classifications that flagged
- * comment essays for deletion. When the list is empty (most repos
- * don't have flagged essays), this phase completes immediately
- * with no operator prompts.
+ * until the queue is empty. When the list is empty (most repos), the
+ * phase completes immediately with no operator prompts.
  */
 
 import { advancePhase } from "./orchestrator.js";
@@ -65,15 +59,15 @@ export async function runPhase10Strip(state: PhaseState): Promise<PhaseResult> {
     options: [
       {
         id: "strip",
-        label: "strip — delete the essay; the seeded DEC is the source of truth",
+        label: "strip — DEC is the source of truth",
       },
       {
         id: "keep",
-        label: "keep — leave the comment in place alongside the DEC",
+        label: "keep — leave comment alongside DEC",
       },
       {
         id: "skip",
-        label: "skip — decide later (cairn-attention will resurface this)",
+        label: "skip — decide later",
       },
     ],
     default: "skip",

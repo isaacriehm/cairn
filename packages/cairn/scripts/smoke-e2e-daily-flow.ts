@@ -248,7 +248,7 @@ async function main(): Promise<void> {
   const stop1 = runHookBin(STOP_BIN, { session_id: sessionId, cwd: repoRoot });
   assert(stop1.status === 0, `stop exit 0; stderr=${stop1.stderr}`);
   assert(
-    /awaiting reviewer attestation/.test(ctxOf(stop1.parsed)),
+    /awaiting review attestation/.test(ctxOf(stop1.parsed)),
     `expected reviewer-pending hint, got: ${ctxOf(stop1.parsed)}`,
   );
   assert(
@@ -265,7 +265,7 @@ async function main(): Promise<void> {
   );
   const stop2 = runHookBin(STOP_BIN, { session_id: sessionId, cwd: repoRoot });
   assert(
-    !/awaiting reviewer attestation/.test(ctxOf(stop2.parsed)),
+    !/awaiting review attestation/.test(ctxOf(stop2.parsed)),
     `expected no reviewer-pending hint, got: ${ctxOf(stop2.parsed)}`,
   );
   console.log("  ✓ Step 3 — hint clears post-attestation");

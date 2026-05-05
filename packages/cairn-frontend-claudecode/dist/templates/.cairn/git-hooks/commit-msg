@@ -9,9 +9,20 @@
 
 set -e
 
-if ! command -v cairn > /dev/null 2>&1; then
-  # If Cairn isn't on PATH, the pre-commit hook already blocked.
+REPO_ROOT="$(git rev-parse --show-toplevel 2> /dev/null || true)"
+if [ -z "$REPO_ROOT" ] || [ ! -d "$REPO_ROOT/.cairn" ]; then
   exit 0
 fi
 
-exec cairn sensor-run --commit-msg "$1" "$@"
+CAIRN_CMD=""
+if [ -f "$REPO_ROOT/.cairn/.cli-path" ]; then
+  CAIRN_CMD="$(head -n1 "$REPO_ROOT/.cairn/.cli-path")"
+fi
+if [ -z "$CAIRN_CMD" ] && command -v cairn > /dev/null 2>&1; then
+  CAIRN_CMD="cairn"
+fi
+if [ -z "$CAIRN_CMD" ]; then
+  exit 0
+fi
+
+eval "$CAIRN_CMD sensor-run --commit-msg \"$1\""
