@@ -1129,7 +1129,6 @@ function printCompletionSummary(args: CompletionSummaryArgs): void {
     args.scanTruncated,
   );
   const brandReport = describeBrandStatus(args.repoRoot);
-  const hookReport = describeHooks(args.repoRoot);
   const mcpReport = describeMcpRegistration(args.repoRoot);
 
   info("");
@@ -1137,7 +1136,6 @@ function printCompletionSummary(args: CompletionSummaryArgs): void {
   info("");
   info(`  Ground state      .cairn/ground/ (${groundCount} files)`);
   info(`  MCP server        ${mcpReport}`);
-  info(`  Hooks             ${hookReport}`);
   info(`  Sensors           ${sensorCount} active`);
   if (args.mapperFallbackSlugs.length > 0) {
     const head = args.mapperFallbackSlugs.slice(0, 3).join(", ");
@@ -1353,28 +1351,6 @@ function readFrontmatterStatus(path: string): string | null {
     return sm && sm[1] ? sm[1] : null;
   } catch {
     return null;
-  }
-}
-
-function describeHooks(repoRoot: string): string {
-  const path = join(repoRoot, ".claude", "settings.json");
-  if (!existsSync(path)) return "missing .claude/settings.json";
-  try {
-    const parsed = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
-    const hooks = parsed["hooks"];
-    if (typeof hooks !== "object" || hooks === null) return "missing entries";
-    const sessionStart = (hooks as Record<string, unknown>)["SessionStart"];
-    const postToolUse = (hooks as Record<string, unknown>)["PostToolUse"];
-    const labels: string[] = [];
-    if (Array.isArray(sessionStart) && sessionStart.length > 0) {
-      labels.push("SessionStart");
-    }
-    if (Array.isArray(postToolUse) && postToolUse.length > 0) {
-      labels.push("PostToolUse (read-enricher, write-guardian)");
-    }
-    return labels.length === 0 ? "no entries" : labels.join(" · ");
-  } catch {
-    return "unreadable";
   }
 }
 
