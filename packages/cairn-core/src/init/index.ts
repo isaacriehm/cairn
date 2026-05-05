@@ -171,6 +171,17 @@ export {
   resumePhases,
   nextPhaseAfter,
   advancePhase,
+  runPhase1Detect,
+  runPhase2Walker,
+  runPhase3Mapper,
+  runPhase4Pilot,
+  runPhase5Brand,
+  runPhase6DocsIngest,
+  runPhase7bSourceComments,
+  runPhase7cRulesMerge,
+  runPhase8Baseline,
+  runPhase10Strip,
+  runPhase12Multidev,
 } from "./phases/index.js";
 export type {
   PhaseId,
