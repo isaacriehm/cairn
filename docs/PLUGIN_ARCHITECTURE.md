@@ -85,7 +85,7 @@ Component locations follow Claude Code's auto-discovery defaults (`skills/`, `co
 }
 ```
 
-`userConfig` field unused in v0. All operator config lives in `~/.local/cairn/.env` (legacy) or per-project `.cairn/config/` (preferred for new config).
+`userConfig` field unused in v0. All operator config lives in per-project `.cairn/config/`.
 
 ## §5 Distribution
 
@@ -166,7 +166,7 @@ After-the-fact (B already committed when A modifies the DEC): GC drift sweep fla
 
 ## §7.5 No daemon — state freshness contract
 
-Pre-pivot Cairn ran a long-lived daemon that regenerated manifests, re-ran drift, and refreshed sensors on a wall-clock loop. The plugin pivot retired the daemon — Claude Code's plugin host has no place for a sidecar process, and operators objected to a background watcher. The replacement contract:
+State freshness is event-driven, not wall-clock-driven. Every stateful operation runs on a discrete trigger; no sidecar process watches the tree.
 
 | Trigger | What runs | Where |
 |---------|-----------|-------|
@@ -178,8 +178,6 @@ Pre-pivot Cairn ran a long-lived daemon that regenerated manifests, re-ran drift
 | **GC sweep** | Stale `_inbox/` drafts, drift detection, decision-to-symbol re-index | `cairn gc` (manual or invoked by Stop when overdue) |
 
 **Stale state never blocks anything dangerous.** The session-boundary contract is: between two SessionStarts (or between a SessionStart and the next Stop), state can grow stale, but no destructive operation runs against the stale view. Sensor sweeps against the live tree at commit time; in-scope DECs/§Vs are re-read by the MCP read tools on every call. The result is "eventually consistent" — fast for the operator, no background process, drift caught at the next session boundary.
-
-**A daemon comes back as a v0.3 deliverable** if this boundary contract proves insufficient — e.g. cross-session ledger races become a real failure mode, or operators complain that drift only surfaces after a Stop hook fires. Until then, no daemon.
 
 ## §8 Daily flow (post-adoption)
 
@@ -554,7 +552,7 @@ Phase 12 (pre-commit hook install) becomes "git hooks + CI workflow + bootstrap 
 package.json prepare script            — auto-bootstrap on install (Node projects)
 ```
 
-### Edge case: legacy commits before adoption
+### Pre-adoption commits
 
 When adopting an existing project with prior history, the CI gate's `--diff origin/main..HEAD` only checks the PR's net change, not the entire prior history. Pre-existing violations don't block — they go to baseline (Phase 8 audit). Future commits are gated.
 
