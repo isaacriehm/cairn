@@ -310,25 +310,34 @@ async function main(): Promise<void> {
   assert(drafts.includes("HS512"), "source-comment draft body cites HS512");
   console.log("  ✓ Step 5 — drafts present + bodies wired");
 
-  step("Step 6 — Phase 12 multi-dev install");
+  step("Step 6 — Phase 12 multi-dev detection (no auto-prepare)");
   assert(result.multi_dev !== null, "multi_dev result populated");
   assert(
     result.multi_dev!.hostKinds.includes("node-package-json"),
     "node host detected",
   );
-  assert(result.multi_dev!.preparePatched === true, "prepare patched");
+  // v0.2.0+: phase 12 no longer auto-patches package.json. The Claude
+  // Code SessionStart bootstrap banner owns per-clone bootstrap; auto-
+  // wiring `cairn join || true` into prepare failed noisily for plugin
+  // users without a global cairn binary.
+  assert(
+    result.multi_dev!.preparePatched === false,
+    "phase 12 must not auto-patch prepare (plugin owns bootstrap)",
+  );
   const pkg = JSON.parse(
     readFileSync(join(repoRoot, "package.json"), "utf8"),
-  ) as { scripts: { prepare: string } };
+  ) as { scripts: { prepare?: string; test?: string } };
   assert(
-    pkg.scripts.prepare.startsWith("cairn join || true"),
-    "prepare prepended",
+    pkg.scripts.prepare === "husky install",
+    "existing prepare untouched (no cairn-join injection)",
   );
   assert(
-    pkg.scripts.prepare.includes("husky install"),
-    "existing prepare retained",
+    result.multi_dev!.manualHints.some((h) =>
+      h.includes("SessionStart bootstrap banner"),
+    ),
+    "manual hint cites SessionStart bootstrap path",
   );
-  console.log("  ✓ Step 6 — package.json prepare patched, existing husky preserved");
+  console.log("  ✓ Step 6 — package.json untouched, hint surfaces SessionStart path");
 
   step("Step 7 — git hooks executable + .attested-commits gitignored");
   for (const hook of ["pre-commit", "post-commit", "commit-msg"]) {

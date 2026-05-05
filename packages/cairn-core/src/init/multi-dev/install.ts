@@ -1,23 +1,22 @@
 /**
- * Phase 12 — multi-developer enforcement install.
+ * Phase 12 — multi-developer enforcement detection.
  *
  * Spec: PLUGIN_ARCHITECTURE §17 + §6 Phase 12.
  *
  * Idempotent. Runs once during `cairn init` after the .cairn/ skeleton
- * is seeded. Wires up the per-package-manager bootstrap hook so every clone
- * runs `cairn join` automatically:
+ * is seeded. Detects the package manager(s) in use and emits per-host
+ * JOIN.md hints for new contributors. The plugin bundle is the
+ * primary delivery mechanism; the Claude Code SessionStart hook
+ * surfaces the per-clone bootstrap banner the moment a contributor
+ * opens an unbootstrapped clone, so phase 12 no longer auto-patches
+ * `package.json` `prepare` (would fail noisily when no global `cairn`
+ * binary is on PATH — see PLUGIN_ARCHITECTURE §17 Layer 4).
  *
- *   - Node projects: `package.json` `scripts.prepare` += "cairn join || true"
- *   - Python (pyproject.toml): emits a JOIN-extension hint for the operator
- *   - Rust / Go / generic: emits the same hint — these toolchains don't
- *     have an install-time hook surface, so JOIN.md is the path
- *
- * The hint is captured in the result so the visual layer can render it once
- * inline; nothing is written outside `package.json` automatically.
+ * `patchPackageJsonPrepare` remains exported for explicit operator-
+ * driven wiring; phase 12 itself never calls it.
  */
 
-import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const PREPARE_SCRIPT_FRAGMENT = "cairn join || true";
@@ -39,6 +38,11 @@ export interface MultiDevInstallStep {
 
 export interface MultiDevInstallResult {
   hostKinds: MultiDevHostKind[];
+  /**
+   * Always false in v0.2.0+ — phase 12 no longer auto-patches
+   * `package.json`. Field retained on the result type for downstream
+   * consumers (skills, smokes) that branch on it.
+   */
   preparePatched: boolean;
   manualHints: string[];
   steps: MultiDevInstallStep[];
@@ -59,8 +63,9 @@ export function installMultiDev(args: InstallMultiDevArgs): MultiDevInstallResul
   const pkgJson = join(repoRoot, "package.json");
   if (existsSync(pkgJson)) {
     hostKinds.push("node-package-json");
-    const patch = patchPackageJsonPrepare(pkgJson, args.dryRun === true);
-    steps.push(patch.step);
+    manualHints.push(
+      "package.json detected — Claude Code contributors get the SessionStart bootstrap banner; CLI-only contributors run `cairn join` once after `npm install`",
+    );
   }
   const pyproject = join(repoRoot, "pyproject.toml");
   if (existsSync(pyproject)) {
@@ -100,80 +105,13 @@ export function installMultiDev(args: InstallMultiDevArgs): MultiDevInstallResul
     );
   }
 
-  // Seed `.cairn/.attested-commits` with every commit reachable from
-  // HEAD at adoption time. Without this, the Stop-hook bypass detector
-  // flags every pre-adoption commit as "not attested" — false positives
-  // for projects with prior history. Per PLUGIN_ARCHITECTURE §17
-  // "Pre-adoption commits", pre-existing history is grandfathered: it
-  // goes to the baseline audit, not the bypass surface. Future commits
-  // flow through the post-commit hook + go on top of this seeded list.
-  steps.push(seedAttestedCommits(repoRoot, args.dryRun === true));
-
-  const preparePatched = steps.some(
-    (s) => s.step === "patch-package-prepare" && s.status === "ok",
-  );
-
-  return { hostKinds, preparePatched, manualHints, steps };
-}
-
-/* -------------------------------------------------------------------------- */
-/* attested-commits seed                                                      */
-/* -------------------------------------------------------------------------- */
-
-function seedAttestedCommits(repoRoot: string, dryRun: boolean): MultiDevInstallStep {
-  const path = join(repoRoot, ".cairn", ".attested-commits");
-  if (existsSync(path)) {
-    return {
-      step: "seed-attested-commits",
-      status: "skipped",
-      detail: ".cairn/.attested-commits already exists — leaving as-is",
-    };
-  }
-  if (!existsSync(join(repoRoot, ".git"))) {
-    return {
-      step: "seed-attested-commits",
-      status: "skipped",
-      detail: "no .git/ — bypass detection is git-only, nothing to seed",
-    };
-  }
-  let shas: string[] = [];
-  try {
-    const out = execFileSync("git", ["log", "--format=%H"], {
-      cwd: repoRoot,
-      encoding: "utf8",
-      maxBuffer: 64 * 1024 * 1024,
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-    shas = out.split("\n").filter((s) => s.length > 0);
-  } catch (err) {
-    return {
-      step: "seed-attested-commits",
-      status: "error",
-      detail: `git log failed: ${err instanceof Error ? err.message : String(err)}`,
-    };
-  }
-  if (dryRun) {
-    return {
-      step: "seed-attested-commits",
-      status: "ok",
-      detail: `(dry-run) would seed ${shas.length} pre-adoption SHA${shas.length === 1 ? "" : "s"}`,
-    };
-  }
-  try {
-    mkdirSync(join(repoRoot, ".cairn"), { recursive: true });
-    writeFileSync(path, `${shas.join("\n")}\n`, "utf8");
-  } catch (err) {
-    return {
-      step: "seed-attested-commits",
-      status: "error",
-      detail: `write ${path} failed: ${err instanceof Error ? err.message : String(err)}`,
-    };
-  }
-  return {
-    step: "seed-attested-commits",
+  steps.push({
+    step: "detect-host-kinds",
     status: "ok",
-    detail: `seeded ${shas.length} pre-adoption SHA${shas.length === 1 ? "" : "s"} — bypass detection grandfathers them`,
-  };
+    detail: `detected ${hostKinds.join(", ")}`,
+  });
+
+  return { hostKinds, preparePatched: false, manualHints, steps };
 }
 
 /* -------------------------------------------------------------------------- */

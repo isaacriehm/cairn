@@ -26,10 +26,13 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   renameSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import { parse as parseYaml } from "yaml";
 import { writeInvalidationEvent } from "../../events/index.js";
 import { decisionsDir } from "../../ground/index.js";
 import {
@@ -37,12 +40,20 @@ import {
   writeDeferState,
   type DeferKind,
 } from "../../hooks/defer.js";
+import {
+  applyStripReplace,
+  type ReplaceItem,
+  type StripReplaceResult,
+} from "../../init/source-comments/strip-replace.js";
 import { withWriteLock } from "../../lock.js";
+import { logger } from "../../logger.js";
 import type { McpContext } from "../context.js";
 import { requireBootstrap } from "../bootstrap-guard.js";
 import { mcpError } from "../errors.js";
 import { resolveAttentionInput } from "../schemas.js";
 import type { ToolDef } from "./types.js";
+
+const log = logger("mcp.resolve-attention");
 
 interface Input {
   item_id: string;
@@ -185,6 +196,7 @@ function resolveDecisionDraft(ctx: McpContext, input: Input): Promise<unknown> {
       const acceptedPath = join(decDir, `${input.item_id}.md`);
       mkdirSync(dirname(acceptedPath), { recursive: true });
       const draft = readFileSync(inboxPath, "utf8");
+      const draftMeta = parseDraftFrontmatter(draft);
       const promoted = promoteDraftStatus(draft);
       writeFileSync(acceptedPath, promoted, "utf8");
       // Remove the draft after promoting so the inbox stays clean.
@@ -202,12 +214,17 @@ function resolveDecisionDraft(ctx: McpContext, input: Input): Promise<unknown> {
       } catch {
         // event emission must never roll back the resolution
       }
-      return {
+      let stripOutcome: StripOutcomeSummary | null = null;
+      if (draftMeta?.captureSource === "init-source-comments" && draftMeta.blockId !== null) {
+        stripOutcome = runSourceStrip(ctx.repoRoot, input.item_id, draftMeta);
+      }
+      const base = {
         ok: true,
         resolved_kind: "decision_accepted",
         item_id: input.item_id,
         accepted_path: `.cairn/ground/decisions/${input.item_id}.md`,
-      };
+      } as const;
+      return stripOutcome === null ? base : { ...base, source_strip: stripOutcome };
     }
 
     // choice === "b" — reject + archive.
@@ -286,8 +303,170 @@ function resolveInvalidationEvent(_ctx: McpContext, input: Input): Promise<unkno
 function promoteDraftStatus(body: string): string {
   // Frontmatter `status: draft` → `status: accepted`. Best-effort regex
   // — if the frontmatter shape is unusual the file is still acceptable
-  // (status field is advisory).
-  return body.replace(/^status:\s*draft\b/m, "status: accepted");
+  // (status field is advisory). Also covers
+  // `status: draft-from-source-comment` (phase 7b's draft marker).
+  return body.replace(/^status:\s*draft(?:-from-source-comment)?\b/m, "status: accepted");
+}
+
+interface DraftMeta {
+  blockId: string | null;
+  sourceFile: string | null;
+  captureSource: string | null;
+  title: string | null;
+}
+
+function parseDraftFrontmatter(body: string): DraftMeta | null {
+  const match = /^---\n([\s\S]*?)\n---/.exec(body);
+  if (match === null) return null;
+  let parsed: unknown;
+  try {
+    parsed = parseYaml(match[1] ?? "");
+  } catch {
+    return null;
+  }
+  if (parsed === null || typeof parsed !== "object") return null;
+  const obj = parsed as Record<string, unknown>;
+  return {
+    blockId: typeof obj["blockId"] === "string" ? obj["blockId"] : null,
+    sourceFile: typeof obj["sourceFile"] === "string" ? obj["sourceFile"] : null,
+    captureSource:
+      typeof obj["capture_source"] === "string" ? obj["capture_source"] : null,
+    title: typeof obj["title"] === "string" ? obj["title"] : null,
+  };
+}
+
+interface StripOutcomeSummary {
+  attempted: boolean;
+  files_modified: number;
+  items_applied: number;
+  audit_path: string | null;
+  reason?: string;
+}
+
+function runSourceStrip(
+  repoRoot: string,
+  decId: string,
+  meta: DraftMeta,
+): StripOutcomeSummary {
+  const blockId = meta.blockId;
+  if (blockId === null) {
+    return { attempted: false, files_modified: 0, items_applied: 0, audit_path: null, reason: "no-block-id" };
+  }
+  const auditPath = findLatestAudit(repoRoot);
+  if (auditPath === null) {
+    return { attempted: false, files_modified: 0, items_applied: 0, audit_path: null, reason: "no-audit-found" };
+  }
+  let auditBody: unknown;
+  try {
+    auditBody = parseYaml(readFileSync(auditPath, "utf8"));
+  } catch (err) {
+    log.warn(
+      { err: err instanceof Error ? err.message : String(err), auditPath },
+      "audit parse failed",
+    );
+    return { attempted: false, files_modified: 0, items_applied: 0, audit_path: auditPath, reason: "audit-parse-failed" };
+  }
+  const blocks = extractAuditBlocks(auditBody);
+  const block = blocks.find((b) => b.block_id === blockId);
+  if (block === undefined) {
+    return { attempted: false, files_modified: 0, items_applied: 0, audit_path: auditPath, reason: "block-not-found" };
+  }
+  const replacement = formatCitation(block.lang, decId, meta.title ?? "");
+  const item: ReplaceItem = {
+    blockId,
+    file: block.file,
+    startOffset: block.start_offset,
+    endOffset: block.end_offset,
+    replacement,
+  };
+  let result: StripReplaceResult;
+  try {
+    result = applyStripReplace({ repoRoot, items: [item] });
+  } catch (err) {
+    log.warn(
+      { err: err instanceof Error ? err.message : String(err), decId, blockId },
+      "strip-replace failed",
+    );
+    return { attempted: true, files_modified: 0, items_applied: 0, audit_path: auditPath, reason: "strip-failed" };
+  }
+  return {
+    attempted: true,
+    files_modified: result.filesModified,
+    items_applied: result.itemsApplied,
+    audit_path: auditPath,
+  };
+}
+
+function findLatestAudit(repoRoot: string): string | null {
+  const dir = join(repoRoot, ".cairn", "baseline");
+  if (!existsSync(dir)) return null;
+  let entries: string[];
+  try {
+    entries = readdirSync(dir);
+  } catch {
+    return null;
+  }
+  const candidates = entries
+    .filter((n) => n.startsWith("source-comments-") && n.endsWith(".yaml"))
+    .map((name) => {
+      const abs = join(dir, name);
+      let mtime = 0;
+      try {
+        mtime = statSync(abs).mtimeMs;
+      } catch {
+        // ignore
+      }
+      return { abs, mtime };
+    })
+    .sort((a, b) => b.mtime - a.mtime);
+  return candidates[0]?.abs ?? null;
+}
+
+interface AuditBlock {
+  block_id: string;
+  file: string;
+  lang: string;
+  start_offset: number;
+  end_offset: number;
+}
+
+function extractAuditBlocks(body: unknown): AuditBlock[] {
+  if (body === null || typeof body !== "object") return [];
+  const obj = body as Record<string, unknown>;
+  const raw = obj["blocks"];
+  if (!Array.isArray(raw)) return [];
+  const out: AuditBlock[] = [];
+  for (const entry of raw) {
+    if (entry === null || typeof entry !== "object") continue;
+    const e = entry as Record<string, unknown>;
+    const block_id = e["block_id"];
+    const file = e["file"];
+    const lang = e["lang"];
+    const start_offset = e["start_offset"];
+    const end_offset = e["end_offset"];
+    if (
+      typeof block_id !== "string" ||
+      typeof file !== "string" ||
+      typeof lang !== "string" ||
+      typeof start_offset !== "number" ||
+      typeof end_offset !== "number"
+    ) {
+      continue;
+    }
+    out.push({ block_id, file, lang, start_offset, end_offset });
+  }
+  return out;
+}
+
+const HASH_LANGS = new Set(["py", "rb", "sh"]);
+
+function formatCitation(lang: string, decId: string, title: string): string {
+  const trimmedTitle = title.trim();
+  const tail = trimmedTitle.length > 0 ? `: ${trimmedTitle}` : "";
+  if (HASH_LANGS.has(lang)) {
+    return `# See ${decId}${tail}`;
+  }
+  return `// See ${decId}${tail}`;
 }
 
 function emitEvent(

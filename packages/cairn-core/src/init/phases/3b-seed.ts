@@ -1,5 +1,6 @@
 /**
- * Phase 3b-seed — write `.cairn/` skeleton + project overlay.
+ * Phase 3b-seed — write `.cairn/` skeleton + project overlay +
+ * grandfather pre-adoption commits.
  *
  * Bridges 3-mapper and 4-pilot. Without this phase the v0.2.0 init
  * pipeline produced an `.cairn/` populated only by side effects of
@@ -9,10 +10,14 @@
  * "half-adopted" shape that subsequent SessionStarts could not
  * detect as adopted.
  *
- * This phase mirrors the same three steps `runInit` does:
+ * Steps:
  *   1. seedCairnLayout (templates → .cairn/)
  *   2. updateWorkflowSlugBlock (mapper output → workflow.md)
  *   3. write .cairn/config.yaml + .cairn/ground/scope-index.yaml
+ *   4. seed .cairn/.attested-commits with every reachable HEAD SHA
+ *      so the Stop-hook bypass detector grandfathers pre-adoption
+ *      history (otherwise the very next assistant turn flags every
+ *      pre-adoption commit as a `--no-verify` bypass).
  *
  * No operator input. Always advances. Idempotent — re-running on a
  * project that already has .cairn/ keeps existing files (collisions
@@ -28,6 +33,7 @@ import {
   type ScopeIndex,
   type ScopeIndexEntry,
 } from "../../ground/scope-index.js";
+import { seedAttestedCommits } from "../../hooks/seed-attested.js";
 import type { MapperResult } from "../mapper.js";
 import { buildProjectOverlay } from "../overlay.js";
 import { seedCairnLayout } from "../seed.js";
@@ -42,6 +48,8 @@ interface SeedPhaseOutput {
   config_path: string;
   scope_index_path: string;
   workflow_slug_patched: boolean;
+  attested_seeded: number;
+  attested_seed_status: "ok" | "skipped" | "error";
 }
 
 export async function runPhase3bSeed(state: PhaseState): Promise<PhaseResult> {
@@ -132,12 +140,19 @@ export async function runPhase3bSeed(state: PhaseState): Promise<PhaseResult> {
       });
     }
 
+    // Step 5 — grandfather pre-adoption commits in
+    // `.cairn/.attested-commits` so the Stop-hook bypass detector
+    // doesn't flag every pre-existing SHA on the next turn.
+    const attestedSeed = seedAttestedCommits(state.repoRoot);
+
     const out: SeedPhaseOutput = {
       written_files: seed.written_files,
       collisions: seed.collisions,
       config_path: ".cairn/config.yaml",
       scope_index_path: ".cairn/ground/scope-index.yaml",
       workflow_slug_patched: workflowSlugPatched,
+      attested_seeded: attestedSeed.count ?? 0,
+      attested_seed_status: attestedSeed.status,
     };
     const next: PhaseState = {
       ...state,

@@ -23,6 +23,7 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
+import { seedAttestedCommits } from "../hooks/seed-attested.js";
 import { VERSION } from "../index.js";
 import { logger } from "../logger.js";
 
@@ -155,6 +156,17 @@ export function runJoin(args: RunJoinArgs = {}): JoinResult {
 
   const sessionStep = ensureSessionDir(repoRoot);
   steps.push(sessionStep);
+
+  // `.cairn/.attested-commits` is gitignored + per-clone, so each fresh
+  // clone needs its own seed of all reachable HEAD SHAs. Without this,
+  // the Stop-hook bypass detector flags every pre-existing commit as a
+  // `--no-verify` bypass on the contributor's first session.
+  const attestedSeed = seedAttestedCommits(repoRoot);
+  steps.push({
+    step: "seed-attested-commits",
+    status: attestedSeed.status,
+    detail: attestedSeed.detail,
+  });
 
   const bootstrapped = steps.every((s) => s.status !== "error");
   return {

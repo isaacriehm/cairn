@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * smoke-init-phases-all — invoke each of the 11 phase functions
+ * smoke-init-phases-all — invoke each of the 12 phase functions
  * against a synthetic repo and assert the PhaseResult contract.
  *
  * Coverage:

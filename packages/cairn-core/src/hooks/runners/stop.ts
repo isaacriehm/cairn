@@ -41,6 +41,11 @@ import {
   recordHookTelemetry,
 } from "./payload.js";
 
+/** Init in progress means `.cairn/init-state.json` exists at repoRoot. */
+function isInitInProgress(repoRoot: string): boolean {
+  return existsSync(join(repoRoot, ".cairn", "init-state.json"));
+}
+
 interface StopShapeBOutput {
   continue: boolean;
   systemMessage?: string;
@@ -82,54 +87,66 @@ export async function runStopHook(): Promise<void> {
     }
 
     const now = new Date();
-
-    try {
-      pendingReviews = scanPendingReviews(repoRoot);
-      if (pendingReviews.length > 0) {
-        const reviewDefer = readDeferState(repoRoot, "review");
-        const suppressed =
-          reviewDefer !== null &&
-          isDeferActive(reviewDefer, now, {
-            kind: "task_ids",
-            values: pendingReviews.map((p) => p.task_id),
-          });
-        if (suppressed) {
-          warnings.push(`review_suppressed_until:${reviewDefer.deferred_at}`);
-        } else {
-          additionalContext = renderReviewerHint(pendingReviews);
-        }
-      }
-    } catch (err) {
-      warnings.push(
-        `pending_review_scan_failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
+    // Suppress reviewer + bypass surfaces while init is mid-flight —
+    // `.cairn/.attested-commits` may not yet be seeded, and the
+    // adoption skill owns the operator's attention until phase 12
+    // returns nextPhase=null. The MCP init-phases tool clears the
+    // state file as soon as the final phase completes, after which
+    // the next Stop tick scans normally.
+    const initInProgress = isInitInProgress(repoRoot);
+    if (initInProgress) {
+      warnings.push("init_in_progress:scans_suppressed");
     }
 
-    try {
-      const bypassResult = scanBypassedCommits(repoRoot);
-      bypassed = bypassResult.bypassed;
-      if (bypassed.length > 0) {
-        const bypassDefer = readDeferState(repoRoot, "bypass");
-        const suppressed =
-          bypassDefer !== null &&
-          isDeferActive(bypassDefer, now, {
-            kind: "shas",
-            values: bypassed.map((b) => b.sha),
-          });
-        if (suppressed) {
-          warnings.push(`bypass_suppressed_until:${bypassDefer.deferred_at}`);
-        } else {
-          const hint = renderBypassHint(bypassed);
-          additionalContext =
-            additionalContext.length > 0
-              ? `${additionalContext}\n\n${hint}`
-              : hint;
+    if (!initInProgress) {
+      try {
+        pendingReviews = scanPendingReviews(repoRoot);
+        if (pendingReviews.length > 0) {
+          const reviewDefer = readDeferState(repoRoot, "review");
+          const suppressed =
+            reviewDefer !== null &&
+            isDeferActive(reviewDefer, now, {
+              kind: "task_ids",
+              values: pendingReviews.map((p) => p.task_id),
+            });
+          if (suppressed) {
+            warnings.push(`review_suppressed_until:${reviewDefer.deferred_at}`);
+          } else {
+            additionalContext = renderReviewerHint(pendingReviews);
+          }
         }
+      } catch (err) {
+        warnings.push(
+          `pending_review_scan_failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
-    } catch (err) {
-      warnings.push(
-        `bypass_scan_failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
+
+      try {
+        const bypassResult = scanBypassedCommits(repoRoot);
+        bypassed = bypassResult.bypassed;
+        if (bypassed.length > 0) {
+          const bypassDefer = readDeferState(repoRoot, "bypass");
+          const suppressed =
+            bypassDefer !== null &&
+            isDeferActive(bypassDefer, now, {
+              kind: "shas",
+              values: bypassed.map((b) => b.sha),
+            });
+          if (suppressed) {
+            warnings.push(`bypass_suppressed_until:${bypassDefer.deferred_at}`);
+          } else {
+            const hint = renderBypassHint(bypassed);
+            additionalContext =
+              additionalContext.length > 0
+                ? `${additionalContext}\n\n${hint}`
+                : hint;
+          }
+        }
+      } catch (err) {
+        warnings.push(
+          `bypass_scan_failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }
 
     try {

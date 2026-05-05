@@ -15,6 +15,8 @@ export type {
   BypassedCommit,
   ScanBypassResult,
 } from "../bypass-detection.js";
+export { seedAttestedCommits } from "../seed-attested.js";
+export type { SeedAttestedResult, SeedAttestedStatus } from "../seed-attested.js";
 export {
   CAIRN_HOOK_VERSION,
   emitShapeB,
