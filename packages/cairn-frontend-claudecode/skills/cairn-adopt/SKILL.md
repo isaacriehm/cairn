@@ -4,7 +4,7 @@ description: |
   Use when the operator opens Claude Code in a project that does not yet
   have a `.cairn/` directory and Cairn has not been declined for
   this project. Walks the operator through one-time adoption inline,
-  orchestrates the `cairn init` pipeline as a subprocess, and surfaces
+  orchestrates the `npx -y @isaacriehm/cairn init` pipeline as a subprocess, and surfaces
   every phase choice as A/B/C inside the conversation. Skip when
   `.cairn/` already exists, or when the operator has previously
   selected "never" for this project.
@@ -69,7 +69,7 @@ If the directory is not a git working tree, surface inline:
 
 ## Step 3 — launch the init pipeline
 
-Spawn `cairn init` as a Bash subprocess. Stream its rich terminal
+Spawn `npx -y @isaacriehm/cairn init` as a Bash subprocess. Stream its rich terminal
 output (chalk + ora + cli-progress) verbatim into the conversation
 inside a fenced ```` ```text ```` block so the operator sees every
 phase progress. The init pipeline owns Phases 1–13 of §6 — submodule
@@ -89,19 +89,19 @@ the subprocess via stdin.
 When init exits 0, summarize in one short message:
 
 - Pilot module
-- DEC drafts proposed (count + link to `cairn attention`)
+- DEC drafts proposed (count + link to `npx -y @isaacriehm/cairn attention`)
 - §V invariants seeded
 - Baseline sensor findings (count)
 - CI workflow + git hooks installed (yes/no)
 
 Then suggest:
 
-> Cairn is now active. Pending review: N items. `[a]` review now (`cairn attention`)  `[b]` later
+> Cairn is now active. Pending review: N items. `[a]` review now (`npx -y @isaacriehm/cairn attention`)  `[b]` later
 
 If init exits non-zero, surface the failure phase and exit code, then
 ask:
 
-> Adoption failed at phase X. `[a]` retry  `[b]` abort + diagnose with `cairn doctor`
+> Adoption failed at phase X. `[a]` retry  `[b]` abort + diagnose with `npx -y @isaacriehm/cairn doctor`
 
 ## Hard rules
 
