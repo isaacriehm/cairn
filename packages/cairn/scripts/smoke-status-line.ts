@@ -47,9 +47,6 @@ function mkFixture(): string {
 function syntheticStatus(overrides: Partial<StatusJson> = {}): StatusJson {
   return {
     updated_at: "2026-05-04T14:32:00Z",
-    daemon_alive: true,
-    ctx_tokens_used: 847,
-    ctx_tokens_budget: 4000,
     decisions_in_scope: 12,
     invariants_in_scope: 8,
     task_state: "idle",
@@ -68,7 +65,7 @@ function runSmoke(): void {
   // ── Step 1 — placeholder when state file missing ─────────────────
   {
     const out = readStatusForCLI("/no/such/dir/that/exists/anywhere", "abc-123");
-    assert(out.includes("daemon:down"), `Step 1: expected daemon:down placeholder, got ${out}`);
+    assert(out.includes("no session"), `Step 1: expected 'no session' placeholder, got ${out}`);
     console.log("  ✓ Step 1 — missing state → placeholder");
   }
 
@@ -77,9 +74,9 @@ function runSmoke(): void {
     const repoRoot = mkFixture();
     writeStatusJson(repoRoot, "session-x", syntheticStatus());
     const noId = readStatusForCLI(repoRoot, null);
-    assert(noId.includes("daemon:down"), `Step 2: null id should yield placeholder, got ${noId}`);
+    assert(noId.includes("no session"), `Step 2: null id should yield placeholder, got ${noId}`);
     const empty = readStatusForCLI(repoRoot, "");
-    assert(empty.includes("daemon:down"), `Step 2: empty id should yield placeholder, got ${empty}`);
+    assert(empty.includes("no session"), `Step 2: empty id should yield placeholder, got ${empty}`);
     console.log("  ✓ Step 2 — null/empty session id → placeholder");
   }
 
@@ -111,7 +108,6 @@ function runSmoke(): void {
   {
     const out = formatStatus(
       syntheticStatus({
-        ctx_tokens_used: 100,
         decisions_in_scope: 0,
         invariants_in_scope: 0,
         task_state: "running",
@@ -125,11 +121,10 @@ function runSmoke(): void {
     console.log("  ✓ Step 5 — attention priority");
   }
 
-  // ── Step 6 — gc beats task; format ignores legacy daemon_alive ──
+  // ── Step 6 — gc beats task ──────────────────────────────────────
   {
     const out = formatStatus(
       syntheticStatus({
-        daemon_alive: false,
         decisions_in_scope: 0,
         invariants_in_scope: 0,
         task_state: "running",
@@ -141,8 +136,7 @@ function runSmoke(): void {
     );
     assert(out.includes("gc:active"), `Step 6: gc:active should beat task, got ${out}`);
     assert(out.includes("◐"), `Step 6: gc icon ◐ missing, got ${out}`);
-    assert(!out.includes("daemon:down"), `Step 6: daemon_alive must not affect format post-pivot, got ${out}`);
-    console.log("  ✓ Step 6 — gc priority + post-pivot daemon ignore");
+    console.log("  ✓ Step 6 — gc priority");
   }
 
   console.log("smoke-status-line — pass");

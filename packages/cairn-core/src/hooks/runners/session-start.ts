@@ -116,7 +116,7 @@ export async function runSessionStartHook(): Promise<void> {
   const sessionId = resolveSessionId({ session_id: payloadSessionId ?? undefined });
   try {
     ensureSessionDir({ repoRoot, sessionId });
-    writeStatusJson(repoRoot, sessionId, defaultStatusJson(true));
+    writeStatusJson(repoRoot, sessionId, defaultStatusJson());
     seedEventsMarker({ repoRoot, sessionId });
   } catch (err) {
     sessionWarnings.push(

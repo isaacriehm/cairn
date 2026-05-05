@@ -1,10 +1,11 @@
 /**
- * Daemon-driven checkpoint writer — emits a snapshot of the same handoff
- * block content to `.cairn/tasks/active/<taskId>/checkpoint-<ISO>.md`.
+ * Checkpoint writer — emits a snapshot of the same handoff block content
+ * to `.cairn/tasks/active/<taskId>/checkpoint-<ISO>.md`. Invoked from the
+ * Stop hook and by the cairn-direction skill before subagent dispatch.
  *
  * Spec: docs/CONTEXT_CONTINUITY_SPEC.md §2.2.
  *
- * Throws if the task directory is missing — daemons should fail loudly when
+ * Throws if the task directory is missing — callers should fail loudly when
  * pointed at a stale taskId. Successful writes return the absolute path.
  */
 

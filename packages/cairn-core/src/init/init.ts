@@ -329,10 +329,10 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   }
   printDiscovery(detection, decidedSlug, warnings, repoSummary);
 
-  // ── Dialog 1 (legacy proceed?) — only fired in auto mode for smoke compat.
-  // Interactive runs skip the explicit confirm per INIT_SPEC.md §3 (single
-  // confirm). The pilot-module prompt at the end of mapper proposal is the
-  // single operator gate.
+  // ── Dialog 1 (auto-mode proceed sentinel) — only fired in --no-prompt
+  // smoke runs. Interactive runs skip the explicit confirm per INIT_SPEC
+  // §3 (single confirm). The pilot-module prompt at the end of mapper
+  // proposal is the single operator gate.
   const proceedChoice =
     mode === "auto"
       ? args.autoProceed ?? "a"
@@ -750,7 +750,7 @@ async function maybeRunMapper(
 
   // Mapper dispatches automatically per INIT_SPEC §3 — no per-run cost prompt.
   // The orchestrator handles parallel module calls + Haiku merge internally;
-  // legacy single-call path is its own fallback when every module call fails.
+  // the single-call path is the fallback when every module call fails.
   let mapperResult: MapperResult;
   const spinner = startSpinner("Analyzing codebase…");
   let totalSlices = 0;

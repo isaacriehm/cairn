@@ -92,7 +92,7 @@ const DEFAULT_PASS1_CAP = 500;
 const DEFAULT_PASS2_CAP = 200;
 const DEFAULT_PASS2_DEPTH_CAP = 6;
 const DEFAULT_TOTAL_CAP = 3000;
-/** Legacy single-pass depth cap, retained for the fallback walker only. */
+/** Single-pass depth cap, used by the fallback walker when no high-signal dirs match. */
 const DEFAULT_DEPTH_CAP = 10;
 const MANIFEST_PREVIEW_LINES = 80;
 
@@ -215,12 +215,6 @@ export interface BuildRepoSummaryOptions {
    */
   pass2DepthCap?: number;
   /**
-   * Backwards-compat alias for `pass2DepthCap`. Older callers (smokes, the
-   * `cairn scope rebuild` command) used `depthCap` against the legacy
-   * single-pass walker. Treated as `pass2DepthCap` so they keep working.
-   */
-  depthCap?: number;
-  /**
    * Belt-and-suspenders total cap. Default 3000. If exceeded, Pass 2 is
    * truncated first.
    */
@@ -231,9 +225,7 @@ export function buildRepoSummary(opts: BuildRepoSummaryOptions): RepoSummary {
   const root = opts.repoRoot;
   const pass1Cap = opts.pass1Cap ?? DEFAULT_PASS1_CAP;
   const pass2Cap = opts.pass2Cap ?? DEFAULT_PASS2_CAP;
-  // pass2DepthCap explicit > legacy depthCap > default 6
-  const pass2DepthCap =
-    opts.pass2DepthCap ?? opts.depthCap ?? DEFAULT_PASS2_DEPTH_CAP;
+  const pass2DepthCap = opts.pass2DepthCap ?? DEFAULT_PASS2_DEPTH_CAP;
   const fileCap = opts.fileCap ?? DEFAULT_TOTAL_CAP;
   const { paths, dirs, truncatedFile, truncatedDepth, usedGit } = listFiles({
     root,
@@ -266,9 +258,9 @@ interface ListFilesResult {
   /** Set when any pass hit its file cap (Pass 1, Pass 2, or overall). */
   truncatedFile: boolean;
   /**
-   * Set only by the legacy single-pass walker fallback (not normally used).
-   * The two-pass walker leaves this false because it does not depth-truncate
-   * paths under a high-signal dir.
+   * Set only by the single-pass walker fallback (rarely fires in real
+   * repos). The two-pass walker leaves this false because it does not
+   * depth-truncate paths under a high-signal dir.
    */
   truncatedDepth: boolean;
   usedGit: boolean;

@@ -42757,7 +42757,7 @@ function buildRepoSummary(opts) {
   const root2 = opts.repoRoot;
   const pass1Cap = opts.pass1Cap ?? DEFAULT_PASS1_CAP;
   const pass2Cap = opts.pass2Cap ?? DEFAULT_PASS2_CAP;
-  const pass2DepthCap = opts.pass2DepthCap ?? opts.depthCap ?? DEFAULT_PASS2_DEPTH_CAP;
+  const pass2DepthCap = opts.pass2DepthCap ?? DEFAULT_PASS2_DEPTH_CAP;
   const fileCap = opts.fileCap ?? DEFAULT_TOTAL_CAP;
   const { paths, dirs, truncatedFile, truncatedDepth, usedGit } = listFiles({
     root: root2,
@@ -56411,7 +56411,7 @@ function runJoin(args = {}) {
     steps.push({
       step: "version-check",
       status: "skipped",
-      detail: ".cairn/config.yaml missing cairn_version (legacy adoption?)"
+      detail: ".cairn/config.yaml missing cairn_version \u2014 re-run init"
     });
   } else if (projectVersion !== VERSION) {
     steps.push({
@@ -66917,14 +66917,14 @@ async function handler8(ctx, input) {
     case "manifest": {
       const path2 = manifestPath(ctx.repoRoot);
       if (!existsSync48(path2)) {
-        return mcpError("FILE_NOT_FOUND", "manifest.yaml not present (daemon not run yet?)");
+        return mcpError("FILE_NOT_FOUND", "manifest.yaml not present (init not run yet?)");
       }
       return { path: ".cairn/ground/manifest.yaml", content: readFileSync45(path2, "utf8") };
     }
     case "quality_grades": {
       const path2 = qualityGradesPath(ctx.repoRoot);
       if (!existsSync48(path2)) {
-        return mcpError("FILE_NOT_FOUND", "quality-grades.yaml not present (daemon not run yet?)");
+        return mcpError("FILE_NOT_FOUND", "quality-grades.yaml not present (init not run yet?)");
       }
       return { path: ".cairn/ground/quality-grades.yaml", content: readFileSync45(path2, "utf8") };
     }
@@ -67616,7 +67616,7 @@ async function handler11(ctx, input) {
   } catch (err) {
     if (err instanceof ClaudeError) {
       if (isQuotaKind(err.kind)) {
-        return mcpError("DAEMON_UNAVAILABLE", `history summarizer quota / rate-limit issue: ${err.message}`, { kind: err.kind, exit_code: err.exitCode ?? null });
+        return mcpError("OPERATION_TIMEOUT", `history summarizer quota / rate-limit issue: ${err.message}`, { kind: err.kind, exit_code: err.exitCode ?? null });
       }
       return mcpError("OPERATION_TIMEOUT", `history summarizer call failed: ${err.message}`, { kind: err.kind, exit_code: err.exitCode ?? null });
     }
@@ -68459,12 +68459,9 @@ function writeStatusJson(repoRoot, sessionId, patch) {
   writeFileSync24(filePath, `${JSON.stringify(merged, null, 2)}
 `, "utf8");
 }
-function defaultStatusJson(sessionAlive) {
+function defaultStatusJson() {
   return {
     updated_at: (/* @__PURE__ */ new Date()).toISOString(),
-    daemon_alive: sessionAlive,
-    ctx_tokens_used: 0,
-    ctx_tokens_budget: 4e3,
     decisions_in_scope: 0,
     invariants_in_scope: 0,
     task_state: "idle",
@@ -68505,7 +68502,7 @@ function formatStatus(s) {
 }
 
 // ../cairn-core/dist/status-line/reader.js
-var PLACEHOLDER = "\u2B21 cairn  daemon:down  \u25CB";
+var PLACEHOLDER = "\u2B21 cairn  no session  \u25CB";
 var TASK_STATES = [
   "idle",
   "running",
@@ -68528,7 +68525,7 @@ function isStatusJson(x2) {
   if (x2 === null || typeof x2 !== "object")
     return false;
   const o2 = x2;
-  return typeof o2["updated_at"] === "string" && typeof o2["daemon_alive"] === "boolean" && typeof o2["ctx_tokens_used"] === "number" && typeof o2["ctx_tokens_budget"] === "number" && typeof o2["decisions_in_scope"] === "number" && typeof o2["invariants_in_scope"] === "number" && isTaskState(o2["task_state"]) && isStringOrNull(o2["task_module"]) && typeof o2["gc_running"] === "boolean" && typeof o2["attention_count"] === "number" && isLastRunResult(o2["last_run_result"]) && isStringOrNull(o2["last_run_at"]);
+  return typeof o2["updated_at"] === "string" && typeof o2["decisions_in_scope"] === "number" && typeof o2["invariants_in_scope"] === "number" && isTaskState(o2["task_state"]) && isStringOrNull(o2["task_module"]) && typeof o2["gc_running"] === "boolean" && typeof o2["attention_count"] === "number" && isLastRunResult(o2["last_run_result"]) && isStringOrNull(o2["last_run_at"]);
 }
 function readStatusForCLI(repoRoot, sessionId) {
   if (sessionId === null || sessionId.length === 0)
@@ -68672,7 +68669,7 @@ async function runSessionStartHook() {
   const sessionId = resolveSessionId({ session_id: payloadSessionId ?? void 0 });
   try {
     ensureSessionDir2({ repoRoot, sessionId });
-    writeStatusJson(repoRoot, sessionId, defaultStatusJson(true));
+    writeStatusJson(repoRoot, sessionId, defaultStatusJson());
     seedEventsMarker({ repoRoot, sessionId });
   } catch (err) {
     sessionWarnings.push(`session_dir_init_failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -68862,22 +68859,14 @@ function scanBypassedCommits(repoRoot) {
 }
 function renderBypassHint(bypassed) {
   const lines = [];
-  lines.push(`## Bypass detection \u2014 ${bypassed.length} commit${bypassed.length === 1 ? "" : "s"} not attested`);
-  lines.push("");
-  lines.push("The following HEAD commit" + (bypassed.length === 1 ? " was" : "s were") + " not recorded by cairn's post-commit hook \u2014 likely a `--no-verify` commit, or the bootstrap step never ran on this clone.");
+  const noun = bypassed.length === 1 ? "commit" : "commits";
+  lines.push(`**Cairn \u2014 ${bypassed.length} ${noun} not attested.** Likely a \`--no-verify\` commit or a missing per-clone bootstrap.`);
   lines.push("");
   for (const c4 of bypassed) {
     lines.push(`- \`${c4.shortSha}\` \u2014 ${c4.subject}`);
   }
   lines.push("");
-  lines.push("Surface inline to the operator now:");
-  lines.push("");
-  lines.push("> Some recent commits weren't attested by cairn. Pick one:");
-  lines.push("> `[a]` record \u2014 note the bypass as a DEC with operator rationale");
-  lines.push("> `[b]` accept \u2014 acknowledge silently; clears the warning");
-  lines.push("> `[c]` defer \u2014 suppress for 24h (resurfaces if new bypasses appear)");
-  lines.push("");
-  lines.push('On any pick, call `cairn_resolve_attention({ kind: "bypass", choice, item_id: <first-sha>, flagged_items: [<all-flagged-shas>] })` so the Stop hook sees the resolution.');
+  lines.push("Address via cairn-attention to record / accept / defer.");
   return lines.join("\n");
 }
 function readRecentHead(repoRoot) {
@@ -69051,22 +69040,14 @@ function scanPendingReviews(repoRoot) {
 }
 function renderReviewerHint(pending) {
   const lines = [];
-  lines.push(`## Reviewer pending (${pending.length} task${pending.length === 1 ? "" : "s"})`);
+  const noun = pending.length === 1 ? "task" : "tasks";
+  lines.push(`**Cairn \u2014 ${pending.length} ${noun} awaiting reviewer attestation.**`);
   lines.push("");
   for (const p2 of pending) {
-    lines.push(`- **${p2.task_id}** \u2014 ${p2.spec_path}`);
+    lines.push(`- \`${p2.task_id}\``);
   }
   lines.push("");
-  lines.push("Surface inline to the operator:");
-  lines.push("");
-  lines.push("> Pending reviewer attestations. Pick one:");
-  lines.push("> `[a]` review now \u2014 spawn the reviewer subagent for each task");
-  lines.push("> `[b]` skip \u2014 leave them; cairn-attention will resurface later");
-  lines.push("> `[c]` defer \u2014 suppress for 24h (resurfaces if new tasks appear)");
-  lines.push("");
-  lines.push("On `[a]`, spawn the `reviewer` subagent (defined at `agents/reviewer.md` in the cairn plugin) via the Task tool \u2014 it reads the diff, collects subagent attestation files, extracts non-obvious DECs, and writes the consolidated `attestation.yaml`. Once written, this hook will stop surfacing the reminder.");
-  lines.push("");
-  lines.push('On any pick, call `cairn_resolve_attention({ kind: "review", choice, item_id: <first-task-id>, flagged_items: [<all-task-ids>] })` so the Stop hook sees the resolution.');
+  lines.push("Address via cairn-attention to spawn the reviewer subagent or defer.");
   return lines.join("\n");
 }
 

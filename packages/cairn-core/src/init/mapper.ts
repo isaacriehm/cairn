@@ -154,7 +154,7 @@ export interface RunMapperArgs {
   /**
    * Pre-built repo summary from the Phase-1 walker. Used by both the chunked
    * path (its merge step references the workspace top-level package.json
-   * via repoRoot) and the legacy fallback (consumes summary directly).
+   * via repoRoot) and the single-call fallback (consumes summary directly).
    */
   summary: RepoSummary;
   /** Repo root absolute path — slicer + ledger read from here. */

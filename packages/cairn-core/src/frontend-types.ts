@@ -1,9 +1,9 @@
 /**
  * Frontend adapter contract per `docs/WORKFLOW_GUIDE.md` §0.1.
  *
- * The orchestrator + grounding daemon + MCP server are frontend-agnostic.
- * The operator console is a swappable adapter that consumes a uniform
- * task/run/UAT bundle and renders/listens via its native primitive.
+ * Cairn's MCP server + ground layer are frontend-agnostic. The operator
+ * console is a swappable adapter that consumes a uniform task/run/UAT
+ * bundle and renders/listens via its native primitive.
  *
  * Adapters live in `cairn/src/frontend/<name>/`. Each implements
  * `FrontendAdapter`. The `cairn run --frontend <name>` CLI loads + starts

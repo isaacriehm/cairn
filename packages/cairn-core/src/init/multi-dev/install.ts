@@ -103,11 +103,10 @@ export function installMultiDev(args: InstallMultiDevArgs): MultiDevInstallResul
   // Seed `.cairn/.attested-commits` with every commit reachable from
   // HEAD at adoption time. Without this, the Stop-hook bypass detector
   // flags every pre-adoption commit as "not attested" — false positives
-  // for projects with prior history. Per PLUGIN_ARCHITECTURE §17 "Edge
-  // case: legacy commits before adoption", pre-existing history is
-  // grandfathered: it goes to the baseline audit, not the bypass
-  // surface. Future commits flow through the post-commit hook + go on
-  // top of this seeded list.
+  // for projects with prior history. Per PLUGIN_ARCHITECTURE §17
+  // "Pre-adoption commits", pre-existing history is grandfathered: it
+  // goes to the baseline audit, not the bypass surface. Future commits
+  // flow through the post-commit hook + go on top of this seeded list.
   steps.push(seedAttestedCommits(repoRoot, args.dryRun === true));
 
   const preparePatched = steps.some(
