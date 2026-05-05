@@ -11,6 +11,7 @@ Stop AI agents from drifting.
 [![Node](https://img.shields.io/badge/node-%E2%89%A522-brightgreen?style=flat-square)](https://nodejs.org)
 
 ```bash
+/plugin marketplace add isaacriehm/cairn
 /plugin install cairn@isaacriehm-cairn
 ```
 
@@ -33,11 +34,15 @@ live?"
 
 ```bash
 # Inside Claude Code, in any project:
+/plugin marketplace add isaacriehm/cairn
 /plugin install cairn@isaacriehm-cairn
 ```
 
-Open Claude Code in a project. The plugin auto-detects on session start
-and offers `[a] adopt now`. Pick `[a]` once. Done.
+(First command registers the GitHub repo as a marketplace; second
+installs the plugin from it. One-time setup.)
+
+After install, open Claude Code in any project. The plugin auto-detects
+on session start and offers `[a] adopt now`. Pick `[a]` once. Done.
 
 Adoption is a single visual pass — submodule init, repo walk, mapper,
 brand setup, doc ingestion, source-comment ingestion, rules merge,
