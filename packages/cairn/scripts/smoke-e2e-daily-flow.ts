@@ -315,14 +315,28 @@ async function main(): Promise<void> {
   );
   console.log("  ✓ Step 4 — resolve_attention accepted draft, canonical wired");
 
-  step("Step 5 — bypass detection surfaces --no-verify commit");
-  // Make a commit that does NOT get appended to .attested-commits (modeling --no-verify).
+  step("Step 5 — bypass detection surfaces unattested commit");
+  // Make a commit. `git commit --no-verify` skips pre-commit + commit-msg
+  // but NOT post-commit, so post-commit still attests the SHA. Strip it
+  // from .attested-commits manually to simulate a real bypass — e.g. a
+  // commit made on a clone without `core.hooksPath` set, or via a
+  // different git binary that didn't see the hook.
   writeFile(repoRoot, "src/extra.ts", "export const y = 2;\n");
   execFileSync("git", ["add", "src/extra.ts"], { cwd: repoRoot });
-  // Use --no-verify explicitly so even if a real hook ran, it'd skip.
   execFileSync("git", ["commit", "-q", "--no-verify", "-m", "bypass: untracked"], {
     cwd: repoRoot,
   });
+  const bypassSha = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  }).trim();
+  const attestedPath = join(repoRoot, ".cairn", ".attested-commits");
+  if (existsSync(attestedPath)) {
+    const filtered = readFileSync(attestedPath, "utf8")
+      .split("\n")
+      .filter((s) => s.trim() !== bypassSha);
+    writeFileSync(attestedPath, filtered.join("\n"), "utf8");
+  }
   const stop3 = runHookBin(STOP_BIN, { session_id: sessionId, cwd: repoRoot });
   assert(stop3.status === 0, `stop exit 0; stderr=${stop3.stderr}`);
   assert(

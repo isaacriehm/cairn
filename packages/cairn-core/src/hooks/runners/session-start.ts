@@ -180,24 +180,31 @@ function renderBootstrapBanner(repoRoot: string): string | null {
   lines.push("");
   lines.push(
     "This project is cairn-adopted, but this clone is not bootstrapped. " +
-      "Without `cairn join`, MCP write tools refuse, the cairn-direction " +
-      "skill blocks, and your local commits will fail at the pre-commit hook.",
+      "Without bootstrap, MCP write tools refuse, the cairn-direction " +
+      "skill blocks, and local commits will fail at the pre-commit hook.",
   );
   lines.push("");
   lines.push(
     `Project pinned to cairn ${state.projectCairnVersion ?? "(unset)"}.`,
   );
   lines.push("");
-  lines.push("Surface this inline to the operator now:");
+  lines.push("Surface this inline to the operator on first interaction:");
   lines.push("");
-  lines.push("> This project uses cairn, but your clone isn't bootstrapped.");
-  lines.push("> `[a]` bootstrap now (run `cairn join`, ~5s)");
+  lines.push("> This project uses Cairn, but your clone isn't bootstrapped.");
+  lines.push("> `[a]` bootstrap now (run the join command, ~5s)");
   lines.push("> `[b]` skip (cairn write surface stays disabled)");
   lines.push("");
   lines.push(
-    "On `[a]`, run `cairn join` from this repo's working directory and " +
-      "wait for it to print `cairn join: bootstrapped`. The next assistant " +
-      "turn will pick up the unblocked surface.",
+    "On `[a]`, spawn this Bash command in the repo's working directory:",
+  );
+  lines.push("");
+  lines.push("```bash");
+  lines.push("npx -y @isaacriehm/cairn join");
+  lines.push("```");
+  lines.push("");
+  lines.push(
+    "Wait for it to print `cairn join: bootstrapped` (or report any per-step " +
+      "warning). The next assistant turn picks up the unblocked surface.",
   );
   return lines.join("\n");
 }
