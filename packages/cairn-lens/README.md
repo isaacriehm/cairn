@@ -22,7 +22,7 @@ git clone https://github.com/isaacriehm/cairn.git
 cd cairn
 pnpm install
 pnpm -r build
-pnpm --filter @isaacriehm/cairn-lens package
+pnpm --filter cairn-lens package
 # Produces packages/cairn-lens/cairn-lens-X.Y.Z.vsix
 ```
 
