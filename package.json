@@ -2,7 +2,7 @@
   "name": "cairn-monorepo",
   "version": "0.0.0",
   "private": true,
-  "description": "Portable agent cairn for solo developers (root monorepo).",
+  "description": "Cairn — state + context-loading layer for AI coding agents (root monorepo).",
   "engines": {
     "node": ">=22"
   },
@@ -10,7 +10,13 @@
   "scripts": {
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
-    "lint": "pnpm -r lint"
+    "lint": "pnpm -r lint",
+    "version:check": "node scripts/sync-version.mjs --check",
+    "version:sync": "node scripts/sync-version.mjs",
+    "release:patch": "node scripts/sync-version.mjs --bump patch",
+    "release:minor": "node scripts/sync-version.mjs --bump minor",
+    "release:major": "node scripts/sync-version.mjs --bump major",
+    "release:set": "node scripts/sync-version.mjs --set"
   },
   "devDependencies": {
     "typescript": "^6.0.3"
