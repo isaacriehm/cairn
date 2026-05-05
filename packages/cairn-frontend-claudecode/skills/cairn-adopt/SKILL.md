@@ -3,9 +3,10 @@ name: cairn-adopt
 description: |
   Use when the operator opens Claude Code in a project that does not yet
   have a `.cairn/` directory and Cairn has not been declined for
-  this project. Walks the operator through one-time adoption inline,
-  orchestrates the `npx -y @isaacriehm/cairn init` pipeline as a subprocess, and surfaces
-  every phase choice as A/B/C inside the conversation. Skip when
+  this project. Walks the operator through one-time adoption inline by
+  driving the cairn_init_phase_* MCP tools as a state machine — each
+  phase result is either a complete (advance) or needs_input (render
+  AskUserQuestion, thread the answer back, re-invoke). Skip when
   `.cairn/` already exists, or when the operator has previously
   selected "never" for this project.
 ---
@@ -49,17 +50,11 @@ labels. Do not preamble; the question is the entire turn.
 
 ## Step 2 — preflight
 
-Run the deterministic preflight checks before launching the heavy init:
+Run the deterministic preflight check:
 
 ```bash
-which claude || true
-which git || true
 git rev-parse --is-inside-work-tree 2>/dev/null || true
 ```
-
-If `claude` is missing, abort with the install instructions block from
-PLUGIN_ARCHITECTURE §16 — adoption requires the Claude binary, no
-degraded mode.
 
 If the directory is not a git working tree, surface inline:
 
@@ -67,60 +62,85 @@ If the directory is not a git working tree, surface inline:
 
 `[a]` → run `git init` then continue. `[b]` → end the turn.
 
-## Step 3 — launch the init pipeline
+The Claude binary is no longer required for adoption — the bundled
+plugin includes everything cairn needs. Do not check for `claude`
+on PATH.
 
-Spawn `npx -y @isaacriehm/cairn init --no-prompt --auto-e2e defer` as a
-Bash subprocess. The `--no-prompt` flag is required: Claude Code's Bash
-tool runs without a TTY, so inquirer prompts crash with `ExitPromptError`
-the moment init asks anything. Defaults used:
+## Step 3 — drive the phase pipeline
 
-- Proceed: yes (auto-pick `[a]`)
-- Pilot: `.` (whole repo)
-- Brand setup: skipped (operator runs `cairn configure brand` later)
-- E2E heavy probes: defer
-- Source-comment + rules ingestion: enabled
+This is a state-machine loop against the `cairn_init_*` MCP tools.
 
-Stream stdout verbatim into the conversation inside a fenced
-```` ```text ```` block so the operator sees every phase progress. The
-init pipeline owns Phases 1–13 of §6 — submodule detect, priority walk,
-per-module Sonnet calls, pilot module pick, brand setup, ground
-skeleton, docs ingestion (7a), source-comment ingestion (7b),
-project-rules merge (7c), baseline sensor audit, inconsistency
-detection, comment policy enforcement (10), and CI gate install (12).
+**Init the pipeline** by calling `cairn_init_resume` (no args). It
+returns `{ status: "ready" | "done", nextPhase: <PhaseId> | null,
+state: PhaseState }`. If `status === "done"` the project is already
+mid-init or fully adopted — abort and tell the operator to check
+`.cairn/init-state.json`.
 
-(Future: when init grows a streaming protocol that emits sentinel lines
-for inline A/B/C choices, this skill can re-add the per-question
-`AskUserQuestion` round-trip. Today, init runs end-to-end with defaults
-and the operator reviews the resulting drafts via `cairn attention`.)
+**Loop until done**:
+
+```
+while nextPhase != null:
+    tool_name = `cairn_init_phase_${nextPhase.replace(/-/g, "_")}`
+    result = call tool_name({ state })
+    switch (result.status):
+      case "needs_input":
+        answer = AskUserQuestion(result.question.prompt, result.question.options)
+        state = { ...result.state, answer: answer.id }
+        # re-invoke the same phase tool with the answer threaded in
+        continue
+      case "complete":
+        state = result.state
+        nextPhase = result.nextPhase
+        continue
+      case "error":
+        surface result.error.message + result.error.detail to operator
+        ask: `[a]` retry the same phase  `[b]` abort
+        if "a": continue with same state
+        else: end turn
+```
+
+The phase tools persist `state` to `.cairn/init-state.json` after every
+return so a mid-init `/exit` resumes cleanly on the next session — the
+top of this loop just calls `cairn_init_resume` again.
+
+**During each phase**, surface a one-line status update before invoking
+the tool ("Phase 3-mapper — Sonnet domain map, ~30s") so the operator
+sees progress. Do not stream stdout; the tools are MCP-native and emit
+no terminal output.
 
 ## Step 4 — final summary
 
-When init exits 0, summarize in one short message:
+When the loop exits with `nextPhase === null`, render a tight summary
+sourced from `state.outputs`:
 
-- Pilot module
-- DEC drafts proposed (count + link to `npx -y @isaacriehm/cairn attention`)
-- §V invariants seeded
-- Baseline sensor findings (count)
-- CI workflow + git hooks installed (yes/no)
+- Pilot module (`outputs["4-pilot"].picked`)
+- DEC drafts proposed (count from `outputs["6-docs-ingest"]` +
+  `outputs["7b-source-comments"]` + `outputs["7c-rules-merge"]`)
+- §V invariants seeded (count from `outputs["7b-source-comments"]`)
+- Baseline sensor findings (`outputs["8-baseline"].totalFindings`)
+- Multi-dev install (`outputs["12-multidev"].steps` rolled up)
 
-Then suggest:
+Then auto-invoke the `cairn-attention` skill if any DEC drafts were
+written. Do **not** instruct the operator to type `cairn attention` /
+`cairn doctor` / `cairn configure brand` — the plugin owns those
+flows; the skill just calls the next one.
 
-> Cairn is now active. Pending review: N items. `[a]` review now (`npx -y @isaacriehm/cairn attention`)  `[b]` later
-
-If init exits non-zero, surface the failure phase and exit code, then
-ask:
-
-> Adoption failed at phase X. `[a]` retry  `[b]` abort + diagnose with `npx -y @isaacriehm/cairn doctor`
+If a phase returns `error` and the operator picks `[b]` abort, the
+state file persists at `.cairn/init-state.json`; the next session's
+SessionStart banner can re-prompt to resume.
 
 ## Hard rules
 
 - Never skip the trigger gate. A second-pass adoption on an already-
   adopted project corrupts ground state.
-- Never write to `.cairn/ground/` from this skill. The init
-  subprocess owns those writes (under the per-write flock).
+- Never write to `.cairn/ground/` from this skill. The phase tools
+  own those writes (under the per-write flock).
 - Never auto-resolve hard inconsistencies. Every conflict surfaces as
   A/B/C; the operator picks.
 - Comment-strip (Phase 10) requires per-module-batch consent. Default
   to surface, never silently strip.
+- Never reference `npx ...`, `cairn <subcommand>`, or any CLI from
+  the operator-facing chat output. Surface only A/B/C choices and
+  one-line status updates.
 - Caveman-ultra style for chat replies; full English in any code or
   document the skill writes.
