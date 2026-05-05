@@ -27,6 +27,7 @@ import {
   scanBypassedCommits,
   type BypassedCommit,
 } from "../bypass-detection.js";
+import { isDeferActive, readDeferState } from "../defer.js";
 import { resolveRepoRoot } from "../../session-start/index.js";
 import {
   readEventsMarker,
@@ -80,10 +81,23 @@ export async function runStopHook(): Promise<void> {
       );
     }
 
+    const now = new Date();
+
     try {
       pendingReviews = scanPendingReviews(repoRoot);
       if (pendingReviews.length > 0) {
-        additionalContext = renderReviewerHint(pendingReviews);
+        const reviewDefer = readDeferState(repoRoot, "review");
+        const suppressed =
+          reviewDefer !== null &&
+          isDeferActive(reviewDefer, now, {
+            kind: "task_ids",
+            values: pendingReviews.map((p) => p.task_id),
+          });
+        if (suppressed) {
+          warnings.push(`review_suppressed_until:${reviewDefer.deferred_at}`);
+        } else {
+          additionalContext = renderReviewerHint(pendingReviews);
+        }
       }
     } catch (err) {
       warnings.push(
@@ -95,10 +109,22 @@ export async function runStopHook(): Promise<void> {
       const bypassResult = scanBypassedCommits(repoRoot);
       bypassed = bypassResult.bypassed;
       if (bypassed.length > 0) {
-        const hint = renderBypassHint(bypassed);
-        additionalContext = additionalContext.length > 0
-          ? `${additionalContext}\n\n${hint}`
-          : hint;
+        const bypassDefer = readDeferState(repoRoot, "bypass");
+        const suppressed =
+          bypassDefer !== null &&
+          isDeferActive(bypassDefer, now, {
+            kind: "shas",
+            values: bypassed.map((b) => b.sha),
+          });
+        if (suppressed) {
+          warnings.push(`bypass_suppressed_until:${bypassDefer.deferred_at}`);
+        } else {
+          const hint = renderBypassHint(bypassed);
+          additionalContext =
+            additionalContext.length > 0
+              ? `${additionalContext}\n\n${hint}`
+              : hint;
+        }
       }
     } catch (err) {
       warnings.push(
@@ -191,8 +217,24 @@ function renderReviewerHint(pending: PendingReview[]): string {
     lines.push(`- **${p.task_id}** — ${p.spec_path}`);
   }
   lines.push("");
+  lines.push("Surface inline to the operator:");
+  lines.push("");
+  lines.push("> Pending reviewer attestations. Pick one:");
+  lines.push("> `[a]` review now — spawn the reviewer subagent for each task");
+  lines.push("> `[b]` skip — leave them; cairn-attention will resurface later");
+  lines.push("> `[c]` defer — suppress for 24h (resurfaces if new tasks appear)");
+  lines.push("");
   lines.push(
-    "Spawn the `reviewer` subagent (defined at `agents/reviewer.md` in the cairn plugin) via the Task tool to attest each pending task. The subagent reads the diff, collects subagent attestation files, extracts non-obvious DECs, and writes the consolidated `attestation.yaml`. Once written, this hook will stop surfacing the reminder.",
+    "On `[a]`, spawn the `reviewer` subagent (defined at `agents/reviewer.md` in the " +
+      "cairn plugin) via the Task tool — it reads the diff, collects subagent " +
+      "attestation files, extracts non-obvious DECs, and writes the consolidated " +
+      "`attestation.yaml`. Once written, this hook will stop surfacing the reminder.",
+  );
+  lines.push("");
+  lines.push(
+    'On any pick, call `cairn_resolve_attention({ kind: "review", choice, ' +
+      "item_id: <first-task-id>, flagged_items: [<all-task-ids>] })` so the Stop " +
+      "hook sees the resolution.",
   );
   return lines.join("\n");
 }

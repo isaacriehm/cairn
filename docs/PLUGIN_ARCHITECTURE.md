@@ -164,6 +164,23 @@ When two sessions race on a decision used by both:
 
 After-the-fact (B already committed when A modifies the DEC): GC drift sweep flags the file as drift, surfaces in attention as A/B/C "update file / revert DEC / accept divergence (record as new DEC)".
 
+## §7.5 No daemon — state freshness contract
+
+Pre-pivot Cairn ran a long-lived daemon that regenerated manifests, re-ran drift, and refreshed sensors on a wall-clock loop. The plugin pivot retired the daemon — Claude Code's plugin host has no place for a sidecar process, and operators objected to a background watcher. The replacement contract:
+
+| Trigger | What runs | Where |
+|---------|-----------|-------|
+| **SessionStart** | Manifest rebuild, in-scope refresh, status partition seed, statusline shim sync | `packages/cairn-core/src/hooks/runners/session-start.ts` |
+| **Stop** | Events drain, drift / bypass / reviewer-pending scan, status heartbeat | `packages/cairn-core/src/hooks/runners/stop.ts` |
+| **Pre-commit hook** (per-clone) | Sensor sweep against the staged diff; HEAD attestation on success | `.cairn/git-hooks/pre-commit` |
+| **Post-commit hook** (per-clone) | Append SHA to `.cairn/.attested-commits`; emit invalidation events for ledger touches | `.cairn/git-hooks/post-commit` |
+| **CI** | Sensor sweep + version-sync gate + bootstrap-required gate | `.github/workflows/cairn-check.yml` |
+| **GC sweep** | Stale `_inbox/` drafts, drift detection, decision-to-symbol re-index | `cairn gc` (manual or invoked by Stop when overdue) |
+
+**Stale state never blocks anything dangerous.** The session-boundary contract is: between two SessionStarts (or between a SessionStart and the next Stop), state can grow stale, but no destructive operation runs against the stale view. Sensor sweeps against the live tree at commit time; in-scope DECs/§Vs are re-read by the MCP read tools on every call. The result is "eventually consistent" — fast for the operator, no background process, drift caught at the next session boundary.
+
+**A daemon comes back as a v0.3 deliverable** if this boundary contract proves insufficient — e.g. cross-session ledger races become a real failure mode, or operators complain that drift only surfaces after a Stop hook fires. Until then, no daemon.
+
 ## §8 Daily flow (post-adoption)
 
 ```

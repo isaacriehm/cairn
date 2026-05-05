@@ -129,7 +129,13 @@ function runSmoke(): void {
 
   // ── Step 4b — required skills present with frontmatter ──────────
   {
-    const expected = ["cairn-adopt", "cairn-direction", "cairn-attention"];
+    const expected = [
+      "cairn-adopt",
+      "cairn-direction",
+      "cairn-attention",
+      "cairn-bootstrap",
+      "cairn-statusline-setup",
+    ];
     for (const slug of expected) {
       const path = join(PLUGIN_ROOT, "skills", slug, "SKILL.md");
       assert(existsSync(path), `Step 4b: missing skill ${slug}/SKILL.md`);

@@ -38,6 +38,14 @@ export * from "./decision-capture/index.js";
 export * from "./doctor/index.js";
 export * from "./gc/index.js";
 export * from "./ground/index.js";
+export {
+  clearDeferState,
+  deferStatePath,
+  isDeferActive,
+  readDeferState,
+  writeDeferState,
+} from "./hooks/defer.js";
+export type { DeferKind, DeferState } from "./hooks/defer.js";
 export * from "./hooks/post-tool-use/index.js";
 export * from "./init/index.js";
 export * from "./join/index.js";

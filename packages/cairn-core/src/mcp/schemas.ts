@@ -153,6 +153,10 @@ export const resolveAttentionInput = {
    * Item id from the attention skill — DEC-NNNN for a draft, the
    * baseline finding key (e.g. `BASELINE-stub_catalog_hits-services/auth.ts`)
    * for sensor findings, the event filename for invalidation events.
+   *
+   * For kind=bypass, item_id is the full SHA of the FIRST flagged commit
+   * (the rest go in flagged_items). For kind=review, item_id is the
+   * task_id of the FIRST pending review.
    */
   item_id: z.string().min(1),
   /** Operator's pick from the inline A/B/C. */
@@ -160,13 +164,28 @@ export const resolveAttentionInput = {
   /**
    * Item kind — narrows the resolution path. The skill knows the kind
    * from the item it surfaced.
+   *
+   * `bypass`  — Stop hook surfaced N commits not in `.attested-commits`.
+   *             choice=a record-bypass (DEC), b accept-as-noted, c defer.
+   * `review`  — Stop hook surfaced N pending reviewer attestations.
+   *             choice=a spawn-now, b skip, c defer.
    */
   kind: z.enum([
     "decision_draft",
     "baseline_finding",
     "invalidation_event",
     "drift",
+    "bypass",
+    "review",
   ]),
+  /**
+   * Full SHA / task_id list for the bypass / review snapshot. Used
+   * with choice=c so the defer file knows which items to suppress.
+   * Optional for the other kinds (item_id alone identifies them).
+   */
+  flagged_items: z.array(z.string().min(1)).optional(),
+  /** Override the defer window (hours). Default 24. Only meaningful when choice=c. */
+  defer_hours: z.number().int().min(1).max(24 * 30).optional(),
   /** Optional free-text — when choice=c the operator may type a rationale. */
   rationale: z.string().optional(),
 };

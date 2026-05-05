@@ -8,7 +8,8 @@
  * `cairn-core/src/hooks/session-start.ts` calls into this runner.
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { gcStaleEvents } from "../../events/index.js";
 import { inspectJoinState } from "../../join/index.js";
@@ -28,6 +29,37 @@ import {
   recordHookTelemetry,
 } from "./payload.js";
 
+/**
+ * Maintain the shim file the cairn-statusline-setup skill relies on —
+ * a single line containing the absolute path to the active bundle's
+ * `dist/cli.mjs`. The user's `~/.claude/settings.json` statusLine
+ * command reads this path so plugin upgrades (which change
+ * CLAUDE_PLUGIN_ROOT's version segment) don't break the badge.
+ *
+ * No-op when the hook isn't running under the Claude Code plugin
+ * (CLAUDE_PLUGIN_ROOT unset) — terminal `cairn hook session-start`
+ * invocations don't touch user-level settings.
+ */
+function syncActiveVersionShim(warnings: string[]): void {
+  const pluginRoot = process.env["CLAUDE_PLUGIN_ROOT"];
+  if (typeof pluginRoot !== "string" || pluginRoot.length === 0) return;
+  const bundlePath = join(pluginRoot, "dist", "cli.mjs");
+  if (!existsSync(bundlePath)) {
+    warnings.push(`statusline_shim_skipped: bundle missing at ${bundlePath}`);
+    return;
+  }
+  const shimDir = join(homedir(), ".claude", "plugins", "cache", "isaacriehm-cairn");
+  const shimPath = join(shimDir, ".active-version-path");
+  try {
+    mkdirSync(shimDir, { recursive: true });
+    writeFileSync(shimPath, `${bundlePath}\n`, "utf8");
+  } catch (err) {
+    warnings.push(
+      `statusline_shim_failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
 interface SessionStartShapeBOutput {
   continue: boolean;
   hookSpecificOutput: {
@@ -44,6 +76,8 @@ export async function runSessionStartHook(): Promise<void> {
   const source = typeof payload.source === "string" ? payload.source : null;
   const cwdInput = typeof payload.cwd === "string" ? payload.cwd : process.cwd();
   const repoRoot = resolveRepoRoot(cwdInput);
+  const shimWarnings: string[] = [];
+  syncActiveVersionShim(shimWarnings);
 
   if (repoRoot === null) {
     // No `.cairn/` found walking up from cwd. If cwd is itself a git
@@ -65,7 +99,10 @@ export async function runSessionStartHook(): Promise<void> {
       sessionId: payloadSessionId,
       source,
       durationMs: Date.now() - startedAt,
-      warnings: adoptionBanner !== null ? ["adoption_offered"] : ["no_cairn_dir_found"],
+      warnings: [
+        ...(adoptionBanner !== null ? ["adoption_offered"] : ["no_cairn_dir_found"]),
+        ...shimWarnings,
+      ],
       extra: {
         sections_rendered: adoptionBanner !== null ? ["adoption_banner"] : [],
         sections_dropped: [],
@@ -150,6 +187,7 @@ export async function runSessionStartHook(): Promise<void> {
     warnings: [
       ...result.warnings,
       ...sessionWarnings,
+      ...shimWarnings,
       ...(bootstrapBanner !== null ? ["bootstrap_required"] : []),
     ],
     extra: {
@@ -188,24 +226,10 @@ function renderBootstrapBanner(repoRoot: string): string | null {
     `Project pinned to cairn ${state.projectCairnVersion ?? "(unset)"}.`,
   );
   lines.push("");
-  lines.push("Surface this inline to the operator on first interaction:");
-  lines.push("");
-  lines.push("> This project uses Cairn, but your clone isn't bootstrapped.");
-  lines.push("> `[a]` bootstrap now (run the join command, ~5s)");
-  lines.push("> `[b]` skip (cairn write surface stays disabled)");
-  lines.push("");
-  lines.push(
-    "On `[a]`, spawn this Bash command in the repo's working directory:",
-  );
-  lines.push("");
-  lines.push("```bash");
-  lines.push("npx -y @isaacriehm/cairn join");
-  lines.push("```");
-  lines.push("");
-  lines.push(
-    "Wait for it to print `cairn join: bootstrapped` (or report any per-step " +
-      "warning). The next assistant turn picks up the unblocked surface.",
-  );
+  lines.push("Surface this inline by invoking the `cairn-bootstrap` skill —");
+  lines.push("it owns the prompt + the spawn of the bundled join command.");
+  lines.push("Do not embed the join command directly in chat output; the");
+  lines.push("skill keeps the bundle path versioned with the plugin.");
   return lines.join("\n");
 }
 
