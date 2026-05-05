@@ -100,7 +100,7 @@ export function runJoin(args: RunJoinArgs = {}): JoinResult {
     steps.push({
       step: "version-check",
       status: "skipped",
-      detail: ".cairn/config.yaml missing cairn_version (legacy adoption?)",
+      detail: ".cairn/config.yaml missing cairn_version — re-run init",
     });
   } else if (projectVersion !== VERSION) {
     steps.push({

@@ -2,10 +2,10 @@
  * GC pass 5 — quality grades update.
  *
  * Rebuilds `.cairn/ground/quality-grades.yaml` from terminal-run history at
- * `.cairn/runs/terminal/*`. The grounding daemon also writes this file on
- * watch events, so GC's job is to ensure a fresh write lands on the GC cron
- * and that any drift between the file's content and the latest reality is
- * captured as a safe-class commit.
+ * `.cairn/runs/terminal/*`. The MCP record-decision tool also writes this
+ * file on quality-grade changes, so GC's job is to ensure a fresh write
+ * lands on every sweep and any drift between the file's content and the
+ * latest reality is captured as a safe-class commit.
  *
  * Implementation: build the grades structure in-memory, compare against the
  * file currently on disk (modules array as JSON, ignoring `generated:`

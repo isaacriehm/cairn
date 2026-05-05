@@ -21,9 +21,6 @@ export type TaskState =
 export interface StatusJson {
   /** ISO timestamp of last write. */
   updated_at: string;
-  daemon_alive: boolean;
-  ctx_tokens_used: number;
-  ctx_tokens_budget: number;
   decisions_in_scope: number;
   invariants_in_scope: number;
   task_state: TaskState;

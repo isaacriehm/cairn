@@ -2,8 +2,9 @@
  * Scope index — forward map from every file path in the repo to the decisions
  * and invariants that apply to that file.
  *
- * Built at init by the Tier-2 mapper LLM, maintained by the daemon. Read by
- * the read-enricher / write-guardian hooks (via cached accessor in
+ * Built at init by the Tier-2 mapper LLM, maintained by the GC sweep + the
+ * MCP record-decision tool when scope edits land. Read by the read-enricher
+ * / write-guardian hooks (via cached accessor in
  * `hooks/post-tool-use/ledger-cache.ts`) and by the GC scope-coverage pass.
  *
  * Spec: docs/DOCS_SPEC.md §3.8.

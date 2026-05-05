@@ -5,10 +5,10 @@ import { pino, type Logger } from "pino";
 
 /**
  * Pino destination indirection. By default pino logs go to a black-hole
- * writable so structured log lines never leak into a CLI's terminal output.
- * Init / daemon / watch flows call `setLogFile(path)` early to redirect to
- * a file. Long-lived background processes (daemon) can call `setLogStderr()`
- * to fall back to stderr.
+ * writable so structured log lines never leak into a CLI's terminal
+ * output. `cairn init` and the MCP server call `setLogFile(path)` early
+ * to redirect to a file; CI / scripted callers can use `setLogStderr()`
+ * to surface logs directly.
  *
  * Children created via `logger(module)` write to whichever destination is
  * currently active at the time of the write — child references stay valid
@@ -71,7 +71,7 @@ export function setLogFile(absPath: string): string {
   return absPath;
 }
 
-/** Re-route logger output to stderr. Useful for long-lived daemons. */
+/** Re-route logger output to stderr. Useful for CI / scripted callers. */
 export function setLogStderr(): void {
   activeDestination = process.stderr;
 }

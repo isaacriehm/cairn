@@ -1,16 +1,14 @@
 import type { StatusJson } from "./index.js";
 
 /**
- * Render a StatusJson as the single-line string Claude Code's status_line hook
- * displays. Pure function; no I/O.
+ * Render a StatusJson as the single-line string Claude Code's status_line
+ * hook displays. Pure function; no I/O.
  *
- * Format: `⬡ cairn  decisions:N  inv:N  attention:N  ●`
+ * Format: `⬡ cairn  decisions:N  inv:N  <state>  <icon>`
  *
- * The pre-pivot status string carried `daemon:down` because cairn used to
- * run a long-lived daemon. The plugin pivot retired the daemon; the
- * status field now reports operator-actionable signal: pending attention
+ * <state> reports the most operator-actionable signal: pending attention
  * count first (ranks above tasks), GC sweep state second, task state
- * last.
+ * last; falls back to "ready" when nothing else is happening.
  *
  * Health icon:
  *   attention > 0  → ⚑

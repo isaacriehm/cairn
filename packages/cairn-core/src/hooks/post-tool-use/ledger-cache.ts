@@ -56,8 +56,9 @@ const SCOPE_INDEX_HASH_BYTES = 512;
 
 /**
  * Hash the first N bytes of a file. Returns null when the file can't be read.
- * Used as the cache key for scope-index — mtime is unreliable under clock skew
- * (daemon writes can land with the same mtime as the previous read).
+ * Used as the cache key for scope-index — mtime is unreliable under clock
+ * skew (concurrent ledger writes can land with the same mtime as the
+ * previous read).
  */
 function hashFilePrefix(path: string, bytes: number): string | null {
   let fd: number;
@@ -258,8 +259,8 @@ export function lookupTask(
 /**
  * Cached scope-index reader. Content-keyed (sha256 of first 512 bytes) so
  * back-to-back hook invocations in the same process don't re-parse the file
- * AND so daemon writes that happen within the same mtime tick are not
- * silently masked by a stale cache hit (Gap 6 in BUILD_REPORT).
+ * AND so concurrent ledger writes that happen within the same mtime tick
+ * are not silently masked by a stale cache hit (Gap 6 in BUILD_REPORT).
  *
  * Returns null when the file is missing, when no entry matches the path,
  * when the entry is explicitly `unscoped: true`, or when the entry has no

@@ -9,7 +9,7 @@
  * "half-adopted" shape that subsequent SessionStarts could not
  * detect as adopted.
  *
- * This phase wraps the same three steps the legacy `runInit` does:
+ * This phase mirrors the same three steps `runInit` does:
  *   1. seedCairnLayout (templates → .cairn/)
  *   2. updateWorkflowSlugBlock (mapper output → workflow.md)
  *   3. write .cairn/config.yaml + .cairn/ground/scope-index.yaml

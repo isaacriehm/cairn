@@ -56,32 +56,17 @@ export function scanBypassedCommits(repoRoot: string): ScanBypassResult {
 
 export function renderBypassHint(bypassed: BypassedCommit[]): string {
   const lines: string[] = [];
+  const noun = bypassed.length === 1 ? "commit" : "commits";
   lines.push(
-    `## Bypass detection — ${bypassed.length} commit${bypassed.length === 1 ? "" : "s"} not attested`,
-  );
-  lines.push("");
-  lines.push(
-    "The following HEAD commit" +
-      (bypassed.length === 1 ? " was" : "s were") +
-      " not recorded by cairn's post-commit hook — likely a `--no-verify` " +
-      "commit, or the bootstrap step never ran on this clone.",
+    `**Cairn — ${bypassed.length} ${noun} not attested.** Likely a \`--no-verify\` commit or a missing per-clone bootstrap.`,
   );
   lines.push("");
   for (const c of bypassed) {
     lines.push(`- \`${c.shortSha}\` — ${c.subject}`);
   }
   lines.push("");
-  lines.push("Surface inline to the operator now:");
-  lines.push("");
-  lines.push("> Some recent commits weren't attested by cairn. Pick one:");
-  lines.push("> `[a]` record — note the bypass as a DEC with operator rationale");
-  lines.push("> `[b]` accept — acknowledge silently; clears the warning");
-  lines.push("> `[c]` defer — suppress for 24h (resurfaces if new bypasses appear)");
-  lines.push("");
   lines.push(
-    "On any pick, call `cairn_resolve_attention({ kind: \"bypass\", choice, " +
-      "item_id: <first-sha>, flagged_items: [<all-flagged-shas>] })` so the Stop " +
-      "hook sees the resolution.",
+    "`[a]` record bypass · `[b]` acknowledge · `[c]` defer 24h",
   );
   return lines.join("\n");
 }

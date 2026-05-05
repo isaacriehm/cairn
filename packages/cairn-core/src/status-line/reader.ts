@@ -3,7 +3,7 @@ import { formatStatus } from "./format.js";
 import type { StatusJson, TaskState } from "./index.js";
 import { statusJsonPath } from "./writer.js";
 
-const PLACEHOLDER = "⬡ cairn  daemon:down  ○";
+const PLACEHOLDER = "⬡ cairn  no session  ○";
 
 const TASK_STATES: readonly TaskState[] = [
   "idle",
@@ -32,9 +32,6 @@ function isStatusJson(x: unknown): x is StatusJson {
   const o = x as Record<string, unknown>;
   return (
     typeof o["updated_at"] === "string" &&
-    typeof o["daemon_alive"] === "boolean" &&
-    typeof o["ctx_tokens_used"] === "number" &&
-    typeof o["ctx_tokens_budget"] === "number" &&
     typeof o["decisions_in_scope"] === "number" &&
     typeof o["invariants_in_scope"] === "number" &&
     isTaskState(o["task_state"]) &&
@@ -51,7 +48,7 @@ function isStatusJson(x: unknown): x is StatusJson {
  * adopted repo at `repoRoot`. `sessionId` is the Claude Code session id
  * (passed via the status-line hook's stdin payload).
  *
- * Returns the placeholder `⬡ cairn  daemon:down  ○` when:
+ * Returns the placeholder `⬡ cairn  no session  ○` when:
  *   - `sessionId` is null/empty (status-line invoked outside a session)
  *   - the per-session status.json is missing
  *   - the file is unreadable, malformed JSON, or fails shape validation
