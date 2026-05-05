@@ -23,6 +23,7 @@ import {
   runPhase1Detect,
   runPhase2Walker,
   runPhase3Mapper,
+  runPhase3bSeed,
   runPhase4Pilot,
   runPhase5Brand,
   runPhase6DocsIngest,
@@ -62,6 +63,7 @@ const RUNNERS: Record<PhaseId, (s: PhaseState) => Promise<PhaseResult>> = {
   "1-detect": runPhase1Detect,
   "2-walker": runPhase2Walker,
   "3-mapper": runPhase3Mapper,
+  "3b-seed": runPhase3bSeed,
   "4-pilot": runPhase4Pilot,
   "5-brand": runPhase5Brand,
   "6-docs-ingest": runPhase6DocsIngest,
@@ -164,6 +166,8 @@ function phaseDescription(id: PhaseId): string {
       return "Phase 2-walker — build the repo summary (manifest previews, by-extension counts, framework signals). Always advances.";
     case "3-mapper":
       return "Phase 3-mapper — Sonnet-driven domain map (chunked across module slices). Long-running; no operator input.";
+    case "3b-seed":
+      return "Phase 3b-seed — write .cairn/ skeleton + config.yaml + scope-index from templates and mapper output. Always advances; no operator input.";
     case "4-pilot":
       return "Phase 4-pilot — operator picks the seed module from mapper's top candidates (1 question).";
     case "5-brand":

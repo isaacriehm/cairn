@@ -174,6 +174,7 @@ export {
   runPhase1Detect,
   runPhase2Walker,
   runPhase3Mapper,
+  runPhase3bSeed,
   runPhase4Pilot,
   runPhase5Brand,
   runPhase6DocsIngest,

@@ -44,7 +44,7 @@ export async function runPhase3Mapper(state: PhaseState): Promise<PhaseResult> {
     };
     return {
       status: "complete",
-      nextPhase: "4-pilot",
+      nextPhase: "3b-seed",
       state: advancePhase(next),
     };
   } catch (err) {

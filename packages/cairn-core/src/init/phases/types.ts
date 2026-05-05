@@ -22,6 +22,7 @@ export const PHASE_IDS = [
   "1-detect",
   "2-walker",
   "3-mapper",
+  "3b-seed",
   "4-pilot",
   "5-brand",
   "6-docs-ingest",

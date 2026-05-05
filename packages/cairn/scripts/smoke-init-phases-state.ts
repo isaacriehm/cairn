@@ -104,7 +104,7 @@ function runSmoke(): void {
     });
     const r = resumePhases(repo);
     assert(r.status === "ready", `Step 4: should report ready, got ${r.status}`);
-    assert(r.nextPhase === "4-pilot", `Step 4: after 3-mapper next should be 4-pilot, got ${r.nextPhase}`);
+    assert(r.nextPhase === "3b-seed", `Step 4: after 3-mapper next should be 3b-seed, got ${r.nextPhase}`);
     assert(r.state.currentPhase === "3-mapper", "Step 4: state should preserve currentPhase");
     console.log("  ✓ Step 4 — resumePhases reads persisted state + advances");
   }
