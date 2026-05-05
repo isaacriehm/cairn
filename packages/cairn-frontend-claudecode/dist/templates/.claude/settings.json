@@ -1,11 +1,15 @@
 {
+  "statusLine": {
+    "type": "command",
+    "command": "cairn status-line"
+  },
   "hooks": {
     "SessionStart": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook session-start"
+            "command": "cairn hook session-start"
           }
         ]
       }
@@ -15,37 +19,36 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook session-end"
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook stop"
+            "command": "cairn hook session-end"
           }
         ]
       }
     ],
     "PostToolUse": [
       {
-        "matcher": "Read|Grep|Glob",
+        "matcher": "Read",
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook read-enrich"
+            "command": "cairn hook read-enrich"
           }
         ]
       },
       {
-        "matcher": "Write|Edit",
+        "matcher": "Write",
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook write-guard"
+            "command": "cairn hook write-guard"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cairn hook write-guard"
           }
         ]
       }

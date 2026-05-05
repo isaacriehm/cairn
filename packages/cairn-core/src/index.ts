@@ -10,15 +10,19 @@ import { fileURLToPath } from "node:url";
 
 // VERSION is the single source of truth for what `cairn --version` prints,
 // what gets stamped into `.cairn/config.yaml`'s `cairn_version`, and what
-// the bootstrap-guard reports back to the operator. Read from package.json
-// at module load so it can never drift from the published artifact.
-//
-// Layout: this file ships as `dist/index.js`; package.json is one level up.
-const _here = dirname(fileURLToPath(import.meta.url));
-const _pkg = JSON.parse(
-  readFileSync(join(_here, "..", "package.json"), "utf8"),
-) as { version: string };
-export const VERSION: string = _pkg.version;
+// the bootstrap-guard reports back to the operator. In the npm-published
+// dist/ layout, read from package.json one level up. In the Claude Code
+// plugin bundle, esbuild bakes the value via --define so the bundle has
+// no runtime dependency on package.json's location.
+function readVersion(): string {
+  if (typeof __CAIRN_VERSION__ === "string") return __CAIRN_VERSION__;
+  const _here = dirname(fileURLToPath(import.meta.url));
+  const _pkg = JSON.parse(
+    readFileSync(join(_here, "..", "package.json"), "utf8"),
+  ) as { version: string };
+  return _pkg.version;
+}
+export const VERSION: string = readVersion();
 
 export { logger, setLogFile, setLogNull, setLogStderr } from "./logger.js";
 export {

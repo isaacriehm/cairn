@@ -20,22 +20,22 @@ const HERE = dirname(fileURLToPath(import.meta.url));
  * Path to the catalog file shipped inside the cairn package itself. Used
  * as the fallback when the adopted project hasn't customized the catalog.
  *
- * `dist/sensors/catalog.js` runtime path → `templates/.cairn/config/...`.
+ * Dev / npm build: `dist/sensors/catalog.js` → `templates/.cairn/config/`.
+ * Plugin bundle: `dist/cli.cjs` → `dist/templates/.cairn/config/` (esbuild
+ * --define flips the prefix; build-bundle.mjs co-locates templates).
  */
+const TEMPLATES_PREFIX =
+  typeof __CAIRN_BUNDLED__ !== "undefined" && __CAIRN_BUNDLED__
+    ? join(HERE, "templates")
+    : join(HERE, "..", "..", "templates");
 const PKG_TEMPLATE_STUB = join(
-  HERE,
-  "..",
-  "..",
-  "templates",
+  TEMPLATES_PREFIX,
   ".cairn",
   "config",
   "stub-patterns.yaml",
 );
 const PKG_TEMPLATE_SENSORS = join(
-  HERE,
-  "..",
-  "..",
-  "templates",
+  TEMPLATES_PREFIX,
   ".cairn",
   "config",
   "sensors.yaml",

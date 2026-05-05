@@ -22,6 +22,9 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./cli": {
+      "import": "./dist/cli/index.js"
     }
   },
   "bin": {
@@ -58,7 +61,8 @@
     "smoke:bypass-detection": "tsx scripts/smoke-bypass-detection.ts",
     "smoke:bootstrap-guard": "tsx scripts/smoke-bootstrap-guard.ts",
     "smoke:e2e-adoption": "tsx scripts/smoke-e2e-adoption.ts",
-    "smoke:e2e-daily-flow": "tsx scripts/smoke-e2e-daily-flow.ts"
+    "smoke:e2e-daily-flow": "tsx scripts/smoke-e2e-daily-flow.ts",
+    "smoke:plugin-bundle": "tsx scripts/smoke-plugin-bundle.ts"
   },
   "dependencies": {
     "@isaacriehm/cairn-core": "workspace:*",

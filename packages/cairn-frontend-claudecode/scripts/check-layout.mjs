@@ -48,20 +48,20 @@ if (manifest) {
 }
 
 // ── .mcp.json ───────────────────────────────────────────────────────
-// Plugin invokes the CLI via npx — no separate `npm install -g` step
-// for users. npx auto-downloads on first use, then hits the local cache.
-// Avoids the pre-v0.1.2 problem where the plugin manifest pointed at
-// `${CLAUDE_PLUGIN_ROOT}/../cairn-core` (sibling not in plugin cache).
+// Plugin invokes a self-contained bundle at dist/cli.mjs via plain `node`.
+// ${CLAUDE_PLUGIN_ROOT} resolves to the plugin's cache dir at runtime,
+// so the bundle ships alongside the plugin — no `npm install -g`,
+// no npx latency, no PATH dependency, no sibling-workspace lookups.
 const mcp = readJson(join(PKG_ROOT, ".mcp.json"));
 if (mcp) {
   const server = mcp?.mcpServers?.cairn;
   if (!server || typeof server !== "object") {
     fail(".mcp.json: mcpServers.cairn must be an object");
   } else {
-    if (server.command !== "npx") {
-      fail(`.mcp.json: cairn.command must be 'npx', got ${server.command}`);
+    if (server.command !== "node") {
+      fail(`.mcp.json: cairn.command must be 'node', got ${server.command}`);
     }
-    const expected = ["-y", "@isaacriehm/cairn", "mcp", "serve"];
+    const expected = ["${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs", "mcp", "serve"];
     if (!Array.isArray(server.args) || server.args.length !== expected.length || server.args.some((a, i) => a !== expected[i])) {
       fail(`.mcp.json: cairn.args must be ${JSON.stringify(expected)}, got ${JSON.stringify(server.args)}`);
     }
@@ -81,14 +81,14 @@ if (hooksFile) {
         fail(`hooks.json: hooks.${event} must be a non-empty array`);
       }
     }
-    // Walk every command. Each must invoke the CLI via npx so users
-    // don't need a separate `npm install -g` step.
+    // Walk every command. Each invokes the bundled CLI at the plugin's
+    // own cache dir — no npx, no PATH dependency.
     const ALLOWED = new Set([
-      "npx -y @isaacriehm/cairn hook session-start",
-      "npx -y @isaacriehm/cairn hook session-end",
-      "npx -y @isaacriehm/cairn hook stop",
-      "npx -y @isaacriehm/cairn hook read-enrich",
-      "npx -y @isaacriehm/cairn hook write-guard",
+      "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook session-start",
+      "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook session-end",
+      "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook stop",
+      "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook read-enrich",
+      "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook write-guard",
     ]);
     const visit = (event, entries) => {
       for (const entry of entries) {

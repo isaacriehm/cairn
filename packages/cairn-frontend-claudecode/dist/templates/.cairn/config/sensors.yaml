@@ -1,0 +1,185 @@
+# Cairn sensor registry.
+#
+# Sensors are mechanical checks the orchestrator runs against an agent's diff.
+# Listed here are the GENERIC kinds that ship with the Cairn package. Stack
+# profiles (typescript-next-nest, python-fastapi, rails, go, rust, unknown — see
+# INTEGRATION_PLAN.md §16.1) propose profile-specific sensors at adoption; the
+# operator confirms each one. Project-specific sensors live in the adopting
+# project's extension block (see workflow.md).
+#
+# Per operator answer S1: Cairn package code does NOT hardcode any specific
+# project's sensor names. All concrete sensor identifiers below are
+# stack-profile-agnostic primitives.
+
+version: 1
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Generic (stack-profile-agnostic) sensors.
+# ──────────────────────────────────────────────────────────────────────────────
+
+sensors:
+
+  # ── Layer A — mechanical stub catalog ─────────────────────────────────────
+  - id: stub-pattern-catalog
+    layer: A
+    kind: regex_catalog
+    description: "Mechanical scan of diff against .cairn/config/stub-patterns.yaml. Layer A of the honest-agent invariants stack."
+    catalog: .cairn/config/stub-patterns.yaml
+    triggers:
+      - every_run
+    fail_severity: hard
+
+  # ── Layer B — attestation cross-check ─────────────────────────────────────
+  - id: attestation-cross-check
+    layer: B
+    kind: attestation
+    description: "Cross-checks agent's attestation.yaml against the actual diff. Mismatches (lying about completeness, files-touched count, todos/stubs introduced) fail the run."
+    triggers:
+      - every_run_completion
+    fail_severity: hard
+
+  # ── Layer D — project structural / contract sensors ──────────────────────
+  - id: route-handler-non-empty
+    layer: D
+    kind: structural
+    description: "For every route/controller method, body must contain non-trivial implementation (not just `return null` / empty / throw not-implemented)."
+    triggers:
+      - diff_touches_glob
+    glob_keys:
+      - route_handler_globs
+    fail_severity: hard
+
+  - id: dto-no-fake-fields
+    layer: D
+    kind: structural
+    description: "DTO/schema fields that are declared optional and always evaluate undefined fail this sensor — they look thorough without doing work."
+    triggers:
+      - diff_touches_glob
+    glob_keys:
+      - dto_globs
+    fail_severity: hard
+
+  # ── Generator-drift sensors (profile-driven) ──────────────────────────────
+  - id: generator-drift
+    layer: D
+    kind: generator_drift
+    description: "Re-runs the project's declared generator commands (e.g. openapi:generate, db:generate, sqlc generate, alembic check). Any non-empty diff = source out of sync with artifact."
+    triggers:
+      - diff_touches_glob
+    glob_keys:
+      - generator_source_globs
+    profile_hook: profile.generators
+    fail_severity: hard
+
+  # ── Decision-assertion sensor ─────────────────────────────────────────────
+  - id: decision-assertions
+    layer: decisions
+    kind: assertion_evaluator
+    description: "For every accepted decision whose scope_globs overlap the diff, evaluate machine-readable assertions (schema_must_contain, text_must_*, index_must_exist, ast_pattern, file_must_not_be_modified, query_must_filter_by, route_must_have_guard, event_must_emit, service_method_must_call, human_review_hint). Failure quotes the assertion id + decision id + the contradicting line."
+    triggers:
+      - every_run
+    fail_severity: hard
+
+  # ── §V invariant sensors (auto-registered by backprop) ───────────────────
+  - id: invariant-suite
+    layer: invariants
+    kind: invariant_runner
+    description: "Runs every active §V invariant's linked sensor script (see backprop protocol — PRIMER §13). Active invariants accumulate over time; superseded ones are skipped."
+    triggers:
+      - every_run
+    sources:
+      - .cairn/ground/invariants/
+    fail_severity: hard
+
+  # ── Reviewer subagent (Layer C) ───────────────────────────────────────────
+  - id: reviewer-subagent
+    layer: C
+    kind: inferential
+    description: "Same model as implementer; fresh context. Reads only spec.tightened.md + diff + decisions ledger + in-scope assertions. Anti-completionist framing. For high-stakes runs, also enforces query-scope completeness (Codex audit Q1)."
+    model_strategy: same_as_implementer
+    triggers:
+      - all_layer_d_sensors_passed
+    fail_severity: soft   # produces verdict; orchestrator gates on operator override or auto-fail
+
+  # ── Layer E — high-stakes E2E / demo ─────────────────────────────────────
+  - id: e2e-real-db
+    layer: E
+    kind: e2e
+    description: "Runs the project's E2E suite against a real database (no mocks). High-stakes UAT MUST include a cross-tenant negative fixture (Codex audit Q1) — a request from user/org B against a resource owned by user/org A returning the expected denial."
+    triggers:
+      - high_stakes_glob_match
+    profile_hook: profile.e2e_command
+    fail_severity: hard
+    requires:
+      cross_tenant_fixture: true   # per L43
+
+  # ── Layer U — UAT-on-phone ───────────────────────────────────────────────
+  - id: uat-headless-chrome
+    layer: U
+    kind: uat
+    description: "Headless Chrome via Playwright captures GIF + screenshots + console + network. Evidence-file gate: .uat-passed contains SHA256 of bundle. Bare touch rejected."
+    triggers:
+      - code_class_or_high_stakes
+    fail_severity: hard
+
+  # ── Frontmatter freshness (nightly GC pass) ──────────────────────────────
+  - id: frontmatter-freshness
+    layer: gc
+    kind: frontmatter_check
+    description: "Walks load-bearing markdown in canonical zone. Flags files with verified-at older than 30 days; blocks reads via hook on > 60 days."
+    triggers:
+      - nightly_cron
+    fail_severity: soft
+
+  # ── Local-dirty-overlap gate (per Codex audit Q3) ─────────────────────────
+  - id: local-dirty-overlap
+    layer: pre_dispatch
+    kind: working_tree_check
+    description: "Before dispatch AND before push, check user's working tree for un-pushed dirty files that overlap the run's target_path_globs. If overlap, pause run and offer A/B/C resolution (stash / cancel / wait)."
+    triggers:
+      - pre_dispatch
+      - pre_push
+    fail_severity: soft   # operator decides resolution
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Scoped-glob keys.
+#
+# Each adopting project fills these in its `<project_name>:` block. Sensors that
+# trigger on `glob_keys` resolve them at dispatch from the project block.
+# ──────────────────────────────────────────────────────────────────────────────
+
+required_glob_keys:
+  - route_handler_globs        # e.g. core/src/**/*.controller.ts (NestJS) | app/controllers/**/*.rb (Rails)
+  - dto_globs                  # e.g. core/src/**/*.dto.ts | apps/api/schemas/**/*.py
+  - generator_source_globs     # files that, when changed, mean the generator should re-run
+  - high_stakes_globs          # paths whose changes require Layer E + cross-tenant fixture
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Copy-safety configuration (write guardian + Layer D sensor)
+#
+# The write guardian (PostToolUse hook on Write/Edit) and the Layer D
+# copy-safety sensor both consume this block. Globs default to common frontend
+# file extensions; extend per-project as needed. allowlist holds verbatim
+# strings that match a pattern but are intentional (technical error codes,
+# product names, etc.).
+# ──────────────────────────────────────────────────────────────────────────────
+
+copy_safety:
+  enabled: true
+  globs:
+    - "src/**/*.tsx"
+    - "src/**/*.jsx"
+    - "src/**/*.vue"
+    - "src/**/*.svelte"
+    - "**/*.html"
+    - "src/**/i18n/**/*.json"
+    - "src/**/locales/**/*.json"
+  allowlist: []
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Disable list — sensors known to false-positive at >50% on a given project.
+# Default empty; populated per-project via /oops dialog (PRIMER §11 anti-pattern:
+# we DO NOT mock or stub sensor results to make them pass).
+# ──────────────────────────────────────────────────────────────────────────────
+
+disabled_per_project: []

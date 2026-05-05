@@ -20,8 +20,18 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-/** dist/init/seed.js → walk up to package root, then into templates/. */
-const TEMPLATES_ROOT = join(HERE, "..", "..", "templates");
+/**
+ * dist/init/seed.js → walk up to package root, then into templates/.
+ * The Claude Code plugin bundle co-locates templates beside the bundle
+ * (packages/cairn-frontend-claudecode/dist/templates/) — esbuild
+ * --define flips the lookup so the bundled binary finds them as a
+ * sibling of dist/cli.cjs rather than two levels up from a per-module
+ * dist file.
+ */
+const TEMPLATES_ROOT =
+  typeof __CAIRN_BUNDLED__ !== "undefined" && __CAIRN_BUNDLED__
+    ? join(HERE, "templates")
+    : join(HERE, "..", "..", "templates");
 
 export interface SeedOptions {
   repoRoot: string;

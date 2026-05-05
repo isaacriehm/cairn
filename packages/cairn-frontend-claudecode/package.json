@@ -14,14 +14,20 @@
     "skills",
     "agents",
     "commands",
+    "dist",
     "README.md"
   ],
   "scripts": {
-    "build": "node scripts/check-layout.mjs",
+    "build": "node scripts/check-layout.mjs && node scripts/build-bundle.mjs",
     "typecheck": "node scripts/check-layout.mjs",
-    "clean": "rm -f *.tsbuildinfo"
+    "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
+    "@isaacriehm/cairn": "workspace:*",
     "@isaacriehm/cairn-core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "esbuild": "^0.25.0"
   }
 }
