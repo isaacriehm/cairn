@@ -11,3 +11,11 @@
 
 export * from "./runners/index.js";
 export * from "./post-tool-use/index.js";
+export {
+  clearDeferState,
+  deferStatePath,
+  isDeferActive,
+  readDeferState,
+  writeDeferState,
+} from "./defer.js";
+export type { DeferKind, DeferState } from "./defer.js";

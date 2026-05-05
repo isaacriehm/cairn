@@ -32,6 +32,11 @@ import {
 import { dirname, join } from "node:path";
 import { writeInvalidationEvent } from "../../events/index.js";
 import { decisionsDir } from "../../ground/index.js";
+import {
+  clearDeferState,
+  writeDeferState,
+  type DeferKind,
+} from "../../hooks/defer.js";
 import { withWriteLock } from "../../lock.js";
 import type { McpContext } from "../context.js";
 import { requireBootstrap } from "../bootstrap-guard.js";
@@ -42,7 +47,15 @@ import type { ToolDef } from "./types.js";
 interface Input {
   item_id: string;
   choice: "a" | "b" | "c";
-  kind: "decision_draft" | "baseline_finding" | "invalidation_event" | "drift";
+  kind:
+    | "decision_draft"
+    | "baseline_finding"
+    | "invalidation_event"
+    | "drift"
+    | "bypass"
+    | "review";
+  flagged_items?: string[];
+  defer_hours?: number;
   rationale?: string;
 }
 
@@ -62,7 +75,78 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
         resolved_kind: "drift_acknowledged",
         note: "drift resolution surface not yet implemented (step 7+); item left in queue",
       };
+    case "bypass":
+      return resolveBypass(ctx, input);
+    case "review":
+      return resolveReview(ctx, input);
   }
+}
+
+function resolveBypass(ctx: McpContext, input: Input): Promise<unknown> {
+  return resolveStopSignal(ctx, input, "bypass");
+}
+
+function resolveReview(ctx: McpContext, input: Input): Promise<unknown> {
+  return resolveStopSignal(ctx, input, "review");
+}
+
+/**
+ * Shared resolution path for the two Stop-hook surfaces. choice=a/b
+ * are kind-specific intents (the calling skill executes them); the
+ * tool's job is to either clear an existing defer file (a/b cases)
+ * or write a fresh one with the current snapshot (c).
+ */
+function resolveStopSignal(
+  ctx: McpContext,
+  input: Input,
+  kind: DeferKind,
+): Promise<unknown> {
+  const flagged =
+    input.flagged_items && input.flagged_items.length > 0
+      ? input.flagged_items
+      : [input.item_id];
+
+  if (input.choice === "c") {
+    return withWriteLock(ctx.repoRoot, () => {
+      const state = writeDeferState(ctx.repoRoot, kind, {
+        flagged_shas: kind === "bypass" ? flagged : [],
+        flagged_task_ids: kind === "review" ? flagged : [],
+        ...(input.defer_hours !== undefined ? { hours: input.defer_hours } : {}),
+      });
+      return {
+        ok: true,
+        resolved_kind: `${kind}_deferred`,
+        deferred_until: new Date(
+          Date.parse(state.deferred_at) +
+            state.deferred_for_hours * 60 * 60 * 1000,
+        ).toISOString(),
+        flagged_count: flagged.length,
+        ...(input.rationale !== undefined ? { rationale: input.rationale } : {}),
+      };
+    });
+  }
+
+  // a/b: the operator engaged with the surface (either acted on it or
+  // dismissed it). Clear any prior defer so the next Stop sees the
+  // fresh state of the world.
+  return withWriteLock(ctx.repoRoot, () => {
+    clearDeferState(ctx.repoRoot, kind);
+    const intent =
+      kind === "bypass"
+        ? input.choice === "a"
+          ? "bypass_record"
+          : "bypass_accept"
+        : input.choice === "a"
+          ? "review_now"
+          : "review_skip";
+    return {
+      ok: true,
+      resolved_kind: intent,
+      item_id: input.item_id,
+      flagged_count: flagged.length,
+      ...(input.rationale !== undefined ? { rationale: input.rationale } : {}),
+    };
+  });
 }
 
 function resolveDecisionDraft(ctx: McpContext, input: Input): Promise<unknown> {

@@ -65,7 +65,9 @@
     "smoke:plugin-bundle": "tsx scripts/smoke-plugin-bundle.ts",
     "smoke:init-phases-state": "tsx scripts/smoke-init-phases-state.ts",
     "smoke:init-phases-all": "tsx scripts/smoke-init-phases-all.ts",
-    "smoke:init-mcp-tools": "tsx scripts/smoke-init-mcp-tools.ts"
+    "smoke:init-mcp-tools": "tsx scripts/smoke-init-mcp-tools.ts",
+    "smoke:stop-debounce": "tsx scripts/smoke-stop-debounce.ts",
+    "smoke:bootstrap-skill": "tsx scripts/smoke-bootstrap-skill.ts"
   },
   "dependencies": {
     "@isaacriehm/cairn-core": "workspace:*",
