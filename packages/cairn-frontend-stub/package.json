@@ -1,6 +1,6 @@
 {
   "name": "@isaacriehm/cairn-frontend-stub",
-  "version": "0.1.10",
+  "version": "0.2.0",
   "description": "In-memory stub frontend adapter for Cairn smokes + dry-runs. Records every postTaskUpdate / requestApproval / requestDialog / notify call. Programmable response for dialogs.",
   "type": "module",
   "engines": {

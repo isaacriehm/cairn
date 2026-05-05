@@ -69004,7 +69004,7 @@ var log27 = logger("tightener");
 // ../cairn-core/dist/index.js
 function readVersion() {
   if (true)
-    return "0.1.10";
+    return "0.2.0";
   const _here = dirname20(fileURLToPath3(import.meta.url));
   const _pkg = JSON.parse(readFileSync58(join68(_here, "..", "package.json"), "utf8"));
   return _pkg.version;
