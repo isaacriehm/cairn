@@ -42,10 +42,7 @@ import {
 
 interface StopShapeBOutput {
   continue: boolean;
-  hookSpecificOutput: {
-    hookEventName: "Stop";
-    additionalContext: string;
-  };
+  systemMessage?: string;
 }
 
 interface PendingReview {
@@ -120,13 +117,10 @@ export async function runStopHook(): Promise<void> {
     }
   }
 
-  const out: StopShapeBOutput = {
-    continue: true,
-    hookSpecificOutput: {
-      hookEventName: "Stop",
-      additionalContext,
-    },
-  };
+  // Claude Code's Stop hook schema rejects hookSpecificOutput. Surface
+  // text via the top-level systemMessage field; empty payload is fine.
+  const out: StopShapeBOutput = { continue: true };
+  if (additionalContext.length > 0) out.systemMessage = additionalContext;
   emitShapeB(out);
 
   recordHookTelemetry({

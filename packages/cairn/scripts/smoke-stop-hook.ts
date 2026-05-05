@@ -87,10 +87,12 @@ function runStopHook(repoRoot: string, sessionId: string): { stdout: string; std
 
 interface HookOutput {
   continue: boolean;
-  hookSpecificOutput: {
-    hookEventName: "Stop";
-    additionalContext: string;
-  };
+  /** Stop hook injects text via top-level systemMessage; absent when no surface. */
+  systemMessage?: string;
+}
+
+function ctxOf(out: HookOutput): string {
+  return out.systemMessage ?? "";
 }
 
 function parseOutput(stdout: string): HookOutput {
@@ -125,7 +127,7 @@ function runSmoke(): void {
     const out = runStopHook(repoRoot, "session-empty");
     assert(out.status === 0, `Step 1: exit 0 expected, got ${out.status}; stderr=${out.stderr}`);
     const parsed = parseOutput(out.stdout);
-    assert(parsed.hookSpecificOutput.additionalContext === "", "Step 1: additionalContext should be empty");
+    assert(ctxOf(parsed) === "", "Step 1: additionalContext should be empty");
     console.log("  ✓ Step 1 — empty repo → empty context");
   }
 
@@ -136,9 +138,9 @@ function runSmoke(): void {
     const out = runStopHook(repoRoot, "session-pending");
     assert(out.status === 0, `Step 2: exit 0 expected, got ${out.status}; stderr=${out.stderr}`);
     const parsed = parseOutput(out.stdout);
-    assert(/Reviewer pending/.test(parsed.hookSpecificOutput.additionalContext), `Step 2: additionalContext missing reviewer hint, got: ${parsed.hookSpecificOutput.additionalContext}`);
-    assert(parsed.hookSpecificOutput.additionalContext.includes("TSK-2026-05-04-test-12345"), "Step 2: task id should appear");
-    assert(parsed.hookSpecificOutput.additionalContext.includes("agents/reviewer.md"), "Step 2: should reference the reviewer agent path");
+    assert(/Reviewer pending/.test(ctxOf(parsed)), `Step 2: additionalContext missing reviewer hint, got: ${ctxOf(parsed)}`);
+    assert(ctxOf(parsed).includes("TSK-2026-05-04-test-12345"), "Step 2: task id should appear");
+    assert(ctxOf(parsed).includes("agents/reviewer.md"), "Step 2: should reference the reviewer agent path");
     console.log("  ✓ Step 2 — pending review surfaced");
   }
 
@@ -148,7 +150,7 @@ function runSmoke(): void {
     writeTightenedSpec(repoRoot, "TSK-attested", { withAttestation: true });
     const out = runStopHook(repoRoot, "session-attested");
     const parsed = parseOutput(out.stdout);
-    assert(parsed.hookSpecificOutput.additionalContext === "", `Step 3: attested task should not surface, got: ${parsed.hookSpecificOutput.additionalContext}`);
+    assert(ctxOf(parsed) === "", `Step 3: attested task should not surface, got: ${ctxOf(parsed)}`);
     console.log("  ✓ Step 3 — attested task suppressed");
   }
 
@@ -158,7 +160,7 @@ function runSmoke(): void {
     writeTightenedSpec(repoRoot, "TSK-stale", { ageMs: 7 * 60 * 60 * 1000 });
     const out = runStopHook(repoRoot, "session-stale");
     const parsed = parseOutput(out.stdout);
-    assert(parsed.hookSpecificOutput.additionalContext === "", `Step 4: stale task should not surface, got: ${parsed.hookSpecificOutput.additionalContext}`);
+    assert(ctxOf(parsed) === "", `Step 4: stale task should not surface, got: ${ctxOf(parsed)}`);
     console.log("  ✓ Step 4 — stale task suppressed (>6h)");
   }
 
@@ -170,7 +172,7 @@ function runSmoke(): void {
     writeTightenedSpec(repoRoot, "TSK-C", { withAttestation: true });
     const out = runStopHook(repoRoot, "session-multi");
     const parsed = parseOutput(out.stdout);
-    const ctx = parsed.hookSpecificOutput.additionalContext;
+    const ctx = ctxOf(parsed);
     assert(ctx.includes("TSK-A"), "Step 5: TSK-A should surface");
     assert(ctx.includes("TSK-B"), "Step 5: TSK-B should surface");
     assert(!ctx.includes("TSK-C"), "Step 5: TSK-C (attested) should NOT surface");

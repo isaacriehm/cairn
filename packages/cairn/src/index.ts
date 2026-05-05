@@ -6,4 +6,3 @@
  */
 
 export * from "@isaacriehm/cairn-core";
-export * from "@isaacriehm/cairn-frontend-stub";

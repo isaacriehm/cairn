@@ -89,8 +89,9 @@ function runSmoke(): void {
     writeStatusJson(repoRoot, "session-a", syntheticStatus());
     const out = readStatusForCLI(repoRoot, "session-a");
     assert(out.startsWith("⬡ cairn"), `Step 3: should start with ⬡ cairn, got ${out}`);
-    assert(out.includes("ctx:847/4000"), `Step 3: ctx fragment missing, got ${out}`);
-    assert(out.includes("task:idle"), `Step 3: task:idle fragment missing, got ${out}`);
+    assert(out.includes("decisions:12"), `Step 3: decisions fragment missing, got ${out}`);
+    assert(out.includes("inv:8"), `Step 3: inv fragment missing, got ${out}`);
+    assert(out.includes("ready"), `Step 3: ready state missing for idle/no-attention, got ${out}`);
     console.log("  ✓ Step 3 — round-trip + format");
   }
 
@@ -101,7 +102,7 @@ function runSmoke(): void {
     writeStatusJson(repoRoot, "session-b", syntheticStatus({ task_state: "running" }));
     const a = readStatusForCLI(repoRoot, "session-a");
     const b = readStatusForCLI(repoRoot, "session-b");
-    assert(a.includes("task:idle"), `Step 4: session-a task:idle missing, got ${a}`);
+    assert(a.includes("ready"), `Step 4: session-a idle should render ready, got ${a}`);
     assert(b.includes("task:running"), `Step 4: session-b task:running missing, got ${b}`);
     console.log("  ✓ Step 4 — concurrent sessions write isolated files");
   }
@@ -124,24 +125,24 @@ function runSmoke(): void {
     console.log("  ✓ Step 5 — attention priority");
   }
 
-  // ── Step 6 — daemon down beats everything ───────────────────────
+  // ── Step 6 — gc beats task; format ignores legacy daemon_alive ──
   {
     const out = formatStatus(
       syntheticStatus({
         daemon_alive: false,
-        ctx_tokens_used: 100,
         decisions_in_scope: 0,
         invariants_in_scope: 0,
         task_state: "running",
         gc_running: true,
-        attention_count: 5,
+        attention_count: 0,
         last_run_result: null,
         last_run_at: null,
       }),
     );
-    assert(out.includes("daemon:down"), `Step 6: daemon:down should win, got ${out}`);
-    assert(out.includes("○"), `Step 6: down icon ○ missing, got ${out}`);
-    console.log("  ✓ Step 6 — daemon-down priority");
+    assert(out.includes("gc:active"), `Step 6: gc:active should beat task, got ${out}`);
+    assert(out.includes("◐"), `Step 6: gc icon ◐ missing, got ${out}`);
+    assert(!out.includes("daemon:down"), `Step 6: daemon_alive must not affect format post-pivot, got ${out}`);
+    console.log("  ✓ Step 6 — gc priority + post-pivot daemon ignore");
   }
 
   console.log("smoke-status-line — pass");

@@ -46,11 +46,16 @@ export async function runSessionStartHook(): Promise<void> {
   const repoRoot = resolveRepoRoot(cwdInput);
 
   if (repoRoot === null) {
+    // No `.cairn/` found walking up from cwd. If cwd is itself a git
+    // repo, this is an *unadopted* project — render the adoption banner
+    // so Claude proactively offers `cairn-adopt`. Otherwise stay silent
+    // (the operator launched Claude Code outside any project).
+    const adoptionBanner = renderAdoptionBanner(cwdInput);
     const out: SessionStartShapeBOutput = {
       continue: true,
       hookSpecificOutput: {
         hookEventName: "SessionStart",
-        additionalContext: "",
+        additionalContext: adoptionBanner ?? "",
       },
     };
     emitShapeB(out);
@@ -60,11 +65,11 @@ export async function runSessionStartHook(): Promise<void> {
       sessionId: payloadSessionId,
       source,
       durationMs: Date.now() - startedAt,
-      warnings: ["no_cairn_dir_found"],
+      warnings: adoptionBanner !== null ? ["adoption_offered"] : ["no_cairn_dir_found"],
       extra: {
-        sections_rendered: [],
+        sections_rendered: adoptionBanner !== null ? ["adoption_banner"] : [],
         sections_dropped: [],
-        total_chars: 0,
+        total_chars: adoptionBanner?.length ?? 0,
       },
     });
     return;
@@ -175,24 +180,92 @@ function renderBootstrapBanner(repoRoot: string): string | null {
   lines.push("");
   lines.push(
     "This project is cairn-adopted, but this clone is not bootstrapped. " +
-      "Without `cairn join`, MCP write tools refuse, the cairn-direction " +
-      "skill blocks, and your local commits will fail at the pre-commit hook.",
+      "Without bootstrap, MCP write tools refuse, the cairn-direction " +
+      "skill blocks, and local commits will fail at the pre-commit hook.",
   );
   lines.push("");
   lines.push(
     `Project pinned to cairn ${state.projectCairnVersion ?? "(unset)"}.`,
   );
   lines.push("");
-  lines.push("Surface this inline to the operator now:");
+  lines.push("Surface this inline to the operator on first interaction:");
   lines.push("");
-  lines.push("> This project uses cairn, but your clone isn't bootstrapped.");
-  lines.push("> `[a]` bootstrap now (run `cairn join`, ~5s)");
+  lines.push("> This project uses Cairn, but your clone isn't bootstrapped.");
+  lines.push("> `[a]` bootstrap now (run the join command, ~5s)");
   lines.push("> `[b]` skip (cairn write surface stays disabled)");
   lines.push("");
   lines.push(
-    "On `[a]`, run `cairn join` from this repo's working directory and " +
-      "wait for it to print `cairn join: bootstrapped`. The next assistant " +
-      "turn will pick up the unblocked surface.",
+    "On `[a]`, spawn this Bash command in the repo's working directory:",
+  );
+  lines.push("");
+  lines.push("```bash");
+  lines.push("npx -y @isaacriehm/cairn join");
+  lines.push("```");
+  lines.push("");
+  lines.push(
+    "Wait for it to print `cairn join: bootstrapped` (or report any per-step " +
+      "warning). The next assistant turn picks up the unblocked surface.",
+  );
+  return lines.join("\n");
+}
+
+/**
+ * Per PLUGIN_ARCHITECTURE §6: when the operator opens Claude Code in a
+ * git repo with no `.cairn/` directory, the plugin proactively offers
+ * adoption inline. SessionStart has no DOM to draw on — it injects the
+ * instruction here as additionalContext so Claude reads it on the first
+ * user message and surfaces the inline A/B/C prompt.
+ *
+ * Returns null when cwd is not a git repo (Claude Code launched outside
+ * any project) — silent in that case.
+ */
+function renderAdoptionBanner(cwd: string): string | null {
+  if (!existsSync(join(cwd, ".git"))) return null;
+  // Operator opted-out previously — never re-prompt.
+  if (existsSync(join(cwd, ".cairn-skip"))) return null;
+  // Walk upward briefly to make sure no parent has .cairn/ either —
+  // monorepo subdirectories should not re-prompt for adoption.
+  let dir = cwd;
+  for (let i = 0; i < 40; i++) {
+    if (existsSync(join(dir, ".cairn"))) return null;
+    if (existsSync(join(dir, ".cairn-skip"))) return null;
+    const parent = join(dir, "..");
+    if (parent === dir) break;
+    dir = parent;
+    if (!existsSync(join(dir, ".git"))) break;
+  }
+
+  const lines: string[] = [];
+  lines.push("## Cairn — adoption available");
+  lines.push("");
+  lines.push(
+    "This project is a git repo with no `.cairn/` directory. Cairn " +
+      "is installed and can adopt it: a one-time visual pass that " +
+      "ingests existing decisions, source-comment essays, and " +
+      "`CLAUDE.md` / `AGENTS.md` rules into queryable ground state.",
+  );
+  lines.push("");
+  lines.push(
+    "Surface this inline to the operator on their first message — even " +
+      "a casual greeting like \"hi\". Use AskUserQuestion or a markdown " +
+      "blockquote with the three options:",
+  );
+  lines.push("");
+  lines.push("> Adopt this project with cairn?");
+  lines.push("> `[a]` yes — walk adoption now (~30-60s, streamed)");
+  lines.push("> `[b]` not now — ask again next session");
+  lines.push("> `[c]` never — mark this project opted-out (writes `.cairn-skip`)");
+  lines.push("");
+  lines.push(
+    "On `[a]`, invoke the `cairn-adopt` skill (it auto-detects). On " +
+      "`[c]`, write a one-line `.cairn-skip` file at the repo root so " +
+      "future sessions don't re-prompt.",
+  );
+  lines.push("");
+  lines.push(
+    "If the operator asks what cairn does, summarize: persistent " +
+      "ground state for AI agents — decisions, invariants, canonical " +
+      "map, sensors. Stops re-debating settled choices across sessions.",
   );
   return lines.join("\n");
 }
