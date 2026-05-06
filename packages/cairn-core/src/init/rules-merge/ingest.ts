@@ -63,6 +63,17 @@ export interface RunRulesMergeArgs {
   mockClassify?: (section: RuleSection, source: RuleSourceFile) => RuleClassification;
   dryRun?: boolean;
   nowIso?: string;
+  /**
+   * Caller-supplied DEC id Set. Same role as in `runDocsIngestion`: when
+   * the parallel orchestrator runs phases 6 / 7b / 7c concurrently, all
+   * three share one Set so DEC id allocations don't collide.
+   */
+  existingDecIds?: Set<string>;
+  /**
+   * Optional progress callback fired after each section finishes
+   * classification. Enables the cairn-adopt statusline heartbeat.
+   */
+  onSectionProgress?: (row: { index: number; total: number }) => void;
 }
 
 export interface RunRulesMergeResult {
@@ -160,11 +171,14 @@ export async function runRulesMerge(args: RunRulesMergeArgs): Promise<RunRulesMe
   }
 
   if (args.mockClassify !== undefined) {
-    for (const job of jobs) {
+    for (const [idx, job] of jobs.entries()) {
       allClassifications.push(args.mockClassify(job.section, job.source));
+      args.onSectionProgress?.({ index: idx + 1, total: jobs.length });
     }
   } else {
     let cursor = 0;
+    let completed = 0;
+    const total = jobs.length;
     const worker = async (): Promise<void> => {
       while (cursor < jobs.length) {
         const idx = cursor++;
@@ -172,6 +186,8 @@ export async function runRulesMerge(args: RunRulesMergeArgs): Promise<RunRulesMe
         if (job === undefined) continue;
         const cls = await classifySection(job.source, job.section);
         allClassifications.push(cls);
+        completed += 1;
+        args.onSectionProgress?.({ index: completed, total });
       }
     };
     const workers = Array.from(
@@ -184,7 +200,7 @@ export async function runRulesMerge(args: RunRulesMergeArgs): Promise<RunRulesMe
   // Persist DEC drafts + conflicts.
   const decDraftsWritten: { id: string; path: string; sourceFile: string }[] = [];
   const conflictRows: ConflictRow[] = [];
-  const existingIds = scanExistingDecisionIds(repoRoot);
+  const existingIds = args.existingDecIds ?? scanExistingDecisionIds(repoRoot);
 
   for (const cls of allClassifications) {
     if (cls.kind === "rule-net-new" && cls.proposedDecTitle.length > 0) {
@@ -310,6 +326,7 @@ async function classifySection(
       prompt,
       jsonSchema: CLASSIFY_SCHEMA,
       timeoutMs: PER_SECTION_TIMEOUT_MS,
+      isolateAmbientContext: true,
     });
     const parsed = result.parsed;
     if (typeof parsed !== "object" || parsed === null) {

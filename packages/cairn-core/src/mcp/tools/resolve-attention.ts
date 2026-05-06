@@ -26,14 +26,19 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
-  readdirSync,
   renameSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
-import { parse as parseYaml } from "yaml";
+import {
+  parseDraftMeta,
+  restoreDec,
+  runDecSourceStrip,
+  type DraftMeta,
+  type StripOutcomeSummary,
+} from "../../attention/index.js";
 import { writeInvalidationEvent } from "../../events/index.js";
 import { decisionsDir } from "../../ground/index.js";
 import { writeDecisionsLedger } from "../../ground/ledgers.js";
@@ -42,12 +47,6 @@ import {
   writeDeferState,
   type DeferKind,
 } from "../../hooks/defer.js";
-import {
-  applyStripReplace,
-  formatBareCitation,
-  type ReplaceItem,
-  type StripReplaceResult,
-} from "../../init/source-comments/strip-replace.js";
 import { withWriteLock } from "../../lock.js";
 import { logger } from "../../logger.js";
 import type { McpContext } from "../context.js";
@@ -163,7 +162,7 @@ function resolveStopSignal(
   });
 }
 
-function resolveDecisionDraft(ctx: McpContext, input: Input): Promise<unknown> {
+async function resolveDecisionDraft(ctx: McpContext, input: Input): Promise<unknown> {
   if (!/^DEC-\d{4,}$/.test(input.item_id)) {
     return Promise.resolve(
       mcpError(
@@ -174,24 +173,52 @@ function resolveDecisionDraft(ctx: McpContext, input: Input): Promise<unknown> {
   }
   const decDir = decisionsDir(ctx.repoRoot);
   const inboxPath = join(decDir, "_inbox", `${input.item_id}.draft.md`);
+  const rejectedPath = join(decDir, "_inbox", `${input.item_id}.rejected.md`);
+  const acceptedPath = join(decDir, `${input.item_id}.md`);
 
+  // Auto-restore: when the draft is missing but the same id sits as a
+  // rejected or already-accepted entry, transparently roll it back to
+  // a draft so the operator's choice (a/b/c) lands in one MCP call
+  // instead of needing an explicit `cairn_attention_restore` first.
+  // Idempotent re-accept on a still-canonical accepted DEC is the same
+  // shape as accepting a fresh draft — rebuild ledger, no double-strip
+  // (already-stripped check inside runDecSourceStrip).
+  let autoRestoredFrom: "rejected" | "accepted" | null = null;
   if (!existsSync(inboxPath)) {
-    return Promise.resolve(
-      mcpError("FILE_NOT_FOUND", `no draft at ${inboxPath}`),
-    );
+    if (existsSync(rejectedPath) || existsSync(acceptedPath)) {
+      const restored = await restoreDec({
+        repoRoot: ctx.repoRoot,
+        decId: input.item_id,
+      });
+      if (!restored.ok) {
+        return mcpError(
+          "FILE_NOT_FOUND",
+          `no draft at ${inboxPath}; auto-restore from ${restored.priorState} failed: ${restored.reason ?? "unknown"}`,
+        );
+      }
+      autoRestoredFrom =
+        restored.priorState === "rejected" || restored.priorState === "accepted"
+          ? restored.priorState
+          : null;
+    } else {
+      return mcpError("FILE_NOT_FOUND", `no draft at ${inboxPath}`);
+    }
   }
 
   if (input.choice === "c") {
     // Edit-pending: return the draft body so the skill can hand it to
     // the operator's editor flow. No state change.
     const body = readFileSync(inboxPath, "utf8");
-    return Promise.resolve({
+    const editBase = {
       ok: true,
       resolved_kind: "decision_edit_pending",
       item_id: input.item_id,
       draft_path: `.cairn/ground/decisions/_inbox/${input.item_id}.draft.md`,
       body,
-    });
+    } as const;
+    return autoRestoredFrom === null
+      ? editBase
+      : { ...editBase, auto_restored_from: autoRestoredFrom };
   }
 
   return withWriteLock(ctx.repoRoot, () => {
@@ -199,7 +226,7 @@ function resolveDecisionDraft(ctx: McpContext, input: Input): Promise<unknown> {
       const acceptedPath = join(decDir, `${input.item_id}.md`);
       mkdirSync(dirname(acceptedPath), { recursive: true });
       const draft = readFileSync(inboxPath, "utf8");
-      const draftMeta = parseDraftFrontmatter(draft);
+      const draftMeta = parseDraftMeta(draft);
       const promoted = promoteDraftStatus(draft);
       writeFileSync(acceptedPath, promoted, "utf8");
       // Remove the draft after promoting so the inbox stays clean.
@@ -229,7 +256,11 @@ function resolveDecisionDraft(ctx: McpContext, input: Input): Promise<unknown> {
       }
       let stripOutcome: StripOutcomeSummary | null = null;
       if (draftMeta?.captureSource === "init-source-comments" && draftMeta.blockId !== null) {
-        stripOutcome = runSourceStrip(ctx.repoRoot, input.item_id, draftMeta);
+        stripOutcome = runDecSourceStrip({
+          repoRoot: ctx.repoRoot,
+          decId: input.item_id,
+          meta: draftMeta,
+        });
       }
       const base = {
         ok: true,
@@ -237,12 +268,15 @@ function resolveDecisionDraft(ctx: McpContext, input: Input): Promise<unknown> {
         item_id: input.item_id,
         accepted_path: `.cairn/ground/decisions/${input.item_id}.md`,
       } as const;
-      return stripOutcome === null ? base : { ...base, source_strip: stripOutcome };
+      const withStrip =
+        stripOutcome === null ? base : { ...base, source_strip: stripOutcome };
+      return autoRestoredFrom === null
+        ? withStrip
+        : { ...withStrip, auto_restored_from: autoRestoredFrom };
     }
 
     // choice === "b" — reject. Rename to .rejected.md so scanExistingDecisionIds
     // keeps the id in the high-water mark and it is never recycled.
-    const rejectedPath = join(decDir, "_inbox", `${input.item_id}.rejected.md`);
     renameSync(inboxPath, rejectedPath);
     const rejectedRel = `.cairn/ground/decisions/_inbox/${input.item_id}.rejected.md`;
     try {
@@ -336,170 +370,6 @@ function promoteDraftStatus(body: string): string {
   //   - `draft-from-source-comment` (phase 7b)
   //   - `draft-from-rules-merge` (phase 7c)
   return body.replace(/^status:\s*draft(?:-from-[a-z-]+)?\b/m, "status: accepted");
-}
-
-interface DraftMeta {
-  blockId: string | null;
-  sourceFile: string | null;
-  captureSource: string | null;
-  title: string | null;
-}
-
-function parseDraftFrontmatter(body: string): DraftMeta | null {
-  const match = /^---\n([\s\S]*?)\n---/.exec(body);
-  if (match === null) return null;
-  let parsed: unknown;
-  try {
-    parsed = parseYaml(match[1] ?? "");
-  } catch {
-    return null;
-  }
-  if (parsed === null || typeof parsed !== "object") return null;
-  const obj = parsed as Record<string, unknown>;
-  return {
-    blockId: typeof obj["blockId"] === "string" ? obj["blockId"] : null,
-    sourceFile: typeof obj["sourceFile"] === "string" ? obj["sourceFile"] : null,
-    captureSource:
-      typeof obj["capture_source"] === "string" ? obj["capture_source"] : null,
-    title: typeof obj["title"] === "string" ? obj["title"] : null,
-  };
-}
-
-interface StripOutcomeSummary {
-  attempted: boolean;
-  files_modified: number;
-  items_applied: number;
-  audit_path: string | null;
-  reason?: string;
-}
-
-function runSourceStrip(
-  repoRoot: string,
-  decId: string,
-  meta: DraftMeta,
-): StripOutcomeSummary {
-  const blockId = meta.blockId;
-  if (blockId === null) {
-    return { attempted: false, files_modified: 0, items_applied: 0, audit_path: null, reason: "no-block-id" };
-  }
-  const auditPath = findLatestAudit(repoRoot);
-  if (auditPath === null) {
-    return { attempted: false, files_modified: 0, items_applied: 0, audit_path: null, reason: "no-audit-found" };
-  }
-  let auditBody: unknown;
-  try {
-    auditBody = parseYaml(readFileSync(auditPath, "utf8"));
-  } catch (err) {
-    log.warn(
-      { err: err instanceof Error ? err.message : String(err), auditPath },
-      "audit parse failed",
-    );
-    return { attempted: false, files_modified: 0, items_applied: 0, audit_path: auditPath, reason: "audit-parse-failed" };
-  }
-  const blocks = extractAuditBlocks(auditBody);
-  const block = blocks.find((b) => b.block_id === blockId);
-  if (block === undefined) {
-    return { attempted: false, files_modified: 0, items_applied: 0, audit_path: auditPath, reason: "block-not-found" };
-  }
-  const replacement = formatBareCitation(block.lang, decId);
-  const item: ReplaceItem = {
-    blockId,
-    file: block.file,
-    startOffset: block.start_offset,
-    endOffset: block.end_offset,
-    replacement,
-    ...(block.raw !== undefined ? { expectedRaw: block.raw } : {}),
-  };
-  let result: StripReplaceResult;
-  try {
-    result = applyStripReplace({ repoRoot, items: [item] });
-  } catch (err) {
-    log.warn(
-      { err: err instanceof Error ? err.message : String(err), decId, blockId },
-      "strip-replace failed",
-    );
-    return { attempted: true, files_modified: 0, items_applied: 0, audit_path: auditPath, reason: "strip-failed" };
-  }
-  return {
-    attempted: true,
-    files_modified: result.filesModified,
-    items_applied: result.itemsApplied,
-    audit_path: auditPath,
-  };
-}
-
-function findLatestAudit(repoRoot: string): string | null {
-  const dir = join(repoRoot, ".cairn", "baseline");
-  if (!existsSync(dir)) return null;
-  let entries: string[];
-  try {
-    entries = readdirSync(dir);
-  } catch {
-    return null;
-  }
-  const candidates = entries
-    .filter((n) => n.startsWith("source-comments-") && n.endsWith(".yaml"))
-    .map((name) => {
-      const abs = join(dir, name);
-      let mtime = 0;
-      try {
-        mtime = statSync(abs).mtimeMs;
-      } catch {
-        // ignore
-      }
-      return { abs, mtime };
-    })
-    .sort((a, b) => b.mtime - a.mtime);
-  return candidates[0]?.abs ?? null;
-}
-
-interface AuditBlock {
-  block_id: string;
-  file: string;
-  lang: string;
-  start_offset: number;
-  end_offset: number;
-  /**
-   * Bytes at [start_offset, end_offset) at audit time. Optional for
-   * forward-compat with audit yamls written before the field landed.
-   */
-  raw?: string;
-}
-
-function extractAuditBlocks(body: unknown): AuditBlock[] {
-  if (body === null || typeof body !== "object") return [];
-  const obj = body as Record<string, unknown>;
-  const raw = obj["blocks"];
-  if (!Array.isArray(raw)) return [];
-  const out: AuditBlock[] = [];
-  for (const entry of raw) {
-    if (entry === null || typeof entry !== "object") continue;
-    const e = entry as Record<string, unknown>;
-    const block_id = e["block_id"];
-    const file = e["file"];
-    const lang = e["lang"];
-    const start_offset = e["start_offset"];
-    const end_offset = e["end_offset"];
-    const rawText = e["raw"];
-    if (
-      typeof block_id !== "string" ||
-      typeof file !== "string" ||
-      typeof lang !== "string" ||
-      typeof start_offset !== "number" ||
-      typeof end_offset !== "number"
-    ) {
-      continue;
-    }
-    out.push({
-      block_id,
-      file,
-      lang,
-      start_offset,
-      end_offset,
-      ...(typeof rawText === "string" ? { raw: rawText } : {}),
-    });
-  }
-  return out;
 }
 
 function emitEvent(

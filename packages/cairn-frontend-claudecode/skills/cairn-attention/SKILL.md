@@ -65,6 +65,60 @@ Operator can opt in via the CLI: `cairn attention bulk-accept
 After this step, the inbox holds only medium + low-confidence
 drafts. Continue with the normal triage flow below.
 
+## Step 0.7 — flag duplicate DEC drafts
+
+Phase 7b emits one DEC draft per essay-class comment, so the same
+idea appearing in N files produces N near-duplicate drafts. Cluster
+them deterministically (no LLM, no quota) before the operator sees
+the per-item triage:
+
+```
+cairn_attention_dedup({})
+```
+
+Returns:
+
+```
+{ draftsScanned, clusters, draftsInClusters, reducible,
+  thresholdFloor, thresholdDefinite }
+```
+
+Each entry in `clusters` is a `{ tier, averageSimilarity, drafts[] }`.
+Tiers:
+
+- `definite` (Jaccard >= 0.5) — render under `## Definite duplicates`.
+  Default action: keep the first-listed draft (lowest DEC id) as the
+  survivor; surface a single `AskUserQuestion` per cluster:
+  - `[a]` keep DEC-NNNN, reject the rest (default)
+  - `[b]` keep them all (treat as distinct)
+  - `[c]` reject the whole cluster
+- `potential` (0.4 to 0.5) — render under `## Potential duplicates`.
+  Operator triages each member normally in Step 3; surface the
+  cluster as context only, do not auto-merge.
+
+Render the summary as one block right before the per-item prompts:
+
+```
+Found N duplicate clusters across M drafts (P reducible).
+  • Definite (≥0.5): X clusters, Y drafts
+  • Potential (0.4–0.5): Z clusters, W drafts
+```
+
+For each definite cluster the operator picked `keep ... reject the rest`,
+loop over the non-survivor ids and call:
+
+```
+cairn_resolve_attention({ kind: "decision_draft", choice: "b",
+  item_id: "DEC-NNNN" })
+```
+
+`choice: "b"` renames the draft to `.rejected.md` so the id stays
+reserved (never recycled). The survivor stays in `_inbox/` and flows
+into Step 3 normally.
+
+If `clusters.length === 0`, skip rendering — the dedup section is
+empty noise when there's nothing to cluster.
+
 ## Step 1 — read attention sources
 
 Run these in parallel. Use the MCP tools exclusively for DEC
@@ -82,6 +136,16 @@ files.
    staleness log if any.
 5. Recent invalidation events: read the per-session events marker,
    then list `.cairn/events/*.json` newer than `last_polled_ts`.
+
+**Rejected DECs are not in the queue.** Reject is a final operator
+decision; surfacing rejected ids every session would force re-triage
+of already-resolved items. When the operator explicitly asks to
+reconsider a specific id ("restore DEC-0003", "un-reject DEC-NNNN"),
+call `cairn_resolve_attention` with that id directly — the tool
+auto-restores from `.rejected.md` (or already-accepted `<id>.md`)
+transparently and applies the chosen `a/b/c`. Response carries
+`auto_restored_from: "rejected" | "accepted"` so the skill can
+surface the rollback in its summary.
 
 For each item, build a tuple `{kind, id, title, source, severity}`
 from the MCP responses.

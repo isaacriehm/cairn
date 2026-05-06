@@ -40,6 +40,31 @@ export interface RunClaudeOptions {
   /** Repo root + Claude Code session id for trace correlation, when known. */
   repoRoot?: string;
   sessionId?: string;
+  /**
+   * When true AND `repoRoot` is set, look up + persist responses in
+   * `.cairn/cache/haiku/<sha256>.json`. Cache key is the full input
+   * fingerprint (tier|system|prompt|jsonSchema). Only meaningful for
+   * idempotent classification calls — never enable for mapper or any
+   * call whose answer depends on filesystem state at run time.
+   */
+  cacheable?: boolean;
+  /**
+   * When true, the subprocess runs from `os.tmpdir()` and passes
+   * `--setting-sources project,local --tools "" --disable-slash-commands`
+   * so the call inherits NO ambient context: no user-global
+   * `~/.claude/CLAUDE.md`, no parent-dir CLAUDE.md hierarchy, no MCP
+   * tools, no plugin slash commands. Caller-supplied prompt + system
+   * prompt are the entire input.
+   *
+   * Required for Cairn's haiku-tier classifications to prevent
+   * operator's personal / organizational context (org name, ethos
+   * statements, identifying memory) from leaking into project
+   * artifacts (brand text, DEC drafts, classifications).
+   *
+   * Reduces input-token cost ~95% (76k → ~700 tokens observed) on
+   * top of the privacy fix.
+   */
+  isolateAmbientContext?: boolean;
 }
 
 export interface ClaudeUsage {

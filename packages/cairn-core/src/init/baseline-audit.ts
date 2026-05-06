@@ -144,6 +144,14 @@ export interface RunBaselineAuditArgs {
   }) => void;
   /** Skip filesystem write — smokes only. */
   dryRun?: boolean;
+  /**
+   * When true, bypass the `BASELINE_SKIP_IDS` skip-list so sensors that
+   * normally need post-init inputs (attestation-cross-check, generator-drift,
+   * decision-assertions, invariant-suite, etc.) still get a best-effort
+   * pass. Useful for `cairn baseline --force` post-adoption review when
+   * those sensors finally have ground state to chew on.
+   */
+  force?: boolean;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -313,7 +321,7 @@ export async function runBaselineAudit(
   let total = 0;
 
   for (const id of sensorIds) {
-    if (BASELINE_SKIP_IDS.has(id)) {
+    if (BASELINE_SKIP_IDS.has(id) && args.force !== true) {
       skippedSensorIds.push(id);
       sensors.push({
         sensor_id: id,

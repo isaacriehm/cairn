@@ -95,6 +95,7 @@ export async function mergeModuleProposals(args: MergeArgs): Promise<MapperOutpu
       system: MERGE_SYSTEM_PROMPT,
       jsonSchema: MERGE_OUTPUT_SCHEMA as object,
       timeoutMs: MERGE_TIMEOUT_MS,
+      isolateAmbientContext: true,
     });
     const parsed = result.parsed;
     if (typeof parsed !== "object" || parsed === null) return baseline;

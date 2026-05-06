@@ -18,3 +18,29 @@ events/
 # Per-clone CLI invocation path — written by `cairn join`, read by the
 # git hooks to resolve the bundled cli.mjs or fall back to a global cairn.
 .cli-path
+
+# Haiku response cache — keyed on tier|system|prompt|jsonSchema; 30-day
+# TTL. Lets re-runs of `cairn init` skip identical Haiku calls without
+# burning the operator's coding-plan quota. Regenerable.
+cache/
+
+# Mid-init crash-recovery state. Phase tools persist here between
+# invocations so an interrupted `cairn init` can resume; also a
+# multi-MB serialized blob on real-world adoptions. Once init is
+# done it's stale, fully regenerable from a re-init.
+init-state.json
+
+# Phase output spillover — mapper-output.json (full mapper result) and
+# source-comments-walk.json (full Phase 7b walk + classifications).
+# Kept on disk so MCP responses stay skinny; both regenerable.
+init/
+
+# Per-machine MCP telemetry — staleness sensor inputs, mcp-calls.jsonl.
+# Local debug only; never useful in version control.
+staleness/
+
+# Pre-strip recovery copies — `.cairn/backups/source/<rel>.original`
+# snapshots created by Phase 7b INV strip + DEC strip-replace. Per-
+# clone safety net for `git checkout` recovery; teammates have their
+# own snapshots from their own adoption pass.
+backups/

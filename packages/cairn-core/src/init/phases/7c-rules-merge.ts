@@ -7,14 +7,24 @@ import {
   runRulesMerge,
   type RunRulesMergeResult,
 } from "../rules-merge/index.js";
+import { clearProgress, writeProgress } from "../progress.js";
 import { advancePhase } from "./orchestrator.js";
 import type { PhaseResult, PhaseState } from "./types.js";
 
 export async function runPhase7cRulesMerge(state: PhaseState): Promise<PhaseResult> {
+  const startedAt = Date.now();
   try {
     const result: RunRulesMergeResult = await runRulesMerge({
       repoRoot: state.repoRoot,
+      onSectionProgress: (row) =>
+        writeProgress(state.repoRoot, {
+          phase: "7c-rules-merge",
+          batch: row.index,
+          total: row.total,
+          startedAt,
+        }),
     });
+    clearProgress(state.repoRoot);
     const next: PhaseState = {
       ...state,
       outputs: { ...state.outputs, "7c-rules-merge": result },
@@ -25,6 +35,7 @@ export async function runPhase7cRulesMerge(state: PhaseState): Promise<PhaseResu
       state: advancePhase(next),
     };
   } catch (err) {
+    clearProgress(state.repoRoot);
     return {
       status: "error",
       error: {

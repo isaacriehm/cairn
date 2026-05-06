@@ -18,6 +18,7 @@
  */
 
 import { runMapper, type MapperResult } from "../mapper.js";
+import { clearProgress, writeProgress } from "../progress.js";
 import type { DetectionResult } from "../types.js";
 import type { RepoSummary } from "../walker.js";
 import {
@@ -40,16 +41,32 @@ export async function runPhase3Mapper(state: PhaseState): Promise<PhaseResult> {
       state,
     };
   }
+  const startedAt = Date.now();
+  let totalSlices = 0;
+  let completed = 0;
   try {
     const result: MapperResult = await runMapper({
       detection,
       summary,
       repoRoot: state.repoRoot,
+      onSlicesDetected: (slices) => {
+        totalSlices = slices.length;
+      },
+      onModuleEnd: () => {
+        completed += 1;
+        writeProgress(state.repoRoot, {
+          phase: "3-mapper",
+          batch: completed,
+          total: totalSlices,
+          startedAt,
+        });
+      },
     });
     // Write the full result (with scope_index.files + module_proposals)
     // to disk; downstream phases that need those reload it on demand.
     writeMapperOutputFile(state.repoRoot, result);
     const persisted = toMapperResultPersisted(result);
+    clearProgress(state.repoRoot);
     const next: PhaseState = {
       ...state,
       outputs: { ...state.outputs, "3-mapper": persisted },
@@ -60,6 +77,7 @@ export async function runPhase3Mapper(state: PhaseState): Promise<PhaseResult> {
       state: advancePhase(next),
     };
   } catch (err) {
+    clearProgress(state.repoRoot);
     return {
       status: "error",
       error: {

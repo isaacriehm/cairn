@@ -26,7 +26,7 @@ silently no-ops in `select:`). `AskUserQuestion` is built-in and stays
 unprefixed.
 
 ```
-ToolSearch(select:mcp__plugin_cairn_cairn__cairn_init_resume,mcp__plugin_cairn_cairn__cairn_init_phase_1_detect,mcp__plugin_cairn_cairn__cairn_init_phase_2_walker,mcp__plugin_cairn_cairn__cairn_init_phase_3_mapper,mcp__plugin_cairn_cairn__cairn_init_phase_3b_seed,mcp__plugin_cairn_cairn__cairn_init_phase_4_pilot,mcp__plugin_cairn_cairn__cairn_init_phase_5_brand,mcp__plugin_cairn_cairn__cairn_init_phase_6_docs_ingest,mcp__plugin_cairn_cairn__cairn_init_phase_7b_source_comments,mcp__plugin_cairn_cairn__cairn_init_phase_7c_rules_merge,mcp__plugin_cairn_cairn__cairn_init_phase_8_baseline,mcp__plugin_cairn_cairn__cairn_init_phase_10_strip,mcp__plugin_cairn_cairn__cairn_init_phase_12_multidev,mcp__plugin_cairn_cairn__cairn_decision_get,mcp__plugin_cairn_cairn__cairn_resolve_attention,mcp__plugin_cairn_cairn__cairn_bulk_accept_attention,AskUserQuestion)
+ToolSearch(select:mcp__plugin_cairn_cairn__cairn_init_resume,mcp__plugin_cairn_cairn__cairn_init_phase_1_detect,mcp__plugin_cairn_cairn__cairn_init_phase_2_walker,mcp__plugin_cairn_cairn__cairn_init_phase_3_mapper,mcp__plugin_cairn_cairn__cairn_init_phase_3b_seed,mcp__plugin_cairn_cairn__cairn_init_phase_4_pilot,mcp__plugin_cairn_cairn__cairn_init_phase_5_brand,mcp__plugin_cairn_cairn__cairn_init_phase_6_docs_ingest,mcp__plugin_cairn_cairn__cairn_init_phase_7b_source_comments,mcp__plugin_cairn_cairn__cairn_init_phase_7c_rules_merge,mcp__plugin_cairn_cairn__cairn_init_phases_678_parallel,mcp__plugin_cairn_cairn__cairn_init_phase_8_baseline,mcp__plugin_cairn_cairn__cairn_init_phase_10_strip,mcp__plugin_cairn_cairn__cairn_init_phase_12_multidev,mcp__plugin_cairn_cairn__cairn_decision_get,mcp__plugin_cairn_cairn__cairn_resolve_attention,mcp__plugin_cairn_cairn__cairn_bulk_accept_attention,mcp__plugin_cairn_cairn__cairn_attention_dedup,AskUserQuestion)
 ```
 
 After this single call all phase tools + the question tool + the
@@ -58,11 +58,84 @@ Call `AskUserQuestion` directly with the three options:
 Do not preamble. Do not render the question as inline markdown — the
 `AskUserQuestion` UI is the canonical render path.
 
-- **`yes`** → continue to Step 2.
+- **`yes`** → continue to Step 1.5.
 - **`not now`** → record `decline-temp` in `projects.json` (re-prompt
   after 7 days) and end the turn.
 - **`never for this project`** → record `decline-never` in `projects.json`
   and end the turn.
+
+## Step 1.5 — wire the statusline (one-time per machine)
+
+The statusline is the only mid-turn render channel during the long
+ingestion phases. Without it the operator stares at a frozen turn for
+minutes during 7b-source-comments. Detect whether the user-level config
+is already wired before asking; if it is, skip this step silently.
+
+Detect:
+
+```bash
+node -e '
+  const fs=require("node:fs");
+  const os=require("node:os");
+  const p=os.homedir()+"/.claude/settings.json";
+  if(!fs.existsSync(p)){console.log("missing");process.exit(0);}
+  try{
+    const s=JSON.parse(fs.readFileSync(p,"utf8"));
+    const c=(s.statusLine&&s.statusLine.command)||"";
+    console.log(c.includes("isaacriehm-cairn")?"wired":"unwired");
+  }catch{console.log("unreadable");}'
+```
+
+- `wired` → skip to Step 2.
+- `missing` / `unwired` / `unreadable` → render `AskUserQuestion`:
+
+  > Cairn's statusline shows live progress during the long adoption
+  > phases (especially 7b-source-comments, which is several minutes
+  > on busy monorepos). Wire it into your user-level
+  > `~/.claude/settings.json` now?
+
+  - **`a) wire and reopen`** — patch settings now, ask the operator to
+    `/exit` and reopen so this adoption has live progress
+  - **`b) wire and continue`** — patch settings now, this adoption runs
+    without live progress (next session sees it)
+  - **`c) skip`** — leave settings alone; operator can run
+    `/cairn-statusline-setup` later
+
+On `a` or `b`, run the patch (same logic as `/cairn-statusline-setup`
+Step 3 — re-implemented inline so the adopt loop doesn't depend on a
+sibling slash command):
+
+1. Verify the active-version-path shim exists:
+   ```bash
+   test -f ~/.claude/plugins/cache/isaacriehm-cairn/.active-version-path \
+     && echo OK || echo MISSING
+   ```
+   On `MISSING`, surface a one-line note ("statusline patch needs the
+   plugin's SessionStart shim — re-run after the first session") and
+   continue to Step 2 anyway.
+
+2. Read `~/.claude/settings.json` (create with `{}` if missing). Use
+   the `Edit` tool with the current file as `old_string` so other
+   top-level fields stay intact. Set `statusLine` to:
+
+   ```json
+   {
+     "type": "command",
+     "command": "node \"$(cat ~/.claude/plugins/cache/isaacriehm-cairn/.active-version-path)\" status-line",
+     "refreshInterval": 30
+   }
+   ```
+
+On `a) wire and reopen`, also surface:
+
+> Statusline wired. `/exit` and reopen Claude Code in this project to
+> activate it for the live progress indicator during adoption. Adoption
+> resumes from `.cairn/init-state.json` after reopen.
+
+End the turn — the operator restarts and the next session resumes
+adoption with the statusline live.
+
+On `b) wire and continue` or `c) skip`, fall through to Step 2.
 
 ## Step 2 — preflight
 
@@ -103,7 +176,13 @@ fully adopted — abort and tell the operator to check
 
 ```
 while nextPhase != null:
-    tool_name = `cairn_init_phase_${nextPhase.replace(/-/g, "_")}`
+    if nextPhase == "6-docs-ingest":
+        # Optimized path: phases 6 / 7b / 7c run concurrently with
+        # shared DEC + INV id Sets. One MCP call covers all three;
+        # nextPhase comes back as "8-baseline".
+        tool_name = "cairn_init_phases_678_parallel"
+    else:
+        tool_name = `cairn_init_phase_${nextPhase.replace(/-/g, "_")}`
     result = call tool_name({})            # no args; tool reads state from disk
     switch (result.status):
       case "needs_input":
@@ -171,8 +250,15 @@ row; do NOT improvise:
 |---|---|
 | `3-mapper` | `Sonnet runs per detected module slice in parallel rounds of 4 (cap: 50 slices). Scales with module count.` |
 | `6-docs-ingest` | `Haiku batch over README + docs/. Scales with doc file count and length.` |
-| `7b-source-comments` | `Haiku classifies every essay-class block comment in scoped source files (4-way parallel). On busy monorepos this is the longest phase — expect minutes, not seconds. /exit is safe; SessionStart resumes.` |
+| `7b-source-comments` | `Haiku classifies every essay-class block comment in scoped source files (4-way parallel). On busy monorepos this is the longest phase — expect minutes, not seconds. /exit is safe; SessionStart resumes. Watch the `⏳` indicator on your statusline for live `phase X/Y (P%) ~Nm` updates.` |
 | `7c-rules-merge` | `Haiku per H2 section across CLAUDE.md / AGENTS.md / .claude/rules/*. Scales with section count.` |
+
+**Live progress**: phases `3-mapper`, `6-docs-ingest`, `7b-source-comments`,
+and `7c-rules-merge` write `.cairn/init/progress.json` after every batch /
+module / doc / section. The Cairn statusline reads it and renders
+`⬡ cairn ⏳ adopt <phase> X/Y (P%) ~Nm` in real time so the operator
+isn't staring at a frozen turn for minutes. Step 1.5 wires this if it
+isn't already.
 
 When the phase is operator-driven (`<eta>` = `operator`) the
 `AskUserQuestion` widget appears immediately after the banner — do NOT

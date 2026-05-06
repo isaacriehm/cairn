@@ -1,6 +1,8 @@
 import { spawn, spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import { logger } from "../logger.js";
 import { appendTrace } from "../trace/index.js";
+import { cacheLookup, cacheStore } from "./cache.js";
 import { ClaudeError, classifyClaudeError } from "./error.js";
 import type { ClaudeTier, RunClaudeOptions, RunClaudeResult } from "./types.js";
 
@@ -38,6 +40,13 @@ export function claudeIsAvailable(): boolean {
  * the operator's Claude Code coding-plan subscription quota.
  */
 export async function runClaude(opts: RunClaudeOptions): Promise<RunClaudeResult> {
+  // Cache lookup happens before subprocess spawn so a hit short-circuits
+  // the whole flow including the trace request event. Only haiku tier
+  // is cached — see cache.ts module docstring for why.
+  if (opts.cacheable === true && opts.tier === "haiku" && opts.repoRoot !== undefined) {
+    const hit = cacheLookup(opts.repoRoot, opts);
+    if (hit !== null) return hit;
+  }
   const model = TIER_MODEL[opts.tier];
   const args = [
     "--print",
@@ -52,6 +61,20 @@ export async function runClaude(opts: RunClaudeOptions): Promise<RunClaudeResult
   }
   if (opts.jsonSchema !== undefined) {
     args.push("--json-schema", JSON.stringify(opts.jsonSchema));
+  }
+  // Isolate ambient context: drop user-level CLAUDE.md, project-hierarchy
+  // CLAUDE.md, MCP tools, and plugin slash commands so the call sees only
+  // the caller-supplied prompt + system. Subprocess runs from
+  // `os.tmpdir()` so no CLAUDE.md ancestor chain auto-loads. Caller still
+  // pays for whatever they explicitly include in the prompt.
+  if (opts.isolateAmbientContext === true) {
+    args.push(
+      "--setting-sources",
+      "project,local",
+      "--tools",
+      "",
+      "--disable-slash-commands",
+    );
   }
   if (opts.extraArgs && opts.extraArgs.length > 0) {
     args.push(...opts.extraArgs);
@@ -80,21 +103,56 @@ export async function runClaude(opts: RunClaudeOptions): Promise<RunClaudeResult
     },
   });
 
+  // Subprocess cwd: when isolating ambient context, route to os.tmpdir()
+  // so the CLAUDE.md ancestor chain doesn't auto-load. Otherwise honor
+  // the caller's cwd (mapper needs the repo cwd for tool access).
+  const subprocessCwd =
+    opts.isolateAmbientContext === true
+      ? tmpdir()
+      : opts.cwd ?? process.cwd();
+
   return new Promise<RunClaudeResult>((resolve, reject) => {
     const child = spawn("claude", args, {
-      cwd: opts.cwd ?? process.cwd(),
+      cwd: subprocessCwd,
       stdio: ["pipe", "pipe", "pipe"],
       signal: ctrl.signal,
     });
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
+    let settled = false;
     child.stdout.on("data", (chunk: Buffer) => stdoutChunks.push(chunk));
     child.stderr.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
     child.on("error", (err) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
+      const isAbort = (err as { name?: string }).name === "AbortError";
+      if (isAbort) {
+        const message = `claude timed out after ${timeoutMs}ms`;
+        appendTrace({
+          ts: new Date().toISOString(),
+          source: "claude",
+          kind: "response",
+          repo_root: opts.repoRoot ?? null,
+          session_id: opts.sessionId ?? null,
+          duration_ms: Date.now() - startedAt,
+          ok: false,
+          payload: {
+            tier: opts.tier,
+            model,
+            purpose: opts.purpose ?? null,
+            error_kind: "timeout",
+            exit_code: 143,
+          },
+        });
+        reject(new ClaudeError({ message, kind: "timeout", exitCode: 143 }));
+        return;
+      }
       reject(err);
     });
     child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
       const stdout = Buffer.concat(stdoutChunks).toString("utf8");
       const stderr = Buffer.concat(stderrChunks).toString("utf8");
@@ -189,7 +247,7 @@ export async function runClaude(opts: RunClaudeOptions): Promise<RunClaudeResult
           parsed_present: parsed !== undefined,
         },
       });
-      resolve({
+      const result: RunClaudeResult = {
         text,
         ...(parsed !== undefined ? { parsed } : {}),
         durationMs,
@@ -197,7 +255,11 @@ export async function runClaude(opts: RunClaudeOptions): Promise<RunClaudeResult
         model,
         envelope,
         ...(usage !== undefined ? { usage } : {}),
-      });
+      };
+      if (opts.cacheable === true && opts.tier === "haiku" && opts.repoRoot !== undefined) {
+        cacheStore(opts.repoRoot, opts, result);
+      }
+      resolve(result);
     });
 
     child.stdin.write(opts.prompt);

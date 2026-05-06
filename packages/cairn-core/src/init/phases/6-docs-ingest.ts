@@ -9,14 +9,27 @@
  */
 
 import { runDocsIngestion, type IngestionResult } from "../ingest-docs.js";
+import { clearProgress, writeProgress } from "../progress.js";
 import { advancePhase } from "./orchestrator.js";
 import type { PhaseResult, PhaseState } from "./types.js";
 
 export async function runPhase6DocsIngest(state: PhaseState): Promise<PhaseResult> {
+  const startedAt = Date.now();
+  let completed = 0;
   try {
     const result: IngestionResult = await runDocsIngestion({
       repoRoot: state.repoRoot,
+      onGroupProgress: (row) => {
+        completed += 1;
+        writeProgress(state.repoRoot, {
+          phase: "6-docs-ingest",
+          batch: completed,
+          total: row.total,
+          startedAt,
+        });
+      },
     });
+    clearProgress(state.repoRoot);
     const next: PhaseState = {
       ...state,
       outputs: { ...state.outputs, "6-docs-ingest": result },
@@ -27,6 +40,7 @@ export async function runPhase6DocsIngest(state: PhaseState): Promise<PhaseResul
       state: advancePhase(next),
     };
   } catch (err) {
+    clearProgress(state.repoRoot);
     return {
       status: "error",
       error: {

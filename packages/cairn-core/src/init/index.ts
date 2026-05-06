@@ -20,6 +20,10 @@ export type {
   RunBrandSetupOptions,
 } from "./brand-setup.js";
 export {
+  deriveBrandFromProject,
+  derivedToBrandAnswers,
+} from "./brand-derive.js";
+export {
   defaultBaselineLanguages,
   findLatestBaselineAudit,
   runBaselineAudit,
@@ -120,6 +124,14 @@ export type {
   MapperScopeIndexEntry,
   RunMapperArgs,
 } from "./mapper.js";
+export {
+  PROGRESS_PATH,
+  progressAbsPath,
+  writeProgress,
+  readProgress,
+  clearProgress,
+  type ProgressSnapshot,
+} from "./progress.js";
 export { sliceModules } from "./module-slicer.js";
 export type { ModuleSlice, SliceModulesArgs } from "./module-slicer.js";
 export { mapModulesParallel } from "./mapper-parallel.js";
@@ -190,6 +202,12 @@ export {
   runPhase8Baseline,
   runPhase10Strip,
   runPhase12Multidev,
+  runPhases678Parallel,
+  SOURCE_COMMENTS_WALK_PATH,
+  sourceCommentsWalkAbsPath,
+  readSourceCommentsWalkFile,
+  writeSourceCommentsWalkFile,
+  to7bResultPersisted,
 } from "./phases/index.js";
 export type {
   PhaseId,
@@ -201,4 +219,5 @@ export type {
   PhaseError,
   ResumeReport,
   MapperResultPersisted,
+  IngestSourceCommentsResultPersisted,
 } from "./phases/index.js";
