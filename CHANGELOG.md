@@ -4,6 +4,24 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] — 2026-05-06
+
+### Fixed
+
+- **Lazy bootstrap on first MCP write call.** Multi-dev gap: when a
+  teammate cloned a Cairn-adopted repo and installed the plugin
+  mid-session via `/plugin install`, the plugin's SessionStart hook
+  never fired for that session — `core.hooksPath` stayed unset, hooks
+  remained unwired, but Cairn MCP tools became immediately available.
+  The first write tool call refused with `BOOTSTRAP_REQUIRED` and the
+  operator had to manually `cairn join` (or restart Claude Code).
+  `requireBootstrap` now auto-runs `cairn join` synchronously when
+  `core.hooksPath` is unset; the call short-circuits to a normal pass
+  on success and surfaces a `BOOTSTRAP_REQUIRED` envelope with
+  per-step `failed_steps` detail only when the auto-join itself
+  errored. Idempotent + local-clone-only state — plugin install is
+  implicit consent for the wiring.
+
 ## [0.4.1] — 2026-05-06
 
 ### Fixed

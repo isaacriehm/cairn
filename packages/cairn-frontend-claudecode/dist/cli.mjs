@@ -2961,11 +2961,11 @@ var require_tools = __commonJS({
         }
       }
     }
-    function buildFormatters(level, bindings, log30) {
+    function buildFormatters(level, bindings, log31) {
       return {
         level,
         bindings,
-        log: log30
+        log: log31
       };
     }
     function normalizeDestFileDescriptor(destination) {
@@ -3346,11 +3346,11 @@ var require_proto = __commonJS({
         }
       } else instance[serializersSym] = serializers;
       if (options.hasOwnProperty("formatters")) {
-        const { level, bindings: chindings, log: log30 } = options.formatters;
+        const { level, bindings: chindings, log: log31 } = options.formatters;
         instance[formattersSym] = buildFormatters(
           level || formatters.level,
           chindings || resetChildingsFormatter,
-          log30 || formatters.log
+          log31 || formatters.log
         );
       } else {
         instance[formattersSym] = buildFormatters(
@@ -6139,7 +6139,7 @@ var require_merge = __commonJS({
 var require_addPairToJSMap = __commonJS({
   "../../node_modules/.pnpm/yaml@2.8.4/node_modules/yaml/dist/nodes/addPairToJSMap.js"(exports) {
     "use strict";
-    var log30 = require_log();
+    var log31 = require_log();
     var merge2 = require_merge();
     var stringify = require_stringify();
     var identity = require_identity();
@@ -6188,7 +6188,7 @@ var require_addPairToJSMap = __commonJS({
           let jsonStr = JSON.stringify(strKey);
           if (jsonStr.length > 40)
             jsonStr = jsonStr.substring(0, 36) + '..."';
-          log30.warn(ctx.doc.options.logLevel, `Keys with collection values will be stringified due to JS Object restrictions: ${jsonStr}. Set mapAsMap: true to use object keys.`);
+          log31.warn(ctx.doc.options.logLevel, `Keys with collection values will be stringified due to JS Object restrictions: ${jsonStr}. Set mapAsMap: true to use object keys.`);
           ctx.mapKeyWarned = true;
         }
         return strKey;
@@ -11585,7 +11585,7 @@ var require_public_api = __commonJS({
     var composer = require_composer();
     var Document = require_Document();
     var errors = require_errors();
-    var log30 = require_log();
+    var log31 = require_log();
     var identity = require_identity();
     var lineCounter = require_line_counter();
     var parser4 = require_parser();
@@ -11637,7 +11637,7 @@ var require_public_api = __commonJS({
       const doc = parseDocument2(src, options);
       if (!doc)
         return null;
-      doc.warnings.forEach((warning2) => log30.warn(doc.options.logLevel, warning2));
+      doc.warnings.forEach((warning2) => log31.warn(doc.options.logLevel, warning2));
       if (doc.errors.length > 0) {
         if (doc.options.logLevel !== "silent")
           throw doc.errors[0];
@@ -12311,7 +12311,7 @@ var require_node = __commonJS({
     var tty3 = __require("tty");
     var util2 = __require("util");
     exports.init = init;
-    exports.log = log30;
+    exports.log = log31;
     exports.formatArgs = formatArgs;
     exports.save = save;
     exports.load = load2;
@@ -12446,7 +12446,7 @@ var require_node = __commonJS({
       }
       return (/* @__PURE__ */ new Date()).toISOString() + " ";
     }
-    function log30(...args) {
+    function log31(...args) {
       return process.stderr.write(util2.formatWithOptions(exports.inspectOpts, ...args) + "\n");
     }
     function save(namespaces) {
@@ -12500,27 +12500,27 @@ var require_src2 = __commonJS({
     Object.defineProperty(exports, "__esModule", { value: true });
     var fs_1 = __require("fs");
     var debug_1 = __importDefault(require_src());
-    var log30 = debug_1.default("@kwsites/file-exists");
+    var log31 = debug_1.default("@kwsites/file-exists");
     function check2(path2, isFile, isDirectory2) {
-      log30(`checking %s`, path2);
+      log31(`checking %s`, path2);
       try {
         const stat = fs_1.statSync(path2);
         if (stat.isFile() && isFile) {
-          log30(`[OK] path represents a file`);
+          log31(`[OK] path represents a file`);
           return true;
         }
         if (stat.isDirectory() && isDirectory2) {
-          log30(`[OK] path represents a directory`);
+          log31(`[OK] path represents a directory`);
           return true;
         }
-        log30(`[FAIL] path represents something other than a file or directory`);
+        log31(`[FAIL] path represents something other than a file or directory`);
         return false;
       } catch (e) {
         if (e.code === "ENOENT") {
-          log30(`[FAIL] path is not accessible: %o`, e);
+          log31(`[FAIL] path is not accessible: %o`, e);
           return false;
         }
-        log30(`[FATAL] %o`, e);
+        log31(`[FATAL] %o`, e);
         throw e;
       }
     }
@@ -17953,11 +17953,11 @@ var require_core = __commonJS({
     Ajv2.ValidationError = validation_error_1.default;
     Ajv2.MissingRefError = ref_error_1.default;
     exports.default = Ajv2;
-    function checkOptions(checkOpts, options, msg, log30 = "error") {
+    function checkOptions(checkOpts, options, msg, log31 = "error") {
       for (const key in checkOpts) {
         const opt = key;
         if (opt in options)
-          this.logger[log30](`${msg}: option ${key}. ${checkOpts[opt]}`);
+          this.logger[log31](`${msg}: option ${key}. ${checkOpts[opt]}`);
       }
     }
     function getSchEnv(keyRef) {
@@ -38918,11 +38918,11 @@ function taskCallback(task, response, callback = NOOP) {
   response.then(onSuccess, onError2);
 }
 function addDeprecationNoticeToError(err) {
-  let log30 = (name) => {
+  let log31 = (name) => {
     console.warn(
       `simple-git deprecation notice: accessing GitResponseError.${name} should be GitResponseError.git.${name}, this will no longer be available in version 3`
     );
-    log30 = NOOP;
+    log31 = NOOP;
   };
   return Object.create(err, Object.getOwnPropertyNames(err.git).reduce(descriptorReducer, {}));
   function descriptorReducer(all, name) {
@@ -38933,7 +38933,7 @@ function addDeprecationNoticeToError(err) {
       enumerable: false,
       configurable: false,
       get() {
-        log30(name);
+        log31(name);
         return err.git[name];
       }
     };
@@ -68790,6 +68790,7 @@ function isRef(x2) {
 // ../cairn-core/dist/mcp/bootstrap-guard.js
 import { existsSync as existsSync55 } from "node:fs";
 import { join as join59 } from "node:path";
+var log26 = logger("mcp.bootstrap-guard");
 function requireBootstrap(repoRoot) {
   if (!existsSync55(join59(repoRoot, ".git")))
     return null;
@@ -68798,11 +68799,18 @@ function requireBootstrap(repoRoot) {
   const state = inspectJoinState({ repoRoot });
   if (state.hooksPathSet)
     return null;
-  return mcpError("BOOTSTRAP_REQUIRED", "this clone is not bootstrapped \u2014 run `cairn join` (or pick [a] on the inline SessionStart prompt) before cairn write tools engage", {
+  const joinResult = runJoin({ repoRoot });
+  if (joinResult.bootstrapped) {
+    log26.info({ repoRoot, source: "lazy-mcp-bootstrap" }, "auto-ran cairn join from MCP write-tool guard");
+    return null;
+  }
+  const failedSteps = joinResult.steps.filter((s) => s.status === "error").map((s) => `${s.step}: ${s.detail}`);
+  return mcpError("BOOTSTRAP_REQUIRED", "this clone is not bootstrapped and `cairn join` auto-attempt failed \u2014 see failed_steps for the underlying cause", {
     project_cairn_version: state.projectCairnVersion,
     hooks_path_value: state.hooksPathValue,
     sessions_dir_ready: state.sessionsDirReady,
-    remediation: "cairn join"
+    failed_steps: failedSteps,
+    remediation: 'Re-run manually: `node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" join` (or restart Claude Code so SessionStart\'s bootstrap path retries)'
   });
 }
 
@@ -69977,7 +69985,7 @@ function withinDateWindow(date5, since, until) {
 }
 
 // ../cairn-core/dist/mcp/history/summarizer.js
-var log26 = logger("mcp.history.summarizer");
+var log27 = logger("mcp.history.summarizer");
 var HISTORICAL_WARNING = "This claim is HISTORICAL. Verify against the canonical pointer before acting.";
 async function runQueryHistory(args) {
   const tier = args.tier ?? "haiku";
@@ -70012,7 +70020,7 @@ async function runQueryHistory(args) {
       entry.scope_globs = d.scope_globs;
     return entry;
   });
-  log26.info({
+  log27.info({
     repo: args.repoRoot,
     scope_preview: args.scope.slice(0, 80),
     files: walk2.files.length,
@@ -70268,7 +70276,7 @@ var recordDecisionTool = {
 // ../cairn-core/dist/mcp/tools/resolve-attention.js
 import { appendFileSync as appendFileSync5, existsSync as existsSync67, mkdirSync as mkdirSync32, readFileSync as readFileSync60, renameSync as renameSync6, rmSync as rmSync7, statSync as statSync22, writeFileSync as writeFileSync31 } from "node:fs";
 import { dirname as dirname26, join as join73 } from "node:path";
-var log27 = logger("mcp.resolve-attention");
+var log28 = logger("mcp.resolve-attention");
 async function handler12(ctx, input) {
   const block = requireBootstrap(ctx.repoRoot);
   if (block !== null)
@@ -70381,7 +70389,7 @@ async function resolveDecisionDraft(ctx, input) {
       try {
         writeDecisionsLedger({ repoRoot: ctx.repoRoot });
       } catch (err) {
-        log27.warn({ err: err instanceof Error ? err.message : String(err) }, "decisions ledger rebuild failed");
+        log28.warn({ err: err instanceof Error ? err.message : String(err) }, "decisions ledger rebuild failed");
       }
       let stripOutcome = null;
       if (draftMeta?.captureSource === "init-source-comments" && draftMeta.blockId !== null) {
@@ -70884,7 +70892,7 @@ var allTools = [
 ];
 
 // ../cairn-core/dist/mcp/server.js
-var log28 = logger("mcp.server");
+var log29 = logger("mcp.server");
 async function startMcpServer(opts) {
   const { ctx } = opts;
   const server = new McpServer({ name: "cairn-mcp", version: VERSION });
@@ -70899,7 +70907,7 @@ async function startMcpServer(opts) {
         payload = await tool.handler(ctx, rawInput);
       } catch (err) {
         payload = mcpError("INTERNAL_ERROR", err instanceof Error ? err.message : "tool handler threw");
-        log28.error({ tool: tool.name, err: String(err) }, "tool handler threw");
+        log29.error({ tool: tool.name, err: String(err) }, "tool handler threw");
       }
       const durationMs = Number(process.hrtime.bigint() - start) / 1e6;
       const result = asMcpResult(payload);
@@ -70925,7 +70933,7 @@ async function startMcpServer(opts) {
   if (opts.noConnect !== true) {
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    log28.info({ tools: allTools.length, repoRoot: ctx.repoRoot }, "MCP server listening on stdio");
+    log29.info({ tools: allTools.length, repoRoot: ctx.repoRoot }, "MCP server listening on stdio");
   }
   return {
     server,
@@ -72037,7 +72045,7 @@ async function runUserPromptSubmitHook() {
 // ../cairn-core/dist/index.js
 function readVersion() {
   if (true)
-    return "0.4.1";
+    return "0.4.2";
   const _here = dirname27(fileURLToPath3(import.meta.url));
   const _pkg = JSON.parse(readFileSync71(join85(_here, "..", "package.json"), "utf8"));
   return _pkg.version;
@@ -73309,7 +73317,7 @@ async function joinCli(argv) {
 
 // ../cairn/dist/cli/mcp.js
 import { resolve as resolve24 } from "node:path";
-var log29 = logger("cli.mcp");
+var log30 = logger("cli.mcp");
 function parseArgs4(argv) {
   const positional = [];
   const flags = {};
@@ -73348,7 +73356,7 @@ async function mcpCli(argv) {
   });
   const { close } = await startMcpServer({ ctx });
   const shutdown = async (signal) => {
-    log29.info({ signal }, "shutdown signal received");
+    log30.info({ signal }, "shutdown signal received");
     await close();
     process.exit(0);
   };
