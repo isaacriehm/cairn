@@ -60,7 +60,11 @@ export function runDoctor(opts: RunDoctorOptions): DoctorReport {
   // projects — the Claude Code plugin owns hooks via its own
   // hooks/hooks.json, so a check here would always fire false negatives.
   checks.push(checkCairnLayout(repoRoot));
-  checks.push(checkMcpRegistration(repoRoot));
+  // Project-level `.mcp.json` is forbidden in plugin-mode (the plugin's
+  // bundled `.mcp.json` is the single registration source). Skipping
+  // the check here avoids false errors in CI on plugin-adopted
+  // projects. CLI-only adopters still get registration via `cairn init`
+  // writing the bundle's manifest fields.
 
   // ── Ground state checks ────────────────────────────────────────────
   checks.push(checkDecisions(repoRoot));
@@ -119,56 +123,6 @@ function checkCairnLayout(repoRoot: string): DoctorCheck {
     label: ".cairn/",
     status: "ok",
     detail: `layout complete (${count} ground files)`,
-  };
-}
-
-function checkMcpRegistration(repoRoot: string): DoctorCheck {
-  const path = join(repoRoot, ".mcp.json");
-  if (!existsSync(path)) {
-    return {
-      group: "core",
-      label: ".mcp.json",
-      status: "error",
-      detail: "missing — run cairn init",
-      fixCommand: "cairn init",
-    };
-  }
-  let parsed: Record<string, unknown>;
-  try {
-    parsed = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
-  } catch {
-    return {
-      group: "core",
-      label: ".mcp.json",
-      status: "error",
-      detail: "unreadable — re-run cairn init",
-      fixCommand: "cairn init --force",
-    };
-  }
-  const servers = parsed["mcpServers"];
-  if (typeof servers !== "object" || servers === null) {
-    return {
-      group: "core",
-      label: ".mcp.json",
-      status: "error",
-      detail: "missing mcpServers — re-run cairn init",
-      fixCommand: "cairn init --force",
-    };
-  }
-  if ((servers as Record<string, unknown>)["cairn"] === undefined) {
-    return {
-      group: "core",
-      label: ".mcp.json",
-      status: "error",
-      detail: "no cairn entry — re-run cairn init",
-      fixCommand: "cairn init --force",
-    };
-  }
-  return {
-    group: "core",
-    label: ".mcp.json",
-    status: "ok",
-    detail: "cairn MCP server registered",
   };
 }
 
@@ -236,21 +190,19 @@ function checkBrandOverview(repoRoot: string): DoctorCheck {
       fixCommand: "cairn init --force",
     };
   }
+  // Brand overview is operator-paced — `status: draft` is the
+  // expected post-adoption state until the operator fills in voice
+  // + tone. Doctor reports it informationally (status: ok) so CI
+  // workflows pass while the operator still has work to do.
   const status = readFrontmatterStatus(path) ?? "(none)";
-  if (status === "current" || status === "accepted") {
-    return {
-      group: "ground",
-      label: "brand/overview",
-      status: "ok",
-      detail: `status:${status}`,
-    };
-  }
   return {
     group: "ground",
     label: "brand/overview",
-    status: "warn",
-    detail: `status:${status}`,
-    fixCommand: "cairn configure brand",
+    status: "ok",
+    detail:
+      status === "current" || status === "accepted"
+        ? `status:${status}`
+        : `status:${status} — fill in when ready (operator-paced)`,
   };
 }
 

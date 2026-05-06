@@ -4,6 +4,28 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] — 2026-05-06
+
+Hotfix on top of v0.3.1.
+
+### Fixed
+
+- **`cairn doctor` exit code 1 / 2 on healthy adopted projects.** The
+  v0.3.0 doctor flagged two false errors that broke `cairn-check.yml`
+  CI in adopted projects:
+  1. `.mcp.json missing — run cairn init` — project-level `.mcp.json`
+     is forbidden in plugin-mode (the plugin's bundled `.mcp.json` is
+     the single registration source per
+     [`docs/MCP_SURFACE.md`](docs/MCP_SURFACE.md)). Removed the check
+     entirely.
+  2. `brand/overview status:draft` — flagged as warning, but brand
+     overview is operator-paced (no visual-identity decisions exist
+     at adoption time for most projects). Doctor now reports it as
+     `ok` with detail "fill in when ready (operator-paced)".
+
+  Net: a freshly-adopted project with default Phase 5 auto-fill now
+  passes `cairn doctor` cleanly (exit 0), unblocking CI.
+
 ## [0.3.1] — 2026-05-06
 
 Hotfix on top of v0.3.0.

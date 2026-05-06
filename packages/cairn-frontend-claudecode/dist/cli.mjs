@@ -41545,7 +41545,6 @@ function runDoctor(opts) {
   const projectName = normalizeProjectName(basename(repoRoot));
   const checks = [];
   checks.push(checkCairnLayout(repoRoot));
-  checks.push(checkMcpRegistration(repoRoot));
   checks.push(checkDecisions(repoRoot));
   checks.push(checkBrandOverview(repoRoot));
   checks.push(checkScopeIndex(repoRoot));
@@ -41600,55 +41599,6 @@ function checkCairnLayout(repoRoot) {
     label: ".cairn/",
     status: "ok",
     detail: `layout complete (${count} ground files)`
-  };
-}
-function checkMcpRegistration(repoRoot) {
-  const path2 = join11(repoRoot, ".mcp.json");
-  if (!existsSync8(path2)) {
-    return {
-      group: "core",
-      label: ".mcp.json",
-      status: "error",
-      detail: "missing \u2014 run cairn init",
-      fixCommand: "cairn init"
-    };
-  }
-  let parsed;
-  try {
-    parsed = JSON.parse(readFileSync8(path2, "utf8"));
-  } catch {
-    return {
-      group: "core",
-      label: ".mcp.json",
-      status: "error",
-      detail: "unreadable \u2014 re-run cairn init",
-      fixCommand: "cairn init --force"
-    };
-  }
-  const servers = parsed["mcpServers"];
-  if (typeof servers !== "object" || servers === null) {
-    return {
-      group: "core",
-      label: ".mcp.json",
-      status: "error",
-      detail: "missing mcpServers \u2014 re-run cairn init",
-      fixCommand: "cairn init --force"
-    };
-  }
-  if (servers["cairn"] === void 0) {
-    return {
-      group: "core",
-      label: ".mcp.json",
-      status: "error",
-      detail: "no cairn entry \u2014 re-run cairn init",
-      fixCommand: "cairn init --force"
-    };
-  }
-  return {
-    group: "core",
-    label: ".mcp.json",
-    status: "ok",
-    detail: "cairn MCP server registered"
   };
 }
 function checkDecisions(repoRoot) {
@@ -41711,20 +41661,11 @@ function checkBrandOverview(repoRoot) {
     };
   }
   const status = readFrontmatterStatus(path2) ?? "(none)";
-  if (status === "current" || status === "accepted") {
-    return {
-      group: "ground",
-      label: "brand/overview",
-      status: "ok",
-      detail: `status:${status}`
-    };
-  }
   return {
     group: "ground",
     label: "brand/overview",
-    status: "warn",
-    detail: `status:${status}`,
-    fixCommand: "cairn configure brand"
+    status: "ok",
+    detail: status === "current" || status === "accepted" ? `status:${status}` : `status:${status} \u2014 fill in when ready (operator-paced)`
   };
 }
 function checkScopeIndex(repoRoot) {
@@ -70357,7 +70298,7 @@ async function runUserPromptSubmitHook() {
 // ../cairn-core/dist/index.js
 function readVersion() {
   if (true)
-    return "0.3.1";
+    return "0.3.2";
   const _here = dirname22(fileURLToPath3(import.meta.url));
   const _pkg = JSON.parse(readFileSync61(join75(_here, "..", "package.json"), "utf8"));
   return _pkg.version;
