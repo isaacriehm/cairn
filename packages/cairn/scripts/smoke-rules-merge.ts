@@ -199,10 +199,10 @@ async function main(): Promise<void> {
   // Seed a decision file directly so buildDecisionsLedger picks it up.
   writeFile(
     repoRoot3,
-    ".cairn/ground/decisions/DEC-0001.md",
+    ".cairn/ground/decisions/DEC-a3f7b2c.md",
     [
       "---",
-      "id: DEC-0001",
+      "id: DEC-a3f7b2c",
       "title: Always sign with HS512",
       "type: adr",
       "status: accepted",
@@ -213,7 +213,7 @@ async function main(): Promise<void> {
       "decided_by: smoke",
       "---",
       "",
-      "# DEC-0001",
+      "# DEC-a3f7b2c",
       "",
     ].join("\n"),
   );
@@ -223,8 +223,8 @@ async function main(): Promise<void> {
     positioning: "State + context for AI orchestration.",
     nowIso: "2026-05-04T00:00:00Z",
   });
-  assert(regen.decisions.length === 1, "ledger picked up DEC-0001");
-  assert(regen.claudeMdContent.includes("DEC-0001"), "CLAUDE.md cites DEC-0001");
+  assert(regen.decisions.length === 1, "ledger picked up DEC-a3f7b2c");
+  assert(regen.claudeMdContent.includes("DEC-a3f7b2c"), "CLAUDE.md cites DEC-a3f7b2c");
   assert(regen.claudeMdContent.includes("State + context"), "CLAUDE.md cites positioning");
   assert(regen.claudeMdContent.includes("Keep this verbatim."), "CLAUDE.md preserves keep block");
   assert(regen.agentsMdContent.includes("Decisions"), "AGENTS.md includes decisions row");

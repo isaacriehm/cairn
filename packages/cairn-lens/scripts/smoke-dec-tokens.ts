@@ -6,7 +6,7 @@
  *   1. Missing decisions dir / ledger -> unknown (no throw)
  *   2. Decision found via frontmatter scan -> accepted + title
  *   3. Unknown DEC id -> status "unknown", title falls back to id
- *   4. §DEC-NNNN regex matches (bare token AND hash-comment prefix forms)
+ *   4. §DEC-<hash7> regex matches (bare token AND hash-comment prefix forms)
  */
 
 import {
@@ -52,10 +52,10 @@ function runSmoke(): void {
     const repoRoot = mkFixture();
     mkdirSync(join(repoRoot, ".cairn"), { recursive: true });
     const resolver = new LensResolver(repoRoot);
-    const r = resolver.resolveDecision("DEC-0001");
+    const r = resolver.resolveDecision("DEC-a3f7b2c");
     assert(r.status === "unknown", `Step 1: expected unknown, got ${r.status}`);
-    assert(r.id === "DEC-0001", "Step 1: id round-trip");
-    assert(r.title === "DEC-0001", "Step 1: title fallback to id");
+    assert(r.id === "DEC-a3f7b2c", "Step 1: id round-trip");
+    assert(r.title === "DEC-a3f7b2c", "Step 1: title fallback to id");
     console.log("  PASS  Step 1 — missing decisions dir -> unknown (no throw)");
   }
 
@@ -65,9 +65,9 @@ function runSmoke(): void {
     const decDir = join(repoRoot, ".cairn", "ground", "decisions");
     mkdirSync(decDir, { recursive: true });
     writeFileSync(
-      join(decDir, "DEC-0001.md"),
+      join(decDir, "DEC-a3f7b2c.md"),
       `---
-id: DEC-0001
+id: DEC-a3f7b2c
 title: Use strict null checks everywhere
 status: accepted
 ---
@@ -77,9 +77,9 @@ Body text here.
       "utf8",
     );
     writeFileSync(
-      join(decDir, "DEC-0002.md"),
+      join(decDir, "DEC-5e9d10a.md"),
       `---
-id: DEC-0002
+id: DEC-5e9d10a
 title: Prefer immutable data structures
 status: accepted
 ---
@@ -87,15 +87,15 @@ status: accepted
       "utf8",
     );
     const resolver = new LensResolver(repoRoot);
-    const r1 = resolver.resolveDecision("DEC-0001");
+    const r1 = resolver.resolveDecision("DEC-a3f7b2c");
     assert(
       r1.status === "accepted" && r1.title === "Use strict null checks everywhere",
-      `Step 2: DEC-0001 wrong: ${JSON.stringify(r1)}`,
+      `Step 2: DEC-a3f7b2c wrong: ${JSON.stringify(r1)}`,
     );
-    const r2 = resolver.resolveDecision("DEC-0002");
+    const r2 = resolver.resolveDecision("DEC-5e9d10a");
     assert(
       r2.status === "accepted" && r2.title === "Prefer immutable data structures",
-      `Step 2: DEC-0002 wrong: ${JSON.stringify(r2)}`,
+      `Step 2: DEC-5e9d10a wrong: ${JSON.stringify(r2)}`,
     );
     console.log("  PASS  Step 2 — frontmatter scan -> accepted + title");
   }
@@ -106,31 +106,31 @@ status: accepted
     const decDir = join(repoRoot, ".cairn", "ground", "decisions");
     mkdirSync(decDir, { recursive: true });
     writeFileSync(
-      join(decDir, "DEC-0001.md"),
-      `---\nid: DEC-0001\ntitle: Only one DEC\nstatus: accepted\n---\n`,
+      join(decDir, "DEC-a3f7b2c.md"),
+      `---\nid: DEC-a3f7b2c\ntitle: Only one DEC\nstatus: accepted\n---\n`,
       "utf8",
     );
     const resolver = new LensResolver(repoRoot);
-    const r = resolver.resolveDecision("DEC-9999");
+    const r = resolver.resolveDecision("DEC-deadbee");
     assert(r.status === "unknown", `Step 3: expected unknown, got ${r.status}`);
-    assert(r.id === "DEC-9999", "Step 3: id round-trip");
+    assert(r.id === "DEC-deadbee", "Step 3: id round-trip");
     console.log("  PASS  Step 3 — unknown DEC id -> unknown");
   }
 
-  // 4. §DEC-NNNN regex correctness (bare and hash-comment forms)
+  // 4. §DEC-<hash7> regex correctness (bare and hash-comment forms)
   {
-    const DECISION_TOKEN_RE = /§(DEC-\d+)/g;
+    const DECISION_TOKEN_RE = /§(DEC-[0-9a-f]{7,})/g;
     const cases: [string, string[]][] = [
       // bare token in source
-      ["const x = 1; // §DEC-0001", ["DEC-0001"]],
+      ["const x = 1; // §DEC-a3f7b2c", ["DEC-a3f7b2c"]],
       // hash-comment form (Python/Ruby/shell)
-      ["# §DEC-0007", ["DEC-0007"]],
+      ["# §DEC-deadbee", ["DEC-deadbee"]],
       // multiple on one line
-      ["§DEC-0001 and §DEC-0042", ["DEC-0001", "DEC-0042"]],
+      ["§DEC-a3f7b2c and §DEC-5e9d10a", ["DEC-a3f7b2c", "DEC-5e9d10a"]],
       // no token
       ["no citation here", []],
-      // old format should NOT match (we no longer emit "// See DEC-NNNN: title")
-      ["// See DEC-0001: some title", []],
+      // numeric / short id should NOT match (rejected by hash regex)
+      ["// See DEC-a3f7b2c: some title", []],
     ];
     for (const [line, expected] of cases) {
       const found = [...line.matchAll(DECISION_TOKEN_RE)].map((m) => m[1] as string);
@@ -139,7 +139,7 @@ status: accepted
         `Step 4: line "${line}" -> expected ${JSON.stringify(expected)}, got ${JSON.stringify(found)}`,
       );
     }
-    console.log("  PASS  Step 4 — §DEC-NNNN regex (bare + hash-comment)");
+    console.log("  PASS  Step 4 — §DEC-<hash7> regex (bare + hash-comment)");
   }
 
   console.log("smoke-dec-tokens — pass");

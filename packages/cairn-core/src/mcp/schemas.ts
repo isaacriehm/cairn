@@ -7,7 +7,7 @@ import { z } from "zod";
 // ── Read tools — graph traversal ───────────────────────────────────────────
 
 export const decisionGetInput = {
-  id: z.string().regex(/^DEC-\d{4,}$/, "decision id must match DEC-NNNN"),
+  id: z.string().regex(/^DEC-[0-9a-f]{7,}$/, "decision id must match DEC-<hash7>"),
 };
 
 export const decisionsInScopeInput = {
@@ -41,7 +41,7 @@ export const supersedesChainInput = {
 };
 
 export const invariantGetInput = {
-  id: z.string().regex(/^INV-\d{4,}$/, "invariant id must match INV-NNNN"),
+  id: z.string().regex(/^INV-[0-9a-f]{7,}$/, "invariant id must match INV-<hash7>"),
 };
 
 export const invariantsInScopeInput = {
@@ -95,10 +95,10 @@ export const taskCreateInput = {
   goal: z.string().min(1),
   target_path_globs: z.array(z.string().min(1)).min(1),
   in_scope_decisions: z
-    .array(z.string().regex(/^DEC-\d{4,}$/, "decision id must match DEC-NNNN"))
+    .array(z.string().regex(/^DEC-[0-9a-f]{7,}$/, "decision id must match DEC-<hash7>"))
     .optional(),
   in_scope_invariants: z
-    .array(z.string().regex(/^INV-\d{4,}$/, "invariant id must match INV-NNNN"))
+    .array(z.string().regex(/^INV-[0-9a-f]{7,}$/, "invariant id must match INV-<hash7>"))
     .optional(),
   constraints: z.array(z.string().min(1)).optional(),
   out_of_scope: z.array(z.string().min(1)).optional(),
@@ -107,7 +107,7 @@ export const taskCreateInput = {
 };
 
 export const recordDecisionInput = {
-  id: z.string().regex(/^DEC-\d{4,}$/).optional(),
+  id: z.string().regex(/^DEC-[0-9a-f]{7,}$/).optional(),
   title: z.string().min(1),
   summary: z.string().min(1),
   scope_globs: z.array(z.string()).min(1),

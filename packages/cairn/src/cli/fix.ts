@@ -161,7 +161,7 @@ async function fixDecStrip(repoRoot: string, dryRun: boolean): Promise<void> {
     process.exit(2);
   }
   const decFiles = entries.filter(
-    (n) => /^DEC-\d{4,}\.md$/.test(n) && !n.endsWith(".draft.md"),
+    (n) => /^DEC-[0-9a-f]{7,}\.md$/.test(n) && !n.endsWith(".draft.md"),
   );
   process.stdout.write(
     `  ⬡ cairn fix dec-strip${dryRun ? " --dry-run" : ""} — ${repoRoot}\n` +

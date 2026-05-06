@@ -62,11 +62,11 @@ function runSmoke(): void {
     generated: "2026-05-04T03:00:00Z",
     files: {
       "src/auth/login.ts": {
-        decisions: ["DEC-0042", "DEC-0089"],
-        invariants: ["INV-0041", "INV-0052"],
+        decisions: ["DEC-deadbee", "DEC-c0ffee1"],
+        invariants: ["INV-4141414", "INV-5252525"],
       },
       "src/dashboard/index.tsx": {
-        decisions: ["DEC-0017"],
+        decisions: ["DEC-2222222"],
         invariants: [],
       },
       ".eslintrc.json": {
@@ -89,11 +89,11 @@ function runSmoke(): void {
     assert(login !== null, "Step 3: src/auth/login.ts should resolve");
     if (login === null) return;
     assert(
-      login.decisions.length === 2 && login.decisions.includes("DEC-0042"),
+      login.decisions.length === 2 && login.decisions.includes("DEC-deadbee"),
       `Step 3: login decisions wrong, got ${JSON.stringify(login.decisions)}`,
     );
     assert(
-      login.invariants.includes("INV-0041"),
+      login.invariants.includes("INV-4141414"),
       `Step 3: login invariants wrong, got ${JSON.stringify(login.invariants)}`,
     );
 
@@ -117,38 +117,38 @@ function runSmoke(): void {
   // never carries prose for the read-enricher legend to render.
   {
     const dirtyDecisions = [
-      "DEC-0042",
+      "DEC-deadbee",
       "HS256 chosen over RS256: single deployment, no key-rotation requirement",
-      "DEC-0017 — Use explicit route files over decorator routers",
+      "DEC-2222222 — Use explicit route files over decorator routers",
       "Stripe is the only permitted payment processor.",
     ];
     const cleanDecisions = coerceDecisionIds(dirtyDecisions);
     assert(
       cleanDecisions.length === 2 &&
-        cleanDecisions[0] === "DEC-0042" &&
-        cleanDecisions[1] === "DEC-0017",
+        cleanDecisions[0] === "DEC-deadbee" &&
+        cleanDecisions[1] === "DEC-2222222",
       `Step 4: decision coerce wrong, got ${JSON.stringify(cleanDecisions)}`,
     );
 
     const dirtyInvariants = [
-      "INV-0001",
+      "INV-1111111",
       "TOKEN_TTL_MS = 24 hours; tokens with iat older than 24h must be rejected",
-      "INV-0023 — HTTP layer is the only public surface",
+      "INV-2323232 — HTTP layer is the only public surface",
       "Redactor implemented in Python for legacy reasons",
     ];
     const cleanInvariants = coerceInvariantIds(dirtyInvariants);
     assert(
       cleanInvariants.length === 2 &&
-        cleanInvariants[0] === "INV-0001" &&
-        cleanInvariants[1] === "INV-0023",
+        cleanInvariants[0] === "INV-1111111" &&
+        cleanInvariants[1] === "INV-2323232",
       `Step 4: invariant coerce wrong, got ${JSON.stringify(cleanInvariants)}`,
     );
 
     // Dedupe + non-string filter
-    const mixed: unknown[] = ["DEC-0001", "DEC-0001", 42, null, "DEC-0002"];
+    const mixed: unknown[] = ["DEC-a3f7b2c", "DEC-a3f7b2c", 42, null, "DEC-5e9d10a"];
     const deduped = coerceDecisionIds(mixed);
     assert(
-      deduped.length === 2 && deduped[0] === "DEC-0001" && deduped[1] === "DEC-0002",
+      deduped.length === 2 && deduped[0] === "DEC-a3f7b2c" && deduped[1] === "DEC-5e9d10a",
       `Step 4: dedupe/filter wrong, got ${JSON.stringify(deduped)}`,
     );
 

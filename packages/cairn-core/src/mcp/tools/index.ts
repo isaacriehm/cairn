@@ -2,6 +2,8 @@ import type { ToolDef } from "./types.js";
 import { archiveTool } from "./archive.js";
 import { attentionDedupTool } from "./attention-dedup.js";
 import { attentionRestoreTool } from "./attention-restore.js";
+import { attentionServeTool } from "./attention-serve.js";
+import { attentionWaitTool } from "./attention-wait.js";
 import { bulkAcceptAttentionTool } from "./bulk-accept-attention.js";
 import { canonicalForTopicTool } from "./canonical-for-topic.js";
 import { decisionGetTool } from "./decision-get.js";
@@ -49,6 +51,8 @@ export const allTools: ToolDef<unknown>[] = [
   bulkAcceptAttentionTool as ToolDef<unknown>,
   attentionDedupTool as ToolDef<unknown>,
   attentionRestoreTool as ToolDef<unknown>,
+  attentionServeTool as ToolDef<unknown>,
+  attentionWaitTool as ToolDef<unknown>,
   // Write — init pipeline (v0.2.0 MCP-native init)
   initResumeTool as ToolDef<unknown>,
   initParallel678Tool as ToolDef<unknown>,

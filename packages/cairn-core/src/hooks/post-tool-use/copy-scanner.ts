@@ -17,7 +17,7 @@
 
 const PATTERNS: ReadonlyArray<{ regex: RegExp; label: string }> = [
   { regex: /\b(TODO|FIXME|HACK|XXX|TEMP|WIP)\b/g, label: "comment-marker" },
-  { regex: /§INV-\d+/g, label: "cairn-citation-§INV" },
+  { regex: /§INV-[0-9a-f]{7,}/g, label: "cairn-citation-§INV" },
   { regex: /\bTSK-[a-z0-9-]+\b/g, label: "cairn-citation-TSK" },
   { regex: /\[(PLACEHOLDER|TODO|DRAFT)\]/g, label: "draft-marker" },
   {

@@ -59,7 +59,7 @@ function runSmoke(): void {
     let threw = false;
     let result;
     try {
-      result = resolver.resolveInvariant("INV-0099");
+      result = resolver.resolveInvariant("INV-9999999");
     } catch {
       threw = true;
     }
@@ -76,7 +76,7 @@ function runSmoke(): void {
     let threw = false;
     let result;
     try {
-      result = resolver.resolveDecision("DEC-0001");
+      result = resolver.resolveDecision("DEC-a3f7b2c");
     } catch {
       threw = true;
     }
@@ -94,8 +94,8 @@ function runSmoke(): void {
       generated: "2026-05-05T00:00:00Z",
       files: {
         "src/main.ts": {
-          decisions: ["DEC-0001", "DEC-0002"],
-          invariants: ["INV-0001"],
+          decisions: ["DEC-a3f7b2c", "DEC-5e9d10a"],
+          invariants: ["INV-1111111"],
         },
       },
     });
@@ -116,11 +116,11 @@ function runSmoke(): void {
       );
       // When ledger is absent, title falls back to id
       assert(
-        scope.decisions[0]?.id === "DEC-0001" && scope.decisions[0]?.title === "DEC-0001",
+        scope.decisions[0]?.id === "DEC-a3f7b2c" && scope.decisions[0]?.title === "DEC-a3f7b2c",
         `Step 3: title fallback wrong: ${JSON.stringify(scope.decisions[0])}`,
       );
       assert(
-        scope.invariants.length === 1 && scope.invariants[0]?.id === "INV-0001",
+        scope.invariants.length === 1 && scope.invariants[0]?.id === "INV-1111111",
         `Step 3: invariants wrong: ${JSON.stringify(scope.invariants)}`,
       );
     }
@@ -133,12 +133,12 @@ function runSmoke(): void {
     const decDir = join(repoRoot, ".cairn", "ground", "decisions");
     mkdirSync(decDir, { recursive: true });
     writeFileSync(
-      join(decDir, "DEC-0005.md"),
-      `---\nid: DEC-0005\ntitle: Draft decision\nstatus: draft\n---\n`,
+      join(decDir, "DEC-50d8a51.md"),
+      `---\nid: DEC-50d8a51\ntitle: Draft decision\nstatus: draft\n---\n`,
       "utf8",
     );
     const resolver = new LensResolver(repoRoot);
-    const r = resolver.resolveDecision("DEC-0005");
+    const r = resolver.resolveDecision("DEC-50d8a51");
     // buildDecisionsLedger only includes accepted; draft should not appear
     assert(
       r.status === "unknown",

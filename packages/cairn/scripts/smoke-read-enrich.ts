@@ -48,24 +48,24 @@ function runSmoke(): void {
 
   // ── Step 1 — scanCitations finds §INV / TODO / DEC ─────────────────
   {
-    const sample = `// §INV-0023 ground truth
+    const sample = `// §INV-2323232 ground truth
 const x = 1;
 // TODO(TSK-foo) finish this
-// §DEC-0042 explicit route file
-// DEC-9999 prose ref (no §) — should NOT match
+// §DEC-deadbee explicit route file
+// DEC-deadbe1 prose ref (no §) — should NOT match
 `;
     const matches = scanCitations(sample);
     assert(
-      matches.invariants.length === 1 && matches.invariants[0]?.id === "INV-0023",
-      `Step 1: expected one §INV-0023 match, got ${JSON.stringify(matches.invariants)}`,
+      matches.invariants.length === 1 && matches.invariants[0]?.id === "INV-2323232",
+      `Step 1: expected one §INV-2323232 match, got ${JSON.stringify(matches.invariants)}`,
     );
     assert(
       matches.todos.length === 1 && matches.todos[0]?.id === "TSK-foo",
       `Step 1: expected one TSK-foo match, got ${JSON.stringify(matches.todos)}`,
     );
     assert(
-      matches.decisions.length === 1 && matches.decisions[0]?.id === "DEC-0042",
-      `Step 1: expected one §DEC-0042 match, got ${JSON.stringify(matches.decisions)}`,
+      matches.decisions.length === 1 && matches.decisions[0]?.id === "DEC-deadbee",
+      `Step 1: expected one §DEC-deadbee match, got ${JSON.stringify(matches.decisions)}`,
     );
     console.log("  ✓ Step 1 — scanCitations (DEC requires § prefix)");
   }
@@ -80,13 +80,13 @@ const x = 1;
 
   // ── Step 3 — non-empty citations produce a legend block ──────────
   {
-    const matches = scanCitations("// §INV-0023 something");
+    const matches = scanCitations("// §INV-2323232 something");
     const result = buildLegend(matches, null, null, null, () => ({ found: "not_found" }));
     assert(result !== null, "Step 3: expected non-null legend");
     if (result === null) return;
     assert(
-      result.includes("§INV-0023"),
-      `Step 3: expected §INV-0023 in legend, got ${result}`,
+      result.includes("§INV-2323232"),
+      `Step 3: expected §INV-2323232 in legend, got ${result}`,
     );
     console.log("  ✓ Step 3 — citation legend");
   }
@@ -99,8 +99,8 @@ const x = 1;
       generated: "2026-05-04T03:00:00Z",
       files: {
         "src/auth/login.ts": {
-          decisions: ["DEC-0042"],
-          invariants: ["INV-0041"],
+          decisions: ["DEC-deadbee"],
+          invariants: ["INV-4141414"],
         },
       },
     });
@@ -109,7 +109,7 @@ const x = 1;
     assert(hit !== null, "Step 4: scope-index hit should be non-null");
     if (hit === null) return;
     assert(
-      hit.decisions.includes("DEC-0042"),
+      hit.decisions.includes("DEC-deadbee"),
       `Step 4: decisions array wrong, got ${JSON.stringify(hit.decisions)}`,
     );
 
@@ -117,7 +117,7 @@ const x = 1;
     assert(miss === null, "Step 4: missing path should resolve to null");
 
     // Build legend with scope hint — should produce header lines
-    const matches = scanCitations("// §INV-0041 cited");
+    const matches = scanCitations("// §INV-4141414 cited");
     const hint: ScopeIndexHint = {
       decisions: hit.decisions,
       invariants: hit.invariants,
@@ -129,7 +129,7 @@ const x = 1;
     assert(legend !== null, "Step 4: legend with scope-hint should be non-null");
     if (legend === null) return;
     assert(
-      legend.includes("Decisions in scope") || legend.includes("DEC-0042"),
+      legend.includes("Decisions in scope") || legend.includes("DEC-deadbee"),
       `Step 4: legend should reference scope decisions, got ${legend}`,
     );
     console.log("  ✓ Step 4 — scope-index legend integration");

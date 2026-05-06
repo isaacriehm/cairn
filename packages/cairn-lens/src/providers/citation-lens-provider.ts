@@ -16,8 +16,8 @@
 import * as vscode from "vscode";
 import { LensResolver } from "../resolver.js";
 
-const DECISION_TOKEN_RE = /§(DEC-\d{4,})\b/g;
-const INVARIANT_TOKEN_RE = /§(INV-\d{1,5})\b/g;
+const DECISION_TOKEN_RE = /§(DEC-[0-9a-f]{7,})\b/g;
+const INVARIANT_TOKEN_RE = /§(INV-[0-9a-f]{7,})\b/g;
 
 type InlineMode = "ghost" | "replace" | "below" | "off";
 

@@ -140,7 +140,7 @@ materially changes the spec. Quality bar per §14:
 
 | Bad question | Good question |
 |--------------|---------------|
-| What color should the button be? | DEC-0019 says Stripe is the only payment processor. New product on existing `@/services/stripe`, or replace the integration? |
+| What color should the button be? | DEC-1919191 says Stripe is the only payment processor. New product on existing `@/services/stripe`, or replace the integration? |
 | Function or class? | RUN-0042 perf trace says the bottleneck is the BullMQ queue depth. Optimize queue throughput, or change to direct execution? |
 
 **Per-round batching**: render at most **3 questions in a single
@@ -249,7 +249,7 @@ Reviewer: spawn LAST after all dispatched subagents complete.
   brief: |
     Read .cairn/tasks/active/<task_id>/spec.tightened.md.
     Implement the auth middleware portion (files: services/auth/*.ts).
-    Cite §INV-0042, §INV-0043 in any new code. If you leave any
+    Cite §INV-4242424, §INV-4343434 in any new code. If you leave any
     explicit follow-up in source (deferred edge case, missing piece
     that belongs to this task but is out of scope for this chunk),
     drop a `// TODO(TSK-<task_id>)` cite on that line so future
@@ -258,7 +258,7 @@ Reviewer: spawn LAST after all dispatched subagents complete.
   brief: |
     Read the same spec.
     Implement the billing portion (files: services/billing/*.ts).
-    Cite §INV-0012. Write attestation.yaml.
+    Cite §INV-1212121. Write attestation.yaml.
 ```
 ````
 

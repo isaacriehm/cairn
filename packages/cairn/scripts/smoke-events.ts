@@ -71,8 +71,8 @@ async function runSmoke(): Promise<void> {
     const t0 = 1_700_000_000_000;
     const result = writeInvalidationEvent(repoRoot, {
       kind: "decision_drafted",
-      refs: [{ kind: "decision", id: "DEC-0042" }],
-      path: ".cairn/ground/decisions/_inbox/DEC-0042.draft.md",
+      refs: [{ kind: "decision", id: "DEC-deadbee" }],
+      path: ".cairn/ground/decisions/_inbox/DEC-deadbee.draft.md",
       source: { session_id: "session-x", tool: "cairn_record_decision" },
       ts: t0,
     });
@@ -81,7 +81,7 @@ async function runSmoke(): Promise<void> {
     const parsed = JSON.parse(readFileSync(result.filePath, "utf8")) as InvalidationEvent;
     assert(parsed.ts === t0, "Step 1: ts mismatch");
     assert(parsed.kind === "decision_drafted", "Step 1: kind mismatch");
-    assert(parsed.refs.length === 1 && parsed.refs[0]?.id === "DEC-0042", "Step 1: ref mismatch");
+    assert(parsed.refs.length === 1 && parsed.refs[0]?.id === "DEC-deadbee", "Step 1: ref mismatch");
     console.log("  ✓ Step 1 — writer round-trip");
   }
 
@@ -91,13 +91,13 @@ async function runSmoke(): Promise<void> {
     const ts = 1_700_000_000_001;
     const a = writeInvalidationEvent(repoRoot, {
       kind: "decision_drafted",
-      refs: [{ kind: "decision", id: "DEC-0001" }],
+      refs: [{ kind: "decision", id: "DEC-a3f7b2c" }],
       source: { session_id: null, tool: "cairn_record_decision" },
       ts,
     });
     const b = writeInvalidationEvent(repoRoot, {
       kind: "decision_drafted",
-      refs: [{ kind: "decision", id: "DEC-0002" }],
+      refs: [{ kind: "decision", id: "DEC-5e9d10a" }],
       source: { session_id: null, tool: "cairn_record_decision" },
       ts,
     });
@@ -110,19 +110,19 @@ async function runSmoke(): Promise<void> {
     const repoRoot = mkRepoRoot();
     writeInvalidationEvent(repoRoot, {
       kind: "decision_drafted",
-      refs: [{ kind: "decision", id: "DEC-0001" }],
+      refs: [{ kind: "decision", id: "DEC-a3f7b2c" }],
       source: { session_id: null, tool: "test" },
       ts: 1_000,
     });
     writeInvalidationEvent(repoRoot, {
       kind: "decision_drafted",
-      refs: [{ kind: "decision", id: "DEC-0002" }],
+      refs: [{ kind: "decision", id: "DEC-5e9d10a" }],
       source: { session_id: null, tool: "test" },
       ts: 2_000,
     });
     writeInvalidationEvent(repoRoot, {
       kind: "decision_drafted",
-      refs: [{ kind: "decision", id: "DEC-0003" }],
+      refs: [{ kind: "decision", id: "DEC-1234567" }],
       source: { session_id: null, tool: "test" },
       ts: 3_000,
     });
@@ -199,7 +199,7 @@ async function runSmoke(): Promise<void> {
       scope_globs: ["**/*.ts"],
       target: "inbox",
     })) as { ok: boolean; id: string };
-    assert(out.ok && /^DEC-\d+/.test(out.id), `Step 6: record_decision should return ok+id, got ${JSON.stringify(out)}`);
+    assert(out.ok && /^DEC-[0-9a-f]{7,}/.test(out.id), `Step 6: record_decision should return ok+id, got ${JSON.stringify(out)}`);
     const after = listEventFiles(repoRoot);
     assert(after.length === before + 1, `Step 6: should write one event file, got ${after.length}`);
     const eventBody = JSON.parse(readFileSync(join(eventsDir(repoRoot), after[after.length - 1]!), "utf8")) as InvalidationEvent;

@@ -1,6 +1,6 @@
 {
   "name": "@isaacriehm/cairn",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Cairn — state + context-loading layer for AI coding agents.",
   "author": "Isaac Riehm",
   "license": "MIT",
@@ -66,7 +66,9 @@
     "smoke:init-phases-all": "tsx scripts/smoke-init-phases-all.ts",
     "smoke:init-mcp-tools": "tsx scripts/smoke-init-mcp-tools.ts",
     "smoke:init-progress-heartbeat": "tsx scripts/smoke-init-progress-heartbeat.ts",
-    "smoke:stop-debounce": "tsx scripts/smoke-stop-debounce.ts"
+    "smoke:stop-debounce": "tsx scripts/smoke-stop-debounce.ts",
+    "smoke:id-content-addressed": "tsx scripts/smoke-id-content-addressed.ts",
+    "smoke:attention-serve": "tsx scripts/smoke-attention-serve.ts"
   },
   "dependencies": {
     "@isaacriehm/cairn-core": "workspace:*",

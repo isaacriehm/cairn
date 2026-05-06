@@ -13,7 +13,7 @@ import type { McpContext } from "../context.js";
 import type { ToolDef } from "./types.js";
 
 const inputShape = {
-  decId: z.string().regex(/^DEC-\d{4,}$/),
+  decId: z.string().regex(/^DEC-[0-9a-f]{7,}$/),
 };
 
 interface RestoreInput {

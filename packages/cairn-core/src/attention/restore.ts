@@ -74,7 +74,7 @@ function flipStatusToDraft(body: string): string {
 }
 
 export async function restoreDec(args: RestoreArgs): Promise<RestoreResult> {
-  if (!/^DEC-\d{4,}$/.test(args.decId)) {
+  if (!/^DEC-[0-9a-f]{7,}$/.test(args.decId)) {
     return {
       ok: false,
       decId: args.decId,

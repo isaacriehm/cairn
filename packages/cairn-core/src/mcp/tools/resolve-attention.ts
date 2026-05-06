@@ -163,11 +163,11 @@ function resolveStopSignal(
 }
 
 async function resolveDecisionDraft(ctx: McpContext, input: Input): Promise<unknown> {
-  if (!/^DEC-\d{4,}$/.test(input.item_id)) {
+  if (!/^DEC-[0-9a-f]{7,}$/.test(input.item_id)) {
     return Promise.resolve(
       mcpError(
         "VALIDATION_FAILED",
-        `decision_draft item_id must match DEC-NNNN, got ${input.item_id}`,
+        `decision_draft item_id must match DEC-<hash7>, got ${input.item_id}`,
       ),
     );
   }

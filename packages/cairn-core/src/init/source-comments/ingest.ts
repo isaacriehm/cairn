@@ -21,8 +21,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { stringify as stringifyYaml } from "yaml";
 import {
-  allocateDecisionId,
-  allocateInvariantId,
+  computeDecisionId,
+  computeInvariantId,
   scanExistingDecisionIds,
   scanExistingInvariantIds,
 } from "../../decision-capture/id.js";
@@ -196,7 +196,17 @@ export async function runSourceCommentsIngestion(
     if (block === undefined || cls === undefined) continue;
 
     if (cls.kind === "rationale" && cls.suggestedDecDraft.length > 0) {
-      const id = allocateDecisionId(repoRoot, existingIds);
+      const id = computeDecisionId(
+        {
+          title: cls.suggestedDecDraft,
+          rationale: block.prose,
+          capture_source: "init-source-comments",
+          source_file: block.file,
+          source_offset: block.startLine,
+          raw: block.raw,
+        },
+        existingIds,
+      );
       existingIds.add(id);
       const confidence: DraftConfidence | undefined =
         args.globs !== undefined
@@ -241,7 +251,15 @@ export async function runSourceCommentsIngestion(
         proposed: cls.suggestedInvariant,
         canonical_topic: cls.suggestedCanonicalTopic,
       });
-      const invId = allocateInvariantId(repoRoot, existingInvariantIds);
+      const invId = computeInvariantId(
+        {
+          title: cls.suggestedInvariant,
+          source_file: block.file,
+          source_offset: block.startLine,
+          raw: block.raw,
+        },
+        existingInvariantIds,
+      );
       existingInvariantIds.add(invId);
       const invConfidence: DraftConfidence | undefined =
         args.globs !== undefined
@@ -505,7 +523,7 @@ function updateScopeIndexFromStripItems(
 ): void {
   if (items.length === 0) return;
   const idsByFile = new Map<string, Set<string>>();
-  const idMatch = /§(INV-\d{4,})/;
+  const idMatch = /§(INV-[0-9a-f]{7,})/;
   for (const item of items) {
     const m = item.replacement.match(idMatch);
     if (m === null) continue;

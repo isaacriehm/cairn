@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { stringify as stringifyYaml } from "yaml";
 import {
-  allocateDecisionId,
+  computeDecisionId,
   scanExistingDecisionIds,
 } from "../../decision-capture/index.js";
 import type { McpContext } from "../context.js";
@@ -57,7 +57,22 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
       }
       id = input.id;
     } else {
-      id = allocateDecisionId(ctx.repoRoot, existingIds);
+      // Manual user-record path has no source provenance — fold a
+      // millisecond timestamp in so two distinct decisions with
+      // identical title + summary still hash to different ids.
+      id = computeDecisionId(
+        {
+          title: input.title,
+          rationale: input.summary,
+          capture_source: "user-record",
+          scope_globs: input.scope_globs,
+          ...(input.body_markdown !== undefined
+            ? { body_markdown: input.body_markdown }
+            : {}),
+          timestamp_ms: Date.now(),
+        },
+        existingIds,
+      );
     }
 
     if (input.supersedes !== undefined && !existingIds.has(input.supersedes)) {

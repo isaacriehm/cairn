@@ -128,7 +128,7 @@ const MODULE_SYSTEM_PROMPT = [
   "  - `high_stakes_globs` — globs for high-risk surfaces in this module (auth, billing, payments, multi-tenant, integrations storing tokens, telephony). Be conservative.",
   "  - `off_limits_globs` — globs the cairn MUST NOT touch beyond defaults. Vendored code, large fixtures, copied snapshots.",
   "  - `scope_index` — `{ files: { \"<repo-relative-path>\": { decisions: [], invariants: [], unscoped?: true } } }`. The user prompt provides the in-scope decisions + invariants list. Map only files within THIS module. Use `unscoped: true` for lockfiles, generated, vendored, or dotfile config.",
-  "  - IMPORTANT: scope_index decisions[] and invariants[] arrays MUST contain ONLY IDs (e.g. \"DEC-0042\", \"INV-0023\"). NEVER copy ledger titles or descriptive prose into these arrays — IDs only.",
+  "  - IMPORTANT: scope_index decisions[] and invariants[] arrays MUST contain ONLY IDs (e.g. \"DEC-a3f7b2c\", \"INV-5e9d10a\" — content-addressed 7+ hex chars). NEVER copy ledger titles or descriptive prose into these arrays — IDs only.",
   "  - `notes` — anything notable that didn't fit a structured field.",
   "",
   "Rules:",

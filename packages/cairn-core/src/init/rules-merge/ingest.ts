@@ -22,7 +22,7 @@ import { dirname, join } from "node:path";
 import { stringify as stringifyYaml } from "yaml";
 import { runClaude } from "../../claude/index.js";
 import {
-  allocateDecisionId,
+  computeDecisionId,
   scanExistingDecisionIds,
 } from "../../decision-capture/id.js";
 import { decisionsDir } from "../../ground/paths.js";
@@ -204,7 +204,17 @@ export async function runRulesMerge(args: RunRulesMergeArgs): Promise<RunRulesMe
 
   for (const cls of allClassifications) {
     if (cls.kind === "rule-net-new" && cls.proposedDecTitle.length > 0) {
-      const id = allocateDecisionId(repoRoot, existingIds);
+      const id = computeDecisionId(
+        {
+          title: cls.proposedDecTitle,
+          rationale: cls.proposedRationale,
+          capture_source: "init-rules-merge",
+          source_file: cls.source,
+          source_offset: cls.startOffset,
+          raw: cls.title,
+        },
+        existingIds,
+      );
       existingIds.add(id);
       if (args.dryRun !== true) {
         const written = writeDecDraft({

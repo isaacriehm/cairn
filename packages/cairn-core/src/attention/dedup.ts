@@ -18,7 +18,7 @@
  * CLI subcommand wraps `findDuplicateClusters` for `--dry-run` previews.
  */
 
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { decisionsDir } from "../ground/paths.js";
 
@@ -110,7 +110,7 @@ function parseMinimalFrontmatter(raw: string): {
 /* -------------------------------------------------------------------------- */
 
 export interface DraftRef {
-  /** DEC id (e.g. `DEC-0042`). */
+  /** DEC id (e.g. `DEC-a3f7b2c`). */
   id: string;
   /** Repo-relative path to the draft file in `_inbox/`. */
   path: string;
@@ -129,7 +129,7 @@ export interface DuplicateCluster {
   tier: "definite" | "potential";
   /** Average pairwise Jaccard within the cluster. */
   averageSimilarity: number;
-  /** Cluster members; first-listed is a stable suggested survivor (lowest id). */
+  /** Cluster members; first-listed is a stable suggested survivor (oldest mtime, then lex id). */
   drafts: DraftRef[];
 }
 
@@ -154,6 +154,7 @@ export interface DedupResult {
 
 interface InternalDoc extends DraftRef {
   tokens: Set<string>;
+  mtimeMs: number;
 }
 
 /** Default tier thresholds — see module-level docstring. */
@@ -188,9 +189,12 @@ export function findDuplicateClusters(args: {
   );
   const docs: InternalDoc[] = [];
   for (const f of files) {
+    const abs = join(inbox, f);
     let raw: string;
+    let mtimeMs: number;
     try {
-      raw = readFileSync(join(inbox, f), "utf8");
+      raw = readFileSync(abs, "utf8");
+      mtimeMs = statSync(abs).mtimeMs;
     } catch {
       continue;
     }
@@ -206,6 +210,7 @@ export function findDuplicateClusters(args: {
       source: fm.capture_source ?? "",
       confidence: fm.capture_confidence ?? null,
       tokens: tokenize(text),
+      mtimeMs,
     });
   }
   const n = docs.length;
@@ -281,11 +286,17 @@ export function findDuplicateClusters(args: {
     const avg = count === 0 ? 0 : total / count;
     const tier: "definite" | "potential" =
       avg >= thresholdDefinite ? "definite" : "potential";
-    // Stable survivor pick: lowest DEC id (lex sort works for DEC-NNNN).
+    // Stable survivor pick: oldest mtime first (so the earliest-captured
+    // draft becomes the canonical one), then lex id as a deterministic
+    // tiebreaker. Content-addressed ids lex-sort to a random order, so
+    // mtime is the meaningful signal under hash-based ids.
     const ordered = idxs
       .map((i) => docs[i])
       .filter((d): d is InternalDoc => d !== undefined);
-    ordered.sort((a, b) => a.id.localeCompare(b.id));
+    ordered.sort((a, b) => {
+      if (a.mtimeMs !== b.mtimeMs) return a.mtimeMs - b.mtimeMs;
+      return a.id.localeCompare(b.id);
+    });
     clusters.push({
       tier,
       averageSimilarity: Number(avg.toFixed(3)),

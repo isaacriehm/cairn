@@ -279,7 +279,7 @@ function resolveSupersededBy(
   acceptedById: Map<string, true>,
 ): string | null {
   if (proposed === undefined || proposed === null) return null;
-  if (!/^DEC-\d{4,}$/.test(proposed)) return null;
+  if (!/^DEC-[0-9a-f]{7,}$/.test(proposed)) return null;
   return acceptedById.has(proposed) ? proposed : null;
 }
 

@@ -33,8 +33,8 @@ export interface ScopeIndexEntry {
   unscoped?: true;
 }
 
-const DEC_ID_RE = /\bDEC-\d{4,}\b/;
-const INV_ID_RE = /\bINV-\d{4,}\b/;
+const DEC_ID_RE = /\bDEC-[0-9a-f]{7,}\b/;
+const INV_ID_RE = /\bINV-[0-9a-f]{7,}\b/;
 
 /**
  * Mapper LLMs occasionally emit ledger-entry PROSE ("HTTP layer is the only

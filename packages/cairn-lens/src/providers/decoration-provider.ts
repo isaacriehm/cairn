@@ -37,9 +37,9 @@ import { lensLog } from "../debug-log.js";
 
 type InlineMode = "ghost" | "replace" | "below" | "off";
 
-// §DEC-NNNN — new bare-token format from strip-replace.
-const DECISION_TOKEN_RE = /§(DEC-\d{4,})\b/g;
-const INVARIANT_TOKEN_RE = /§(INV-\d{1,5})\b/g;
+// §DEC-<hash7> — content-addressed bare-token format from strip-replace.
+const DECISION_TOKEN_RE = /§(DEC-[0-9a-f]{7,})\b/g;
+const INVARIANT_TOKEN_RE = /§(INV-[0-9a-f]{7,})\b/g;
 
 interface DecorationKit {
   inlineActive: vscode.TextEditorDecorationType;

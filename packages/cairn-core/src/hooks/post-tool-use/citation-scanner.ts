@@ -12,7 +12,7 @@
  */
 
 export interface CitationMatch {
-  /** Citation id, e.g. "INV-0023" or "TSK-auth-refactor" or "DEC-0042". */
+  /** Citation id, e.g. "INV-2323232" or "TSK-auth-refactor" or "DEC-a3f7b2c". */
   id: string;
   /** 1-indexed line number from cat -n prefix, or iteration index. */
   line: number;
@@ -25,13 +25,13 @@ export interface ScannedCitations {
   decisions: CitationMatch[];
 }
 
-const INVARIANT_RE = /§INV-(\d+)/g;
+const INVARIANT_RE = /§INV-([0-9a-f]{7,})/g;
 const TODO_RE = /TODO\(TSK-([^)]+)\)/g;
-// Require `§` prefix so plain `DEC-NNNN` strings (URL fragments, prose
+// Require `§` prefix so plain `DEC-<hash>` strings (URL fragments, prose
 // citations in markdown bodies, GitHub-style refs) don't false-match.
 // The strip-replace phase ALWAYS emits the `§` prefix on accepted
 // decision tokens (per LENS_SPEC + CLAUDE.md "bare symbols only").
-const DEC_RE = /§DEC-(\d+)/g;
+const DEC_RE = /§DEC-([0-9a-f]{7,})/g;
 const CAT_N_PREFIX_RE = /^(\d+)\t/;
 
 export function scanCitations(content: string): ScannedCitations {

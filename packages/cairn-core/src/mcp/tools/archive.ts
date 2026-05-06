@@ -53,7 +53,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
 
     try {
       const refs: InvalidationEventRef[] = [{ kind: "path", id: rel }];
-      const decMatch = rel.match(/^\.cairn\/ground\/decisions\/(?:_inbox\/)?(DEC-\d+)/);
+      const decMatch = rel.match(/^\.cairn\/ground\/decisions\/(?:_inbox\/)?(DEC-[0-9a-f]{7,})/);
       if (decMatch) refs.unshift({ kind: "decision", id: decMatch[1]! });
       writeInvalidationEvent(ctx.repoRoot, {
         kind: "path_archived",

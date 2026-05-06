@@ -241,8 +241,8 @@ async function runSmoke(): Promise<void> {
   // ── Step 4 — onboarding disappears once a DEC is accepted ──────────
   {
     write(
-      join(repoRoot, ".cairn", "ground", "decisions", "DEC-0042.md"),
-      `---\nid: DEC-0042\ntitle: First real decision\ntype: adr\nstatus: accepted\naudience: dual\ngenerated: 2026-05-04T00:00:00Z\nverified-at: 2026-05-04T00:00:00Z\n---\n\n# DEC-0042 — First real decision\n\nBody.\n`,
+      join(repoRoot, ".cairn", "ground", "decisions", "DEC-deadbee.md"),
+      `---\nid: DEC-deadbee\ntitle: First real decision\ntype: adr\nstatus: accepted\naudience: dual\ngenerated: 2026-05-04T00:00:00Z\nverified-at: 2026-05-04T00:00:00Z\n---\n\n# DEC-deadbee — First real decision\n\nBody.\n`,
     );
     const ctx = await buildSessionStartContext({
       repoRoot,

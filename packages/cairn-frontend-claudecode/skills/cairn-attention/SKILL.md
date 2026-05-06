@@ -24,6 +24,49 @@ so by the time this skill engages bootstrap should be wired. If
 SessionStart's auto-bootstrap failed — surface its banner (already
 in additionalContext) and end the turn.
 
+## Step 0.3 — large-queue routing (browser triage GUI)
+
+When `attention_count > 15`, the inline `AskUserQuestion` flow burns
+one MCP round-trip per draft and 4-cap batches force the operator
+through dozens of turns. Above the threshold, hand off to the browser:
+
+1. Call `cairn_attention_serve({})`. Returns
+   `{ url, port, sentinel_path }`. The browser auto-opens. If it
+   doesn't, the operator clicks the URL.
+
+2. Print a **single chat message** containing the URL as a clickable
+   markdown link, **nothing else**:
+
+   ```markdown
+   ⚑ N pending — opened triage UI:
+
+   → **[Open Cairn Attention](<url>)**
+
+   Triage all drafts in the browser. Click "I'm done" when finished —
+   this session resumes automatically.
+   ```
+
+3. Call `cairn_attention_wait({})` (default 1800s). The MCP tool
+   blocks until the operator clicks "I'm done" in the UI (or the
+   server idles out). Returns the `DoneState`:
+
+   ```
+   { ok, reason: "done"|"idle"|"abort",
+     accepted, rejected, merged, edited,
+     startedAt, endedAt }
+   ```
+
+4. Render a one-line summary to the operator:
+
+   ```markdown
+   ✓ Triage complete (reason). Accepted N · Rejected M · Merged K · Edited E.
+   ```
+
+5. **Exit the skill.** Do **not** run Steps 0.5 / 0.7 / 1 / 2 / 3 —
+   the GUI handled all of them.
+
+If `attention_count <= 15`, fall through to the inline flow below.
+
 ## Step 0.5 — bulk-accept obvious DEC drafts
 
 Phase 7b emits one DEC draft per "rationale"-class JSDoc / block
@@ -140,7 +183,7 @@ files.
 **Rejected DECs are not in the queue.** Reject is a final operator
 decision; surfacing rejected ids every session would force re-triage
 of already-resolved items. When the operator explicitly asks to
-reconsider a specific id ("restore DEC-0003", "un-reject DEC-NNNN"),
+reconsider a specific id ("restore DEC-1234567", "un-reject DEC-NNNN"),
 call `cairn_resolve_attention` with that id directly — the tool
 auto-restores from `.rejected.md` (or already-accepted `<id>.md`)
 transparently and applies the chosen `a/b/c`. Response carries
@@ -192,7 +235,7 @@ question, in the order they were sent). Loop through the answers
 and call `cairn_resolve_attention` once per item:
 
 ```
-cairn_resolve_attention({kind: "decision_draft", item_id: "DEC-0042", choice: "a"})
+cairn_resolve_attention({kind: "decision_draft", item_id: "DEC-deadbee", choice: "a"})
 ```
 
 Resolve calls can run in parallel (separate tool_use blocks in the

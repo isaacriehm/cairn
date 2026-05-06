@@ -17,9 +17,11 @@ import {
 } from "node:fs";
 import { join, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
+import { spawn } from "node:child_process";
 import {
   bulkAcceptObvious,
   restoreDec,
+  startAttentionServer,
   type BulkAcceptResult,
   type DraftConfidence,
 } from "@isaacriehm/cairn-core";
@@ -349,10 +351,10 @@ function renderBulkAcceptResult(
 }
 
 async function restoreCli(repoRoot: string, argv: string[]): Promise<void> {
-  const decId = argv.find((a) => /^DEC-\d{4,}$/.test(a));
+  const decId = argv.find((a) => /^DEC-[0-9a-f]{7,}$/.test(a));
   if (decId === undefined) {
     console.error(
-      "cairn attention restore: missing or invalid DEC id (expected DEC-NNNN)",
+      "cairn attention restore: missing or invalid DEC id (expected DEC-<hash7>)",
     );
     process.exit(2);
   }
@@ -396,12 +398,66 @@ async function bulkAcceptCli(repoRoot: string, argv: string[]): Promise<void> {
   process.exit(0);
 }
 
+async function serveCli(repoRoot: string, argv: string[]): Promise<void> {
+  const portIdx = argv.indexOf("--port");
+  const port =
+    portIdx >= 0 && argv[portIdx + 1] !== undefined
+      ? Number.parseInt(argv[portIdx + 1] as string, 10)
+      : 0;
+  if (Number.isNaN(port) || port < 0 || port > 65535) {
+    console.error(`--port must be 0-65535, got ${argv[portIdx + 1]}`);
+    process.exit(2);
+  }
+  const noOpen = argv.includes("--no-open");
+  const idleIdx = argv.indexOf("--idle-timeout-min");
+  const idleTimeoutMs =
+    idleIdx >= 0 && argv[idleIdx + 1] !== undefined
+      ? Number.parseInt(argv[idleIdx + 1] as string, 10) * 60_000
+      : undefined;
+
+  const handle = await startAttentionServer({
+    repoRoot,
+    port,
+    ...(idleTimeoutMs !== undefined ? { idleTimeoutMs } : {}),
+  });
+  process.stdout.write(
+    `  ⬡ cairn attention serve — ${repoRoot}\n` +
+      `    listening on ${handle.url}\n` +
+      `    sentinel:    ${handle.sentinelPath}\n`,
+  );
+  if (!noOpen) {
+    const opener =
+      process.platform === "darwin"
+        ? "open"
+        : process.platform === "win32"
+          ? "start"
+          : "xdg-open";
+    try {
+      spawn(opener, [handle.url], {
+        stdio: "ignore",
+        detached: true,
+      }).unref();
+    } catch {
+      /* if open fails, operator clicks the URL manually */
+    }
+  }
+  process.on("SIGINT", () => {
+    handle.close().then(() => process.exit(0));
+  });
+  const state = await handle.done;
+  process.stdout.write(
+    `  ✓ triage ${state.reason} — accepted ${state.accepted} · rejected ${state.rejected} · merged ${state.merged} · edited ${state.edited}\n`,
+  );
+  process.exit(0);
+}
+
 export async function attentionCli(argv: string[]): Promise<void> {
   if (argv[0] === "--help" || argv[0] === "-h") {
     process.stdout.write(
       "Usage: cairn attention [--repo <path>]\n" +
         "       cairn attention bulk-accept [--threshold high|medium|low] [--dry-run] [--repo <path>]\n" +
         "       cairn attention restore <DEC-id> [--repo <path>]\n" +
+        "       cairn attention serve [--port <n>] [--no-open] [--idle-timeout-min <n>] [--repo <path>]\n" +
         "  Default: list DEC drafts pending confirm + latest baseline sensor findings.\n" +
         "  bulk-accept: score drafts by confidence, auto-promote ≥threshold (default high)\n" +
         "    out of _inbox/ to .cairn/ground/decisions/, and stamp\n" +
@@ -409,8 +465,12 @@ export async function attentionCli(argv: string[]): Promise<void> {
         "    accepts all drafts; only use after reviewing the dry-run output.\n" +
         "  restore: move a previously rejected or accepted DEC back to _inbox/<id>.draft.md\n" +
         "    so the operator can re-evaluate via cairn-attention. Accepted-to-draft\n" +
-        "    keeps the inline `// §DEC-NNNN` source cite (re-accept is idempotent).\n" +
-        "  Exit 0 when nothing pending or after bulk-accept/restore; 2 when any items remain.\n",
+        "    keeps the inline `// §DEC-<hash>` source cite (re-accept is idempotent).\n" +
+        "  serve: launch the browser triage UI on 127.0.0.1:<port>. Default port = OS-assigned.\n" +
+        "    Auto-opens the browser unless --no-open. Blocks until the operator clicks Done\n" +
+        "    or the server idles out (default 10 min). Writes a sentinel at\n" +
+        "    .cairn/cache/attention-done.json on exit.\n" +
+        "  Exit 0 when nothing pending or after bulk-accept/restore/serve; 2 when any items remain.\n",
     );
     process.exit(0);
   }
@@ -428,6 +488,14 @@ export async function attentionCli(argv: string[]): Promise<void> {
     const repoRoot = parseRepoFlag(rest);
     ensureAdopted(repoRoot);
     await restoreCli(repoRoot, rest);
+    return;
+  }
+
+  if (argv[0] === "serve") {
+    const rest = argv.slice(1);
+    const repoRoot = parseRepoFlag(rest);
+    ensureAdopted(repoRoot);
+    await serveCli(repoRoot, rest);
     return;
   }
 

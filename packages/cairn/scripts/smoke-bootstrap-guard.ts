@@ -142,7 +142,7 @@ async function main(): Promise<void> {
   );
   const ctx: McpContext = { repoRoot: repoRoot2, sessionId: "smoke" };
   const result = (await call(tool!, ctx, {
-    item_id: "DEC-0001",
+    item_id: "DEC-a3f7b2c",
     choice: "a",
     kind: "decision_draft",
   })) as Record<string, unknown>;

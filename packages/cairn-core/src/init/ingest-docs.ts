@@ -22,7 +22,7 @@ import {
 import { join, relative } from "node:path";
 import { stringify as stringifyYaml } from "yaml";
 import { runClaude } from "../claude/index.js";
-import { allocateDecisionId, scanExistingDecisionIds } from "../decision-capture/id.js";
+import { computeDecisionId, scanExistingDecisionIds } from "../decision-capture/id.js";
 import { decisionsDir } from "../ground/paths.js";
 import { logger } from "../logger.js";
 
@@ -556,10 +556,9 @@ export async function runDocsIngestion(
 
   const classifications = await classifyAll(top, args.repoRoot, args.mockClassify);
 
-  // Allocate DEC ids serially so we never collide with each other or with
-  // drafts already in _inbox/ from the mapper's heavyweight-comment extractor.
-  // When the caller threads a shared Set in (parallel pipeline), reuse it
-  // so concurrent allocations across phases stay coherent.
+  // Derive content-addressed DEC ids — re-running on the same docs
+  // produces the same ids (idempotent ingest). The caller's shared Set
+  // (parallel pipeline) doubles as a collision check across phases.
   const seenIds = args.existingDecIds ?? scanExistingDecisionIds(args.repoRoot);
   const decDraftsWritten: IngestionResult["decDraftsWritten"] = [];
   const canonicalEntries: { topic: string; canonicalPath: string }[] = [];
@@ -569,7 +568,15 @@ export async function runDocsIngestion(
     if (c.failed) continue;
     const k = c.classification.kind;
     if (k === "decision" || k === "domain-rule") {
-      const id = allocateDecisionId(args.repoRoot, seenIds);
+      const id = computeDecisionId(
+        {
+          title: c.classification.proposedTitle,
+          rationale: c.classification.proposedRationale,
+          capture_source: "init-docs-ingest",
+          source_file: c.candidate.path,
+        },
+        seenIds,
+      );
       seenIds.add(id);
       const written = writeDecDraftFromDoc({
         repoRoot: args.repoRoot,

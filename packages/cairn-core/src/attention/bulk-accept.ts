@@ -249,7 +249,7 @@ export async function bulkAcceptObvious(
   if (existsSync(invDir)) {
     const invEntries = readdirSync(invDir, { withFileTypes: true });
     const invFiles = invEntries.filter(
-      (e) => e.isFile() && /^INV-\d{4,}\.md$/.test(e.name),
+      (e) => e.isFile() && /^INV-[0-9a-f]{7,}\.md$/.test(e.name),
     );
     invResult.invariantsScanned = invFiles.length;
 

@@ -10,16 +10,16 @@ import * as vscode from "vscode";
 import { LensResolver } from "../resolver.js";
 import { lensLog } from "../debug-log.js";
 
-// Matches the new bare-token format:  §DEC-0001  or  # §DEC-0001
+// Content-addressed bare-token format:  §DEC-a3f7b2c  or  # §DEC-a3f7b2c
 // Width + boundary disciplined to match decoration-provider; see
 // providers/decoration-provider.ts for the rationale.
-const DECISION_TOKEN_RE = /§(DEC-\d{4,})\b/g;
-const INVARIANT_TOKEN_RE = /§(INV-\d{1,5})\b/g;
+const DECISION_TOKEN_RE = /§(DEC-[0-9a-f]{7,})\b/g;
+const INVARIANT_TOKEN_RE = /§(INV-[0-9a-f]{7,})\b/g;
 const TASK_TOKEN_RE = /TODO\(TSK-[A-Za-z0-9_-]+\)/g;
 
 interface TokenMatch {
   kind: "decision" | "invariant" | "task";
-  id: string; // "DEC-0001", "INV-0023", or "TSK-foo"
+  id: string; // "DEC-a3f7b2c", "INV-2323232", or "TSK-foo"
   range: vscode.Range;
 }
 
@@ -36,7 +36,7 @@ function findTokenAt(
     if (position.character >= start && position.character <= end) {
       return {
         kind: "decision",
-        id: m[1] as string, // "DEC-0001"
+        id: m[1] as string, // "DEC-<hash7>"
         range: new vscode.Range(position.line, start, position.line, end),
       };
     }
@@ -48,7 +48,7 @@ function findTokenAt(
     if (position.character >= start && position.character <= end) {
       return {
         kind: "invariant",
-        id: m[1] as string, // "INV-0023"
+        id: m[1] as string, // "INV-<hash7>"
         range: new vscode.Range(position.line, start, position.line, end),
       };
     }

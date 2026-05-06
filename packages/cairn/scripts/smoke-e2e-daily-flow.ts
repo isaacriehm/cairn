@@ -287,7 +287,7 @@ async function main(): Promise<void> {
 
   step("Step 4 — resolve_attention promotes inbox draft to canonical DEC");
   // Write a DEC draft directly into inbox.
-  const decId = "DEC-9001";
+  const decId = "DEC-9001234";
   writeFile(
     repoRoot,
     `.cairn/ground/decisions/_inbox/${decId}.draft.md`,

@@ -15,7 +15,7 @@ import type {
 export interface ScopeIndexHint {
   /** DEC-IDs in scope for the file. */
   decisions: string[];
-  /** Invariant IDs in scope (e.g. "INV-0041"). */
+  /** Invariant IDs in scope (e.g. "INV-4141414"). */
   invariants: string[];
 }
 
@@ -83,7 +83,7 @@ function renderDecision(
   id: string,
   ledger: DecisionsLedgerSnapshot | null,
 ): string {
-  // id arrives as "DEC-0042" — display with the §-prefix.
+  // id arrives as "DEC-<hash7>" — display with the §-prefix.
   const label = `§${id}`;
   if (ledger === null) {
     return `${label} → [NOT FOUND — orphaned citation, GC will flag]`;
@@ -106,7 +106,7 @@ function renderDecision(
 }
 
 function renderInvariant(id: string, ledger: LedgerSnapshot | null): string {
-  // id arrives as "INV-0023" — display with the §-prefix.
+  // id arrives as "INV-<hash7>" — display with the §-prefix.
   const label = `§${id}`;
   if (ledger === null) {
     return `${label} → [NOT FOUND — orphaned citation, GC will flag]`;

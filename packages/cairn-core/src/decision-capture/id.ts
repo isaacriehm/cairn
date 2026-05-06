@@ -1,32 +1,143 @@
 /**
- * Decision + invariant id allocators. Monotonic, never reused.
+ * Content-addressed id derivation for decisions and invariants.
  *
- * Decisions: scan `.cairn/ground/decisions/` for accepted decisions AND
- * `.cairn/ground/decisions/_inbox/` for outstanding drafts. Either counts
- * toward the high-water mark — a draft that's pending operator confirmation
- * still owns its id; rejecting a draft does NOT recycle the id.
+ * Decisions: `DEC-<hash>` where `<hash>` is the first 7 hex chars of
+ *   sha256(canonicalized input). Stable across clones — two devs
+ *   that capture the same source comment in the same file produce
+ *   the same id, so concurrent adoption runs do not collide on merge.
  *
- * Invariants: scan `.cairn/ground/invariants/INV-<NNNN>.md`. Phase 7b writes
- * invariants directly to ground state (no `_inbox/` flow — they auto-promote
- * from the constraint classifier; operator edits / supersedes after the
- * fact).
+ * Invariants: same shape, `INV-<hash>`.
  *
- * Single source of truth for id allocation. The MCP write tools and the
- * init pipeline call these helpers; do NOT re-implement the scan elsewhere.
+ * On the rare hash collision against an existing on-disk id with
+ * different content, the new id extends to 8 chars. Same fallback git
+ * uses for short SHAs.
+ *
+ * Ids are never recycled — rejecting a draft renames the file to
+ * `<id>.rejected.md` so the same hash never re-allocates to a
+ * different decision.
  */
 
+import { createHash } from "node:crypto";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { decisionsDir, invariantsDir } from "../ground/paths.js";
 
-const FILENAME_RE = /^DEC-(\d{4,})(?:\.draft|\.rejected)?\.md$/;
-// Invariant filename: `INV-<NNNN>.md` — matches the schema id
-// regex /^INV-\d{4,}$/ at packages/cairn-core/src/ground/schemas.ts.
-const INVARIANT_FILENAME_RE = /^INV-(\d{4,})\.md$/;
+/** Default short-hash length (matches git short-SHA convention). */
+const HASH_LEN = 7;
+
+/** DEC filename: `DEC-<hex>.md`, optionally `.draft` or `.rejected`. */
+const FILENAME_RE = /^DEC-([0-9a-f]{7,})(?:\.draft|\.rejected)?\.md$/;
+/** INV filename: `INV-<hex>.md`. Matches the schema id regex in `ground/schemas.ts`. */
+const INVARIANT_FILENAME_RE = /^INV-([0-9a-f]{7,})\.md$/;
+
+/* -------------------------------------------------------------------------- */
+/* Content-hash inputs                                                        */
+/* -------------------------------------------------------------------------- */
+
+export interface DecisionIdInput {
+  /** Title — required. Lowercased + trimmed in the hash input. */
+  title: string;
+  /** Free-text rationale or summary. */
+  rationale?: string;
+  /** Provenance source (e.g. `init-source-comments`, `init-rules-merge`, `user-record`). */
+  capture_source?: string;
+  /** Source file the decision was extracted from. */
+  source_file?: string;
+  /** Line / offset within the source file. */
+  source_offset?: number;
+  /** Original raw comment / section text. */
+  raw?: string;
+  /** Scope globs (sorted before hashing for stability). */
+  scope_globs?: string[];
+  /** Full body markdown (for manual `cairn_record_decision` calls). */
+  body_markdown?: string;
+  /**
+   * Millisecond timestamp — only set for manual user-record paths
+   * where there is no stable provenance. Source-comment / rules-merge
+   * derived ids omit this so re-running the pipeline is idempotent.
+   */
+  timestamp_ms?: number;
+}
+
+export interface InvariantIdInput {
+  /** Title — required. Lowercased + trimmed. */
+  title: string;
+  /** Source file the constraint was extracted from. */
+  source_file?: string;
+  /** Line / offset within the source file. */
+  source_offset?: number;
+  /** Original raw comment text. */
+  raw?: string;
+  /** Millisecond timestamp — manual writes only. */
+  timestamp_ms?: number;
+}
+
+function canonicalDecision(input: DecisionIdInput): string {
+  return JSON.stringify({
+    title: input.title.trim().toLowerCase(),
+    rationale: input.rationale ?? null,
+    capture_source: input.capture_source ?? null,
+    source_file: input.source_file ?? null,
+    source_offset: input.source_offset ?? null,
+    raw: input.raw ?? null,
+    scope_globs:
+      input.scope_globs !== undefined ? [...input.scope_globs].sort() : null,
+    body_markdown: input.body_markdown ?? null,
+    timestamp_ms: input.timestamp_ms ?? null,
+  });
+}
+
+function canonicalInvariant(input: InvariantIdInput): string {
+  return JSON.stringify({
+    title: input.title.trim().toLowerCase(),
+    source_file: input.source_file ?? null,
+    source_offset: input.source_offset ?? null,
+    raw: input.raw ?? null,
+    timestamp_ms: input.timestamp_ms ?? null,
+  });
+}
 
 /**
- * Scan both the canonical decisions dir and the `_inbox/` for
- * DEC-NNNN-prefixed files; return the set of ids found.
+ * Compute a stable `DEC-<hash>` id from the canonical input. When
+ * `existing` is supplied and the 7-char prefix collides with an id
+ * already in that set whose content differs, the id extends to 8+
+ * chars until unique.
+ */
+export function computeDecisionId(
+  input: DecisionIdInput,
+  existing?: Set<string>,
+): string {
+  const digest = createHash("sha256").update(canonicalDecision(input)).digest("hex");
+  for (let len = HASH_LEN; len <= digest.length; len++) {
+    const candidate = `DEC-${digest.slice(0, len)}`;
+    if (existing === undefined || !existing.has(candidate)) return candidate;
+  }
+  throw new Error("computeDecisionId: hash exhaustion (impossible at sha256)");
+}
+
+/**
+ * Compute a stable `INV-<hash>` id from the canonical input. Same
+ * collision-extension behavior as `computeDecisionId`.
+ */
+export function computeInvariantId(
+  input: InvariantIdInput,
+  existing?: Set<string>,
+): string {
+  const digest = createHash("sha256").update(canonicalInvariant(input)).digest("hex");
+  for (let len = HASH_LEN; len <= digest.length; len++) {
+    const candidate = `INV-${digest.slice(0, len)}`;
+    if (existing === undefined || !existing.has(candidate)) return candidate;
+  }
+  throw new Error("computeInvariantId: hash exhaustion (impossible at sha256)");
+}
+
+/* -------------------------------------------------------------------------- */
+/* On-disk scans (used for collision check + auxiliary lookups)               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Scan both the canonical decisions dir and `_inbox/` for
+ * `DEC-<hash>` filenames; return the set of ids found.
  */
 export function scanExistingDecisionIds(repoRoot: string): Set<string> {
   const dir = decisionsDir(repoRoot);
@@ -43,34 +154,14 @@ export function scanExistingDecisionIds(repoRoot: string): Set<string> {
     for (const name of entries) {
       const match = name.match(FILENAME_RE);
       if (!match || !match[1]) continue;
-      ids.add(`DEC-${match[1].padStart(4, "0")}`);
+      ids.add(`DEC-${match[1]}`);
     }
   }
   return ids;
 }
 
 /**
- * Return the next free `DEC-<NNNN>` id, optionally factoring in a
- * caller-supplied set (e.g. ids the MCP tool just validated against).
- */
-export function allocateDecisionId(
-  repoRoot: string,
-  existing?: Set<string>,
-): string {
-  const ids = existing ?? scanExistingDecisionIds(repoRoot);
-  let max = 0;
-  for (const id of ids) {
-    const m = id.match(/^DEC-(\d+)$/);
-    if (!m?.[1]) continue;
-    const n = Number.parseInt(m[1], 10);
-    if (Number.isFinite(n) && n > max) max = n;
-  }
-  return `DEC-${(max + 1).toString().padStart(4, "0")}`;
-}
-
-/**
- * Scan `.cairn/ground/invariants/` for INV-<NNNN>-prefixed files; return the
- * set of ids found.
+ * Scan `.cairn/ground/invariants/` for `INV-<hash>` filenames.
  */
 export function scanExistingInvariantIds(repoRoot: string): Set<string> {
   const dir = invariantsDir(repoRoot);
@@ -85,28 +176,7 @@ export function scanExistingInvariantIds(repoRoot: string): Set<string> {
   for (const name of entries) {
     const match = name.match(INVARIANT_FILENAME_RE);
     if (!match || !match[1]) continue;
-    ids.add(`INV-${match[1].padStart(4, "0")}`);
+    ids.add(`INV-${match[1]}`);
   }
   return ids;
-}
-
-/**
- * Return the next free `INV-<NNNN>` id — matches the schema regex
- * at packages/cairn-core/src/ground/schemas.ts. Optionally factor in
- * a caller-supplied set so a batch of allocations doesn't collide on
- * disk before any are written.
- */
-export function allocateInvariantId(
-  repoRoot: string,
-  existing?: Set<string>,
-): string {
-  const ids = existing ?? scanExistingInvariantIds(repoRoot);
-  let max = 0;
-  for (const id of ids) {
-    const m = id.match(/^INV-(\d+)$/);
-    if (!m?.[1]) continue;
-    const n = Number.parseInt(m[1], 10);
-    if (Number.isFinite(n) && n > max) max = n;
-  }
-  return `INV-${(max + 1).toString().padStart(4, "0")}`;
 }

@@ -34,3 +34,11 @@ export {
   type RestoreResult,
   type RestoreState,
 } from "./restore.js";
+
+export {
+  getActiveAttentionServer,
+  startAttentionServer,
+  type AttentionServeOptions,
+  type AttentionServeHandle,
+  type DoneState,
+} from "./serve/index.js";

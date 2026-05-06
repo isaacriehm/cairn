@@ -250,22 +250,22 @@ async function main(): Promise<void> {
     file: block.file,
     startOffset: block.startOffset,
     endOffset: block.endOffset,
-    replacement: "// §INV-0042",
+    replacement: "// §INV-4242424",
   };
 
   const preview = previewStripReplace({ repoRoot: repoRoot3, items: [item] });
   assert(preview.length === 1, "preview returns one file entry");
   assert(preview[0]?.before !== preview[0]?.after, "preview before/after differ");
-  assert(preview[0]?.after.includes("// §INV-0042"), "preview shows §INV-0042");
+  assert(preview[0]?.after.includes("// §INV-4242424"), "preview shows §INV-4242424");
 
   const apply = applyStripReplace({ repoRoot: repoRoot3, items: [item] });
   assert(apply.filesModified === 1, "one file modified");
   assert(apply.itemsApplied === 1, "one item applied");
   const newContent = readFileSync(join(repoRoot3, "src/db.ts"), "utf8");
-  assert(newContent.includes("// §INV-0042"), "file now contains §INV-0042");
+  assert(newContent.includes("// §INV-4242424"), "file now contains §INV-4242424");
   assert(!newContent.includes("/* one"), "original block removed");
   // Indentation preserved (4 spaces leading)
-  assert(/^ {4}\/\/ §INV-0042$/m.test(newContent), "leading indent preserved");
+  assert(/^ {4}\/\/ §INV-4242424$/m.test(newContent), "leading indent preserved");
   // Backup written
   const backup = join(repoRoot3, ".cairn/backups/source/src/db.ts.original");
   assert(existsSync(backup), "backup .original written");
@@ -310,15 +310,15 @@ async function main(): Promise<void> {
     file: lcBlock.file,
     startOffset: lcBlock.startOffset,
     endOffset: lcBlock.endOffset,
-    replacement: "// §INV-0099",
+    replacement: "// §INV-9999999",
     expectedRaw: lcBlock.raw,
   };
   const lcApply = applyStripReplace({ repoRoot: lcRoot, items: [lcItem] });
   assert(lcApply.filesModified === 1, "lc: file modified");
   assert(lcApply.itemsApplied === 1, "lc: item applied");
   const lcContent = readFileSync(join(lcRoot, "src/svc.ts"), "utf8");
-  assert(lcContent.includes("// §INV-0099"), "lc: citation present");
-  assert(/^ {2}\/\/ §INV-0099$/m.test(lcContent), "lc: 2-space indent preserved");
+  assert(lcContent.includes("// §INV-9999999"), "lc: citation present");
+  assert(/^ {2}\/\/ §INV-9999999$/m.test(lcContent), "lc: 2-space indent preserved");
   console.log("  ✓ Step 6 — strip-replace indented line-cluster preserves indent");
 
   step("Step 7 — strip-replace honors dirty-check");
@@ -331,7 +331,7 @@ async function main(): Promise<void> {
     file: "src/db.ts",
     startOffset: 0,
     endOffset: 5,
-    replacement: "// §INV-0099",
+    replacement: "// §INV-9999999",
   };
   const apply2 = applyStripReplace({ repoRoot: repoRoot3, items: [item2] });
   assert(apply2.filesSkipped === 1, "dirty file skipped without decision");

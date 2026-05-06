@@ -119,7 +119,7 @@ export type DecisionAssertion = z.infer<typeof DecisionAssertion>;
 
 export const DecisionFrontmatter = z
   .object({
-    id: z.string().regex(/^DEC-\d{4,}$/, "decision id must match DEC-NNNN"),
+    id: z.string().regex(/^DEC-[0-9a-f]{7,}$/, "decision id must match DEC-<hash7>"),
     title: z.string(),
     type: z.literal("adr").optional(),
     status: z
@@ -150,7 +150,7 @@ export type DecisionFrontmatter = z.infer<typeof DecisionFrontmatter>;
 
 export const InvariantFrontmatter = z
   .object({
-    id: z.string().regex(/^INV-\d{4,}$/, "invariant id must match INV-NNNN"),
+    id: z.string().regex(/^INV-[0-9a-f]{7,}$/, "invariant id must match INV-<hash7>"),
     title: z.string(),
     type: z.literal("invariant").optional(),
     status: z.enum(["active", "superseded"]).optional(),

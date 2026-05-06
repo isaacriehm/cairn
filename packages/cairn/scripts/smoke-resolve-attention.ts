@@ -72,16 +72,16 @@ async function runSmoke(): Promise<void> {
   // ── Step 1 — DEC accept (a) → moves draft to canonical, emits event ──
   {
     const repoRoot = mkRepoRoot();
-    const draftPath = writeDraftDec(repoRoot, "DEC-1001");
+    const draftPath = writeDraftDec(repoRoot, "DEC-aaaaaaa");
     const ctx: McpContext = { repoRoot, sessionId: "session-a" };
     const result = await call(tool, ctx, {
-      item_id: "DEC-1001",
+      item_id: "DEC-aaaaaaa",
       kind: "decision_draft",
       choice: "a",
     });
     assert(result.ok === true, `Step 1: ok=true expected, got ${JSON.stringify(result)}`);
     assert(result.resolved_kind === "decision_accepted", "Step 1: resolved_kind mismatch");
-    const acceptedPath = join(repoRoot, ".cairn", "ground", "decisions", "DEC-1001.md");
+    const acceptedPath = join(repoRoot, ".cairn", "ground", "decisions", "DEC-aaaaaaa.md");
     assert(existsSync(acceptedPath), "Step 1: canonical DEC file should exist");
     const acceptedBody = readFileSync(acceptedPath, "utf8");
     assert(/status: accepted/.test(acceptedBody), "Step 1: status should be promoted to accepted");
@@ -94,17 +94,17 @@ async function runSmoke(): Promise<void> {
   // ── Step 2 — DEC reject (b) → archives draft ──────────────────────
   {
     const repoRoot = mkRepoRoot();
-    const draftPath = writeDraftDec(repoRoot, "DEC-1002");
+    const draftPath = writeDraftDec(repoRoot, "DEC-bbbbbbb");
     const ctx: McpContext = { repoRoot, sessionId: "session-b" };
     const result = await call(tool, ctx, {
-      item_id: "DEC-1002",
+      item_id: "DEC-bbbbbbb",
       kind: "decision_draft",
       choice: "b",
       rationale: "outdated",
     });
     assert(result.resolved_kind === "decision_rejected", "Step 2: resolved_kind mismatch");
     assert(!existsSync(draftPath), "Step 2: draft .draft.md should be gone from inbox");
-    const rejectedPath = join(repoRoot, ".cairn", "ground", "decisions", "_inbox", "DEC-1002.rejected.md");
+    const rejectedPath = join(repoRoot, ".cairn", "ground", "decisions", "_inbox", "DEC-bbbbbbb.rejected.md");
     assert(existsSync(rejectedPath), "Step 2: .rejected.md tombstone should block id recycling");
     console.log("  ✓ Step 2 — DEC reject");
   }
@@ -112,10 +112,10 @@ async function runSmoke(): Promise<void> {
   // ── Step 3 — DEC edit (c) → returns body, no state change ────────
   {
     const repoRoot = mkRepoRoot();
-    const draftPath = writeDraftDec(repoRoot, "DEC-1003");
+    const draftPath = writeDraftDec(repoRoot, "DEC-ccccccc");
     const ctx: McpContext = { repoRoot, sessionId: "session-c" };
     const result = await call(tool, ctx, {
-      item_id: "DEC-1003",
+      item_id: "DEC-ccccccc",
       kind: "decision_draft",
       choice: "c",
     });
@@ -194,7 +194,7 @@ async function runSmoke(): Promise<void> {
     const repoRoot = mkRepoRoot();
     const ctx: McpContext = { repoRoot, sessionId: "session-g" };
     const noDraft = await call(tool, ctx, {
-      item_id: "DEC-9999",
+      item_id: "DEC-deadbe1",
       kind: "decision_draft",
       choice: "a",
     });

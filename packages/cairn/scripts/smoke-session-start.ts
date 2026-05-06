@@ -68,9 +68,9 @@ function seedFullFixture(repoRoot: string): void {
   mkdirSync(tasksDir, { recursive: true });
 
   writeFileSync(
-    join(decisionsDir, "DEC-0001.md"),
+    join(decisionsDir, "DEC-a3f7b2c.md"),
     `---
-id: DEC-0001
+id: DEC-a3f7b2c
 title: Use Drizzle for the data layer
 type: adr
 status: accepted
@@ -85,7 +85,7 @@ superseded_by: null
 assertions: []
 ---
 
-# DEC-0001 — Drizzle for data layer
+# DEC-a3f7b2c — Drizzle for data layer
 
 ## Summary
 
@@ -95,9 +95,9 @@ We use Drizzle ORM.
   );
 
   writeFileSync(
-    join(decisionsDir, "DEC-0002.md"),
+    join(decisionsDir, "DEC-5e9d10a.md"),
     `---
-id: DEC-0002
+id: DEC-5e9d10a
 title: Cross-tenant denial fixture required on high-stakes UAT
 type: adr
 status: accepted
@@ -113,7 +113,7 @@ superseded_by: null
 assertions: []
 ---
 
-# DEC-0002 — Cross-tenant fixture
+# DEC-5e9d10a — Cross-tenant fixture
 
 ## Summary
 
@@ -123,9 +123,9 @@ UAT fixtures must include a cross-tenant denial.
   );
 
   writeFileSync(
-    join(invariantsDir, "INV-0001.md"),
+    join(invariantsDir, "INV-1111111.md"),
     `---
-id: INV-0001
+id: INV-1111111
 title: No JSONB-userId filter in dashboard queries
 type: invariant
 status: active
@@ -133,11 +133,11 @@ audience: dual
 generated: 2026-04-20T00:00:00Z
 verified-at: 2026-05-04T00:00:00Z
 source_run: run-abc123
-source_decision: DEC-0001
+source_decision: DEC-a3f7b2c
 sensor: scripts/check-inv0001-no-jsonb-userid.ts
 ---
 
-# §INV-0001
+# §INV-1111111
 `,
     "utf8",
   );
@@ -197,9 +197,9 @@ Reasons here.
   );
 
   writeFileSync(
-    join(inboxDir, "DEC-0003.draft.md"),
+    join(inboxDir, "DEC-1234567.draft.md"),
     `---
-id: DEC-0003
+id: DEC-1234567
 title: Pending draft about thing
 type: adr
 status: draft
@@ -212,7 +212,7 @@ capture_source: discord:slash:/direction
 capture_confidence: medium
 ---
 
-# DEC-0003 — pending
+# DEC-1234567 — pending
 `,
     "utf8",
   );
@@ -295,11 +295,11 @@ async function runSmoke(): Promise<void> {
       "Step 3: count line missing from ground-state summary",
     );
     assert(
-      !ctx.includes("DEC-0001") && !ctx.includes("DEC-0002"),
+      !ctx.includes("DEC-a3f7b2c") && !ctx.includes("DEC-5e9d10a"),
       "Step 3: individual DEC ids should NOT pre-load into context (compact-summary path)",
     );
     assert(ctx.includes("TSK-2026-05-04-feature-1"), "Step 3: task id missing from context");
-    assert(ctx.includes("DEC-0003"), "Step 3: pending draft id missing from context");
+    assert(ctx.includes("DEC-1234567"), "Step 3: pending draft id missing from context");
     assert(ctx.includes("core/src/integrations"), "Step 3: weakest module missing from context");
     assert(ctx.includes("cairn_query_history"), "Step 3: two-zone reminder missing query_history reference");
     assert(result.warnings.length === 0, `Step 3: unexpected warnings ${JSON.stringify(result.warnings)}`);
@@ -324,7 +324,7 @@ async function runSmoke(): Promise<void> {
     );
     const ctx = result.additionalContext;
     assert(
-      ctx.includes("DEC-0001") || ctx.includes("DEC-0002"),
+      ctx.includes("DEC-a3f7b2c") || ctx.includes("DEC-5e9d10a"),
       "Step 3b: at least one DEC id should appear in scoped render",
     );
     console.log("  ✓ Step 3b — scoped render includes full DEC + invariant bodies");
@@ -369,16 +369,16 @@ async function runSmoke(): Promise<void> {
     // Append a draft with invalid YAML.
     const inboxDir = join(repoRoot, ".cairn", "ground", "decisions", "_inbox");
     writeFileSync(
-      join(inboxDir, "DEC-9999.draft.md"),
+      join(inboxDir, "DEC-deadbe1.draft.md"),
       `---
-id: DEC-9999
+id: DEC-deadbe1
 title: Draft with invalid yaml ::: "
 status: draft
 audience: dual
 unbalanced: [
 ---
 
-# DEC-9999
+# DEC-deadbe1
 `,
       "utf8",
     );

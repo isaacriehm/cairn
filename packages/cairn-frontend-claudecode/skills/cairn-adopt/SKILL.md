@@ -339,7 +339,7 @@ In the same assistant message, do both:
 2. Immediately call the `Skill` tool with `skill: "cairn:cairn-attention"`
    to drain pending DEC drafts. The `allowed-tools` line in this skill's
    frontmatter pre-approves that single chained call. The cairn-attention
-   skill renders DEC-0001 directly via `AskUserQuestion`; do not surface
+   skill renders DEC-a3f7b2c directly via `AskUserQuestion`; do not surface
    "Now reviewing the N pending DEC drafts…" prose — the next skill's
    prompt is the operator's next surface.
 
