@@ -2,8 +2,8 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { readProgress } from "../init/progress.js";
 import { type CtxMeterInput, formatStatus, renderCtxMeter } from "./format.js";
-import type { StatusJson, TaskState } from "./index.js";
-import { statusJsonPath } from "./writer.js";
+import { emptyEventCounters, type StatusJson, type TaskState } from "./index.js";
+import { defaultStatusJson, statusJsonPath } from "./writer.js";
 
 const TASK_STATES: readonly TaskState[] = [
   "idle",
@@ -27,7 +27,7 @@ function isLastRunResult(v: unknown): v is "succeeded" | "failed" | null {
   return v === null || v === "succeeded" || v === "failed";
 }
 
-function isStatusJson(x: unknown): x is StatusJson {
+function isStatusJsonCore(x: unknown): x is Partial<StatusJson> {
   if (x === null || typeof x !== "object") return false;
   const o = x as Record<string, unknown>;
   return (
@@ -43,6 +43,24 @@ function isStatusJson(x: unknown): x is StatusJson {
     isLastRunResult(o["last_run_result"]) &&
     isStringOrNull(o["last_run_at"])
   );
+}
+
+/**
+ * Backfill v0.5.0 fields (`current_event`, `event_counters`, `recent_events`,
+ * `haiku_unavailable`) when reading a status.json that was written by an
+ * older cairn — keeps the format renderer from crashing on undefined
+ * event_counters in mid-upgrade sessions.
+ */
+function normalizeStatusJson(partial: Partial<StatusJson>): StatusJson {
+  const base = defaultStatusJson();
+  return {
+    ...base,
+    ...partial,
+    event_counters: { ...emptyEventCounters(), ...(partial.event_counters ?? {}) },
+    recent_events: partial.recent_events ?? [],
+    current_event: partial.current_event ?? null,
+    haiku_unavailable: partial.haiku_unavailable ?? false,
+  };
 }
 
 /**
@@ -63,20 +81,7 @@ function groundStateFallback(repoRoot: string, ctx?: CtxMeterInput): string {
 
   const progress = readProgress(repoRoot);
   if (progress !== null) {
-    const stub: StatusJson = {
-      updated_at: new Date().toISOString(),
-      decisions_in_scope: 0,
-      invariants_in_scope: 0,
-      task_state: "idle",
-      task_id: null,
-      task_module: null,
-      gc_running: false,
-      attention_count: 0,
-      bypass_count: 0,
-      last_run_result: null,
-      last_run_at: null,
-    };
-    return formatStatus(stub, ctx, progress);
+    return formatStatus(defaultStatusJson(), ctx, progress);
   }
 
   let drafts = 0;
@@ -137,9 +142,9 @@ export function readStatusForCLI(
     return groundStateFallback(repoRoot, ctx);
   }
 
-  if (!isStatusJson(parsed)) return groundStateFallback(repoRoot, ctx);
+  if (!isStatusJsonCore(parsed)) return groundStateFallback(repoRoot, ctx);
 
   // Mid-adoption: live progress wins over the per-session signal.
   const progress = readProgress(repoRoot);
-  return formatStatus(parsed, ctx, progress);
+  return formatStatus(normalizeStatusJson(parsed), ctx, progress);
 }

@@ -1,5 +1,6 @@
 import type { ProgressSnapshot } from "../init/progress.js";
-import type { StatusJson } from "./index.js";
+import { activeEvent, summaryCounterText } from "./event-queue.js";
+import type { StatusEvent, StatusJson } from "./index.js";
 
 /**
  * Render a single-line status string for Claude Code's status_line hook.
@@ -69,14 +70,56 @@ function renderProgress(p: ProgressSnapshot): string {
   return `⏳ adopt ${p.phase} ${p.batch}/${p.total} (${pct}%)${eta}`;
 }
 
-function renderSignal(s: StatusJson, progress?: ProgressSnapshot | null): string | null {
+function renderEvent(e: StatusEvent): string {
+  switch (e.kind) {
+    case "aligned":
+      return `⬡ aligned · ${e.primary_id ?? ""}`.trimEnd();
+    case "created-dec":
+      return `⬡ created · ${e.primary_id ?? "DEC-?"}`;
+    case "created-inv":
+      return `⬡ created · ${e.primary_id ?? "INV-?"}`;
+    case "supplemented":
+      return `⬡ supplemented · ${e.primary_id ?? ""} + ${e.secondary_id ?? ""}`;
+    case "constrained":
+      return `⬡ constrained · ${e.primary_id ?? ""} ← ${e.secondary_id ?? ""}`;
+    case "refreshed": {
+      const path = e.detail ? ` (${e.detail})` : "";
+      return `⬡ refreshed · ${e.primary_id ?? ""}${path}`;
+    }
+    case "scanning":
+      return "⬡ scanning…";
+    case "drain-progress":
+      return `⬡ aligning ${e.detail ?? ""}…`;
+    case "drain-done":
+      return `⬡ ${e.detail ?? "drain done"}`;
+    case "haiku-offline":
+      return "⚠ haiku offline · drain queued";
+    default:
+      return "⬡ cairn";
+  }
+}
+
+function renderSignal(
+  s: StatusJson,
+  progress?: ProgressSnapshot | null,
+  nowMs: number = Date.now(),
+): string | null {
   if (progress) return renderProgress(progress);
   if (s.bypass_count > 0) return `⚠ ${s.bypass_count} unattested`;
+
+  // Layer-A-emitted events take precedence inside their 10s sticky window
+  // so the operator sees what cairn just did before any rolling counter
+  // takes over.
+  const live = activeEvent(s, nowMs);
+  if (live) return renderEvent(live);
+
+  if (s.haiku_unavailable) return "⚠ haiku offline · drain queued";
+
   if (s.attention_count > 0) {
     // attention_count rolls up DEC drafts + baseline sensor findings +
-    // drift events, not just drafts. "pending" is the generic noun
-    // that fits the union; the cairn-attention skill renders the
-    // breakdown when the operator engages.
+    // drift events + conflict files, not just drafts. "pending" is the
+    // generic noun that fits the union; the cairn-attention skill
+    // renders the breakdown when the operator engages.
     return `⚑ ${s.attention_count} pending`;
   }
   if (s.gc_running) return "◐ gc";
@@ -86,6 +129,13 @@ function renderSignal(s: StatusJson, progress?: ProgressSnapshot | null): string
     if (s.task_module) return s.task_module;
     return `task: ${s.task_state}`;
   }
+
+  // Roll-up from the session-cumulative counters. Persists across the
+  // ring buffer's 32-event overflow so the operator always sees totals
+  // from session start.
+  const summary = summaryCounterText(s.event_counters);
+  if (summary !== null) return summary;
+
   return null;
 }
 
@@ -93,9 +143,10 @@ export function formatStatus(
   s: StatusJson,
   ctx?: CtxMeterInput,
   progress?: ProgressSnapshot | null,
+  nowMs: number = Date.now(),
 ): string {
   const parts: string[] = ["⬡ cairn"];
-  const signal = renderSignal(s, progress ?? null);
+  const signal = renderSignal(s, progress ?? null, nowMs);
   if (signal) parts.push(signal);
   if (ctx) parts.push(renderCtxMeter(ctx));
   return parts.join("  ");

@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { sessionStateDir } from "../paths/index.js";
-import type { StatusJson } from "./index.js";
+import { emptyEventCounters, type StatusJson } from "./index.js";
 
 /**
  * Resolve the absolute path to `status.json` for a session inside the
@@ -75,5 +75,9 @@ export function defaultStatusJson(): StatusJson {
     bypass_count: 0,
     last_run_result: null,
     last_run_at: null,
+    current_event: null,
+    event_counters: emptyEventCounters(),
+    haiku_unavailable: false,
+    recent_events: [],
   };
 }

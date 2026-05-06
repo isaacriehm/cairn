@@ -1,17 +1,25 @@
 export {
   CANONICAL_GLOBS,
   CANONICAL_EXCLUDES,
+  anchorMapPath,
+  archivedConflictsDir,
+  conflictsDir,
   decisionsDir,
   decisionsLedgerPath,
   groundDir,
+  haikuCacheDir,
   invariantsDir,
   invariantsLedgerPath,
   manifestPath,
   qualityGradesPath,
   runsTerminalDir,
+  sotBindingsPath,
+  sotCachePath,
+  sotRenderedCacheDir,
   stalenessCurrentPath,
   stalenessDir,
   stalenessLogPath,
+  topicIndexPath,
 } from "./paths.js";
 export { matchGlob, matchAnyGlob, compileGlob } from "./glob.js";
 export { walkCanonical } from "./walk.js";
@@ -48,6 +56,8 @@ export type {
   ScopeIndexEntry,
 } from "./scope-index.js";
 export {
+  AnchorMap,
+  AnchorMapEntry,
   Audience,
   ProvenanceFrontmatter,
   ManifestEntry,
@@ -60,4 +70,55 @@ export {
   QualityGrade,
   QualityGrades,
   DriftEvent,
+  SotBindings,
+  SotCache,
+  SotCacheEntry,
+  SotKind,
+  TopicIndex,
+  TopicIndexEntry,
 } from "./schemas.js";
+
+export {
+  bindDec,
+  decsForPath,
+  emptySotBindings,
+  pathForDec,
+  readSotBindings,
+  unbindDec,
+  writeSotBindings,
+} from "./sot-bindings.js";
+
+export {
+  emptyTopicIndex,
+  getTopic,
+  readTopicIndex,
+  setTopic,
+  writeTopicIndex,
+} from "./topic-index.js";
+
+export {
+  deleteEntry as deleteSotCacheEntry,
+  emptySotCache,
+  entries as sotCacheEntries,
+  getEntry as getSotCacheEntry,
+  readSotCache,
+  setEntry as setSotCacheEntry,
+  writeSotCache,
+} from "./sot-cache.js";
+
+export {
+  deleteAnchor,
+  emptyAnchorMap,
+  getAnchor,
+  readAnchorMap,
+  setAnchor,
+  writeAnchorMap,
+} from "./anchor-map.js";
+
+export {
+  bodyContentHash,
+  deriveDecId,
+  deriveInvId,
+  normalizeBlock,
+  topicSlug,
+} from "./slug.js";

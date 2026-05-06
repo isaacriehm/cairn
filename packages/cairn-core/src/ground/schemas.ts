@@ -117,6 +117,16 @@ export const DecisionAssertion = z.discriminatedUnion("kind", [
 ]);
 export type DecisionAssertion = z.infer<typeof DecisionAssertion>;
 
+/**
+ * sot_kind = where the canonical prose lives for this DEC.
+ *   "ledger" — body in this DEC file is canonical (source-comment essay,
+ *              operator-recorded). Lens renders body verbatim.
+ *   "path"   — sot_path points at the canonical location (doc paragraph,
+ *              CLAUDE.md section). Lens renders live content from there.
+ */
+export const SotKind = z.enum(["ledger", "path"]);
+export type SotKind = z.infer<typeof SotKind>;
+
 export const DecisionFrontmatter = z
   .object({
     id: z.string().regex(/^DEC-[0-9a-f]{7,}$/, "decision id must match DEC-<hash7>"),
@@ -144,6 +154,11 @@ export const DecisionFrontmatter = z
     assertions: z.array(DecisionAssertion).optional(),
     human_review_hint: z.string().optional(),
     related_invariants: z.array(z.string()).optional(),
+    sot_kind: SotKind.optional(),
+    sot_path: z.string().min(1).optional(),
+    sot_content_hash: z.string().length(64).optional(),
+    related: z.string().nullable().optional(),
+    derived_from: z.string().nullable().optional(),
   })
   .passthrough();
 export type DecisionFrontmatter = z.infer<typeof DecisionFrontmatter>;
@@ -164,6 +179,11 @@ export const InvariantFrontmatter = z
     e2e: z.string().optional(),
     naming_convention: z.string().optional(),
     superseded_by: z.string().nullable().optional(),
+    sot_kind: SotKind.optional(),
+    sot_path: z.string().min(1).optional(),
+    sot_content_hash: z.string().length(64).optional(),
+    related: z.string().nullable().optional(),
+    derived_from: z.string().nullable().optional(),
   })
   .passthrough();
 export type InvariantFrontmatter = z.infer<typeof InvariantFrontmatter>;
@@ -204,6 +224,93 @@ export const QualityGrades = z.object({
 });
 export type QualityGrades = z.infer<typeof QualityGrades>;
 
+/**
+ * Topic-index entry — one row per content-fingerprint slug across all
+ * scanned sources. `sot_source` is the canonical source path picked by
+ * priority order (docs/* > CLAUDE.md > AGENTS.md > source comments).
+ * `candidates` lists every place the same prose appears (one becomes the
+ * SoT, the rest become §DEC-<id> cites).
+ */
+export const TopicIndexEntry = z.object({
+  slug: z.string(),
+  dec_id: z.string().optional(),
+  sot_source: z.string(),
+  candidates: z.array(
+    z.object({
+      file: z.string(),
+      kind: z.enum(["doc", "claudemd", "agentsmd", "rule", "source-comment"]),
+      anchor: z.string().optional(),
+      line_range: z.tuple([z.number().int(), z.number().int()]).optional(),
+    }),
+  ),
+  created_at: z.string(),
+});
+export type TopicIndexEntry = z.infer<typeof TopicIndexEntry>;
+
+export const TopicIndex = z.object({
+  version: z.literal(1),
+  generated: z.string(),
+  topics: z.record(z.string(), TopicIndexEntry),
+});
+export type TopicIndex = z.infer<typeof TopicIndex>;
+
+/**
+ * SoT bindings — bidirectional map between DEC ids and their canonical
+ * source paths. Forward index is one-to-one. Reverse index is one-to-many
+ * because supersedes chains keep the same sot_path across multiple DEC
+ * ids.
+ */
+export const SotBindings = z.object({
+  version: z.literal(1),
+  generated: z.string(),
+  forward: z.record(z.string(), z.string()),
+  reverse: z.record(z.string(), z.array(z.string())),
+});
+export type SotBindings = z.infer<typeof SotBindings>;
+
+/**
+ * Sot-cache — tokenized DEC body shingles for Jaccard pre-filter in the
+ * Layer A alignment hook. Mtime-keyed so the cache rebuilds incrementally
+ * on PostToolUse Write events.
+ */
+export const SotCacheEntry = z.object({
+  dec_id: z.string(),
+  sot_path: z.string(),
+  body_hash: z.string().length(64),
+  tokens: z.array(z.string()),
+  shingles: z.array(z.string()),
+  mtime_ms: z.number(),
+});
+export type SotCacheEntry = z.infer<typeof SotCacheEntry>;
+
+export const SotCache = z.object({
+  version: z.literal(1),
+  generated: z.string(),
+  entries: z.record(z.string(), SotCacheEntry),
+});
+export type SotCache = z.infer<typeof SotCache>;
+
+/**
+ * Anchor-map — external map from topic slug to its current location in
+ * source. Allows operator's docs to stay pristine (no `<!-- cairn-anchor -->`
+ * injected) while drift detection reconciles via content_hash.
+ */
+export const AnchorMapEntry = z.object({
+  file: z.string(),
+  current_anchor: z.string().optional(),
+  content_hash: z.string().length(64),
+  line_range: z.tuple([z.number().int(), z.number().int()]).optional(),
+  kind: z.enum(["doc", "claudemd", "agentsmd", "rule", "source-comment"]),
+});
+export type AnchorMapEntry = z.infer<typeof AnchorMapEntry>;
+
+export const AnchorMap = z.object({
+  version: z.literal(1),
+  generated: z.string(),
+  anchors: z.record(z.string(), AnchorMapEntry),
+});
+export type AnchorMap = z.infer<typeof AnchorMap>;
+
 export const DriftEvent = z.object({
   ts: z.string(),
   kind: z.enum([
@@ -212,9 +319,12 @@ export const DriftEvent = z.object({
     "broken_link",
     "orphan_path",
     "manifest_hash_changed",
+    "doc-drift",
+    "paragraph-deleted",
   ]),
   path: z.string(),
   detail: z.string().optional(),
   severity: z.enum(["soft", "hard"]).default("soft"),
+  dec_id: z.string().optional(),
 });
 export type DriftEvent = z.infer<typeof DriftEvent>;

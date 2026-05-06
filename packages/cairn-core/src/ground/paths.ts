@@ -55,6 +55,38 @@ export function qualityGradesPath(repoRoot: string): string {
   return join(groundDir(repoRoot), "quality-grades.yaml");
 }
 
+export function topicIndexPath(repoRoot: string): string {
+  return join(groundDir(repoRoot), "topic-index.yaml");
+}
+
+export function sotBindingsPath(repoRoot: string): string {
+  return join(groundDir(repoRoot), "sot-bindings.yaml");
+}
+
+export function sotCachePath(repoRoot: string): string {
+  return join(groundDir(repoRoot), "sot-cache.yaml");
+}
+
+export function anchorMapPath(repoRoot: string): string {
+  return join(groundDir(repoRoot), "anchor-map.yaml");
+}
+
+export function conflictsDir(repoRoot: string): string {
+  return join(groundDir(repoRoot), "conflicts");
+}
+
+export function archivedConflictsDir(repoRoot: string): string {
+  return join(conflictsDir(repoRoot), "_archived");
+}
+
+export function sotRenderedCacheDir(repoRoot: string): string {
+  return join(repoRoot, ".cairn", "cache", "sot-rendered");
+}
+
+export function haikuCacheDir(repoRoot: string): string {
+  return join(repoRoot, ".cairn", "cache", "haiku");
+}
+
 export function stalenessDir(repoRoot: string): string {
   return join(repoRoot, ".cairn", "staleness");
 }
