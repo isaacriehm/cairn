@@ -228,6 +228,60 @@ async function runSmoke(): Promise<void> {
     console.log("  ✓ Step 4 — priority order docs > CLAUDE > AGENTS > rule");
   }
 
+  // ── Step 4b — dynamic walk: any `.md` outside rule paths counts ──
+  {
+    const repoRoot = mkFixture();
+    // Operator picks a non-standard layout. Walker must still index them.
+    mkdirSync(join(repoRoot, "official_docs"), { recursive: true });
+    mkdirSync(join(repoRoot, "documentation"), { recursive: true });
+    mkdirSync(join(repoRoot, "notes", "engineering"), { recursive: true });
+    writeFileSync(join(repoRoot, "official_docs", "auth.md"), VERBATIM_PROSE, "utf8");
+    writeFileSync(join(repoRoot, "documentation", "api.md"), DISTINCT_PROSE, "utf8");
+    writeFileSync(
+      join(repoRoot, "notes", "engineering", "scratch.md"),
+      `# Scratch\n\nThis is a long-enough paragraph about caching strategies and how we balance memory pressure against hit-rate so the topic-index walker actually picks it up under the 80-character / 10-unique-token threshold.`,
+      "utf8",
+    );
+    // Read me at the root level to confirm root-level docs land too.
+    writeFileSync(
+      join(repoRoot, "README.md"),
+      `# Project\n\nCairn is the project's state and context-loading layer for AI coding agents — it curates ground-state files and exposes them via an MCP server. Same project, different file layout entirely.`,
+      "utf8",
+    );
+
+    const judge: SemanticJudge = async () => "different";
+    const result = await buildTopicIndex({ repoRoot, judge });
+
+    const sources = new Set(
+      Object.values(result.topicIndex.topics).map((e) => e.sot_source),
+    );
+    assert(
+      sources.has("official_docs/auth.md"),
+      `Step 4b: walker should find official_docs/auth.md, got ${JSON.stringify([...sources])}`,
+    );
+    assert(
+      sources.has("documentation/api.md"),
+      `Step 4b: walker should find documentation/api.md, got ${JSON.stringify([...sources])}`,
+    );
+    assert(
+      sources.has("notes/engineering/scratch.md"),
+      `Step 4b: walker should find notes/engineering/scratch.md, got ${JSON.stringify([...sources])}`,
+    );
+    assert(
+      sources.has("README.md"),
+      `Step 4b: walker should find root-level README.md, got ${JSON.stringify([...sources])}`,
+    );
+
+    for (const entry of Object.values(result.topicIndex.topics)) {
+      const sot = entry.candidates.find((c) => c.file === entry.sot_source);
+      assert(
+        sot !== undefined && sot.kind === "doc",
+        `Step 4b: every emitted entry's SoT should be kind=doc, got ${sot?.kind}`,
+      );
+    }
+    console.log("  ✓ Step 4b — dynamic walk covers any non-rule .md layout");
+  }
+
   // ── Step 5 — file outputs parse + match contract ─────────────────
   {
     const repoRoot = mkFixture();

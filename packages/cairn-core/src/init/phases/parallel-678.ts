@@ -110,7 +110,7 @@ export async function runPhases678Parallel(
     runDocsIngestion({
       repoRoot: state.repoRoot,
       existingDecIds: sharedDecIds,
-      onGroupProgress: (row) =>
+      onEntryProgress: (row) =>
         writeProgress(state.repoRoot, {
           phase: "6-docs-ingest",
           batch: row.total > 0 ? row.total : 1,

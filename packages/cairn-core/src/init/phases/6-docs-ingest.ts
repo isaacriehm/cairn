@@ -1,11 +1,10 @@
 /**
- * Phase 6-docs-ingest — Haiku batch over README + docs/ → DEC drafts
- * + canonical-map topics + voice rewrites.
+ * Phase 6-docs-ingest — emit verbatim DECs for topic-index entries
+ * whose SoT lives under `docs/*`.
  *
  * Wraps `runDocsIngestion`; no operator input. The skill driver
- * surfaces the resulting `decDraftsWritten` count in the post-init
- * summary so the operator knows how much pending attention they
- * have.
+ * surfaces the resulting `decsWritten.length` in the post-init summary
+ * so the operator sees how many doc-paragraph DECs landed.
  */
 
 import { runDocsIngestion, type IngestionResult } from "../ingest-docs.js";
@@ -19,7 +18,7 @@ export async function runPhase6DocsIngest(state: PhaseState): Promise<PhaseResul
   try {
     const result: IngestionResult = await runDocsIngestion({
       repoRoot: state.repoRoot,
-      onGroupProgress: (row) => {
+      onEntryProgress: (row) => {
         completed += 1;
         writeProgress(state.repoRoot, {
           phase: "6-docs-ingest",
