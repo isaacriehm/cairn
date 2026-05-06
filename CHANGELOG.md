@@ -4,6 +4,220 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] — 2026-05-06
+
+### Fixed
+
+- **Seed walker no longer copies files at the `templates/` root.**
+  Pre-v0.2.0 cairn shipped a `templates/README.md` documentation
+  file (about the templates dir itself) by accident. The seed
+  walker walked `templates/` recursively and faithfully copied
+  every file preserving relative paths, which meant a stray
+  `templates/README.md` landed at `<repoRoot>/README.md` and
+  **clobbered the project's actual README** during `cairn init`.
+  The offending file was removed in v0.2.0 but the walker stayed
+  permissive — any future stray top-level template would have hit
+  the same trap. The walker now only descends into a fixed
+  allowlist of top-level entries (`.cairn`, `.archive`,
+  `.claude`, `.github`); anything at the templates root is ignored.
+
+  Recovery for projects adopted before this fix: restore the
+  pre-cairn README from git history, e.g.
+  `git checkout <pre-cairn-commit> -- README.md` followed by a
+  fresh commit. The clobbered content is the small `templates/`
+  doc-meta paragraph starting with
+  ``# `templates/` — files the init script copies into adopted projects``;
+  if your README still starts with that line, it was overwritten.
+
+## [0.4.0] — 2026-05-06
+
+### Added
+
+- **Live adoption-progress heartbeat.** Phases 3-mapper, 6-docs-ingest,
+  7b-source-comments, and 7c-rules-merge write
+  `.cairn/init/progress.json` after every batch / module / doc /
+  section. The statusline reader gains a highest-priority branch
+  rendering `⬡ cairn ⏳ adopt <phase> X/Y (P%) ~Nm` with extrapolated
+  ETA so the operator isn't staring at a frozen turn during the long
+  ingestion phases. The other init phases also emit a coarse
+  `batch: 1, total: 1` heartbeat on entry so the badge reflects the
+  current phase id all the way through. New
+  `smoke-init-progress-heartbeat` covers write/read/clear + format
+  priority. Plugin cache wires the new `cairn-statusline-setup` shim
+  via `cairn-adopt` Step 1.5.
+- **`cairn_init_phases_678_parallel` MCP tool.** Runs phases
+  6-docs-ingest, 7b-source-comments, and 7c-rules-merge concurrently
+  in one MCP call. Pre-scans existing DEC + INV ids and threads
+  shared `Set<string>`s through all three so id allocations don't
+  collide on disk. Skill prefers this when
+  `state.currentPhase === "6-docs-ingest"`; per-phase sequential
+  tools stay registered as a fallback path.
+- **DEC near-duplicate detector.** New `cairn_attention_dedup` MCP
+  tool clusters drafts in `_inbox/` by token-Jaccard similarity
+  (no LLM, ~50 ms for hundreds of drafts) at two tiers: definite
+  (≥ 0.5) and potential (0.4..0.5). cairn-attention skill renders a
+  cluster section before per-item triage with a one-shot
+  `keep / keep-all-distinct / reject-cluster` choice.
+- **DEC strip-replace on accept.** `cairn_resolve_attention` accept
+  path replaces the originating source-comment essay with
+  `// §DEC-NNNN` (mirroring the §INV strip pass that 7b runs at
+  adoption). Bulk-accept extends the pattern, surfacing aggregate
+  `sourceStripFilesModified` / `sourceStripItemsApplied` counts.
+- **`cairn attention restore` + `cairn_attention_restore` MCP tool.**
+  Move a previously rejected or accepted DEC back to draft state in
+  `_inbox/<id>.draft.md` so the operator can re-evaluate via the
+  normal A/B/C flow. `cairn_resolve_attention` auto-restores
+  transparently when the caller passes a rejected or already-accepted
+  id, so flipping a rejected DEC takes one MCP call instead of three.
+- **Retroactive `cairn fix` subcommands.** `brand` re-runs the Phase 5
+  Haiku brand-derive call against the on-disk mapper output and
+  rewrites the four brand files. `dec-strip` replays
+  source-comment strip-replace for accepted DECs whose original prose
+  is still in source (idempotent — re-runs report
+  `already-stripped`); content-search retry recovers from offset
+  drift caused by earlier INV / DEC strips in the same file.
+  `gitignore` rewrites `.cairn/.gitignore` from the bundled template
+  and `git rm --cached`s newly-ignored paths. `scrub-cache` wipes
+  `.cairn/cache/haiku/` for re-derivation under v0.4.0's isolated
+  transport. `claude-rules` writes `.claude/rules/cairn.md` so
+  teammates whose Claude Code lacks the plugin still see install
+  instructions on session start. All subcommands ship `--dry-run`.
+- **`cairn baseline [--force]` CLI.** Re-runs the synthetic-diff
+  sensor sweep post-adoption. `--force` bypasses
+  `BASELINE_SKIP_IDS` so post-init sensors that need ground state
+  (decision-assertions, invariant-suite, attestation-cross-check, …)
+  finally execute.
+- **`.claude/rules/cairn.md` ships in the seed.** Claude Code
+  auto-loads `.claude/rules/*.md` regardless of plugin install state.
+  Teammates without the plugin now see install instructions on the
+  first reply.
+- **First-clone welcome banner.** When SessionStart's bootstrap path
+  runs `cairn join` and succeeds for the first time on this clone,
+  it now returns a "first session on this clone" banner that
+  primes Claude to surface a one-line ground-state summary even on
+  casual greetings ("hi"). Subsequent sessions skip it because
+  `state.hooksPathSet` is true.
+- **Phase 7b walk + classifications spillover.** Heavy walk +
+  per-block classifications now persist to
+  `.cairn/init/source-comments-walk.json`; only a lightweight
+  projection (counts, ledger paths, kindCounts) lives on
+  `init-state.json` so the MCP transport stays skinny on real-world
+  adoptions.
+- **Phase 7b stamps `capture_confidence` at write time** when project
+  globs + pilot are passed. `cairn attention bulk-accept` becomes an
+  O(1) file move instead of a re-score sweep.
+- **Phase orchestrator stamps `duration_ms`** on every phase output
+  (was only Phase 3-mapper before). Unblocks ETA self-audit against
+  the cairn-adopt SKILL.md ETA registry.
+- **Haiku response cache.** Opt-in via
+  `runClaude({ cacheable: true, repoRoot })`. 30-day TTL keyed on
+  `tier|system|prompt|jsonSchema`. Storage at
+  `.cairn/cache/haiku/<sha>.json`. Brand-derive + 7b classify both
+  opt in. Skips identical re-runs without burning the operator's
+  coding-plan quota. Cache dir added to `.cairn/.gitignore`.
+
+### Changed
+
+- **Phase 7b BATCH_SIZE 20 → 10.** Halves Haiku output per batch and
+  drops the validation-target failure rate to ~0%. Round count
+  doubles (61 → ~122) but parallelism unchanged → wall-clock 7b
+  grows modestly (~22.6 min → ~25 min) — acceptable for ~0% loss.
+- **Phase 7b `classifyOneBatchWithRetry`.** On `AbortError` /
+  `error_kind: "timeout"`, splits the batch in half and re-issues
+  both halves with the full per-batch timeout. Defense-in-depth on
+  top of the BATCH_SIZE reduction.
+- **Brand-derive 60 s timeout + 2-attempt retry.** Replaces the
+  prior 30 s single-shot path. Falls back to mechanical defaults
+  only after both attempts fail; `applied.warnings[]` surfaces a
+  hint to re-run `cairn fix brand`.
+- **Tighten `.cairn/.gitignore`.** Adds `init-state.json`, `init/`,
+  `staleness/`, `backups/`, and `cache/` to the bundled template
+  alongside the existing entries (sessions/, events/, locks,
+  .attested-commits, .cli-path). Run `cairn fix gitignore` to
+  migrate older adoptions.
+
+### Fixed
+
+- **Mid-init resumability.** Phases now `clearProgress` on every
+  exit (success and error) so a stale `progress.json` doesn't bleed
+  into the next phase's render.
+- **DEC strip-replace dirty-file gate.** Phase 7b's INV strip pass
+  mutates source files inline, so by the time a DEC accept fires
+  the same file is dirty against HEAD. `runDecSourceStrip` now
+  passes `dirtyDecisions: { [block.file]: "overwrite" }` so the
+  dirty check doesn't bail. Mirrors Phase 7b's own
+  dirtyDecisions map.
+- **DEC strip surfaces real skip reasons.** Previously returned
+  `"unknown"` whenever `applyStripReplace` returned 0 items applied
+  without throwing; now surfaces `range-mismatch` /
+  `missing-file` / `overlap` / `dirty-skipped`. On `range-mismatch`
+  specifically, retries with a content-search of `block.raw` in
+  the current file to recover from offset drift.
+- **Idempotent `cairn fix dec-strip` re-runs.** `runDecSourceStrip`
+  now checks for the bare cite (`// §DEC-NNNN` / `# §DEC-NNNN`) in
+  the target file before issuing the strip; if present it returns
+  `attempted: false` with reason `already-stripped`. CLI surfaces
+  `· DEC-NNNN — already stripped (no-op)` separately from real
+  failures.
+- **Runner SIGTERM → `error_kind: "timeout"`.** Exit code 143
+  and `AbortError` now classify as `timeout` instead of `other` so
+  trace observability distinguishes timeouts from generic failures.
+  `runner.ts` also wraps the AbortError path in a single
+  `settled` guard so the trace doesn't double-fire on abort.
+- **Multi-dev first-clone session.** When a teammate clones a
+  Cairn-adopted repo and opens Claude Code for the first time,
+  SessionStart's bootstrap path now returns a banner so a casual
+  "hi" gets an explicit Cairn acknowledgment rather than a generic
+  "Hey what's up?" reply.
+- **`cairn fix scrub-cache` ESM compatibility.** Crashed under Node
+  24 with `ERR_AMBIGUOUS_MODULE_SYNTAX` because of an inline
+  `require()` call inside an ESM async function. Hoisted `rmSync`
+  to a top-level static import.
+
+### Security
+
+- **Haiku subprocess ambient-context isolation.** Cairn invokes the
+  `claude` subprocess for Haiku-tier classifications (brand-derive,
+  source-comments classify, docs-ingest, rules-merge,
+  mapper-merge). Operator caught real-world data leakage in
+  `.cairn/cache/haiku/<sha>.json`: brand text referenced operator's
+  organization-level identifiers from the user-global
+  `~/.claude/CLAUDE.md` that are NOT in the project repo. The
+  Claude Code subprocess auto-loads the user-global CLAUDE.md plus
+  the project-hierarchy CLAUDE.md ancestor chain, contributing
+  ~76k tokens of ambient context per Haiku call. Resolution: new
+  `RunClaudeOptions.isolateAmbientContext` flag. When true, the
+  subprocess runs from `os.tmpdir()` (so the CLAUDE.md ancestor
+  chain doesn't auto-load) and passes
+  `--setting-sources project,local --tools "" --disable-slash-commands`.
+  Verified: 76k → ~700 input tokens (99% reduction); a probe asking
+  Haiku to list known organizations returns an empty array.
+  Opt-in at every Cairn-internal Haiku site.
+
+### Migration notes for projects adopted under v0.3.x
+
+```bash
+# 1. Wipe the contaminated Haiku cache
+cairn fix scrub-cache
+
+# 2. Tighten .cairn/.gitignore + untrack newly-ignored paths
+cairn fix gitignore --dry-run    # review first
+cairn fix gitignore
+
+# 3. Add .claude/rules/cairn.md so teammates without the plugin
+#    still see install instructions on session start
+cairn fix claude-rules
+
+# 4. Re-derive brand under the isolated transport
+cairn fix brand --dry-run
+cairn fix brand
+
+# 5. Replay strip-replace for accepted source-comment DECs that
+#    didn't get the inline cite on first accept
+cairn fix dec-strip --dry-run
+cairn fix dec-strip
+```
+
 ## [0.3.8] — 2026-05-06
 
 ### Fixed

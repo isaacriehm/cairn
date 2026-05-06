@@ -45,31 +45,57 @@ export interface SeedResult {
   collisions: string[];
 }
 
+/**
+ * Allowlist of top-level entries the seed walker may descend into. Any
+ * file or directory at the `templates/` root that is NOT in this set is
+ * IGNORED — defensive so a stray template-meta file (a README about the
+ * templates dir, an editor scratch file, etc.) never clobbers a
+ * top-level project file like `<repoRoot>/README.md`.
+ *
+ * Pre-v0.2.0 cairn shipped a `templates/README.md` documentation file
+ * by accident; the walker happily copied it to `<repoRoot>/README.md`
+ * and overwrote project READMEs in the wild. The file was removed in
+ * v0.2.0 but the walker stayed permissive. This allowlist forecloses
+ * the regression — only paths under these top-level entries land in
+ * the adopted project.
+ */
+const SEED_TOP_LEVEL_ALLOWLIST: ReadonlySet<string> = new Set([
+  ".cairn",
+  ".archive",
+  ".claude",
+  ".github",
+]);
+
 export function seedCairnLayout(opts: SeedOptions): SeedResult {
   const written: string[] = [];
   const collisions: string[] = [];
-  walk(TEMPLATES_ROOT, (absSrc) => {
-    const rel = relative(TEMPLATES_ROOT, absSrc);
-    const absDst = join(opts.repoRoot, rel);
-    if (existsSync(absDst) && opts.force !== true) {
-      collisions.push(rel);
-      return;
-    }
-    mkdirSync(dirname(absDst), { recursive: true });
-    const raw = readFileSync(absSrc, "utf8");
-    const out = applyPlaceholders({ content: raw, projectSlug: opts.projectSlug, relPath: rel });
-    writeFileSync(absDst, out, "utf8");
-    if (isExecutableTemplate(rel)) {
-      try {
-        chmodSync(absDst, 0o755);
-      } catch {
-        // Filesystems that don't support chmod (e.g. some Windows volumes)
-        // — git itself will set the executable bit on tracked content via
-        // the index, and `cairn join` re-chmods on bootstrap.
+  for (const name of readdirSync(TEMPLATES_ROOT)) {
+    if (!SEED_TOP_LEVEL_ALLOWLIST.has(name)) continue;
+    const subRoot = join(TEMPLATES_ROOT, name);
+    if (!statSync(subRoot).isDirectory()) continue;
+    walk(subRoot, (absSrc) => {
+      const rel = relative(TEMPLATES_ROOT, absSrc);
+      const absDst = join(opts.repoRoot, rel);
+      if (existsSync(absDst) && opts.force !== true) {
+        collisions.push(rel);
+        return;
       }
-    }
-    written.push(rel);
-  });
+      mkdirSync(dirname(absDst), { recursive: true });
+      const raw = readFileSync(absSrc, "utf8");
+      const out = applyPlaceholders({ content: raw, projectSlug: opts.projectSlug, relPath: rel });
+      writeFileSync(absDst, out, "utf8");
+      if (isExecutableTemplate(rel)) {
+        try {
+          chmodSync(absDst, 0o755);
+        } catch {
+          // Filesystems that don't support chmod (e.g. some Windows volumes)
+          // — git itself will set the executable bit on tracked content via
+          // the index, and `cairn join` re-chmods on bootstrap.
+        }
+      }
+      written.push(rel);
+    });
+  }
   return { written_files: written, collisions };
 }
 
