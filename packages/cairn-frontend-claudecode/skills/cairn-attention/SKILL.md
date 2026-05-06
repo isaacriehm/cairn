@@ -24,6 +24,47 @@ so by the time this skill engages bootstrap should be wired. If
 SessionStart's auto-bootstrap failed — surface its banner (already
 in additionalContext) and end the turn.
 
+## Step 0.5 — bulk-accept obvious DEC drafts
+
+Phase 7b emits one DEC draft per "rationale"-class JSDoc / block
+comment. On a busy monorepo this produces hundreds of drafts that
+no operator will sort through one click at a time. Before any
+interactive triage, drain the obvious ones via the bulk tool:
+
+```
+cairn_bulk_accept_attention({})
+```
+
+Tool default `threshold: "high"` only auto-promotes drafts the
+heuristic is confident about — file in `high_stakes_globs` /
+`pilot_module` / `route_handler_globs` / `dto_globs`, prose 80–800
+chars, decision-verb tokens (`chose`, `because`, `enforce`, …),
+JSDoc tags. Stamps `capture_confidence` on every draft + invariant
+so subsequent passes can sort. Returns counts:
+
+```
+{ decsScanned, decsAccepted, decsByConfidence: {high, medium, low},
+  acceptedIds, invariantsScanned, invariantsByConfidence }
+```
+
+Render a one-line summary to the operator before continuing:
+
+```
+Auto-accepted N obvious DEC drafts. M remain for triage
+(K medium / L low). Invariants: P high / Q medium / R low —
+all stamped, none auto-promoted.
+```
+
+Do **not** call this tool with `threshold: "medium"` or `"low"`
+without explicit operator consent — those settings widen
+acceptance significantly (medium ≈ 60% accept, low ≈ 100%).
+Operator can opt in via the CLI: `cairn attention bulk-accept
+--threshold medium --dry-run` to preview, then re-run without
+`--dry-run`.
+
+After this step, the inbox holds only medium + low-confidence
+drafts. Continue with the normal triage flow below.
+
 ## Step 1 — read attention sources
 
 Run these in parallel. Use the MCP tools exclusively for DEC

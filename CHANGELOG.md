@@ -4,6 +4,52 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.7] — 2026-05-06
+
+### Added
+
+- **`cairn_bulk_accept_attention` MCP tool + `cairn attention
+  bulk-accept` CLI subcommand.** Phase 7b on a busy monorepo
+  produces hundreds of DEC drafts and invariants — interactive
+  triage one-at-a-time is hours of clicking. The bulk tool scores
+  every draft + invariant in `.cairn/ground/decisions/_inbox/` and
+  `.cairn/ground/invariants/` against a confidence heuristic and
+  auto-promotes the obvious ones out of the inbox. Distribution on
+  a 700-file NestJS+Next monorepo: 12% high / 45% medium / 43% low
+  for DEC drafts; 19% / 51% / 30% for invariants. Default
+  `threshold: "high"` only auto-accepts the top tier; operator can
+  widen to `medium` (≈60% accept) or `low` (effectively all) via
+  the CLI dry-run + run flow. Every draft + invariant gets
+  `capture_confidence: high|medium|low` stamped in frontmatter so
+  subsequent attention surfaces can sort.
+- **Confidence heuristic** in `packages/cairn-core/src/attention/scoring.ts`.
+  DEC scoring (max 9, ≥7 high / ≥4 medium): file in
+  `high_stakes_globs` +3, in pilot module +1, in
+  `route_handler_globs` / `dto_globs` +1, prose 80–800 chars +2,
+  title 10–80 chars +1, decision-verb tokens +2, JSDoc tags +1.
+  Invariant scoring (stricter — false positives become enforcement
+  noise): `high_stakes_globs` +3, modal verb +3, reason marker +2,
+  prose 50–600 chars +1.
+- **cairn-attention skill Step 0.5.** Skill auto-invokes the bulk
+  tool before any per-item triage. Surfaces the count summary
+  inline; the operator only sees medium / low-confidence drafts in
+  the interactive flow.
+- **CLI dry-run.** `cairn attention bulk-accept --dry-run
+  [--threshold high|medium|low]` prints the score distribution
+  without writing — operator previews the trade-off before
+  committing.
+
+### Skill registry
+
+- `cairn-adopt` ToolSearch preload now includes
+  `cairn_bulk_accept_attention` so the chained `cairn-attention`
+  call doesn't pay an extra round-trip on Step 0.5.
+
+### Smoke gate
+
+26 cairn + 3 lens smokes pass on a clean tree (no smoke changes
+vs v0.3.6).
+
 ## [0.3.6] — 2026-05-06
 
 Re-publish of v0.3.5 with the source tree scrubbed of an

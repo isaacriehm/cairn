@@ -26,7 +26,7 @@ silently no-ops in `select:`). `AskUserQuestion` is built-in and stays
 unprefixed.
 
 ```
-ToolSearch(select:mcp__plugin_cairn_cairn__cairn_init_resume,mcp__plugin_cairn_cairn__cairn_init_phase_1_detect,mcp__plugin_cairn_cairn__cairn_init_phase_2_walker,mcp__plugin_cairn_cairn__cairn_init_phase_3_mapper,mcp__plugin_cairn_cairn__cairn_init_phase_3b_seed,mcp__plugin_cairn_cairn__cairn_init_phase_4_pilot,mcp__plugin_cairn_cairn__cairn_init_phase_5_brand,mcp__plugin_cairn_cairn__cairn_init_phase_6_docs_ingest,mcp__plugin_cairn_cairn__cairn_init_phase_7b_source_comments,mcp__plugin_cairn_cairn__cairn_init_phase_7c_rules_merge,mcp__plugin_cairn_cairn__cairn_init_phase_8_baseline,mcp__plugin_cairn_cairn__cairn_init_phase_10_strip,mcp__plugin_cairn_cairn__cairn_init_phase_12_multidev,mcp__plugin_cairn_cairn__cairn_decision_get,mcp__plugin_cairn_cairn__cairn_resolve_attention,AskUserQuestion)
+ToolSearch(select:mcp__plugin_cairn_cairn__cairn_init_resume,mcp__plugin_cairn_cairn__cairn_init_phase_1_detect,mcp__plugin_cairn_cairn__cairn_init_phase_2_walker,mcp__plugin_cairn_cairn__cairn_init_phase_3_mapper,mcp__plugin_cairn_cairn__cairn_init_phase_3b_seed,mcp__plugin_cairn_cairn__cairn_init_phase_4_pilot,mcp__plugin_cairn_cairn__cairn_init_phase_5_brand,mcp__plugin_cairn_cairn__cairn_init_phase_6_docs_ingest,mcp__plugin_cairn_cairn__cairn_init_phase_7b_source_comments,mcp__plugin_cairn_cairn__cairn_init_phase_7c_rules_merge,mcp__plugin_cairn_cairn__cairn_init_phase_8_baseline,mcp__plugin_cairn_cairn__cairn_init_phase_10_strip,mcp__plugin_cairn_cairn__cairn_init_phase_12_multidev,mcp__plugin_cairn_cairn__cairn_decision_get,mcp__plugin_cairn_cairn__cairn_resolve_attention,mcp__plugin_cairn_cairn__cairn_bulk_accept_attention,AskUserQuestion)
 ```
 
 After this single call all phase tools + the question tool + the
@@ -129,38 +129,62 @@ session — the top of this loop just calls `cairn_init_resume` again.
 
 **During each phase**, render a styled status banner BEFORE invoking
 the tool. The banner is a markdown horizontal rule + bold phase name +
-em-dashed description. This is the operator's primary progress signal
-during the long-running phases (3-mapper, 6-docs-ingest, 7b/7c).
+em-dashed description + scale-aware ETA + (for the long-running
+phases) a one-line note explaining what is actually happening so the
+operator isn't staring at a frozen turn for minutes wondering whether
+adoption is alive.
 
-Format (one banner per phase, posted as plain assistant text — not as
-a tool call):
+Format:
 
 ```markdown
 ---
-**Phase <id>** — <one-line description> · ~<eta>
+**Phase <id>** — <one-line description> · <eta>
+<optional context line for long phases>
 ```
 
 Use this exact phase registry — pick the matching row, substitute the
-`<id>`, render. Do NOT improvise descriptions:
+`<id>`, render. ETAs are ranges; tip the operator toward the high end
+when `outputs["2-walker"].total_files > 300`. Do NOT improvise
+descriptions:
 
-| `<id>` | description | eta |
+| `<id>` | description | eta (small / large repo) |
 |---|---|---|
 | `1-detect` | environment + stack signature scan | <1s |
-| `2-walker` | repo summary scan | <1s |
-| `3-mapper` | Sonnet domain map (per-module) | ~30-60s |
+| `2-walker` | repo summary scan | <1s / ~2s |
+| `3-mapper` | Sonnet domain map (per-module slice) | ~30-60s / 2-4min |
 | `3b-seed` | seed `.cairn/` skeleton + grandfather commits | <1s |
 | `4-pilot` | pick seed module | operator |
-| `5-brand` | brand auto-fill | operator |
-| `6-docs-ingest` | Haiku ingest of README + docs/ → DEC drafts | ~15-30s |
-| `7b-source-comments` | classify essay comments → DEC + invariant drafts | ~30s |
-| `7c-rules-merge` | merge CLAUDE.md / AGENTS.md sections → drafts | ~45s |
-| `8-baseline` | first sensor sweep | <1s |
+| `5-brand` | brand auto-fill (Haiku) | operator + ~30s |
+| `6-docs-ingest` | Haiku ingest of README + docs/ → DEC drafts | ~15-30s / 1-3min |
+| `7b-source-comments` | Haiku classify essay-class JSDoc → DEC + invariant drafts | ~30s / **5-20min** |
+| `7c-rules-merge` | Haiku per H2 in CLAUDE.md / AGENTS.md / .claude/rules/* | ~30-90s / 1-3min |
+| `8-baseline` | first sensor sweep | <1s / ~5s |
 | `10-strip` | per-module strip-replace consent | operator |
 | `12-multidev` | per-host package manager hints | <1s |
+
+For phases `3-mapper`, `6-docs-ingest`, `7b-source-comments`, and
+`7c-rules-merge`, render a one-line context note immediately under
+the banner so the operator knows what's running. Pick the matching
+row; do NOT improvise:
+
+| `<id>` | context line |
+|---|---|
+| `3-mapper` | `Sonnet runs per detected module slice in parallel rounds of 4 (cap: 50 slices). Scales with module count.` |
+| `6-docs-ingest` | `Haiku batch over README + docs/. Scales with doc file count and length.` |
+| `7b-source-comments` | `Haiku classifies every essay-class block comment in scoped source files (4-way parallel). On busy monorepos this is the longest phase — expect minutes, not seconds. /exit is safe; SessionStart resumes.` |
+| `7c-rules-merge` | `Haiku per H2 section across CLAUDE.md / AGENTS.md / .claude/rules/*. Scales with section count.` |
 
 When the phase is operator-driven (`<eta>` = `operator`) the
 `AskUserQuestion` widget appears immediately after the banner — do NOT
 add a third "what would you like to do" line; the widget is the prompt.
+
+**If the operator interrupts** (`/exit`, `Ctrl-C` mid-phase, or kills
+the session): adoption is **safe to resume**. Phase state persists
+to `.cairn/init-state.json` after every successful phase return.
+The next session's SessionStart banner re-prompts via cairn-adopt;
+the loop picks up at the same `currentPhase` via `cairn_init_resume`.
+Surface this rule to the operator if they ask whether they can bail
+on a long-running phase — they can.
 
 **Do not render the phase's question inline** when a phase returns
 `needs_input` — `AskUserQuestion` is the only render path;

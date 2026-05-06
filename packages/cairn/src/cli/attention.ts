@@ -17,6 +17,12 @@ import {
 } from "node:fs";
 import { join, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
+import {
+  bulkAcceptObvious,
+  type BulkAcceptResult,
+  type DraftConfidence,
+} from "@isaacriehm/cairn-core";
+import type { ProjectGlobs } from "@isaacriehm/cairn-core";
 
 interface DraftEntry {
   id: string;
@@ -245,14 +251,139 @@ function renderBaselineSection(summary: BaselineSummary): void {
   );
 }
 
+function parseThresholdFlag(argv: string[]): DraftConfidence {
+  const idx = argv.indexOf("--threshold");
+  if (idx === -1) return "high";
+  const v = argv[idx + 1];
+  if (v === "high" || v === "medium" || v === "low") return v;
+  console.error(`--threshold must be high|medium|low, got ${String(v)}`);
+  process.exit(2);
+}
+
+function loadProjectGlobs(repoRoot: string): {
+  globs: ProjectGlobs;
+  pilotModule?: string;
+} {
+  const configPath = join(repoRoot, ".cairn", "config.yaml");
+  if (!existsSync(configPath)) {
+    return { globs: {} };
+  }
+  let parsed: unknown;
+  try {
+    parsed = parseYaml(readFileSync(configPath, "utf8"));
+  } catch {
+    return { globs: {} };
+  }
+  if (typeof parsed !== "object" || parsed === null) return { globs: {} };
+  const cfg = parsed as Record<string, unknown>;
+  const globs: ProjectGlobs = {};
+  const pickList = (key: string): string[] | undefined => {
+    const v = cfg[key];
+    if (!Array.isArray(v)) return undefined;
+    return v.filter((x): x is string => typeof x === "string");
+  };
+  const high = pickList("high_stakes_globs");
+  if (high !== undefined) globs.high_stakes_globs = high;
+  const off = pickList("off_limits");
+  if (off !== undefined) globs.off_limits = off;
+  const projectGlobs = cfg["project_globs"];
+  if (typeof projectGlobs === "object" && projectGlobs !== null) {
+    const pg = projectGlobs as Record<string, unknown>;
+    const route = Array.isArray(pg["route_handler_globs"])
+      ? (pg["route_handler_globs"].filter((x) => typeof x === "string") as string[])
+      : undefined;
+    if (route !== undefined) globs.route_handler_globs = route;
+    const dto = Array.isArray(pg["dto_globs"])
+      ? (pg["dto_globs"].filter((x) => typeof x === "string") as string[])
+      : undefined;
+    if (dto !== undefined) globs.dto_globs = dto;
+    const gen = Array.isArray(pg["generator_source_globs"])
+      ? (pg["generator_source_globs"].filter((x) => typeof x === "string") as string[])
+      : undefined;
+    if (gen !== undefined) globs.generator_source_globs = gen;
+    const hi = Array.isArray(pg["high_stakes_globs"])
+      ? (pg["high_stakes_globs"].filter((x) => typeof x === "string") as string[])
+      : undefined;
+    if (hi !== undefined && globs.high_stakes_globs === undefined) {
+      globs.high_stakes_globs = hi;
+    }
+  }
+  const pilot = typeof cfg["pilot_module"] === "string" ? (cfg["pilot_module"] as string) : undefined;
+  return pilot !== undefined ? { globs, pilotModule: pilot } : { globs };
+}
+
+function renderBulkAcceptResult(
+  result: BulkAcceptResult,
+  threshold: DraftConfidence,
+): void {
+  const mode = result.dryRun ? "  [dry-run] " : "  ";
+  process.stdout.write(
+    `${mode}DEC drafts scanned: ${result.decsScanned}\n`,
+  );
+  process.stdout.write(
+    `    high: ${result.decsByConfidence.high}, medium: ${result.decsByConfidence.medium}, low: ${result.decsByConfidence.low}\n`,
+  );
+  if (result.dryRun) {
+    process.stdout.write(
+      `    would accept (≥${threshold}): ${result.decsAccepted}\n`,
+    );
+  } else {
+    process.stdout.write(
+      `    accepted (≥${threshold}): ${result.decsAccepted}\n`,
+    );
+  }
+  process.stdout.write(
+    `${mode}invariants scanned: ${result.invariantsScanned}\n`,
+  );
+  process.stdout.write(
+    `    high: ${result.invariantsByConfidence.high}, medium: ${result.invariantsByConfidence.medium}, low: ${result.invariantsByConfidence.low}\n`,
+  );
+  if (!result.dryRun) {
+    const remaining = result.decsScanned - result.decsAccepted;
+    process.stdout.write(
+      `\n  ${remaining} DEC draft(s) remain in _inbox/ for triage.\n` +
+        `  Run \`cairn attention\` (no flags) to see them, or open the inbox dir directly.\n`,
+    );
+  }
+}
+
+async function bulkAcceptCli(repoRoot: string, argv: string[]): Promise<void> {
+  const dryRun = argv.includes("--dry-run");
+  const threshold = parseThresholdFlag(argv);
+  const { globs, pilotModule } = loadProjectGlobs(repoRoot);
+  const result = await bulkAcceptObvious({
+    repoRoot,
+    globs,
+    ...(pilotModule !== undefined ? { pilotModule } : {}),
+    threshold,
+    dryRun,
+  });
+  process.stdout.write(`  ⬡ cairn attention bulk-accept — ${repoRoot}\n\n`);
+  renderBulkAcceptResult(result, threshold);
+  process.exit(0);
+}
+
 export async function attentionCli(argv: string[]): Promise<void> {
   if (argv[0] === "--help" || argv[0] === "-h") {
     process.stdout.write(
       "Usage: cairn attention [--repo <path>]\n" +
-        "  Show DEC drafts pending confirm + latest baseline sensor findings.\n" +
-        "  Exit 0 when nothing pending; 2 when any items are pending.\n",
+        "       cairn attention bulk-accept [--threshold high|medium|low] [--dry-run] [--repo <path>]\n" +
+        "  Default: list DEC drafts pending confirm + latest baseline sensor findings.\n" +
+        "  bulk-accept: score drafts by confidence, auto-promote ≥threshold (default high)\n" +
+        "    out of _inbox/ to .cairn/ground/decisions/, and stamp\n" +
+        "    capture_confidence on every draft + invariant. Threshold low effectively\n" +
+        "    accepts all drafts; only use after reviewing the dry-run output.\n" +
+        "  Exit 0 when nothing pending or after bulk-accept; 2 when any items remain.\n",
     );
     process.exit(0);
+  }
+
+  if (argv[0] === "bulk-accept") {
+    const rest = argv.slice(1);
+    const repoRoot = parseRepoFlag(rest);
+    ensureAdopted(repoRoot);
+    await bulkAcceptCli(repoRoot, rest);
+    return;
   }
 
   const repoRoot = parseRepoFlag(argv);
