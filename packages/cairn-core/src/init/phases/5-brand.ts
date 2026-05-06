@@ -21,7 +21,7 @@ import type {
   PhaseResult,
   PhaseState,
 } from "./types.js";
-import type { MapperResult } from "../mapper.js";
+import type { MapperResultPersisted } from "./mapper-output-io.js";
 
 const DEFAULT_VOICE =
   "Direct, technical, project-aware. Match the existing tone in CLAUDE.md / AGENTS.md if those files set a register; otherwise default to short sentences, full English, no marketing language.";
@@ -41,7 +41,9 @@ export async function runPhase5Brand(state: PhaseState): Promise<PhaseResult> {
     const choice = state.answer;
     let result: { updated: string[]; warnings: string[] } | null = null;
     if (choice === "auto-fill") {
-      const mapper = state.outputs["3-mapper"] as MapperResult | undefined;
+      const mapper = state.outputs["3-mapper"] as
+        | MapperResultPersisted
+        | undefined;
       if (mapper !== undefined) {
         const detect = state.outputs["1-detect"] as { project_slug?: string } | undefined;
         const projectSlug = detect?.project_slug ?? "this-project";

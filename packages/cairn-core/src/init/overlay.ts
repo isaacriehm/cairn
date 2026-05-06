@@ -26,7 +26,13 @@ const DEFAULT_OFF_LIMITS = [
 interface BuildProjectOverlayArgs {
   detection: DetectionResult;
   decidedSlug: string;
-  mapperOutput?: MapperOutput;
+  // Accepts either the full MapperOutput (CLI runInit path) or the
+  // persisted-light projection without scope_index (MCP phase path);
+  // overlay only consumes the small fields, so the structural subset
+  // is sufficient.
+  mapperOutput?: Omit<MapperOutput, "scope_index"> & {
+    scope_index?: MapperOutput["scope_index"];
+  };
 }
 
 export function buildProjectOverlay(

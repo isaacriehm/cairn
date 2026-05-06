@@ -19,6 +19,15 @@ export {
 } from "./state-io.js";
 
 export {
+  MAPPER_OUTPUT_PATH,
+  mapperOutputAbsPath,
+  readMapperOutputFile,
+  writeMapperOutputFile,
+  toMapperResultPersisted,
+  type MapperResultPersisted,
+} from "./mapper-output-io.js";
+
+export {
   freshPhaseState,
   resumePhases,
   nextPhaseAfter,

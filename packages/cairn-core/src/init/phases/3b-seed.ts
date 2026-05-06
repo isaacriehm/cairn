@@ -25,11 +25,14 @@ import {
   type ScopeIndexEntry,
 } from "../../ground/scope-index.js";
 import { seedAttestedCommits } from "../../hooks/seed-attested.js";
-import type { MapperResult } from "../mapper.js";
 import { buildProjectOverlay } from "../overlay.js";
 import { seedCairnLayout } from "../seed.js";
 import type { DetectionResult } from "../types.js";
 import { updateWorkflowSlugBlock } from "../workflow-block.js";
+import {
+  type MapperResultPersisted,
+  readMapperOutputFile,
+} from "./mapper-output-io.js";
 import { advancePhase } from "./orchestrator.js";
 import type { PhaseResult, PhaseState } from "./types.js";
 
@@ -46,7 +49,9 @@ interface SeedPhaseOutput {
 
 export async function runPhase3bSeed(state: PhaseState): Promise<PhaseResult> {
   const detection = state.outputs["1-detect"] as DetectionResult | undefined;
-  const mapperResult = state.outputs["3-mapper"] as MapperResult | undefined;
+  const mapperResult = state.outputs["3-mapper"] as
+    | MapperResultPersisted
+    | undefined;
   if (detection === undefined) {
     return {
       status: "error",
@@ -59,6 +64,9 @@ export async function runPhase3bSeed(state: PhaseState): Promise<PhaseResult> {
   }
   const projectSlug = detection.project_slug;
   const mapperOutput = mapperResult?.output;
+  // scope_index lives in the side file (it's the heaviest field in the
+  // mapper payload); reload it lazily for the seed step.
+  const mapperFull = readMapperOutputFile(state.repoRoot);
 
   try {
     // Step 1 — seed templates into .cairn/.
@@ -110,7 +118,7 @@ export async function runPhase3bSeed(state: PhaseState): Promise<PhaseResult> {
     const scopeFile = scopeIndexPath(state.repoRoot);
     if (!existsSync(scopeFile)) {
       const seedFiles: Record<string, ScopeIndexEntry> = {};
-      const mapperFiles = mapperOutput?.scope_index?.files ?? {};
+      const mapperFiles = mapperFull?.output.scope_index?.files ?? {};
       for (const [path, e] of Object.entries(mapperFiles)) {
         const entry: ScopeIndexEntry = {
           decisions: e.decisions,

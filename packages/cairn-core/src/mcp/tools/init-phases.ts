@@ -1,22 +1,36 @@
 /**
- * MCP tools for the v0.2.0 init pipeline.
+ * MCP tools for the v0.3.5 init pipeline.
  *
- * Eleven `cairn_init_phase_<id>` tools — one per PHASE_IDS entry —
+ * Twelve `cairn_init_phase_<id>` tools — one per PHASE_IDS entry —
  * plus `cairn_init_resume`. The cairn-adopt skill drives the
  * pipeline by:
- *   1. cairn_init_resume          → { nextPhase, state }
- *   2. cairn_init_phase_<next>    → { complete | needs_input | error, state }
- *   3. AskUserQuestion if needs_input → re-call same tool with state.answer
+ *   1. cairn_init_resume          → { status, nextPhase, repoRoot }
+ *   2. cairn_init_phase_<next>()  → { status, nextPhase | question | error }
+ *   3. AskUserQuestion if needs_input → re-call same tool with { answer }
  *   4. loop on complete + advance until nextPhase === null
  *
- * State persists to .cairn/init-state.json after every phase result
- * (whether complete or needs_input) so the operator can crash-recover.
+ * State persists to .cairn/init-state.json after every successful
+ * phase result so the operator can crash-recover. The skill no longer
+ * threads state through arguments — phase tools read state from disk
+ * and only need an optional `answer` field for needs_input phases.
+ *
+ * Why no state echo: returning the full state in tool responses
+ * triggered MCP-level spillover-to-file once mapper output landed,
+ * which broke the skill's state machine (see v0.3.5 incident report).
+ * Skinny responses keep the conversation cache warm and let the LLM
+ * progress through phases without re-reading 90KB JSON each round.
+ *
+ * Why no clobber on error: prior versions persisted `result.state`
+ * unconditionally. An error path that echoed the input state with
+ * `outputs: {}` would overwrite the on-disk state and lose all prior
+ * phase outputs — a single bad call could nuke a 90KB mapper run.
  */
 
 import { z } from "zod";
 import {
   PHASE_IDS,
   freshPhaseState,
+  readPhaseState,
   resumePhases,
   runPhase10Strip,
   runPhase12Multidev,
@@ -31,8 +45,9 @@ import {
   runPhase7cRulesMerge,
   runPhase8Baseline,
   writePhaseState,
-  clearPhaseState,
+  type PhaseError,
   type PhaseId,
+  type PhaseQuestion,
   type PhaseResult,
   type PhaseState,
 } from "../../init/index.js";
@@ -54,7 +69,13 @@ const phaseStateSchema = z.object({
 });
 
 const initPhaseInput = {
-  state: phaseStateSchema,
+  // State is optional — phase tools read .cairn/init-state.json by
+  // default. Callers can still pass an explicit state object (e.g.
+  // smoke tests) but the cairn-adopt skill should pass nothing here.
+  state: phaseStateSchema.optional(),
+  // Operator answer for needs_input phases. The wrapper splices this
+  // into state.answer before invoking the phase runner.
+  answer: z.string().optional(),
 };
 
 const initResumeInput = {};
@@ -75,11 +96,42 @@ const RUNNERS: Record<PhaseId, (s: PhaseState) => Promise<PhaseResult>> = {
 };
 
 interface PhaseToolInput {
-  state: PhaseState;
+  state?: PhaseState;
+  answer?: string;
 }
 
 interface ResumeToolInput {
   // empty
+}
+
+/**
+ * Public response shape — strictly skinnier than PhaseResult so the
+ * MCP transport never spills the full state into a tool-result file.
+ * The skill driver gets `nextPhase` (advance), `question` (ask), or
+ * `error` (surface). State stays on disk; readers reload from there.
+ */
+type SlimPhaseResponse =
+  | {
+      readonly status: "complete";
+      readonly nextPhase: PhaseId | null;
+    }
+  | {
+      readonly status: "needs_input";
+      readonly question: PhaseQuestion;
+    }
+  | {
+      readonly status: "error";
+      readonly error: PhaseError;
+    };
+
+function toSlim(result: PhaseResult): SlimPhaseResponse {
+  if (result.status === "complete") {
+    return { status: "complete", nextPhase: result.nextPhase };
+  }
+  if (result.status === "needs_input") {
+    return { status: "needs_input", question: result.question };
+  }
+  return { status: "error", error: result.error };
 }
 
 function makePhaseTool(id: PhaseId): ToolDef<PhaseToolInput> {
@@ -88,44 +140,62 @@ function makePhaseTool(id: PhaseId): ToolDef<PhaseToolInput> {
     description: phaseDescription(id),
     inputSchema: initPhaseInput,
     handler: async (ctx, input) => {
-      // Sanity: the tool's id must match the phase id baked into state.
-      if (input.state.currentPhase !== id) {
+      // Resolve state: prefer the explicit arg (smoke tests, debug
+      // tooling), fall back to disk (cairn-adopt skill default).
+      let state: PhaseState | null = input.state ?? null;
+      if (state === null) {
+        state = readPhaseState(ctx.repoRoot);
+      }
+      if (state === null) {
         return mcpError(
           "VALIDATION_FAILED",
-          `cairn_init_phase_${normalizeId(id)} requires state.currentPhase=${id}, got ${input.state.currentPhase}`,
+          `cairn_init_phase_${normalizeId(id)} found no init state at .cairn/init-state.json. Call cairn_init_resume to start a fresh pipeline.`,
+        );
+      }
+      // Sanity: the tool's id must match the phase id baked into state.
+      if (state.currentPhase !== id) {
+        return mcpError(
+          "VALIDATION_FAILED",
+          `cairn_init_phase_${normalizeId(id)} requires state.currentPhase=${id}, got ${state.currentPhase}`,
         );
       }
       // The state's repoRoot drives the phase, but we sanity-check it
       // against the MCP context's repoRoot so a misaddressed call
       // (e.g. an old state file from a different repo) gets caught.
-      if (input.state.repoRoot !== ctx.repoRoot) {
+      if (state.repoRoot !== ctx.repoRoot) {
         return mcpError(
           "VALIDATION_FAILED",
-          `state.repoRoot ${input.state.repoRoot} does not match MCP context ${ctx.repoRoot}`,
+          `state.repoRoot ${state.repoRoot} does not match MCP context ${ctx.repoRoot}`,
         );
       }
+      // Splice the operator's answer into state for needs_input phases.
+      // The runner clears `state.answer` once it has consumed it (via
+      // `advancePhase`), so passing an answer to a phase that doesn't
+      // expect one is a no-op rather than a hazard.
+      const stateForRun: PhaseState =
+        input.answer !== undefined && input.answer.length > 0
+          ? { ...state, answer: input.answer }
+          : state;
       const runner = RUNNERS[id];
-      const result = await runner(input.state);
-      // Persist state after every phase result so the operator can
-      // /exit Claude Code mid-init and resume on the next session.
-      try {
-        writePhaseState(result.state);
-      } catch (err) {
-        return mcpError(
-          "INTERNAL_ERROR",
-          `failed to persist init state: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-      // Pipeline complete — clean up the state file so the next init
-      // starts fresh rather than resuming.
-      if (result.status === "complete" && result.nextPhase === null) {
+      const result = await runner(stateForRun);
+      // Persist state ONLY on non-error results. An error path returns
+      // the input state echo unchanged; persisting it would clobber
+      // the on-disk state file with whatever shape the caller sent in
+      // (in v0.3.4 a malformed state nuked a 90KB mapper run this way).
+      if (result.status !== "error") {
         try {
-          clearPhaseState(ctx.repoRoot);
-        } catch {
-          // best-effort cleanup
+          writePhaseState(result.state);
+        } catch (err) {
+          return mcpError(
+            "INTERNAL_ERROR",
+            `failed to persist init state: ${err instanceof Error ? err.message : String(err)}`,
+          );
         }
       }
-      return result;
+      // The state file lingers after terminal phase 12-multidev so the
+      // cairn-adopt skill can read outputs for its final summary
+      // banner. Cleanup is a manual concern (cairn doctor / re-init).
+      return toSlim(result);
     },
   };
 }
@@ -134,19 +204,21 @@ function makeResumeTool(): ToolDef<ResumeToolInput> {
   return {
     name: "cairn_init_resume",
     description:
-      "Read the on-disk init state for the current repo and return the next phase to invoke. The cairn-adopt skill calls this once at the start of the pipeline (and after any operator interruption) to find where to pick up. Returns { status: 'ready' | 'done', nextPhase: PhaseId | null, state: PhaseState }.",
+      "Read the on-disk init state for the current repo and return the next phase to invoke. The cairn-adopt skill calls this once at the start of the pipeline (and after any operator interruption) to find where to pick up. Returns { status: 'ready' | 'done', nextPhase: PhaseId | null, repoRoot }.",
     inputSchema: initResumeInput,
     handler: async (ctx) => {
       const report = resumePhases(ctx.repoRoot);
       // For a fresh start, ensure state.repoRoot matches ctx.repoRoot
       // (resumePhases uses freshPhaseState(ctx.repoRoot) for this case).
-      if (report.state.repoRoot !== ctx.repoRoot) {
-        return {
-          ...report,
-          state: { ...freshPhaseState(ctx.repoRoot), startedAt: report.state.startedAt },
-        };
-      }
-      return report;
+      const repoRoot =
+        report.state.repoRoot !== ctx.repoRoot
+          ? freshPhaseState(ctx.repoRoot).repoRoot
+          : report.state.repoRoot;
+      return {
+        status: report.status,
+        nextPhase: report.nextPhase,
+        repoRoot,
+      };
     },
   };
 }

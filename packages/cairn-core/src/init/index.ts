@@ -173,6 +173,11 @@ export {
   resumePhases,
   nextPhaseAfter,
   advancePhase,
+  MAPPER_OUTPUT_PATH,
+  mapperOutputAbsPath,
+  readMapperOutputFile,
+  writeMapperOutputFile,
+  toMapperResultPersisted,
   runPhase1Detect,
   runPhase2Walker,
   runPhase3Mapper,
@@ -195,4 +200,5 @@ export type {
   PhaseOption,
   PhaseError,
   ResumeReport,
+  MapperResultPersisted,
 } from "./phases/index.js";

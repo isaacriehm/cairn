@@ -4,6 +4,96 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.5] — 2026-05-06
+
+Hotfix on top of v0.3.4. Adoption on a real ~700-file
+TypeScript monorepo failed at Phase 3-mapper: the MCP response
+echoed `state` with the 90KB mapper output inside, which crossed
+the MCP transport's spillover-to-file token cap. The cairn-adopt
+skill couldn't read `nextPhase` from the spilled file path, gave
+up, and spawned a generic-purpose subagent that burned ~5 minutes
+flailing — at one point clobbering the on-disk state from 154KB →
+191B because the wrapper persisted the empty-outputs echo from a
+`missing-prereqs` error path. Operator killed the session.
+
+### Breaking changes
+
+- **`cairn_init_phase_*` MCP tool responses are slim.** Returns now
+  `{ status, nextPhase }` / `{ status, question }` / `{ status, error }`
+  — the full `state` is no longer echoed. State persists to
+  `.cairn/init-state.json`; readers reload from disk on demand. Slim
+  responses keep the conversation cache warm and keep every phase's
+  result well under the spillover-to-file cap on real monorepos.
+- **`cairn_init_resume` returns `{ status, nextPhase, repoRoot }`.**
+  Same reason as above — was previously echoing the full state object.
+- **`state` parameter on `cairn_init_phase_*` is optional.** Default
+  path: tool reads state from disk and only takes an optional
+  `answer` field for `needs_input` phases. The cairn-adopt skill no
+  longer threads state through tool arguments — the LLM never has
+  to stuff a 90KB JSON object into a tool call. Explicit `state`
+  arg still works (smoke tests, debug tooling).
+- **Phase 3-mapper spills heavy fields to a side file.** The full
+  `MapperResult` (including `scope_index.files` and
+  `module_proposals`) is written to `.cairn/init/mapper-output.json`.
+  `state.outputs["3-mapper"]` carries only the persisted-light
+  projection (small globs, pilot pick, key modules, domain summary,
+  mechanical sensor list, run metadata). Phase 3b-seed reloads the
+  side file on demand to seed `scope-index.yaml`. Other downstream
+  phases (4-pilot, 5-brand, 8-baseline) only read the small fields
+  and so get them straight from state.
+- **State file lingers after terminal phase 12-multidev.** Prior
+  versions auto-cleared `.cairn/init-state.json` on the final
+  `nextPhase: null`; the cairn-adopt skill needs the persisted
+  outputs to source its Step 5 final summary. Cleanup is now a
+  manual concern (`cairn doctor` / re-init).
+
+### Fixed
+
+- **Error path no longer clobbers disk state.** `writePhaseState` is
+  gated on `result.status !== "error"`. Prior versions persisted
+  `result.state` unconditionally — an error path returning the
+  input state echo with `outputs: {}` would overwrite a valid 90KB
+  mapper run with whatever shape the caller sent in. New smoke step
+  `init-mcp-tools / 3d` locks the no-clobber invariant.
+- **Adoption no longer escapes into a subagent.** The `cairn-adopt`
+  SKILL.md explicitly forbids spawning a subagent to drive the
+  pipeline loop — the skill itself is the orchestrator, and nested
+  agents lose the operator-facing banner channel and burn tokens on
+  a redundant ToolSearch + state re-discovery.
+- **`overlay.buildProjectOverlay` accepts the persisted-light
+  mapper shape.** `mapperOutput` is now typed as
+  `Omit<MapperOutput, "scope_index"> & { scope_index?: … }` — the
+  CLI `runInit` path still passes the full output; the MCP path
+  passes the lighter projection. Either way, overlay only reads the
+  small fields.
+
+### Removed
+
+- `packages/cairn-core/src/hooks/user-prompt-submit.ts` — orphaned
+  bin shim. The runner under `hooks/runners/user-prompt-submit.ts`
+  is the live implementation, wired via the `cairn hook
+  user-prompt-submit` subcommand. The top-level shim was never
+  imported and never registered as a plugin entry.
+
+### Smoke gate
+
+26 cairn + 3 lens smokes pass on a clean tree. `init-mcp-tools`
+gains four new steps (3b/3c/3d) covering the slim-response
+contract, the disk-load default, the missing-state validation, and
+the no-clobber-on-error invariant.
+
+### Operator workflow notes
+
+- **Re-adopting a project that hit the v0.3.4 spillover:** delete
+  the existing `.cairn/init-state.json` and `.cairn/init/` if
+  present, then re-run the cairn-adopt skill. The slim contract
+  handles 700-file monorepos cleanly now.
+- **Plugin cache resync after upgrade.** `cairn-frontend-claudecode`
+  bundle is reproduced verbatim into
+  `~/.claude/plugins/cache/isaacriehm-cairn/cairn/0.1.10/`. If the
+  CLI version doesn't read 0.3.5, blow that cache dir away and
+  re-copy the package as documented in the operator resume.
+
 ## [0.3.4] — 2026-05-06
 
 ### Added
