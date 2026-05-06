@@ -1,10 +1,16 @@
 /**
  * Phase 5-brand — adopt brand DEC drafts inline.
  *
- * Emits ONE A/B/C choice. `auto-fill` substitutes positioning + voice
- * from the mapper's domain summary; `skip` leaves status: draft for
- * later editing; `manual` hands off to the operator (drafts stay
- * draft, summary surfaces the file paths to edit).
+ * Emits ONE A/B/C choice. `auto-fill` substitutes positioning +
+ * brand-overview + voice + personas from the mapper's domain summary
+ * + sensible defaults; `skip` leaves status: draft for later editing;
+ * `manual` hands off to the operator (drafts stay draft, summary
+ * surfaces the file paths to edit).
+ *
+ * Auto-fill writes a populated draft to every brand/product file.
+ * Operator can refine + flip status to `accepted` when ready;
+ * doctor reports draft brand files as informational, not warning,
+ * so CI passes during the operator-paced review.
  */
 
 import { applyBrandAnswers, type BrandAnswers } from "../brand-setup.js";
@@ -16,6 +22,18 @@ import type {
 } from "./types.js";
 import type { MapperResult } from "../mapper.js";
 
+const DEFAULT_VOICE =
+  "Direct, technical, project-aware. Match the existing tone in CLAUDE.md / AGENTS.md if those files set a register; otherwise default to short sentences, full English, no marketing language.";
+
+const DEFAULT_AVOID =
+  "Marketing fluff (\"world-class\", \"revolutionary\", \"game-changing\"). Speculative claims about behavior the code does not implement. Anything that contradicts an in-scope DEC or §INV.";
+
+function deriveDefaultUsers(state: PhaseState): string {
+  const detect = state.outputs["1-detect"] as { project_slug?: string } | undefined;
+  const slug = detect?.project_slug ?? "this project";
+  return `Developers and operators working on ${slug}. Refine when adding consumer-facing or external personas.`;
+}
+
 export async function runPhase5Brand(state: PhaseState): Promise<PhaseResult> {
   // Pending operator answer → execute the chosen path.
   if (state.answer !== undefined && state.answer.length > 0) {
@@ -26,9 +44,9 @@ export async function runPhase5Brand(state: PhaseState): Promise<PhaseResult> {
       if (mapper !== undefined) {
         const answers: BrandAnswers = {
           whatItDoes: mapper.output.domain_summary,
-          mainUsers: "",
-          voice: "",
-          avoid: "",
+          mainUsers: deriveDefaultUsers(state),
+          voice: DEFAULT_VOICE,
+          avoid: DEFAULT_AVOID,
         };
         result = applyBrandAnswers(state.repoRoot, answers);
       }

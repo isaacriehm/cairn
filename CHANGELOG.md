@@ -4,6 +4,39 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3] — 2026-05-06
+
+### Added
+
+- **Phase 5-brand auto-fill writes every brand/product file with a
+  populated draft**, not just `product/positioning.md`. Now writes:
+  - `product/positioning.md` ← mapper `domain_summary`
+  - `brand/overview.md` ← mapper `domain_summary` (operator can
+    diverge from positioning later)
+  - `product/personas.yaml` ← `Developers and operators working on
+    <project_slug>` (refine when adding consumer-facing personas)
+  - `brand/voice.md` ← default voice + avoid profile that points
+    operator at `CLAUDE.md` / `AGENTS.md` for tone signals
+- **Template overhaul.** Every operator-paced file in
+  `.cairn/ground/{brand,product,capabilities}/` now ships with:
+  - A `WHAT THIS FILE IS` block (purpose + when read)
+  - A `WHEN TO FILL IT IN` block (auto-fill behavior + status flip)
+  - A `FORMAT` block with two concrete fictional examples (FoxGlove
+    Florist + Northstar — clearly placeholder, no real
+    organizations referenced)
+  - The body shows the auto-fill output instead of a hostile
+    `(operator: replace this paragraph with your brand summary)`
+    placeholder. New adopters see what "filled" looks like.
+
+  Files updated:
+  - `brand/overview.md`
+  - `brand/voice.md`
+  - `product/positioning.md`
+  - `product/personas.yaml`
+  - `capabilities/mcp-tools.yaml`
+  - `capabilities/skills.yaml`
+  - `capabilities/snippets.yaml`
+
 ## [0.3.2] — 2026-05-06
 
 Hotfix on top of v0.3.1.

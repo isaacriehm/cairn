@@ -121,6 +121,19 @@ export function applyBrandAnswers(
       rel,
     );
     if (ok) updated.push(rel);
+    // Also pre-fill brand/overview.md with the same domain summary —
+    // gives the operator a populated starting point instead of an
+    // empty `(operator: replace this paragraph...)` placeholder.
+    // Operator can diverge overview vs. positioning later; until
+    // then they share content.
+    const overviewRel = ".cairn/ground/brand/overview.md";
+    const overviewOk = rewriteWithBody(
+      join(repoRoot, overviewRel),
+      answers.whatItDoes,
+      warnings,
+      overviewRel,
+    );
+    if (overviewOk) updated.push(overviewRel);
   }
 
   if (answers.mainUsers.length > 0) {
