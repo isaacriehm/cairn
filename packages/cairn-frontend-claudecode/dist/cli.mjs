@@ -70513,7 +70513,7 @@ async function runUserPromptSubmitHook() {
 // ../cairn-core/dist/index.js
 function readVersion() {
   if (true)
-    return "0.3.5";
+    return "0.3.6";
   const _here = dirname23(fileURLToPath3(import.meta.url));
   const _pkg = JSON.parse(readFileSync63(join77(_here, "..", "package.json"), "utf8"));
   return _pkg.version;

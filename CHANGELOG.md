@@ -4,6 +4,27 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.6] — 2026-05-06
+
+Re-publish of v0.3.5 with the source tree scrubbed of an
+unintentional internal-path example in `hooks/runners/session-start.ts`'s
+`findAdoptableChildren` JSDoc. No functional change vs v0.3.5 — same
+slim MCP phase responses, same mapper-output spillover, same skinny
+state contract.
+
+### Fixed
+
+- **Generic-ized `findAdoptableChildren` source-comment example.**
+  The JSDoc and inline example in `packages/cairn-core/src/hooks/runners/session-start.ts`
+  used a real-world directory path as a stand-in for "operator opened
+  Claude Code in a parent dir with adoptable children". Replaced with
+  a neutral `~/projects/parent/` placeholder. Behavior unchanged.
+
+### Smoke gate
+
+26 cairn + 3 lens smokes pass on a clean tree (no smoke changes vs
+v0.3.5).
+
 ## [0.3.5] — 2026-05-06
 
 Hotfix on top of v0.3.4. Adoption on a real ~700-file
