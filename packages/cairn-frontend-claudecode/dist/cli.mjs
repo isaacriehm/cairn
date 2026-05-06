@@ -48777,6 +48777,10 @@ function applyBrandAnswers(repoRoot, answers) {
     const ok = rewriteWithBody(join24(repoRoot, rel), answers.whatItDoes, warnings, rel);
     if (ok)
       updated.push(rel);
+    const overviewRel = ".cairn/ground/brand/overview.md";
+    const overviewOk = rewriteWithBody(join24(repoRoot, overviewRel), answers.whatItDoes, warnings, overviewRel);
+    if (overviewOk)
+      updated.push(overviewRel);
   }
   if (answers.mainUsers.length > 0) {
     const rel = ".cairn/ground/product/personas.yaml";
@@ -56873,6 +56877,13 @@ async function runPhase4Pilot(state) {
 }
 
 // ../cairn-core/dist/init/phases/5-brand.js
+var DEFAULT_VOICE = "Direct, technical, project-aware. Match the existing tone in CLAUDE.md / AGENTS.md if those files set a register; otherwise default to short sentences, full English, no marketing language.";
+var DEFAULT_AVOID = 'Marketing fluff ("world-class", "revolutionary", "game-changing"). Speculative claims about behavior the code does not implement. Anything that contradicts an in-scope DEC or \xA7INV.';
+function deriveDefaultUsers(state) {
+  const detect = state.outputs["1-detect"];
+  const slug = detect?.project_slug ?? "this project";
+  return `Developers and operators working on ${slug}. Refine when adding consumer-facing or external personas.`;
+}
 async function runPhase5Brand(state) {
   if (state.answer !== void 0 && state.answer.length > 0) {
     const choice = state.answer;
@@ -56882,9 +56893,9 @@ async function runPhase5Brand(state) {
       if (mapper !== void 0) {
         const answers = {
           whatItDoes: mapper.output.domain_summary,
-          mainUsers: "",
-          voice: "",
-          avoid: ""
+          mainUsers: deriveDefaultUsers(state),
+          voice: DEFAULT_VOICE,
+          avoid: DEFAULT_AVOID
         };
         result = applyBrandAnswers(state.repoRoot, answers);
       }
@@ -70298,7 +70309,7 @@ async function runUserPromptSubmitHook() {
 // ../cairn-core/dist/index.js
 function readVersion() {
   if (true)
-    return "0.3.2";
+    return "0.3.3";
   const _here = dirname22(fileURLToPath3(import.meta.url));
   const _pkg = JSON.parse(readFileSync61(join75(_here, "..", "package.json"), "utf8"));
   return _pkg.version;

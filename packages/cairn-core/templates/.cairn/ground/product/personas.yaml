@@ -1,3 +1,37 @@
-# Product personas — who this is for. Read at every SessionStart.
+# Product personas — who this is for. Read at every SessionStart so
+# the agent frames suggestions for the right audience.
+#
+# WHAT THIS FILE IS
+#
+# YAML list of named user types. Each persona is one named role with
+# a one-line description (≤120 chars). 1–3 personas is the sweet
+# spot; >3 dilutes signal.
+#
+# WHEN TO FILL IT IN
+#
+# Adoption pre-fills a single `primary` persona derived from project
+# signals (mapper output + README). Edit to refine + add secondary
+# personas. Flip `status: draft` → `status: accepted` once filled.
+#
+# FORMAT
+#
+# Two examples to anchor on:
+#
+#   Example A (fictional consumer service — FoxGlove Florist):
+#     status: accepted
+#     personas:
+#       - name: gift-sender
+#         description: Adult ordering flowers for someone else (birthday, anniversary, sympathy). Wants warm but unfussy presentation.
+#       - name: wedding-planner
+#         description: Event coordinator booking florals 6+ weeks ahead. Cares about delivery windows + change-tolerance.
+#
+#   Example B (fictional B2B SaaS — Northstar):
+#     status: accepted
+#     personas:
+#       - name: backend-engineer
+#         description: Owns the queue infrastructure. Reads dashboards daily, replays deadletters weekly, never wants to leave the terminal.
+#       - name: sre-on-call
+#         description: Gets paged at 3am. Wants per-queue p99 latency + a one-click deadletter snapshot, no setup.
+
 status: draft
 personas: []

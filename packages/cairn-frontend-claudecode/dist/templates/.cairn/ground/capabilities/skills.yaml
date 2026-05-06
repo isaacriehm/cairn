@@ -1,3 +1,25 @@
 # Installed skill packs available in this session.
-# The init mapper scans .claude/skills/ and seeds entries; operator extends.
+#
+# WHAT THIS FILE IS
+#
+# Inventory of project-level skills the agent can invoke (the
+# `.claude/skills/` directory of the host project). Each entry is
+# name + one-line trigger description. Adoption seeds entries from
+# whatever's already in `.claude/skills/`; operator extends.
+#
+# WHEN TO FILL IT IN
+#
+# Auto-populated at adoption + on `cairn fix` re-scans. Edit by
+# hand only when adding a new project-local skill or removing one.
+#
+# FORMAT
+#
+# Two examples to anchor on:
+#
+#   skills:
+#     - name: deploy-staging
+#       description: Push current branch to the staging GKE cluster + run smoke tests. Auto-invoke on "deploy", "ship", "push to staging".
+#     - name: db-migrate
+#       description: Generate + apply a Drizzle migration with backup snapshot. Auto-invoke when schema changes are mentioned.
+
 skills: []
