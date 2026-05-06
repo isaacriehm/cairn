@@ -31,12 +31,21 @@ jobs:
       - name: Build
         run: pnpm -r build
 
-      - name: Smoke gate
+      - name: Smoke gate (cairn)
         run: |
           for s in plugin-layout resolve-attention stop-hook events session-state \
                    status-line session-start handoff scope-index read-enrich init \
-                   ingestion-baseline tier0 gc lock source-comments rules-merge join \
-                   bypass-detection bootstrap-guard e2e-adoption e2e-daily-flow; do
+                   ingestion-baseline gc lock source-comments rules-merge join \
+                   bypass-detection bootstrap-guard e2e-adoption e2e-daily-flow \
+                   plugin-bundle init-phases-state init-phases-all init-mcp-tools \
+                   stop-debounce; do
             echo "── smoke:$s ──"
             pnpm --filter @isaacriehm/cairn "smoke:$s"
+          done
+
+      - name: Smoke gate (lens)
+        run: |
+          for s in resolver dec-tokens empty-ground; do
+            echo "── lens:smoke:$s ──"
+            pnpm --filter cairn-lens "smoke:$s"
           done
