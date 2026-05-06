@@ -48,6 +48,7 @@ import {
   scoreInvariant,
   type DraftConfidence,
 } from "./scoring.js";
+import { runDecSourceStrip } from "./source-strip.js";
 
 export interface BulkAcceptArgs {
   repoRoot: string;
@@ -73,6 +74,21 @@ export interface BulkAcceptResult {
   acceptedIds: string[];
   invariantsScanned: number;
   invariantsByConfidence: Record<DraftConfidence, number>;
+  /**
+   * Aggregate count of files where an accepted DEC's source-comment
+   * essay was replaced inline with `// §DEC-NNNN`. Mirrors the §INV
+   * strip pass that 7b runs at adoption time.
+   */
+  sourceStripFilesModified: number;
+  /** Aggregate count of strip items that landed across all accepted DECs. */
+  sourceStripItemsApplied: number;
+  /**
+   * Per-accepted-id strip outcome reasons when the strip didn't run
+   * the happy path (block not found, audit missing, source dirty).
+   * Empty when every accept succeeded or no DECs came from source
+   * comments.
+   */
+  sourceStripSkipped: { id: string; reason: string }[];
   dryRun: boolean;
 }
 
@@ -94,6 +110,9 @@ export async function bulkAcceptObvious(
     decsAccepted: 0,
     decsByConfidence: { high: 0, medium: 0, low: 0 } as Record<DraftConfidence, number>,
     acceptedIds: [] as string[],
+    sourceStripFilesModified: 0,
+    sourceStripItemsApplied: 0,
+    sourceStripSkipped: [] as { id: string; reason: string }[],
   };
 
   if (existsSync(inboxDir)) {
@@ -148,6 +167,51 @@ export async function bulkAcceptObvious(
                 rmSync(abs, { force: true });
               } catch {
                 /* best-effort */
+              }
+              // Source-comment derived DECs: replace the original essay
+              // block with `// §DEC-NNNN` so the file ends up carrying
+              // the bare cite, mirroring the §INV strip pass that 7b
+              // runs at adoption time.
+              const captureSource = stringField(stampedFm, "capture_source");
+              const blockId = stringField(stampedFm, "blockId");
+              if (
+                captureSource === "init-source-comments" &&
+                blockId !== null
+              ) {
+                // Source files that came from Phase 7b are already dirty
+                // (the INV strip pass mutated them); runDecSourceStrip
+                // forces overwrite for the target file so the dirty
+                // check doesn't bail. Operator consented to source
+                // mutation at adoption time.
+                const stripOutcome = runDecSourceStrip({
+                  repoRoot: args.repoRoot,
+                  decId: id,
+                  meta: {
+                    blockId,
+                    sourceFile: stringField(stampedFm, "sourceFile"),
+                    captureSource,
+                    title: stringField(stampedFm, "title"),
+                  },
+                });
+                decResult.sourceStripFilesModified +=
+                  stripOutcome.files_modified;
+                decResult.sourceStripItemsApplied +=
+                  stripOutcome.items_applied;
+                if (
+                  stripOutcome.attempted &&
+                  stripOutcome.items_applied === 0 &&
+                  stripOutcome.reason !== undefined
+                ) {
+                  decResult.sourceStripSkipped.push({
+                    id,
+                    reason: stripOutcome.reason,
+                  });
+                } else if (!stripOutcome.attempted && stripOutcome.reason !== undefined) {
+                  decResult.sourceStripSkipped.push({
+                    id,
+                    reason: stripOutcome.reason,
+                  });
+                }
               }
             }
             decResult.decsAccepted += 1;

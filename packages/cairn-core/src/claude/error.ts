@@ -16,6 +16,7 @@ export type ClaudeErrorKind =
   | "rate_limit"
   | "overloaded"
   | "auth"
+  | "timeout"
   | "other";
 
 export class ClaudeError extends Error {
@@ -48,6 +49,10 @@ export function classifyClaudeError(args: {
   exitCode?: number | null;
   stderr?: string;
 }): ClaudeErrorKind {
+  // SIGTERM (143) — AbortController firing on timeout. Classify as timeout
+  // for trace observability so sensors can flag stuck calls distinctly from
+  // generic failures.
+  if (args.exitCode === 143) return "timeout";
   const text = `${args.message}\n${args.stderr ?? ""}`;
   if (RATE_LIMIT_RE.test(text)) return "rate_limit";
   if (OVERLOADED_RE.test(text)) return "overloaded";

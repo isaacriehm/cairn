@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { readProgress } from "../init/progress.js";
 import { type CtxMeterInput, formatStatus, renderCtxMeter } from "./format.js";
 import type { StatusJson, TaskState } from "./index.js";
 import { statusJsonPath } from "./writer.js";
@@ -49,12 +50,34 @@ function isStatusJson(x: unknown): x is StatusJson {
  * Counts pending drafts from `_inbox/`; renders `⬡ cairn  ⚑ N drafts` or
  * just `⬡ cairn`. Returns empty string when `.cairn/` is absent.
  *
+ * Mid-adoption: `.cairn/init/progress.json` exists and overrides everything
+ * else with the live `⏳ adopt …` indicator so the operator sees motion
+ * during long ingestion phases.
+ *
  * Ctx meter is appended when supplied — operator-side dropdown stays
  * informative even when the session hook hasn't written status yet.
  */
 function groundStateFallback(repoRoot: string, ctx?: CtxMeterInput): string {
   const cairnDir = join(repoRoot, ".cairn");
   if (!existsSync(cairnDir)) return "";
+
+  const progress = readProgress(repoRoot);
+  if (progress !== null) {
+    const stub: StatusJson = {
+      updated_at: new Date().toISOString(),
+      decisions_in_scope: 0,
+      invariants_in_scope: 0,
+      task_state: "idle",
+      task_id: null,
+      task_module: null,
+      gc_running: false,
+      attention_count: 0,
+      bypass_count: 0,
+      last_run_result: null,
+      last_run_at: null,
+    };
+    return formatStatus(stub, ctx, progress);
+  }
 
   let drafts = 0;
   const inboxDir = join(cairnDir, "ground", "decisions", "_inbox");
@@ -116,5 +139,7 @@ export function readStatusForCLI(
 
   if (!isStatusJson(parsed)) return groundStateFallback(repoRoot, ctx);
 
-  return formatStatus(parsed, ctx);
+  // Mid-adoption: live progress wins over the per-session signal.
+  const progress = readProgress(repoRoot);
+  return formatStatus(parsed, ctx, progress);
 }

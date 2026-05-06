@@ -37,6 +37,12 @@ import {
 } from "../../ground/scope-index.js";
 import { logger } from "../../logger.js";
 import {
+  scoreDecDraft,
+  scoreInvariant,
+  type DraftConfidence,
+} from "../../attention/scoring.js";
+import type { ProjectGlobs } from "../../sensors/types.js";
+import {
   applyStripReplace,
   formatBareCitation,
   type ReplaceItem,
@@ -64,6 +70,26 @@ export interface IngestSourceCommentsArgs {
   dryRun?: boolean;
   /** When set, override `Date.now()` for deterministic test outputs. */
   nowIso?: string;
+  /**
+   * Project globs from `.cairn/config.yaml` (or the mapper output). When
+   * provided, every DEC draft + invariant gets `capture_confidence` scored
+   * and stamped at write time so `cairn attention bulk-accept` becomes an
+   * O(1) file move instead of re-scoring every draft on disk.
+   */
+  globs?: ProjectGlobs;
+  /** Pilot module path (workflow.md `pilot_module`) for scoring bias. */
+  pilotModule?: string;
+  /**
+   * Caller-supplied DEC id Set, threaded by the parallel orchestrator
+   * across phases 6 / 7b / 7c so concurrent allocations don't collide.
+   */
+  existingDecIds?: Set<string>;
+  /**
+   * Caller-supplied INV id Set. Only 7b allocates invariant ids today,
+   * but the optional arg matches the DEC pattern for symmetry and lets
+   * future phases share the allocator.
+   */
+  existingInvIds?: Set<string>;
 }
 
 export interface IngestSourceCommentsResult {
@@ -131,6 +157,7 @@ export async function runSourceCommentsIngestion(
 
   const classifyResult = await classifyBlocks({
     blocks: walk.blocks,
+    repoRoot,
     ...(args.mockClassify !== undefined ? { mockClassify: args.mockClassify } : {}),
     ...(args.onBatchProgress !== undefined
       ? { onBatchProgress: args.onBatchProgress }
@@ -159,8 +186,9 @@ export async function runSourceCommentsIngestion(
   // comment block; replacement is `// §INV-NNNN`.
   const invariantStripItems: ReplaceItem[] = [];
 
-  const existingIds = scanExistingDecisionIds(repoRoot);
-  const existingInvariantIds = scanExistingInvariantIds(repoRoot);
+  const existingIds = args.existingDecIds ?? scanExistingDecisionIds(repoRoot);
+  const existingInvariantIds =
+    args.existingInvIds ?? scanExistingInvariantIds(repoRoot);
 
   for (let i = 0; i < walk.blocks.length; i++) {
     const block = walk.blocks[i];
@@ -170,6 +198,17 @@ export async function runSourceCommentsIngestion(
     if (cls.kind === "rationale" && cls.suggestedDecDraft.length > 0) {
       const id = allocateDecisionId(repoRoot, existingIds);
       existingIds.add(id);
+      const confidence: DraftConfidence | undefined =
+        args.globs !== undefined
+          ? scoreDecDraft({
+              sourceFile: block.file,
+              prose: block.prose,
+              title: cls.suggestedDecDraft,
+              rawComment: block.raw,
+              globs: args.globs,
+              ...(args.pilotModule !== undefined ? { pilotModule: args.pilotModule } : {}),
+            })
+          : undefined;
       if (args.dryRun !== true) {
         const written = writeDecDraft({
           repoRoot,
@@ -177,6 +216,7 @@ export async function runSourceCommentsIngestion(
           block,
           classification: cls,
           generatedAt: nowIso,
+          ...(confidence !== undefined ? { confidence } : {}),
         });
         decDraftsWritten.push({
           id,
@@ -203,6 +243,17 @@ export async function runSourceCommentsIngestion(
       });
       const invId = allocateInvariantId(repoRoot, existingInvariantIds);
       existingInvariantIds.add(invId);
+      const invConfidence: DraftConfidence | undefined =
+        args.globs !== undefined
+          ? scoreInvariant({
+              sourceFile: block.file,
+              prose: cls.suggestedInvariant,
+              title: cls.suggestedInvariant.split("\n")[0] ?? "",
+              rawComment: block.raw,
+              globs: args.globs,
+              ...(args.pilotModule !== undefined ? { pilotModule: args.pilotModule } : {}),
+            })
+          : undefined;
       if (args.dryRun !== true) {
         const written = writeInvariantFile({
           repoRoot,
@@ -210,6 +261,7 @@ export async function runSourceCommentsIngestion(
           block,
           classification: cls,
           generatedAt: nowIso,
+          ...(invConfidence !== undefined ? { confidence: invConfidence } : {}),
         });
         invariantsWritten.push({
           id: invId,
@@ -524,6 +576,8 @@ interface WriteDecDraftArgs {
   block: CommentBlock;
   classification: CommentClassification;
   generatedAt: string;
+  /** Pre-computed write-time confidence; defaults to "medium" when absent. */
+  confidence?: DraftConfidence;
 }
 
 function writeDecDraft(args: WriteDecDraftArgs): { absPath: string; relPath: string } {
@@ -544,7 +598,7 @@ function writeDecDraft(args: WriteDecDraftArgs): { absPath: string; relPath: str
     decided_at: args.generatedAt,
     decided_by: "cairn-init",
     capture_source: "init-source-comments",
-    capture_confidence: "medium",
+    capture_confidence: args.confidence ?? "medium",
     sourceFile: args.block.file,
     sourceRange: `${args.block.startLine}-${args.block.endLine}`,
     blockId: args.block.id,
@@ -577,6 +631,8 @@ interface WriteInvariantArgs {
   block: CommentBlock;
   classification: CommentClassification;
   generatedAt: string;
+  /** Pre-computed write-time confidence; defaults to "medium" when absent. */
+  confidence?: DraftConfidence;
 }
 
 function writeInvariantFile(
@@ -595,6 +651,7 @@ function writeInvariantFile(
     audience: "dual",
     generated: args.generatedAt,
     "verified-at": args.generatedAt,
+    capture_confidence: args.confidence ?? "medium",
     source_decision: null,
     sourceFile: args.block.file,
     sourceRange: `${args.block.startLine}-${args.block.endLine}`,

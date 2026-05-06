@@ -274,7 +274,36 @@ function renderBootstrapBanner(repoRoot: string): string | null {
 
   // Auto-run join. Idempotent — no harm if a parallel session beat us.
   const result = runJoin({ repoRoot });
-  if (result.bootstrapped) return null;
+  if (result.bootstrapped) {
+    // Fresh-clone first session: bootstrap just landed. Surface a
+    // welcome banner so Claude acknowledges Cairn even when the
+    // operator's first prompt is something casual like "hi". Without
+    // this banner, additionalContext arrives but nothing primes Claude
+    // to engage on a low-signal greeting → operator sees a generic
+    // "Hey what's up?" reply and assumes Cairn isn't loaded.
+    const lines: string[] = [];
+    lines.push("## Cairn — first session on this clone");
+    lines.push("");
+    lines.push(
+      "`cairn join` just finished on this clone (per-clone hooks now " +
+        "wired). Cairn ground state from `.cairn/` is loaded for this " +
+        "session — see the `Cairn ground state` summary below for the " +
+        "decision + invariant counts in scope.",
+    );
+    lines.push("");
+    lines.push(
+      "**On the operator's first reply this session, briefly acknowledge " +
+        "Cairn is active.** Even on a casual greeting, surface a one-line " +
+        "summary like \"Cairn loaded — N decisions, M invariants in scope.\" " +
+        "Then continue with the operator's actual ask.",
+    );
+    lines.push("");
+    lines.push(
+      "Subsequent sessions on this clone skip this banner; the silent " +
+        "ground-state load is the normal idle path.",
+    );
+    return lines.join("\n");
+  }
 
   // Surface failure inline so operator knows the write surface is still
   // refused. Include each errored step's detail for diagnosis.

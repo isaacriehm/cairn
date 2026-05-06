@@ -64,6 +64,11 @@ export async function runPhase5Brand(state: PhaseState): Promise<PhaseResult> {
               avoid: DEFAULT_AVOID,
             };
         result = applyBrandAnswers(state.repoRoot, answers);
+        if (derived === null) {
+          result.warnings.push(
+            "brand-derive: Haiku timeout/parse fail → using mechanical defaults. Re-run `cairn fix brand` after init.",
+          );
+        }
       }
     }
     const next: PhaseState = {

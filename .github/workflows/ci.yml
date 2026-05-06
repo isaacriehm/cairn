@@ -38,7 +38,7 @@ jobs:
                    ingestion-baseline gc lock source-comments rules-merge join \
                    bypass-detection bootstrap-guard e2e-adoption e2e-daily-flow \
                    plugin-bundle init-phases-state init-phases-all init-mcp-tools \
-                   stop-debounce; do
+                   init-progress-heartbeat stop-debounce; do
             echo "── smoke:$s ──"
             pnpm --filter @isaacriehm/cairn "smoke:$s"
           done

@@ -29,6 +29,7 @@
 import { z } from "zod";
 import {
   PHASE_IDS,
+  clearProgress,
   freshPhaseState,
   readPhaseState,
   resumePhases,
@@ -44,7 +45,9 @@ import {
   runPhase7bSourceComments,
   runPhase7cRulesMerge,
   runPhase8Baseline,
+  runPhases678Parallel,
   writePhaseState,
+  writeProgress,
   type PhaseError,
   type PhaseId,
   type PhaseQuestion,
@@ -177,7 +180,44 @@ function makePhaseTool(id: PhaseId): ToolDef<PhaseToolInput> {
           ? { ...state, answer: input.answer }
           : state;
       const runner = RUNNERS[id];
+      // Coarse-grained statusline coverage: every phase gets at least
+      // one heartbeat write (batch=1, total=1) at entry so the operator
+      // sees the current phase id mid-init even for fast phases. The
+      // long phases (3-mapper, 6-docs-ingest, 7b-source-comments,
+      // 7c-rules-merge) overwrite with finer-grained per-batch progress
+      // from inside the runner. clearProgress at the end of every
+      // phase ensures stale heartbeats don't survive into the next.
+      const isLongPhase =
+        id === "3-mapper" ||
+        id === "6-docs-ingest" ||
+        id === "7b-source-comments" ||
+        id === "7c-rules-merge";
+      if (!isLongPhase) {
+        writeProgress(state.repoRoot, {
+          phase: id,
+          batch: 1,
+          total: 1,
+          startedAt: Date.now(),
+        });
+      }
+      const t0 = performance.now();
       const result = await runner(stateForRun);
+      const durationMs = Math.round(performance.now() - t0);
+      clearProgress(state.repoRoot);
+      // Stamp `duration_ms` on the phase's output entry so init-state.json
+      // carries an ETA-auditable record for every phase, not just the ones
+      // that bother to track time internally (3-mapper). The result.state
+      // returned by the runner is freshly constructed; mutating its
+      // current-phase entry is safe and doesn't ripple to prior phases.
+      if (result.status !== "error") {
+        const phaseOut = result.state.outputs[id];
+        if (typeof phaseOut === "object" && phaseOut !== null) {
+          const obj = phaseOut as Record<string, unknown>;
+          if (obj["duration_ms"] === undefined) {
+            obj["duration_ms"] = durationMs;
+          }
+        }
+      }
       // Persist state ONLY on non-error results. An error path returns
       // the input state echo unchanged; persisting it would clobber
       // the on-disk state file with whatever shape the caller sent in
@@ -259,7 +299,71 @@ function phaseDescription(id: PhaseId): string {
   }
 }
 
+/**
+ * Combined parallel runner for the post-pilot ingestion window. Runs
+ * phases 6-docs-ingest, 7b-source-comments, and 7c-rules-merge in
+ * parallel inside a single MCP call. The cairn-adopt skill prefers
+ * this tool when state.currentPhase=6-docs-ingest; the per-phase
+ * sequential tools remain registered for fallback / debug paths.
+ */
+function makeParallel678Tool(): ToolDef<PhaseToolInput> {
+  return {
+    name: "cairn_init_phases_678_parallel",
+    description:
+      "Run phases 6-docs-ingest, 7b-source-comments, and 7c-rules-merge concurrently. Pre-scans existing DEC + INV ids and threads shared Sets through all three so id allocations don't collide. Returns the combined slim response with nextPhase=8-baseline. Skill prefers this when state.currentPhase=6-docs-ingest; the per-phase sequential tools stay available for fallback. Wall-clock saves the smaller-two phases' time on real-world adoptions.",
+    inputSchema: initPhaseInput,
+    handler: async (ctx, input) => {
+      let state: PhaseState | null = input.state ?? null;
+      if (state === null) {
+        state = readPhaseState(ctx.repoRoot);
+      }
+      if (state === null) {
+        return mcpError(
+          "VALIDATION_FAILED",
+          "cairn_init_phases_678_parallel found no init state at .cairn/init-state.json. Call cairn_init_resume to start a fresh pipeline.",
+        );
+      }
+      if (state.currentPhase !== "6-docs-ingest") {
+        return mcpError(
+          "VALIDATION_FAILED",
+          `cairn_init_phases_678_parallel requires state.currentPhase=6-docs-ingest, got ${state.currentPhase}`,
+        );
+      }
+      if (state.repoRoot !== ctx.repoRoot) {
+        return mcpError(
+          "VALIDATION_FAILED",
+          `state.repoRoot ${state.repoRoot} does not match MCP context ${ctx.repoRoot}`,
+        );
+      }
+      const t0 = performance.now();
+      const result = await runPhases678Parallel(state);
+      const durationMs = Math.round(performance.now() - t0);
+      if (result.status !== "error") {
+        for (const id of ["6-docs-ingest", "7b-source-comments", "7c-rules-merge"] as const) {
+          const phaseOut = result.state.outputs[id];
+          if (typeof phaseOut === "object" && phaseOut !== null) {
+            const obj = phaseOut as Record<string, unknown>;
+            if (obj["duration_ms"] === undefined) {
+              obj["duration_ms"] = durationMs;
+            }
+          }
+        }
+        try {
+          writePhaseState(result.state);
+        } catch (err) {
+          return mcpError(
+            "INTERNAL_ERROR",
+            `failed to persist init state: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+      return toSlim(result);
+    },
+  };
+}
+
 export const initPhaseTools: ToolDef<PhaseToolInput>[] = PHASE_IDS.map(
   (id) => makePhaseTool(id),
 );
+export const initParallel678Tool: ToolDef<PhaseToolInput> = makeParallel678Tool();
 export const initResumeTool: ToolDef<ResumeToolInput> = makeResumeTool();

@@ -1,3 +1,4 @@
+import type { ProgressSnapshot } from "../init/progress.js";
 import type { StatusJson } from "./index.js";
 
 /**
@@ -6,6 +7,8 @@ import type { StatusJson } from "./index.js";
  * Layout: `⬡ cairn  [signal]  [ctx-meter]`
  *
  * Signal priority (first match wins, blank when nothing applies):
+ *   adopt-progress       → `⏳ adopt <phase> <X>/<Y> (P%) ~Nm` (highest;
+ *                           live during cairn-adopt long phases)
  *   bypass_count > 0     → `⚠ N unattested`
  *   attention_count > 0  → `⚑ N pending` (drafts + baseline findings + drift)
  *   gc_running           → `◐ gc`
@@ -44,7 +47,30 @@ export function renderCtxMeter(ctx: CtxMeterInput): string {
   return `${ctxColor(ctx.usedTokens)}${bar} ${pct}%${ANSI_RESET}`;
 }
 
-function renderSignal(s: StatusJson): string | null {
+/**
+ * Render the live adoption-progress badge from the heartbeat snapshot.
+ * Format: `⏳ adopt <phase> <batch>/<total> (P%) ~Nm` — the eta is
+ * extrapolated from elapsed time × remaining-fraction. Sub-minute etas
+ * collapse to seconds; sub-second etas omit the trailing eta entirely.
+ */
+function renderProgress(p: ProgressSnapshot): string {
+  const pct =
+    p.total > 0 ? Math.max(0, Math.min(100, Math.round((p.batch / p.total) * 100))) : 0;
+  const elapsedSec = (Date.now() - p.startedAt) / 1000;
+  let eta = "";
+  if (p.batch > 0 && p.batch < p.total) {
+    const etaSec = Math.round(elapsedSec * ((p.total - p.batch) / p.batch));
+    if (etaSec >= 60) {
+      eta = ` ~${Math.ceil(etaSec / 60)}m`;
+    } else if (etaSec > 0) {
+      eta = ` ~${etaSec}s`;
+    }
+  }
+  return `⏳ adopt ${p.phase} ${p.batch}/${p.total} (${pct}%)${eta}`;
+}
+
+function renderSignal(s: StatusJson, progress?: ProgressSnapshot | null): string | null {
+  if (progress) return renderProgress(progress);
   if (s.bypass_count > 0) return `⚠ ${s.bypass_count} unattested`;
   if (s.attention_count > 0) {
     // attention_count rolls up DEC drafts + baseline sensor findings +
@@ -63,9 +89,13 @@ function renderSignal(s: StatusJson): string | null {
   return null;
 }
 
-export function formatStatus(s: StatusJson, ctx?: CtxMeterInput): string {
+export function formatStatus(
+  s: StatusJson,
+  ctx?: CtxMeterInput,
+  progress?: ProgressSnapshot | null,
+): string {
   const parts: string[] = ["⬡ cairn"];
-  const signal = renderSignal(s);
+  const signal = renderSignal(s, progress ?? null);
   if (signal) parts.push(signal);
   if (ctx) parts.push(renderCtxMeter(ctx));
   return parts.join("  ");

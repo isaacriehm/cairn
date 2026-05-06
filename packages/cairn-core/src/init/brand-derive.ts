@@ -15,7 +15,8 @@ import type { BrandAnswers } from "./brand-setup.js";
 
 const log = logger("init.brand-derive");
 
-const TIMEOUT_MS = 30_000;
+const TIMEOUT_MS = 60_000;
+const MAX_ATTEMPTS = 2;
 const README_CHARS = 800;
 const RULES_CHARS = 1_000;
 
@@ -123,45 +124,62 @@ function buildUserPrompt(args: DeriveArgs): string {
   return lines.join("\n");
 }
 
+async function attemptDerive(args: DeriveArgs): Promise<DerivedBrand | null> {
+  const result = await runClaude({
+    tier: "haiku",
+    prompt: buildUserPrompt(args),
+    system: SYSTEM_PROMPT,
+    jsonSchema: OUTPUT_SCHEMA,
+    timeoutMs: TIMEOUT_MS,
+    repoRoot: args.repoRoot,
+    cacheable: true,
+    isolateAmbientContext: true,
+  });
+  const parsed = result.parsed;
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const v = parsed as Record<string, unknown>;
+  const overview = typeof v["overview"] === "string" ? v["overview"] : null;
+  const voice = typeof v["voice"] === "string" ? v["voice"] : null;
+  const avoid = typeof v["avoid"] === "string" ? v["avoid"] : null;
+  const rawPersonas = Array.isArray(v["personas"]) ? v["personas"] : null;
+  if (overview === null || voice === null || avoid === null || rawPersonas === null) {
+    log.warn(
+      { hasOverview: overview !== null, hasVoice: voice !== null, hasAvoid: avoid !== null, hasPersonas: rawPersonas !== null },
+      "brand-derive: missing fields in Haiku response",
+    );
+    return null;
+  }
+  const personas: { name: string; description: string }[] = [];
+  for (const entry of rawPersonas) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const e = entry as Record<string, unknown>;
+    if (typeof e["name"] === "string" && typeof e["description"] === "string") {
+      personas.push({ name: e["name"], description: e["description"] });
+    }
+  }
+  if (personas.length === 0) return null;
+  return { overview, voice, avoid, personas };
+}
+
 export async function deriveBrandFromProject(
   args: DeriveArgs,
 ): Promise<DerivedBrand | null> {
-  try {
-    const result = await runClaude({
-      tier: "haiku",
-      prompt: buildUserPrompt(args),
-      system: SYSTEM_PROMPT,
-      jsonSchema: OUTPUT_SCHEMA,
-      timeoutMs: TIMEOUT_MS,
-    });
-    const parsed = result.parsed;
-    if (typeof parsed !== "object" || parsed === null) return null;
-    const v = parsed as Record<string, unknown>;
-    const overview = typeof v["overview"] === "string" ? v["overview"] : null;
-    const voice = typeof v["voice"] === "string" ? v["voice"] : null;
-    const avoid = typeof v["avoid"] === "string" ? v["avoid"] : null;
-    const rawPersonas = Array.isArray(v["personas"]) ? v["personas"] : null;
-    if (overview === null || voice === null || avoid === null || rawPersonas === null) {
-      log.warn(
-        { hasOverview: overview !== null, hasVoice: voice !== null, hasAvoid: avoid !== null, hasPersonas: rawPersonas !== null },
-        "brand-derive: missing fields in Haiku response",
-      );
-      return null;
-    }
-    const personas: { name: string; description: string }[] = [];
-    for (const entry of rawPersonas) {
-      if (typeof entry !== "object" || entry === null) continue;
-      const e = entry as Record<string, unknown>;
-      if (typeof e["name"] === "string" && typeof e["description"] === "string") {
-        personas.push({ name: e["name"], description: e["description"] });
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const result = await attemptDerive(args);
+      if (result !== null) return result;
+      if (attempt < MAX_ATTEMPTS) {
+        log.warn({ attempt }, "brand-derive: invalid response, retrying");
+      }
+    } catch (err) {
+      if (attempt < MAX_ATTEMPTS) {
+        log.warn({ attempt, err: String(err) }, "brand-derive: Haiku call failed, retrying");
+      } else {
+        log.warn({ err: String(err) }, "brand-derive: Haiku call failed after all attempts");
       }
     }
-    if (personas.length === 0) return null;
-    return { overview, voice, avoid, personas };
-  } catch (err) {
-    log.warn({ err: String(err) }, "brand-derive: Haiku call failed");
-    return null;
   }
+  return null;
 }
 
 /**

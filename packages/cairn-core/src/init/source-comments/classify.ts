@@ -15,12 +15,13 @@
  */
 
 import { runClaude } from "../../claude/index.js";
+import { ClaudeError } from "../../claude/error.js";
 import { logger } from "../../logger.js";
 import type { CommentBlock } from "./walker.js";
 
 const log = logger("init.source-comments.classify");
 
-const BATCH_SIZE = 20;
+const BATCH_SIZE = 10;
 const PER_BATCH_TIMEOUT_MS = 90_000;
 const PROSE_CAP_PER_BLOCK = 1500;
 
@@ -69,6 +70,12 @@ export interface ClassifyArgs {
    * no Haiku call is made.
    */
   mockClassify?: (block: CommentBlock) => CommentClassification;
+  /**
+   * When set, every Haiku batch call is run with `cacheable: true` so
+   * re-running adoption against the same source corpus hits the
+   * `.cairn/cache/haiku/` cache instead of burning the operator's quota.
+   */
+  repoRoot?: string;
 }
 
 export interface ClassifyResult {
@@ -150,6 +157,7 @@ export async function classifyBlocks(args: ClassifyArgs): Promise<ClassifyResult
   const blocks = args.blocks;
   const total = Math.ceil(blocks.length / BATCH_SIZE);
   const out: CommentClassification[] = new Array(blocks.length);
+  const repoRoot = args.repoRoot;
 
   if (args.mockClassify !== undefined) {
     for (let i = 0; i < blocks.length; i++) {
@@ -181,7 +189,7 @@ export async function classifyBlocks(args: ClassifyArgs): Promise<ClassifyResult
     const end = Math.min(start + BATCH_SIZE, blocks.length);
     const batch = blocks.slice(start, end);
     try {
-      const outcome = await classifyOneBatch(batch);
+      const outcome = await classifyOneBatchWithRetry(batch, repoRoot);
       return { batchIdx, outcome };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -265,7 +273,66 @@ interface BatchOutcome {
   errorMessage?: string;
 }
 
-async function classifyOneBatch(batch: CommentBlock[]): Promise<BatchOutcome> {
+/**
+ * Wraps `classifyOneBatch` with timeout-triggered half-split retry. When the
+ * first attempt aborts via SIGTERM (`error_kind: "timeout"`), splits the batch
+ * in half and re-issues both halves with the full per-batch timeout. Halves
+ * smaller than 2 are not split — they propagate the original error.
+ *
+ * Recovers most residual loss after the BATCH_SIZE 20→10 reduction; defends
+ * against tail-latency spikes from upstream Haiku capacity.
+ */
+async function classifyOneBatchWithRetry(
+  batch: CommentBlock[],
+  repoRoot: string | undefined,
+): Promise<BatchOutcome> {
+  try {
+    return await classifyOneBatch(batch, repoRoot);
+  } catch (err) {
+    const isTimeout = err instanceof ClaudeError && err.kind === "timeout";
+    if (!isTimeout || batch.length < 2) {
+      throw err;
+    }
+    log.warn(
+      { batchSize: batch.length },
+      "batch timed out, splitting in half + retrying",
+    );
+    const half = Math.floor(batch.length / 2);
+    const left = batch.slice(0, half);
+    const right = batch.slice(half);
+    const [aRes, bRes] = await Promise.allSettled([
+      classifyOneBatch(left, repoRoot),
+      classifyOneBatch(right, repoRoot),
+    ]);
+    const merged = new Map<string, CommentClassification>();
+    let inputTokens = 0;
+    let outputTokens = 0;
+    let errorMessage: string | undefined;
+    for (const r of [aRes, bRes]) {
+      if (r.status === "fulfilled") {
+        for (const [k, v] of r.value.byId) merged.set(k, v);
+        inputTokens += r.value.inputTokens;
+        outputTokens += r.value.outputTokens;
+        if (r.value.errorMessage !== undefined) errorMessage = r.value.errorMessage;
+      } else {
+        const msg =
+          r.reason instanceof Error ? r.reason.message : String(r.reason);
+        errorMessage = msg;
+      }
+    }
+    return {
+      byId: merged,
+      inputTokens,
+      outputTokens,
+      ...(errorMessage !== undefined ? { errorMessage } : {}),
+    };
+  }
+}
+
+async function classifyOneBatch(
+  batch: CommentBlock[],
+  repoRoot: string | undefined,
+): Promise<BatchOutcome> {
   const prompt = buildBatchPrompt(batch);
   const result = await runClaude({
     tier: "haiku",
@@ -273,6 +340,8 @@ async function classifyOneBatch(batch: CommentBlock[]): Promise<BatchOutcome> {
     prompt,
     jsonSchema: BATCH_SCHEMA,
     timeoutMs: PER_BATCH_TIMEOUT_MS,
+    isolateAmbientContext: true,
+    ...(repoRoot !== undefined ? { repoRoot, cacheable: true } : {}),
   });
   const usage = result.usage;
   const inputTokens =
@@ -351,6 +420,7 @@ function buildBatchPrompt(batch: CommentBlock[]): string {
 
 const _internal = {
   buildBatchPrompt,
+  classifyOneBatchWithRetry,
   BATCH_SIZE,
   BATCH_SCHEMA,
   SYSTEM_PROMPT,

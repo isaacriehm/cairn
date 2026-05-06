@@ -46,3 +46,13 @@ export { runPhase7cRulesMerge } from "./7c-rules-merge.js";
 export { runPhase8Baseline } from "./8-baseline.js";
 export { runPhase10Strip } from "./10-strip.js";
 export { runPhase12Multidev } from "./12-multidev.js";
+export { runPhases678Parallel } from "./parallel-678.js";
+
+export {
+  SOURCE_COMMENTS_WALK_PATH,
+  sourceCommentsWalkAbsPath,
+  readSourceCommentsWalkFile,
+  writeSourceCommentsWalkFile,
+  to7bResultPersisted,
+  type IngestSourceCommentsResultPersisted,
+} from "./source-comments-output-io.js";

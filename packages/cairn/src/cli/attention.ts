@@ -19,6 +19,7 @@ import { join, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
 import {
   bulkAcceptObvious,
+  restoreDec,
   type BulkAcceptResult,
   type DraftConfidence,
 } from "@isaacriehm/cairn-core";
@@ -347,6 +348,38 @@ function renderBulkAcceptResult(
   }
 }
 
+async function restoreCli(repoRoot: string, argv: string[]): Promise<void> {
+  const decId = argv.find((a) => /^DEC-\d{4,}$/.test(a));
+  if (decId === undefined) {
+    console.error(
+      "cairn attention restore: missing or invalid DEC id (expected DEC-NNNN)",
+    );
+    process.exit(2);
+  }
+  const result = await restoreDec({ repoRoot, decId });
+  if (!result.ok) {
+    process.stdout.write(
+      `  ✗ ${decId} — ${result.reason ?? "unknown"} (state: ${result.priorState})\n`,
+    );
+    process.exit(2);
+  }
+  if (result.priorState === "draft") {
+    process.stdout.write(
+      `  · ${decId} — already a draft (no-op); rerun cairn-attention to triage\n`,
+    );
+    process.exit(0);
+  }
+  const note =
+    result.priorState === "accepted"
+      ? "ledger rebuilt, inline `// §DEC-NNNN` source cite kept"
+      : "no source-cite impact";
+  process.stdout.write(
+    `  ✓ ${decId} — restored from ${result.priorState} → ${result.draftPath} (${note})\n` +
+      `\n  Run cairn-attention (or cairn_resolve_attention) to re-triage.\n`,
+  );
+  process.exit(0);
+}
+
 async function bulkAcceptCli(repoRoot: string, argv: string[]): Promise<void> {
   const dryRun = argv.includes("--dry-run");
   const threshold = parseThresholdFlag(argv);
@@ -368,12 +401,16 @@ export async function attentionCli(argv: string[]): Promise<void> {
     process.stdout.write(
       "Usage: cairn attention [--repo <path>]\n" +
         "       cairn attention bulk-accept [--threshold high|medium|low] [--dry-run] [--repo <path>]\n" +
+        "       cairn attention restore <DEC-id> [--repo <path>]\n" +
         "  Default: list DEC drafts pending confirm + latest baseline sensor findings.\n" +
         "  bulk-accept: score drafts by confidence, auto-promote ≥threshold (default high)\n" +
         "    out of _inbox/ to .cairn/ground/decisions/, and stamp\n" +
         "    capture_confidence on every draft + invariant. Threshold low effectively\n" +
         "    accepts all drafts; only use after reviewing the dry-run output.\n" +
-        "  Exit 0 when nothing pending or after bulk-accept; 2 when any items remain.\n",
+        "  restore: move a previously rejected or accepted DEC back to _inbox/<id>.draft.md\n" +
+        "    so the operator can re-evaluate via cairn-attention. Accepted-to-draft\n" +
+        "    keeps the inline `// §DEC-NNNN` source cite (re-accept is idempotent).\n" +
+        "  Exit 0 when nothing pending or after bulk-accept/restore; 2 when any items remain.\n",
     );
     process.exit(0);
   }
@@ -383,6 +420,14 @@ export async function attentionCli(argv: string[]): Promise<void> {
     const repoRoot = parseRepoFlag(rest);
     ensureAdopted(repoRoot);
     await bulkAcceptCli(repoRoot, rest);
+    return;
+  }
+
+  if (argv[0] === "restore") {
+    const rest = argv.slice(1);
+    const repoRoot = parseRepoFlag(rest);
+    ensureAdopted(repoRoot);
+    await restoreCli(repoRoot, rest);
     return;
   }
 

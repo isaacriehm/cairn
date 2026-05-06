@@ -125,6 +125,13 @@ export interface RunDocsIngestionArgs {
    * classified as "other" with empty fields; nothing is written.
    */
   mockClassify?: (candidate: DocCandidate, body: string) => DocClassification;
+  /**
+   * Caller-supplied DEC id Set. When provided, skips the local
+   * `scanExistingDecisionIds` and mutates the supplied Set as ids are
+   * allocated. The parallel pipeline orchestrator passes one Set across
+   * all 3 phases so concurrent allocations don't collide on disk.
+   */
+  existingDecIds?: Set<string>;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -266,6 +273,7 @@ async function classifyDoc(
     prompt,
     jsonSchema: CLASSIFY_SCHEMA,
     timeoutMs: PER_DOC_TIMEOUT_MS,
+    isolateAmbientContext: true,
   });
   const parsed = result.parsed;
   if (typeof parsed !== "object" || parsed === null) {
@@ -550,7 +558,9 @@ export async function runDocsIngestion(
 
   // Allocate DEC ids serially so we never collide with each other or with
   // drafts already in _inbox/ from the mapper's heavyweight-comment extractor.
-  const seenIds = scanExistingDecisionIds(args.repoRoot);
+  // When the caller threads a shared Set in (parallel pipeline), reuse it
+  // so concurrent allocations across phases stay coherent.
+  const seenIds = args.existingDecIds ?? scanExistingDecisionIds(args.repoRoot);
   const decDraftsWritten: IngestionResult["decDraftsWritten"] = [];
   const canonicalEntries: { topic: string; canonicalPath: string }[] = [];
   let voiceUpdated = false;

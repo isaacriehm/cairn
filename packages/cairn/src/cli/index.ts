@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import { type CtxMeterInput, readStatusForCLI, VERSION } from "../index.js";
 import { attentionCli } from "./attention.js";
-import { doctorCli, fixCli } from "./doctor.js";
+import { baselineCli } from "./baseline.js";
+import { doctorCli } from "./doctor.js";
+import { fixCli } from "./fix.js";
 import { gcCli } from "./gc.js";
 import { hookCli } from "./hook.js";
 import { initCli } from "./init.js";
@@ -87,6 +89,9 @@ switch (subcommand) {
   case "attention":
     await attentionCli(rest);
     break;
+  case "baseline":
+    await baselineCli(rest);
+    break;
   case "hook":
     await hookCli(rest);
     break;
@@ -148,6 +153,8 @@ switch (subcommand) {
         "             (--repo <path>?)\n" +
         "  attention  list pending DEC drafts + baseline sensor findings\n" +
         "             (--repo <path>?)\n" +
+        "  baseline   re-run the synthetic-diff sensor sweep post-adoption\n" +
+        "             (--force? --repo <path>?)\n" +
         "  hook       Claude Code hook runner (stdin = hook payload JSON)\n" +
         "             (subcommands: session-start | read-enrich | write-guard)\n" +
         "  sensor-run git-hook sensor sweep (--staged | --commit-msg <path>)\n" +
