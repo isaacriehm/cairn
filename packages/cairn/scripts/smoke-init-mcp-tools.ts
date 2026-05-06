@@ -86,6 +86,9 @@ async function runSmoke(): Promise<void> {
   }
 
   // ── Step 2 — cairn_init_resume on empty repo → ready / 1-detect ─
+  // v0.3.5: resume tool returns slim { status, nextPhase, repoRoot }
+  // (no state echo — state lives on disk so MCP responses stay
+  // under the spillover-to-file token cap on real monorepos).
   {
     const repo = mkRepo();
     const tool = allTools.find((t) => t.name === "cairn_init_resume");
@@ -94,15 +97,22 @@ async function runSmoke(): Promise<void> {
     const result = (await tool.handler(mkCtx(repo), {})) as {
       status: string;
       nextPhase: string | null;
-      state: PhaseState;
+      repoRoot: string;
     };
     assert(result.status === "ready", `Step 2: status should be 'ready', got ${result.status}`);
     assert(result.nextPhase === "1-detect", `Step 2: nextPhase should be 1-detect, got ${result.nextPhase}`);
-    assert(result.state.repoRoot === repo, `Step 2: state.repoRoot should match repo`);
+    assert(result.repoRoot === repo, `Step 2: repoRoot should match repo, got ${result.repoRoot}`);
+    assert(
+      !("state" in (result as Record<string, unknown>)),
+      "Step 2: resume response must NOT echo full state (slim contract)",
+    );
     console.log("  ✓ Step 2 — cairn_init_resume → ready / 1-detect");
   }
 
   // ── Step 3 — phase tool dispatches + persists state ─────────────
+  // v0.3.5: phase tool response is slim { status, nextPhase } —
+  // outputs land on disk, not in the echo. Smoke verifies the
+  // on-disk state captures the phase output.
   {
     const repo = mkRepo();
     const ctx = mkCtx(repo);
@@ -112,14 +122,13 @@ async function runSmoke(): Promise<void> {
     const state = freshPhaseState(repo);
     const result = (await tool.handler(ctx, { state })) as {
       status: string;
-      state: PhaseState;
       nextPhase?: string | null;
     };
     assert(result.status === "complete", `Step 3: phase 1-detect should complete, got ${result.status}`);
     assert(result.nextPhase === "2-walker", `Step 3: nextPhase should be 2-walker, got ${result.nextPhase}`);
     assert(
-      result.state.outputs["1-detect"] !== undefined,
-      "Step 3: outputs['1-detect'] should be populated",
+      !("state" in (result as Record<string, unknown>)),
+      "Step 3: phase response must NOT echo full state (slim contract)",
     );
     // State file persisted.
     assert(
@@ -134,6 +143,106 @@ async function runSmoke(): Promise<void> {
       "Step 3: persisted state missing 1-detect outputs",
     );
     console.log("  ✓ Step 3 — phase tool dispatches + persists state");
+  }
+
+  // ── Step 3b — phase tool reads state from disk when state arg omitted ─
+  // v0.3.5 contract: callers pass {} (or {answer}) — wrapper loads
+  // state from .cairn/init-state.json. Smoke covers the disk-load path.
+  {
+    const repo = mkRepo();
+    const ctx = mkCtx(repo);
+    const detectTool = allTools.find(
+      (t) => t.name === "cairn_init_phase_1_detect",
+    );
+    const walkerTool = allTools.find(
+      (t) => t.name === "cairn_init_phase_2_walker",
+    );
+    assert(detectTool !== undefined, "Step 3b: 1-detect tool missing");
+    assert(walkerTool !== undefined, "Step 3b: 2-walker tool missing");
+    if (detectTool === undefined || walkerTool === undefined) return;
+    // Run 1-detect with explicit state to seed disk; then call 2-walker
+    // with no state arg and verify it picks up from .cairn/init-state.json.
+    await detectTool.handler(ctx, { state: freshPhaseState(repo) });
+    const result = (await walkerTool.handler(ctx, {})) as {
+      status: string;
+      nextPhase?: string | null;
+    };
+    assert(
+      result.status === "complete",
+      `Step 3b: 2-walker (disk-loaded state) should complete, got ${result.status}`,
+    );
+    assert(
+      result.nextPhase === "3-mapper",
+      `Step 3b: 2-walker nextPhase should be 3-mapper, got ${result.nextPhase}`,
+    );
+    const persisted = JSON.parse(
+      readFileSync(phaseStateAbsPath(repo), "utf8"),
+    ) as PhaseState;
+    assert(
+      persisted.outputs["2-walker"] !== undefined,
+      "Step 3b: 2-walker output should be persisted after disk-load run",
+    );
+    console.log("  ✓ Step 3b — phase tool loads state from disk when arg omitted");
+  }
+
+  // ── Step 3c — phase tool with no disk state and no arg returns
+  //              VALIDATION_FAILED rather than crashing.
+  {
+    const repo = mkRepo();
+    const ctx = mkCtx(repo);
+    const tool = allTools.find((t) => t.name === "cairn_init_phase_1_detect");
+    assert(tool !== undefined, "Step 3c: tool missing");
+    if (tool === undefined) return;
+    const payload = (await tool.handler(ctx, {})) as {
+      error?: { code: string; message: string };
+    };
+    assert(
+      payload.error?.code === "VALIDATION_FAILED",
+      `Step 3c: missing state should error VALIDATION_FAILED, got ${JSON.stringify(payload)}`,
+    );
+    assert(
+      payload.error.message.includes("no init state") ||
+        payload.error.message.includes("init-state.json"),
+      `Step 3c: error should mention missing state file, got ${payload.error.message}`,
+    );
+    console.log("  ✓ Step 3c — missing state errors with VALIDATION_FAILED");
+  }
+
+  // ── Step 3d — error path does NOT clobber disk state.
+  // v0.3.5 fix: prior versions persisted result.state unconditionally,
+  // so an error response with input-state echo would overwrite a
+  // 90KB mapper run with whatever shape the caller sent in. Verify
+  // disk state is unchanged after an error response.
+  {
+    const repo = mkRepo();
+    const ctx = mkCtx(repo);
+    const detectTool = allTools.find(
+      (t) => t.name === "cairn_init_phase_1_detect",
+    );
+    assert(detectTool !== undefined, "Step 3d: tool missing");
+    if (detectTool === undefined) return;
+    // Seed disk with valid 1-detect output.
+    await detectTool.handler(ctx, { state: freshPhaseState(repo) });
+    const before = readFileSync(phaseStateAbsPath(repo), "utf8");
+    // Force an error: call 1-detect again with currentPhase="5-brand"
+    // (mismatch).
+    const bogus: PhaseState = {
+      ...freshPhaseState(repo),
+      currentPhase: "5-brand",
+    };
+    const errResult = (await detectTool.handler(ctx, { state: bogus })) as {
+      error?: { code: string };
+    };
+    assert(
+      errResult.error?.code === "VALIDATION_FAILED",
+      `Step 3d: expected VALIDATION_FAILED, got ${JSON.stringify(errResult)}`,
+    );
+    const after = readFileSync(phaseStateAbsPath(repo), "utf8");
+    assert(
+      before === after,
+      "Step 3d: error path must not overwrite disk state",
+    );
+    console.log("  ✓ Step 3d — error path preserves disk state");
   }
 
   // ── Step 4 — wrong-phase state rejected with VALIDATION_FAILED ──

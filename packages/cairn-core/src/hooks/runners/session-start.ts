@@ -337,7 +337,7 @@ function looksLikeProjectRoot(cwd: string): boolean {
 
 /**
  * Find direct child directories that look like project roots. When the
- * operator opens Claude Code in a parent dir (e.g. `~/Clients/Foo/`)
+ * operator opens Claude Code in a parent dir (e.g. `~/projects/`)
  * that contains one or more adoptable projects in immediate subdirs,
  * we surface them so the operator can `cd` in. Caps at 8 children to
  * avoid spamming when launched in `~/` or similar.
@@ -413,8 +413,8 @@ function renderAdoptionBanner(cwd: string): string | null {
   }
 
   // cwd isn't itself a project — scan one level down for adoptable
-  // children (e.g. operator opened Claude Code in
-  // `~/Clients/Foo/Deliverables/Website/` containing `abholidaylighting/`).
+  // children (e.g. operator opened Claude Code in `~/projects/parent/`
+  // containing one or more child project directories).
   const children = findAdoptableChildren(cwd);
   if (children.length === 0) return null;
 

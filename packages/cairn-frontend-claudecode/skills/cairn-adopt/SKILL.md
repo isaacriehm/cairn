@@ -84,10 +84,19 @@ on PATH.
 
 This is a state-machine loop against the `cairn_init_*` MCP tools.
 
+**Contract (v0.3.5):** the phase tools persist `state` to
+`.cairn/init-state.json` after every successful return and read it
+back on the next call. You do **not** thread state through tool
+arguments — phase tools take only an optional `answer` field for
+needs_input phases. Tool responses are skinny: `{status, nextPhase}`,
+`{status, question}`, or `{status, error}`. **Never** try to read the
+on-disk state until the loop has terminated; until then the phase
+tools own all writes to it.
+
 **Init the pipeline** by calling `cairn_init_resume` (no args). It
 returns `{ status: "ready" | "done", nextPhase: <PhaseId> | null,
-state: PhaseState }`. If `status === "done"` the project is already
-mid-init or fully adopted — abort and tell the operator to check
+repoRoot }`. If `status === "done"` the project is already mid-init or
+fully adopted — abort and tell the operator to check
 `.cairn/init-state.json`.
 
 **Loop until done**:
@@ -95,30 +104,28 @@ mid-init or fully adopted — abort and tell the operator to check
 ```
 while nextPhase != null:
     tool_name = `cairn_init_phase_${nextPhase.replace(/-/g, "_")}`
-    result = call tool_name({ state })
+    result = call tool_name({})            # no args; tool reads state from disk
     switch (result.status):
       case "needs_input":
         answer = AskUserQuestion(result.question.prompt, result.question.options)
         # Pass result.question.options.map(o => o.detail) as the
         # AskUserQuestion description field so the operator sees the
         # secondary hint inline with each choice.
-        state = { ...result.state, answer: answer.id }
-        # re-invoke the same phase tool with the answer threaded in
-        continue
+        result = call tool_name({ answer: answer.id })
+        # second call returns "complete" | "error"; fall through.
       case "complete":
-        state = result.state
         nextPhase = result.nextPhase
         continue
       case "error":
         surface result.error.message + result.error.detail to operator
         ask via AskUserQuestion: `retry phase` / `abort`
-        if "retry phase": continue with same state
+        if "retry phase": continue (state on disk is intact — error path does NOT clobber)
         else: end turn
 ```
 
 The phase tools persist `state` to `.cairn/init-state.json` after every
-return so a mid-init `/exit` resumes cleanly on the next session — the
-top of this loop just calls `cairn_init_resume` again.
+successful return so a mid-init `/exit` resumes cleanly on the next
+session — the top of this loop just calls `cairn_init_resume` again.
 
 **During each phase**, render a styled status banner BEFORE invoking
 the tool. The banner is a markdown horizontal rule + bold phase name +
@@ -160,6 +167,11 @@ add a third "what would you like to do" line; the widget is the prompt.
 double-rendering produces the question as scrollback text AND as an
 interactive widget.
 
+**Never spawn a subagent to drive the pipeline.** The skill itself is
+the orchestrator. Spawning a generic-purpose Agent to run the loop
+loses the operator-facing banner channel and burns tokens on a
+nested ToolSearch + state re-discovery — adoption stays in this turn.
+
 ## Step 4 — auto-bootstrap the just-adopted clone
 
 When the loop exits with `nextPhase === null`, the on-disk `.cairn/`
@@ -183,18 +195,32 @@ contains BOTH a summary text block AND a `Skill` tool call. Do NOT
 end the turn with text only — the operator has not seen the pending
 DEC drafts yet, and ending here orphans them in `_inbox/`.**
 
+The phase tools persist final state to `.cairn/init-state.json` and
+do **not** clear it on terminal completion. Read the persisted state
+to source the summary fields:
+
+```bash
+jq -c '{
+  pilot: .outputs["4-pilot"].picked,
+  decs_docs: (.outputs["6-docs-ingest"].decDraftsWritten // [] | length),
+  decs_comments: (.outputs["7b-source-comments"].decDraftsWritten // [] | length),
+  decs_rules: (.outputs["7c-rules-merge"].decDraftsWritten // [] | length),
+  invariants: (.outputs["7b-source-comments"].invariantsWritten // [] | length),
+  baseline_findings: (.outputs["8-baseline"].totalFindings // 0),
+  multidev_hosts: (.outputs["12-multidev"].hostKinds // [])
+}' .cairn/init-state.json
+```
+
 In the same assistant message, do both:
 
-1. Emit a tight summary sourced from `state.outputs`:
+1. Emit a tight summary using the values above:
 
-   - Pilot module (`outputs["4-pilot"].picked`)
-   - DEC drafts proposed (count from `outputs["6-docs-ingest"]` +
-     `outputs["7b-source-comments"]` + `outputs["7c-rules-merge"]`)
-   - Invariants seeded into ground state (count from
-     `outputs["7b-source-comments"].invariantsWritten.length` —
-     each entry is a `INV-<NNNN>` file already at status `active`)
-   - Baseline sensor findings (`outputs["8-baseline"].totalFindings`)
-   - Multi-dev install (`outputs["12-multidev"].steps` rolled up)
+   - Pilot module
+   - DEC drafts proposed (sum of `decs_docs + decs_comments + decs_rules`)
+   - Invariants seeded into ground state (each entry is a `INV-<NNNN>`
+     file already at status `active`)
+   - Baseline sensor findings
+   - Multi-dev install (host kinds rolled up)
 
    Use plain operator-facing language. Do **not** say "§INV invariant
    proposals" or other internal-spec jargon — say "invariant rules
@@ -230,5 +256,10 @@ SessionStart banner re-prompts to resume.
   prompts and one-line status updates.
 - Never render an inline `[a]/[b]/[c]` blockquote for a question that
   also goes through `AskUserQuestion`. Pick one render path.
+- Never thread `state` through phase tool arguments. Phase tools read
+  state from `.cairn/init-state.json`; the only argument that flows
+  back in is `answer` for needs_input phases.
+- Never spawn a subagent to drive the pipeline loop. The skill is the
+  orchestrator; nested agents lose the banner channel and burn tokens.
 - Caveman-ultra style for chat replies; full English in any code or
   document the skill writes.
