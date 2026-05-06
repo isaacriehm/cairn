@@ -14,6 +14,7 @@
  */
 
 import { applyBrandAnswers, type BrandAnswers } from "../brand-setup.js";
+import { deriveBrandFromProject, derivedToBrandAnswers } from "../brand-derive.js";
 import { advancePhase } from "./orchestrator.js";
 import type {
   PhaseQuestion,
@@ -42,12 +43,24 @@ export async function runPhase5Brand(state: PhaseState): Promise<PhaseResult> {
     if (choice === "auto-fill") {
       const mapper = state.outputs["3-mapper"] as MapperResult | undefined;
       if (mapper !== undefined) {
-        const answers: BrandAnswers = {
-          whatItDoes: mapper.output.domain_summary,
-          mainUsers: deriveDefaultUsers(state),
-          voice: DEFAULT_VOICE,
-          avoid: DEFAULT_AVOID,
-        };
+        const detect = state.outputs["1-detect"] as { project_slug?: string } | undefined;
+        const projectSlug = detect?.project_slug ?? "this-project";
+        // Try Haiku-derived brand from README + AGENTS.md / CLAUDE.md
+        // tone signals + mapper domain summary. Falls back to the
+        // mechanical defaults if the call fails.
+        const derived = await deriveBrandFromProject({
+          repoRoot: state.repoRoot,
+          projectSlug,
+          domainSummary: mapper.output.domain_summary,
+        });
+        const answers: BrandAnswers = derived !== null
+          ? derivedToBrandAnswers(derived)
+          : {
+              whatItDoes: mapper.output.domain_summary,
+              mainUsers: deriveDefaultUsers(state),
+              voice: DEFAULT_VOICE,
+              avoid: DEFAULT_AVOID,
+            };
         result = applyBrandAnswers(state.repoRoot, answers);
       }
     }

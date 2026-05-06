@@ -4,6 +4,27 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.4] — 2026-05-06
+
+### Added
+
+- **Haiku-derived brand inference** in Phase 5-brand auto-fill. Reads
+  the project's `README.md` (first 800 chars) + `AGENTS.md` /
+  `CLAUDE.md` tone signals (first 1000 chars each) + the mapper's
+  `domain_summary`, then asks Haiku for a strict-JSON brand draft:
+  `{ overview, voice, avoid, personas: [{name, description}] }`.
+  - On success → `applyBrandAnswers` writes the derived content to
+    `brand/overview.md`, `brand/voice.md`, `product/positioning.md`,
+    and `product/personas.yaml`.
+  - On failure (timeout / malformed JSON / network error) → falls
+    back to the mechanical defaults from v0.3.3. Adoption never
+    blocks on the inference call.
+
+  Net: a freshly-adopted project now ships with brand drafts grounded
+  in the actual codebase + tone signals, not generic boilerplate.
+  Operator still flips `status: draft` → `status: accepted` once
+  reviewed.
+
 ## [0.3.3] — 2026-05-06
 
 ### Added
