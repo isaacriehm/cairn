@@ -7,13 +7,11 @@
  * is seeded. Detects the package manager(s) in use and emits per-host
  * JOIN.md hints for new contributors. The plugin bundle is the
  * primary delivery mechanism; the Claude Code SessionStart hook
- * surfaces the per-clone bootstrap banner the moment a contributor
- * opens an unbootstrapped clone, so phase 12 no longer auto-patches
- * `package.json` `prepare` (would fail noisily when no global `cairn`
- * binary is on PATH — see PLUGIN_ARCHITECTURE §17 Layer 4).
+ * surfaces the per-clone bootstrap banner for unbootstrapped clones.
+ * Phase 12 does not auto-patch `package.json` `prepare`.
  *
- * `patchPackageJsonPrepare` remains exported for explicit operator-
- * driven wiring; phase 12 itself never calls it.
+ * `patchPackageJsonPrepare` is exported for explicit operator-driven
+ * wiring; phase 12 itself never calls it.
  */
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -38,11 +36,7 @@ export interface MultiDevInstallStep {
 
 export interface MultiDevInstallResult {
   hostKinds: MultiDevHostKind[];
-  /**
-   * Always false in v0.2.0+ — phase 12 no longer auto-patches
-   * `package.json`. Field retained on the result type for downstream
-   * consumers (skills, smokes) that branch on it.
-   */
+  /** Always false — phase 12 does not auto-patch `package.json`. */
   preparePatched: boolean;
   manualHints: string[];
   steps: MultiDevInstallStep[];

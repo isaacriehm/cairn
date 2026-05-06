@@ -1,8 +1,6 @@
 /**
  * `cairn doctor` — verify the adoption is healthy.
  * `cairn fix`    — auto-resolve the warnings doctor flags where we can.
- *
- * Spec: BUILD_REPORT.md "Task D — cairn doctor command".
  */
 
 import { existsSync } from "node:fs";

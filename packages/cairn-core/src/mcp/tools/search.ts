@@ -27,9 +27,8 @@ interface ResultRecord {
 }
 
 /**
- * Naive substring index over decisions, invariants, tasks/active, and the
- * canonical-zone manifest entries. Phase 4 baseline; can be uplifted to FTS
- * (e.g., MiniSearch / Lunr) without changing the tool surface.
+ * Substring search over decisions, invariants, tasks/active, and the
+ * canonical-zone manifest entries.
  *
  * Score: 0.5 base + 0.25 if title hit + 0.25 if body hit. Caps at 1.0.
  */
@@ -177,7 +176,7 @@ function walkDocs(dir: string, repoRoot: string, q: string, out: ResultRecord[])
 export const searchTool: ToolDef<Input> = {
   name: "cairn_search",
   description:
-    "Naive substring search over decisions, invariants, tasks, docs, and manifest. Returns compact records (~50 tokens each) sorted by score. Phase 4 baseline; FTS uplift later.",
+    "Substring search over decisions, invariants, tasks, docs, and manifest. Returns compact records (~50 tokens each) sorted by score.",
   inputSchema: searchInput,
   handler,
 };

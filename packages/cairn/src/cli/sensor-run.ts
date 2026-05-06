@@ -2,13 +2,10 @@
  * `cairn sensor-run` — invoked by the cairn git hooks (pre-commit,
  * commit-msg).
  *
- * v0.2.0 surface: parses the trigger flag, loads
- * `.cairn/config/sensors.yaml`, and exits cleanly. The pre-commit /
- * commit-msg sensor execution path is scheduled for v0.2.1; today
- * the canonical sensor sweep runs at adoption (phase 8 baseline) and
- * the Stop-hook bypass-tracker (post-commit). The hook surface
- * exists so that v0.2.1 can wire concrete sensor runs without
- * touching the templates again.
+ * Parses the trigger flag, loads `.cairn/config/sensors.yaml`, and
+ * exits cleanly. Pre-commit / commit-msg sensor execution is not yet
+ * wired; the canonical sweep runs at adoption (phase 8 baseline) and
+ * the Stop-hook bypass-tracker (post-commit).
  *
  * Exits 0 unless the repo is misconfigured (no `.cairn/` at all).
  */
@@ -102,14 +99,14 @@ export async function sensorRunCli(argv: string[]): Promise<void> {
     process.exit(0);
   }
 
-  // v0.2.0 does not yet execute pre-commit / commit-msg sensors. The
-  // canonical sweep runs at adoption (phase 8 baseline); the Stop hook
+  // Pre-commit / commit-msg sensor execution is not yet wired.
+  // The canonical sweep runs at adoption (phase 8 baseline); the Stop hook
   // bypass-tracker (post-commit) catches `--no-verify` after the fact.
   // Surface a one-line note so operators with active triggers know
   // their sensors are pending hookup.
   const ids = matched.map((s) => s.id).join(", ");
   console.error(
-    `cairn: ${flags.trigger} sensors configured (${ids}) but not yet executed in v0.2.0 — see CHANGELOG`,
+    `cairn: ${flags.trigger} sensors configured (${ids}) but execution not yet wired for this trigger`,
   );
   process.exit(0);
 }

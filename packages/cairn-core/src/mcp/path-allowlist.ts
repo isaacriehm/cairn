@@ -5,21 +5,11 @@ import { mcpError, type McpErrorPayload } from "./errors.js";
 /**
  * Append-write allowlist. Server-side, NOT agent-controllable.
  *
- * Per MCP_SURFACE.md §"Write tools — append-only":
- *   - .cairn/runs/active/<run-id>/events.jsonl
- *   - .cairn/runs/active/<run-id>/commands.jsonl
- *   - .cairn/staleness/log.jsonl
- *   - .cairn/inbox/**         (system-only; rarely used by agents)
- *
  * Per CONTEXT_CONTINUITY_SPEC §2.3:
  *   - .cairn/tasks/active/<task-id>/notes.md  — agent-authored run notes
  *     (consumed by handoff builder; persists across sessions)
  */
 export const APPEND_ALLOWLIST: readonly string[] = [
-  ".cairn/runs/active/*/events.jsonl",
-  ".cairn/runs/active/*/commands.jsonl",
-  ".cairn/staleness/log.jsonl",
-  ".cairn/inbox/**",
   ".cairn/tasks/active/*/notes.md",
 ];
 

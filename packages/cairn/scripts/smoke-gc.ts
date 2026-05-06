@@ -376,10 +376,12 @@ async function main(): Promise<void> {
     stringifyYaml([{ sensor: "stub-pattern-catalog", status: "pass" }]),
     "utf8",
   );
-  // Truncate workflow.md to break canary — strip the prompt body entirely.
+  // Break canary by writing invalid YAML frontmatter (the new canary
+  // checks frontmatter parses as an object after the orchestrator
+  // template-render check was retired with v0.3 cleanup).
   writeFileSync(
     join(rollbackRoot, ".cairn", "config", "workflow.md"),
-    "---\ntype: workflow-policy\nstatus: draft\n---\n",
+    "---\n: : : not valid yaml\n  - oops\n---\n# body\n",
     "utf8",
   );
   await gitInit(rollbackRoot);

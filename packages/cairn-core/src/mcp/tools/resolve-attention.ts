@@ -10,15 +10,15 @@
  * | kind                | choice | resolution                                  |
  * |---------------------|--------|---------------------------------------------|
  * | decision_draft      | a      | accept — move `_inbox/<id>.draft.md` → `<id>.md`, status=accepted |
- * | decision_draft      | b      | reject — archive draft                      |
+ * | decision_draft      | b      | reject — rename draft to .rejected.md (id reserved forever) |
  * | decision_draft      | c      | edit-pending — return draft body (no write) |
  * | baseline_finding    | a      | triage-now — no-op (skill opens the file)   |
  * | baseline_finding    | b      | suppress — append to baseline/suppressions.yaml |
  * | baseline_finding    | c      | defer — no-op                               |
- * | invalidation_event  | a      | refresh — re-read in-scope DECs/§Vs          |
+ * | invalidation_event  | a      | refresh — re-read in-scope DECs/§INVs        |
  * | invalidation_event  | b      | continue-under-old — no-op                  |
  * | invalidation_event  | c      | abort — caller archives task (no-op here)   |
- * | drift               | a/b/c  | reserved (drift surface lands later)        |
+ * | drift               | a/b/c  | acknowledged (drift surface not yet active) |
  */
 
 import {
@@ -44,6 +44,7 @@ import {
 } from "../../hooks/defer.js";
 import {
   applyStripReplace,
+  formatBareCitation,
   type ReplaceItem,
   type StripReplaceResult,
 } from "../../init/source-comments/strip-replace.js";
@@ -239,14 +240,13 @@ function resolveDecisionDraft(ctx: McpContext, input: Input): Promise<unknown> {
       return stripOutcome === null ? base : { ...base, source_strip: stripOutcome };
     }
 
-    // choice === "b" — reject + archive.
-    const today = new Date().toISOString().slice(0, 10);
-    const archivedRel = join(".archive", today, ".cairn/ground/decisions/_inbox", `${input.item_id}.draft.md`);
-    const archivedAbs = join(ctx.repoRoot, archivedRel);
-    mkdirSync(dirname(archivedAbs), { recursive: true });
-    renameSync(inboxPath, archivedAbs);
+    // choice === "b" — reject. Rename to .rejected.md so scanExistingDecisionIds
+    // keeps the id in the high-water mark and it is never recycled.
+    const rejectedPath = join(decDir, "_inbox", `${input.item_id}.rejected.md`);
+    renameSync(inboxPath, rejectedPath);
+    const rejectedRel = `.cairn/ground/decisions/_inbox/${input.item_id}.rejected.md`;
     try {
-      emitEvent(ctx, "decision_rejected", input.item_id, archivedRel);
+      emitEvent(ctx, "decision_rejected", input.item_id, rejectedRel);
     } catch {
       // ignore
     }
@@ -254,7 +254,7 @@ function resolveDecisionDraft(ctx: McpContext, input: Input): Promise<unknown> {
       ok: true,
       resolved_kind: "decision_rejected",
       item_id: input.item_id,
-      archived_to: archivedRel,
+      rejected_path: rejectedRel,
       ...(input.rationale !== undefined ? { rationale: input.rationale } : {}),
     };
   });
@@ -329,11 +329,13 @@ function resolveInvalidationEvent(_ctx: McpContext, input: Input): Promise<unkno
 }
 
 function promoteDraftStatus(body: string): string {
-  // Frontmatter `status: draft` → `status: accepted`. Best-effort regex
-  // — if the frontmatter shape is unusual the file is still acceptable
-  // (status field is advisory). Also covers
-  // `status: draft-from-source-comment` (phase 7b's draft marker).
-  return body.replace(/^status:\s*draft(?:-from-source-comment)?\b/m, "status: accepted");
+  // Frontmatter `status: draft*` → `status: accepted`. Best-effort
+  // regex — covers every draft marker the init pipeline emits:
+  //   - `draft` (legacy / generic)
+  //   - `draft-from-init-docs` (phase 6)
+  //   - `draft-from-source-comment` (phase 7b)
+  //   - `draft-from-rules-merge` (phase 7c)
+  return body.replace(/^status:\s*draft(?:-from-[a-z-]+)?\b/m, "status: accepted");
 }
 
 interface DraftMeta {
@@ -399,13 +401,14 @@ function runSourceStrip(
   if (block === undefined) {
     return { attempted: false, files_modified: 0, items_applied: 0, audit_path: auditPath, reason: "block-not-found" };
   }
-  const replacement = formatCitation(block.lang, decId, meta.title ?? "");
+  const replacement = formatBareCitation(block.lang, decId);
   const item: ReplaceItem = {
     blockId,
     file: block.file,
     startOffset: block.start_offset,
     endOffset: block.end_offset,
     replacement,
+    ...(block.raw !== undefined ? { expectedRaw: block.raw } : {}),
   };
   let result: StripReplaceResult;
   try {
@@ -456,6 +459,11 @@ interface AuditBlock {
   lang: string;
   start_offset: number;
   end_offset: number;
+  /**
+   * Bytes at [start_offset, end_offset) at audit time. Optional for
+   * forward-compat with audit yamls written before the field landed.
+   */
+  raw?: string;
 }
 
 function extractAuditBlocks(body: unknown): AuditBlock[] {
@@ -472,6 +480,7 @@ function extractAuditBlocks(body: unknown): AuditBlock[] {
     const lang = e["lang"];
     const start_offset = e["start_offset"];
     const end_offset = e["end_offset"];
+    const rawText = e["raw"];
     if (
       typeof block_id !== "string" ||
       typeof file !== "string" ||
@@ -481,25 +490,16 @@ function extractAuditBlocks(body: unknown): AuditBlock[] {
     ) {
       continue;
     }
-    out.push({ block_id, file, lang, start_offset, end_offset });
+    out.push({
+      block_id,
+      file,
+      lang,
+      start_offset,
+      end_offset,
+      ...(typeof rawText === "string" ? { raw: rawText } : {}),
+    });
   }
   return out;
-}
-
-const HASH_LANGS = new Set(["py", "rb", "sh", "lua"]);
-
-/**
- * Bare-symbol citation: `§DEC-NNNN` inside a single-line comment.
- * The `§` prefix matches the invariant convention (`§V<N>`) so a
- * single grep / lens regex catches both kinds. Cairn Lens resolves
- * the title + body from the ledger and renders inline / on hover;
- * the source file carries only the symbol so prose can't go stale.
- */
-function formatCitation(lang: string, decId: string, _title: string): string {
-  if (HASH_LANGS.has(lang)) {
-    return `# §${decId}`;
-  }
-  return `// §${decId}`;
 }
 
 function emitEvent(

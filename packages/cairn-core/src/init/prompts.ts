@@ -1,12 +1,9 @@
 /**
  * Inquirer-driven prompts for `cairn init`.
  *
- * Per operator note 2026-05-02: cairn init uses inquirer
- * (`@inquirer/prompts`) for operator-facing dialogs. Hand-rolled readline
- * was rejected as too ad-hoc.
- *
- * `mode: "auto"` short-circuits prompts so smokes / scripted adoption can
- * run non-interactively.
+ * Uses `@inquirer/prompts` for operator-facing dialogs. `mode: "auto"`
+ * short-circuits prompts so smokes / scripted adoption can run
+ * non-interactively.
  */
 
 import { confirm, editor, input, select } from "@inquirer/prompts";
@@ -59,7 +56,7 @@ export async function squareIntoSquareHole<T extends string>(
   return answer;
 }
 
-export interface FreeTextOptions {
+interface FreeTextOptions {
   mode: PromptMode;
   prompt: string;
   defaultValue: string;
@@ -75,7 +72,7 @@ export async function freeTextWithDefault(opts: FreeTextOptions): Promise<string
   });
 }
 
-export interface YesNoOptions {
+interface YesNoOptions {
   mode: PromptMode;
   prompt: string;
   defaultYes?: boolean;

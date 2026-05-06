@@ -1,5 +1,5 @@
 /**
- * Phase 6.1 — docs ingestion sweep.
+ * Phase 6 — docs ingestion sweep.
  *
  * Scans the adopted repo for existing documentation, classifies each file
  * via a Haiku call, and:
@@ -45,13 +45,21 @@ const DISCOVER_DIRS = [
   "architecture",
 ];
 
-/** Top-level files always considered. */
-const DISCOVER_TOP_FILES = ["AGENTS.md", "README.md", "CLAUDE.md"];
+/** Top-level files always considered.
+ *
+ * AGENTS.md / CLAUDE.md / .claude/CLAUDE.md are intentionally excluded
+ * here — phase 7c-rules-merge owns rule files and ingests them at H2/H3
+ * section granularity. If we also processed them here as whole-file
+ * "decision" drafts, the operator would see two DEC drafts covering the
+ * same content (one whole-file, one per-section). README.md remains
+ * because it usually carries narrative + canonical-topic seeding, not
+ * rules.
+ */
+const DISCOVER_TOP_FILES = ["README.md"];
 
 /** Subdirs we never descend into. */
 const SKIP_DIRS = new Set([
   ".cairn",
-  ".cairn-build",
   "node_modules",
   ".git",
   "dist",
@@ -151,7 +159,10 @@ export function discoverDocs(repoRoot: string): DocCandidate[] {
     walkMarkdown(abs, repoRoot, `${d}/`, out);
   }
 
-  // Top-level loose .md files that aren't already covered.
+  // Top-level loose .md files that aren't already covered. Skip the
+  // rule files that phase 7c-rules-merge owns (AGENTS.md, CLAUDE.md)
+  // so we don't duplicate per-section DECs as whole-file decisions.
+  const RULE_FILES_OWNED_BY_RULES_MERGE = new Set(["AGENTS.md", "CLAUDE.md"]);
   let topEntries: string[] = [];
   try {
     topEntries = readdirSync(repoRoot, { encoding: "utf8" });
@@ -161,6 +172,7 @@ export function discoverDocs(repoRoot: string): DocCandidate[] {
   for (const e of topEntries) {
     if (!e.endsWith(".md")) continue;
     if (DISCOVER_TOP_FILES.includes(e)) continue;
+    if (RULE_FILES_OWNED_BY_RULES_MERGE.has(e)) continue;
     const abs = join(repoRoot, e);
     let st;
     try {
@@ -385,7 +397,7 @@ function writeDecDraftFromDoc(args: {
   lines.push(args.classification.proposedRationale.trim() || "(none extracted)");
   lines.push("");
   lines.push(
-    "Operator: confirm via `cairn attention`, edit, or discard. Until confirmed, this draft is not binding.",
+    "Status: draft. Cairn will surface this for accept / edit / reject during the next attention pass; until accepted it is not binding.",
   );
   lines.push("");
   writeFileSync(abs, lines.join("\n"), "utf8");

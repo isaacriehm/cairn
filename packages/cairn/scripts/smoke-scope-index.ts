@@ -8,6 +8,8 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  coerceDecisionIds,
+  coerceInvariantIds,
   lookupScope,
   readScopeIndex,
   writeScopeIndex,
@@ -61,7 +63,7 @@ function runSmoke(): void {
     files: {
       "src/auth/login.ts": {
         decisions: ["DEC-0042", "DEC-0089"],
-        invariants: ["V0041", "V0052"],
+        invariants: ["INV-0041", "INV-0052"],
       },
       "src/dashboard/index.tsx": {
         decisions: ["DEC-0017"],
@@ -91,7 +93,7 @@ function runSmoke(): void {
       `Step 3: login decisions wrong, got ${JSON.stringify(login.decisions)}`,
     );
     assert(
-      login.invariants.includes("V0041"),
+      login.invariants.includes("INV-0041"),
       `Step 3: login invariants wrong, got ${JSON.stringify(login.invariants)}`,
     );
 
@@ -106,6 +108,51 @@ function runSmoke(): void {
       "Step 3: unscoped flag should round-trip",
     );
     console.log("  ✓ Step 3 — lookupScope hit/miss/unscoped");
+  }
+
+  // ── Step 4 — coerceDecisionIds / coerceInvariantIds drop prose ──
+  // Mapper LLMs occasionally smuggle ledger title text past the JSON-mode
+  // gate. The coercer must extract the canonical ID from each entry and
+  // silently drop strings that contain no ID, so the on-disk scope-index
+  // never carries prose for the read-enricher legend to render.
+  {
+    const dirtyDecisions = [
+      "DEC-0042",
+      "HS256 chosen over RS256: single deployment, no key-rotation requirement",
+      "DEC-0017 — Use explicit route files over decorator routers",
+      "Stripe is the only permitted payment processor.",
+    ];
+    const cleanDecisions = coerceDecisionIds(dirtyDecisions);
+    assert(
+      cleanDecisions.length === 2 &&
+        cleanDecisions[0] === "DEC-0042" &&
+        cleanDecisions[1] === "DEC-0017",
+      `Step 4: decision coerce wrong, got ${JSON.stringify(cleanDecisions)}`,
+    );
+
+    const dirtyInvariants = [
+      "INV-0001",
+      "TOKEN_TTL_MS = 24 hours; tokens with iat older than 24h must be rejected",
+      "INV-0023 — HTTP layer is the only public surface",
+      "Redactor implemented in Python for legacy reasons",
+    ];
+    const cleanInvariants = coerceInvariantIds(dirtyInvariants);
+    assert(
+      cleanInvariants.length === 2 &&
+        cleanInvariants[0] === "INV-0001" &&
+        cleanInvariants[1] === "INV-0023",
+      `Step 4: invariant coerce wrong, got ${JSON.stringify(cleanInvariants)}`,
+    );
+
+    // Dedupe + non-string filter
+    const mixed: unknown[] = ["DEC-0001", "DEC-0001", 42, null, "DEC-0002"];
+    const deduped = coerceDecisionIds(mixed);
+    assert(
+      deduped.length === 2 && deduped[0] === "DEC-0001" && deduped[1] === "DEC-0002",
+      `Step 4: dedupe/filter wrong, got ${JSON.stringify(deduped)}`,
+    );
+
+    console.log("  ✓ Step 4 — ID coercion drops prose, dedupes, filters non-strings");
   }
 
   console.log("smoke-scope-index — pass");

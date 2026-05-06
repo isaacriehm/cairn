@@ -15,8 +15,12 @@
  * Spec: docs/READ_ENRICHER_SPEC.md "Write Guardian" section.
  */
 
-import { basename, relative } from "node:path";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, readdirSync, writeFileSync, type Dirent } from "node:fs";
+import { basename, dirname, join, relative } from "node:path";
+import { readHookStdin } from "../runners/payload.js";
 import { matchAnyGlob } from "../../ground/glob.js";
+import { syncFileScopeFromContent } from "../../ground/scope-index.js";
 import { resolveRepoRoot } from "../../session-start/index.js";
 import {
   readCopySafetyConfig,
@@ -49,20 +53,10 @@ interface PostToolUseShapeBOutput {
   };
 }
 
-function readStdin(): Promise<string> {
-  return new Promise((resolveP) => {
-    const chunks: Buffer[] = [];
-    process.stdin.on("data", (chunk: Buffer) => chunks.push(chunk));
-    process.stdin.on("end", () => {
-      resolveP(Buffer.concat(chunks).toString("utf8"));
-    });
-    process.stdin.on("error", () => {
-      resolveP("");
-    });
-    if (process.stdin.isTTY) {
-      resolveP("");
-    }
-  });
+interface PostToolUseBlockOutput {
+  continue: false;
+  decision: "block";
+  reason: string;
 }
 
 function parsePayload(text: string): ClaudePostToolUsePayload {
@@ -105,6 +99,16 @@ function emitShapeB(additionalContext: string): void {
   process.stdout.write("\n");
 }
 
+function emitBlock(reason: string): void {
+  const out: PostToolUseBlockOutput = {
+    continue: false,
+    decision: "block",
+    reason,
+  };
+  process.stdout.write(JSON.stringify(out));
+  process.stdout.write("\n");
+}
+
 function filterAllowed(
   issues: CopyIssue[],
   config: CopySafetyConfig,
@@ -130,6 +134,121 @@ function renderCopySafetySection(
   return lines.join("\n");
 }
 
+/**
+ * Bypass detection defers to git: any file git would track is project
+ * content (= the operator considers it part of the codebase, so a
+ * mutation there should trace back to a tightened spec). Files git
+ * ignores (build output, node_modules, lockfiles, generated code) are
+ * skipped automatically — the project's own `.gitignore` is the
+ * authority. The only universal exclusion is `.cairn/` itself
+ * (cairn's state dir, which the agent legitimately writes during
+ * adoption + attention flows without going through cairn-direction).
+ *
+ * `git check-ignore` exit codes:
+ *   0  = path IS ignored (skip)
+ *   1  = path NOT ignored (project content → bypass-eligible)
+ *   128 = error / not in git repo (fail-safe to skip)
+ */
+function isProjectTrackedFile(repoRoot: string, relPath: string): boolean {
+  if (relPath === ".cairn" || relPath.startsWith(".cairn/")) return false;
+  const r = spawnSync("git", ["check-ignore", "-q", "--", relPath], {
+    cwd: repoRoot,
+  });
+  return r.status === 1;
+}
+
+/**
+ * Per-session sentinel that dedupes the bypass warning: first
+ * untightened-edit fires + creates the file; subsequent edits in the
+ * same session see the file and skip the warning section. Stop hook
+ * scope reminder + copy-safety still emit normally.
+ *
+ * Cleared naturally when the session ends (`.cairn/sessions/<sid>/`
+ * is removed by the SessionEnd hook). When `cairn-direction` later
+ * writes `spec.tightened.md`, `hasTightenedActiveTask` returns true
+ * and the bypass branch is skipped regardless of the sentinel.
+ */
+function bypassSentinelPath(
+  repoRoot: string,
+  sessionId: string | null,
+): string | null {
+  if (sessionId === null || sessionId.length === 0) return null;
+  return join(repoRoot, ".cairn", "sessions", sessionId, "bypass-warned");
+}
+
+function bypassAlreadyWarned(
+  repoRoot: string,
+  sessionId: string | null,
+): boolean {
+  const p = bypassSentinelPath(repoRoot, sessionId);
+  return p !== null && existsSync(p);
+}
+
+function markBypassWarned(
+  repoRoot: string,
+  sessionId: string | null,
+): void {
+  const p = bypassSentinelPath(repoRoot, sessionId);
+  if (p === null) return;
+  try {
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(p, new Date().toISOString(), "utf8");
+  } catch {
+    // best-effort — warning loses dedupe but doesn't break the hook
+  }
+}
+
+/**
+ * `true` when `.cairn/tasks/active/` contains at least one task with
+ * BOTH `spec.tightened.md` and `status.yaml` on disk. The pair is the
+ * cairn-direction skill's contract — either both exist (tightening
+ * landed) or neither does (skill never engaged for this work).
+ */
+function hasTightenedActiveTask(repoRoot: string): boolean {
+  const tasksDir = join(repoRoot, ".cairn", "tasks", "active");
+  if (!existsSync(tasksDir)) return false;
+  let entries: Dirent[];
+  try {
+    entries = readdirSync(tasksDir, { withFileTypes: true });
+  } catch {
+    return false;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const taskDir = join(tasksDir, String(entry.name));
+    if (
+      existsSync(join(taskDir, "spec.tightened.md")) &&
+      existsSync(join(taskDir, "status.yaml"))
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function renderBypassBlockReason(relPath: string): string {
+  return [
+    "BYPASS — Edit on tracked source rejected. No `.cairn/tasks/active/<id>/spec.tightened.md` exists.",
+    "",
+    `File: ${relPath}`,
+    "",
+    "Cairn's contract: every code change traces back to a tightened spec. The Edit landed on disk,",
+    "but the cairn-direction skill never wrote a spec for this work — so the change is unattested.",
+    "",
+    "Recover NOW (before any further mutation):",
+    "  1. `git -C <repoRoot> checkout -- " + relPath + "` to revert the unattested edit",
+    "  2. Call the `cairn_task_create` MCP tool with the operator's original prompt as the `goal`",
+    "     and a kebab `slug` (2-4 words). The server writes spec.tightened.md + status.yaml under",
+    "     `.cairn/tasks/active/<task_id>/` with the correct format.",
+    "  3. Re-apply the Edit; this hook will pass on next mutation.",
+    "",
+    "If the Edit is correct as-is and you simply forgot to tighten:",
+    "  - Skip the revert; call `cairn_task_create` now to retroactively register the work.",
+    "",
+    "Subsequent edits in this session will not re-trigger this block (sentinel set).",
+  ].join("\n");
+}
+
 function renderScopeSection(scopeHint: ScopeIndexHint): string {
   const lines: string[] = [];
   lines.push("ℹ cairn:scope — this file has rules in scope:");
@@ -147,7 +266,7 @@ function renderScopeSection(scopeHint: ScopeIndexHint): string {
 
 export async function runWriteGuardian(): Promise<void> {
   try {
-    const raw = await readStdin();
+    const raw = await readHookStdin();
     const payload = parsePayload(raw);
 
     const toolName = payload.tool_name;
@@ -195,14 +314,46 @@ export async function runWriteGuardian(): Promise<void> {
       issues = filterAllowed(raw, config);
     }
 
+    // Deterministic scope-index sync — fold any §INV/§DEC tokens in the
+    // just-written content into this file's scope-index entry so the
+    // in-scope MCP tools never lag behind source-cite reality between
+    // SessionStart rescans. Defer-fail: scope sync must NEVER block
+    // the write hint, so wrap and swallow errors.
+    try {
+      syncFileScopeFromContent(repoRoot, relPath, content);
+    } catch {
+      // ignore — guardian is a hint, scope sync is best-effort
+    }
+
     const cachedEntry = getScopeIndexEntry(repoRoot, relPath);
+    // Suppress the scope reminder when the entry exists but has no
+    // rules attached — printing a header with no items below is just
+    // visual noise. Mirrors legend-builder's guard.
     const scopeHint: ScopeIndexHint | null =
-      cachedEntry !== null
+      cachedEntry !== null &&
+      (cachedEntry.decisions.length > 0 || cachedEntry.invariants.length > 0)
         ? {
             decisions: cachedEntry.decisions,
             invariants: cachedEntry.invariants,
           }
         : null;
+
+    const sessionId =
+      typeof payload.session_id === "string" ? payload.session_id : null;
+
+    // Bypass detection: Edit on tracked source without a tightened
+    // active task. Strong-deterministic signal via `decision: "block"`
+    // so the model treats it as an error, not a hint. One block per
+    // session per untightened-state — sentinel dedupes follow-up edits.
+    if (
+      isProjectTrackedFile(repoRoot, relPath) &&
+      !hasTightenedActiveTask(repoRoot) &&
+      !bypassAlreadyWarned(repoRoot, sessionId)
+    ) {
+      markBypassWarned(repoRoot, sessionId);
+      emitBlock(renderBypassBlockReason(relPath));
+      return;
+    }
 
     const sections: string[] = [];
     if (issues.length > 0) {

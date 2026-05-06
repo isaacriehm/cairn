@@ -1,23 +1,21 @@
 /**
  * `Stop` hook runner — fires when the assistant turn ends.
  *
- * Current scope:
- *   • Drain `.cairn/events/` since the per-session marker; stamp the
- *     poll cursor so the next Stop only sees newer events.
- *   • Scan `.cairn/tasks/active/<id>/` for tasks that have a
- *     tightened spec but no `attestation.yaml`; surface a reviewer-
- *     spawn hint in additionalContext so main Claude can spawn the
- *     reviewer subagent on the next assistant turn.
- *   • Patch the per-session status.json `updated_at` (heartbeat).
+ * Per PLUGIN_ARCHITECTURE §10:
+ *   • Drains `.cairn/events/` since the per-session marker.
+ *   • Scans `.cairn/tasks/active/<id>/` for tasks missing attestation.yaml.
+ *   • Compares HEAD's last 5 commits against `.cairn/.attested-commits`;
+ *     surfaces bypass hint for `--no-verify` commits.
+ *   • Patches per-session status.json `updated_at` (heartbeat).
  *
- * Future scope (steps 7–8 per PLUGIN_ARCHITECTURE §10):
- *   • Run sensors on staged + unstaged diff; surface findings inline.
- *   • Compare HEAD's last 5 commits against `.attested-commits` marker;
- *     surface backfill prompt for `--no-verify` bypasses.
+ * When context to surface: emits `{ decision: "block", reason: "..." }` so
+ * Claude reads the hint and invokes cairn-attention on the next turn.
+ * When nothing: emits `{ continue: true }` and Claude stops normally.
  */
 
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { readActiveTaskSummary } from "../../context/index.js";
 import {
   eventsSince,
   type InvalidationEvent,
@@ -47,23 +45,28 @@ function isInitInProgress(repoRoot: string): boolean {
 }
 
 /**
- * Cap the systemMessage that flows back to Claude Code. Both the
- * reviewer hint and the bypass hint can fire on the same Stop tick;
- * with many tasks/SHAs the combined render could blow past the
- * envelope budget. 4 KB is generous for two A/B/C strips with their
- * facts but small enough that overflow is structurally impossible.
+ * Cap the reason text that flows back to Claude Code via decision:block.
+ * Both the reviewer hint and the bypass hint can fire on the same Stop
+ * tick; 4 KB is generous for two A/B/C strips but small enough that
+ * overflow is structurally impossible.
  */
-const MAX_ADDITIONAL_CONTEXT_CHARS = 4_000;
+const MAX_REASON_CHARS = 4_000;
 
-function clampAdditionalContext(body: string): string {
-  if (body.length <= MAX_ADDITIONAL_CONTEXT_CHARS) return body;
-  const head = body.slice(0, MAX_ADDITIONAL_CONTEXT_CHARS - 80);
+function clampReason(body: string): string {
+  if (body.length <= MAX_REASON_CHARS) return body;
+  const head = body.slice(0, MAX_REASON_CHARS - 80);
   return `${head}\n\n…(truncated; resolve via cairn-attention)`;
 }
 
-interface StopShapeBOutput {
-  continue: boolean;
-  systemMessage?: string;
+/** Stop hook emits decision:block+reason to inject context into Claude. */
+interface StopBlockOutput {
+  decision: "block";
+  reason: string;
+}
+
+/** Stop hook emits continue:true when nothing to surface. */
+interface StopPassOutput {
+  continue: true;
 }
 
 interface PendingReview {
@@ -83,7 +86,7 @@ export async function runStopHook(): Promise<void> {
   let drained: InvalidationEvent[] = [];
   let pendingReviews: PendingReview[] = [];
   let bypassed: BypassedCommit[] = [];
-  let additionalContext = "";
+  let reason = "";
 
   if (repoRoot !== null && sessionId !== null && sessionId.length > 0) {
     try {
@@ -127,7 +130,7 @@ export async function runStopHook(): Promise<void> {
           if (suppressed) {
             warnings.push(`review_suppressed_until:${reviewDefer.deferred_at}`);
           } else {
-            additionalContext = renderReviewerHint(pendingReviews);
+            reason = renderReviewerHint(pendingReviews);
           }
         }
       } catch (err) {
@@ -151,10 +154,7 @@ export async function runStopHook(): Promise<void> {
             warnings.push(`bypass_suppressed_until:${bypassDefer.deferred_at}`);
           } else {
             const hint = renderBypassHint(bypassed);
-            additionalContext =
-              additionalContext.length > 0
-                ? `${additionalContext}\n\n${hint}`
-                : hint;
+            reason = reason.length > 0 ? `${reason}\n\n${hint}` : hint;
           }
         }
       } catch (err) {
@@ -165,8 +165,13 @@ export async function runStopHook(): Promise<void> {
     }
 
     try {
+      const active = readActiveTaskSummary(repoRoot);
       writeStatusJson(repoRoot, sessionId, {
         updated_at: new Date().toISOString(),
+        task_state: active?.taskState ?? "idle",
+        task_id: active?.taskId ?? null,
+        task_module: active?.taskModule ?? null,
+        bypass_count: bypassed.length,
       });
     } catch (err) {
       warnings.push(
@@ -175,12 +180,15 @@ export async function runStopHook(): Promise<void> {
     }
   }
 
-  // Claude Code's Stop hook schema rejects hookSpecificOutput. Surface
-  // text via the top-level systemMessage field; empty payload is fine.
-  const out: StopShapeBOutput = { continue: true };
-  if (additionalContext.length > 0) {
-    out.systemMessage = clampAdditionalContext(additionalContext);
-  }
+  // Stop hook uses decision:block+reason to inject context into Claude
+  // (Stop does not support hookSpecificOutput.additionalContext — that
+  // field is silently ignored by Claude Code for Stop events). When
+  // reason is non-empty, blocking keeps the session alive so Claude
+  // reads the reason and acts on it (e.g. invokes cairn-attention).
+  const out: StopBlockOutput | StopPassOutput =
+    reason.length > 0
+      ? { decision: "block", reason: clampReason(reason) }
+      : { continue: true };
   emitShapeB(out);
 
   recordHookTelemetry({
@@ -194,6 +202,8 @@ export async function runStopHook(): Promise<void> {
       events_drained: drained.length,
       pending_reviews: pendingReviews.length,
       bypassed_commits: bypassed.length,
+      decision: reason.length > 0 ? "block" : "continue",
+      ...(reason.length > 0 ? { reason } : {}),
     },
   });
 }
@@ -207,6 +217,29 @@ export async function runStopHook(): Promise<void> {
  * Older orphans are stale; the operator deals with them via attention
  * rather than spawning reviewers blindly.
  */
+// Phases a task moves through. The reviewer-attestation prompt only
+// fires for tasks that are explicitly ready for review — a fresh
+// `running` task has work in flight, no reviewer needed yet.
+const REVIEW_READY_PHASES = new Set(["ready_for_review", "awaiting_attestation"]);
+
+function readTaskPhase(taskDir: string): string | null {
+  const statusPath = join(taskDir, "status.yaml");
+  if (!existsSync(statusPath)) return null;
+  let raw: string;
+  try {
+    raw = readFileSync(statusPath, "utf8");
+  } catch {
+    return null;
+  }
+  // Cheap line scan — `phase: <value>` at top-level. Avoid a full
+  // YAML parse (this runs on every Stop tick).
+  for (const line of raw.split(/\r?\n/)) {
+    const m = line.match(/^phase:\s*(\S+)/);
+    if (m && m[1] !== undefined) return m[1].replace(/['"]/g, "");
+  }
+  return null;
+}
+
 function scanPendingReviews(repoRoot: string): PendingReview[] {
   const activeDir = join(repoRoot, ".cairn", "tasks", "active");
   if (!existsSync(activeDir)) return [];
@@ -226,6 +259,9 @@ function scanPendingReviews(repoRoot: string): PendingReview[] {
     if (!existsSync(tightenedSpec)) continue;
     const attestation = join(taskDir, "attestation.yaml");
     if (existsSync(attestation)) continue;
+    // Phase gate — `running` / `tightening` / etc. are not review-ready.
+    const phase = readTaskPhase(taskDir);
+    if (phase !== null && !REVIEW_READY_PHASES.has(phase)) continue;
     let mtime = 0;
     try {
       mtime = statSync(tightenedSpec).mtimeMs;
@@ -245,7 +281,7 @@ function renderReviewerHint(pending: PendingReview[]): string {
   const lines: string[] = [];
   const noun = pending.length === 1 ? "task" : "tasks";
   lines.push(
-    `**Cairn — ${pending.length} ${noun} awaiting review attestation.**`,
+    `## Cairn — ${pending.length} ${noun} awaiting review attestation`,
   );
   lines.push("");
   for (const p of pending) {
@@ -253,7 +289,7 @@ function renderReviewerHint(pending: PendingReview[]): string {
   }
   lines.push("");
   lines.push(
-    "`[a]` run review · `[b]` skip · `[c]` defer 24h",
+    "Invoke the `cairn-attention` skill on the next turn so the operator can pick run review / skip / defer through `AskUserQuestion`.",
   );
   return lines.join("\n");
 }

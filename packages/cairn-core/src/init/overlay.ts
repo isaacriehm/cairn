@@ -8,7 +8,7 @@ import { VERSION } from "../index.js";
 import type { MapperOutput } from "./mapper.js";
 import type { DetectionResult } from "./types.js";
 
-export const DEFAULT_OFF_LIMITS = [
+const DEFAULT_OFF_LIMITS = [
   ".env",
   ".env.*",
   "node_modules/",
@@ -23,7 +23,7 @@ export const DEFAULT_OFF_LIMITS = [
   "coverage/",
 ];
 
-export interface BuildProjectOverlayArgs {
+interface BuildProjectOverlayArgs {
   detection: DetectionResult;
   decidedSlug: string;
   mapperOutput?: MapperOutput;

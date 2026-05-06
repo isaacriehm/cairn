@@ -15,25 +15,25 @@ import {
 } from "../ground/index.js";
 import { loadSensorRegistry } from "../sensors/catalog.js";
 import {
+  CODE_CHANGE_CONTRACT,
   SESSION_START_HEADER,
-  TOOL_QUICK_REFERENCE,
   TWO_ZONE_REMINDER_BASE,
 } from "./templates.js";
 
-export type SessionStartSource = "startup" | "resume" | "clear" | "compact" | string;
+type SessionStartSource = "startup" | "resume" | "clear" | "compact" | string;
 
 export type SessionStartSection =
   | "first_session_onboarding"
   | "run_handoff"
   | "header"
+  | "code_change_contract"
   | "two_zone_reminder"
   | "brand_and_positioning"
   | "decisions_in_scope"
   | "invariants_active"
   | "current_task"
   | "quality_grades_tail"
-  | "pending_drafts"
-  | "tool_quick_reference";
+  | "pending_drafts";
 
 export interface BuildSessionStartContextArgs {
   /** Resolved repo root (the dir containing `.cairn/`). */
@@ -44,15 +44,6 @@ export interface BuildSessionStartContextArgs {
   source?: SessionStartSource;
   /** Total char cap. Default 12000 (~3K tokens). */
   maxChars?: number;
-  /** When false, omits the MCP tool quick-reference (e.g. when MCP is unregistered). */
-  includeToolReference?: boolean;
-  /**
-   * When true (default), the two-zone reminder cites
-   * cairn_query_history as the escape valve for archive reads. Set
-   * false to omit the reminder line about query_history (e.g. for
-   * adopters who haven't enabled the MCP server).
-   */
-  queryHistoryAvailable?: boolean;
 }
 
 export interface BuildSessionStartContextResult {
@@ -109,8 +100,6 @@ export async function buildSessionStartContext(
   args: BuildSessionStartContextArgs,
 ): Promise<BuildSessionStartContextResult> {
   const maxChars = args.maxChars ?? DEFAULT_MAX_CHARS;
-  const includeToolReference = args.includeToolReference !== false;
-  const queryHistoryAvailable = args.queryHistoryAvailable !== false;
   const warnings: string[] = [];
 
   const counts: BuildSessionStartContextResult["counts"] = {
@@ -142,25 +131,47 @@ export async function buildSessionStartContext(
   }
 
   const fixedHeader = SESSION_START_HEADER;
-  const fixedTwoZone = composeTwoZoneReminder(queryHistoryAvailable);
-  const fixedToolReference = TOOL_QUICK_REFERENCE;
+  const fixedTwoZone = TWO_ZONE_REMINDER_BASE;
 
   // ── Section 2 — decisions in scope ─────────────────────────────────
+  // Only render the bodies when a `scopeRelPath` is supplied (task-in-
+  // flight context). For idle sessions, ship only a summary line so the
+  // operator's context isn't bloated by every accepted decision every
+  // session — bare `§DEC-NNNN` / `§INV-NNNN` tokens in source resolve
+  // on-demand via the read-enricher PostToolUse hook.
   const decisionEntries = safeBuildDecisionsLedger(args.repoRoot, warnings);
   counts.decisions = decisionEntries.length;
-  const filteredDecisions = filterDecisionsToScope(decisionEntries, args.scopeRelPath);
-  const decisionsSection = renderDecisionsSection(filteredDecisions);
-
-  // ── Section 3 — invariants active ──────────────────────────────────
   const invariantEntries = safeBuildInvariantsLedger(args.repoRoot, warnings);
   counts.invariants = invariantEntries.length;
-  const decisionScopeById = scopeMapFromDecisions(decisionEntries);
-  const filteredInvariants = filterInvariantsToScope(
-    invariantEntries,
-    decisionScopeById,
-    args.scopeRelPath,
-  );
-  const invariantsSection = renderInvariantsSection(filteredInvariants);
+
+  let decisionsSection: string | null = null;
+  let invariantsSection: string | null = null;
+
+  const hasScope =
+    typeof args.scopeRelPath === "string" &&
+    args.scopeRelPath.length > 0 &&
+    args.scopeRelPath !== ".";
+
+  if (hasScope) {
+    const filteredDecisions = filterDecisionsToScope(
+      decisionEntries,
+      args.scopeRelPath,
+    );
+    decisionsSection = renderDecisionsSection(filteredDecisions);
+
+    const decisionScopeById = scopeMapFromDecisions(decisionEntries);
+    const filteredInvariants = filterInvariantsToScope(
+      invariantEntries,
+      decisionScopeById,
+      args.scopeRelPath,
+    );
+    invariantsSection = renderInvariantsSection(filteredInvariants);
+  } else if (counts.decisions > 0 || counts.invariants > 0) {
+    decisionsSection = renderGroundStateSummary(
+      counts.decisions,
+      counts.invariants,
+    );
+  }
 
   // ── Section 4 — current task ───────────────────────────────────────
   const tasks = listActiveTasks(args.repoRoot);
@@ -186,7 +197,7 @@ export async function buildSessionStartContext(
   // ── Section 1.5 — brand + product positioning (always injected) ───
   const brandAndPositioningSection = readBrandAndPositioning(args.repoRoot, warnings);
 
-  // ── First-session onboarding block (Phase 6.6) ────────────────────
+  // ── First-session onboarding block ────────────────────────────────
   // Fires once: decisions_count === 0 AND invariants_count === 0 AND a
   // baseline audit yaml exists. After the first DEC is accepted, the
   // condition no longer holds and this section disappears for good.
@@ -212,14 +223,10 @@ export async function buildSessionStartContext(
     orderedSections.push({ id: "run_handoff", body: runHandoffSection });
   }
   orderedSections.push({ id: "header", body: fixedHeader });
+  orderedSections.push({ id: "code_change_contract", body: CODE_CHANGE_CONTRACT });
   orderedSections.push({ id: "two_zone_reminder", body: fixedTwoZone });
   if (brandAndPositioningSection !== null) {
     orderedSections.push({ id: "brand_and_positioning", body: brandAndPositioningSection });
-  }
-  if (includeToolReference) {
-    orderedSections.push({ id: "tool_quick_reference", body: fixedToolReference });
-  } else {
-    sectionsDropped.push("tool_quick_reference");
   }
   if (currentTaskSection !== null) {
     orderedSections.push({ id: "current_task", body: currentTaskSection });
@@ -247,9 +254,9 @@ export async function buildSessionStartContext(
     "invariants_active",
     "decisions_in_scope",
     "current_task",
-    "tool_quick_reference",
     "two_zone_reminder",
     "header",
+    "code_change_contract",
     "run_handoff",
     "first_session_onboarding",
   ];
@@ -289,15 +296,6 @@ export async function buildSessionStartContext(
     counts,
     warnings,
   };
-}
-
-function composeTwoZoneReminder(queryHistoryAvailable: boolean): string {
-  if (queryHistoryAvailable) return TWO_ZONE_REMINDER_BASE;
-  return `${TWO_ZONE_REMINDER_BASE}
-
-NOTE: cairn_query_history is not registered in this project's MCP
-configuration; archive reads are unreachable. Use cairn_decision_get
-or cairn_canonical_for_topic for current-canonical access only.`;
 }
 
 function readBrandAndPositioning(repoRoot: string, warnings: string[]): string | null {
@@ -411,6 +409,38 @@ function relPathOverlapsGlob(relPath: string, glob: string): boolean {
   return relPath.startsWith(globPrefix) || globPrefix.startsWith(relPath);
 }
 
+/**
+ * Compact summary line for sessions with no scopeRelPath. Replaces the
+ * old "ship all accepted DECs + all active invariants" payload that
+ * scaled linearly with project size and defeated the bare-symbol design.
+ */
+function renderGroundStateSummary(
+  decisionsCount: number,
+  invariantsCount: number,
+): string {
+  const lines: string[] = [];
+  lines.push("## Cairn ground state");
+  lines.push("");
+  const decTxt =
+    decisionsCount === 1
+      ? "1 accepted decision"
+      : `${decisionsCount} accepted decisions`;
+  const invTxt =
+    invariantsCount === 1
+      ? "1 active invariant"
+      : `${invariantsCount} active invariants`;
+  lines.push(`${decTxt}, ${invTxt} in this project.`);
+  lines.push("");
+  lines.push(
+    "Bare `§DEC-NNNN` and `§INV-NNNN` citations in source files resolve " +
+      "automatically when you Read them — the PostToolUse(Read) hook " +
+      "prepends a legend with each citation's title + status. Use " +
+      "`cairn_decisions_in_scope(globs[])` or `cairn_invariants_in_scope(globs[])` " +
+      "for path-targeted lookups, `cairn_search(query)` for free-text.",
+  );
+  return lines.join("\n");
+}
+
 function renderDecisionsSection(decisions: DecisionEntry[]): string | null {
   if (decisions.length === 0) return null;
   const lines: string[] = [];
@@ -434,7 +464,7 @@ function renderDecisionsSection(decisions: DecisionEntry[]): string | null {
 function renderInvariantsSection(invariants: InvariantEntry[]): string | null {
   if (invariants.length === 0) return null;
   const lines: string[] = [];
-  lines.push(`## §V invariants active (${invariants.length})`);
+  lines.push(`## §INV invariants active (${invariants.length})`);
   lines.push("");
   const slice = invariants.slice(0, INVARIANTS_CAP);
   for (const inv of slice) {
@@ -530,7 +560,7 @@ function renderCurrentTaskSection(_repoRoot: string, tasks: ActiveTask[]): strin
   for (const t of tasks.slice(0, 8)) {
     const titleMatch = t.specBody.match(/^#\s+(.+)$/m);
     const title = titleMatch?.[1] ?? t.id;
-    lines.push(`- **${t.id}** — ${title}  status: ${t.status ?? "(unknown)"}`);
+    lines.push(`- **${t.id}** — ${title}  status: ${t.status ?? "—"}`);
   }
   if (tasks.length > 8) lines.push(`…${tasks.length - 8} more.`);
   lines.push("");
@@ -672,7 +702,9 @@ function renderFirstSessionOnboarding(args: OnboardingArgs): string | null {
     lines.push(
       `  Baseline debt: ${audit.totalFindings} pre-Cairn violation${audit.totalFindings === 1 ? "" : "s"} found in existing code.`,
     );
-    lines.push("  Run `cairn attention` to review before starting work.");
+    lines.push(
+      "  Invoke the cairn-attention skill to surface these inline before starting work.",
+    );
     lines.push("");
   } else {
     lines.push(
@@ -685,11 +717,15 @@ function renderFirstSessionOnboarding(args: OnboardingArgs): string | null {
     lines.push(
       `  DEC drafts awaiting review: ${args.pendingDrafts}`,
     );
-    lines.push("  Run `cairn attention` to confirm or discard.");
+    lines.push(
+      "  Invoke the cairn-attention skill so the operator can accept, edit, or reject each draft inline.",
+    );
     lines.push("");
   }
 
-  lines.push("  To capture a decision during this session: /direction <your instruction>");
+  lines.push(
+    "  To capture a new decision during this session: `/cairn-direction <your instruction>`",
+  );
   return lines.join("\n");
 }
 
@@ -803,7 +839,7 @@ function renderPendingDraftsSection(drafts: DraftEntry[]): string | null {
   }
   lines.push("");
   lines.push(
-    "These have been captured but not committed. The operator has not yet confirmed 🟢. Until they do, do not assume their content is binding.",
+    "These have been captured but not operator-confirmed. Do not assume their content is binding.",
   );
   return lines.join("\n");
 }

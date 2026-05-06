@@ -1,36 +1,34 @@
 ---
-name: cairn-statusline-setup
-description: Wire the Cairn `⬡` statusline badge into user-level Claude Code settings.
-when_to_use: |
-  Use when the operator asks to enable the cairn statusline badge or
-  when the SessionStart context flags `statusline_unset`. One-time
-  setup per machine; survives plugin upgrades via the shim path.
-effort: low
+description: Wire the Cairn `⬡` statusline badge into user-level Claude Code settings. One-time per machine.
 ---
 
-# Skill: cairn-statusline-setup
+# /cairn-statusline-setup
 
-You are wiring the operator's user-level Claude Code statusline to
-the cairn bundle. Once configured, every Claude Code session shows
-a one-line `⬡ cairn  decisions:N  inv:N  <state>` summary in the
-prompt's status row.
+Wire this developer's `~/.claude/settings.json` statusline to the
+cairn bundle. Once configured, every Claude Code session shows a
+compact one-line badge in the prompt's status row:
 
-## Trigger gate
+```
+⬡ cairn  [signal]  [ctx-meter pct%]
+```
 
-This skill runs only on explicit operator request, or when the
-SessionStart context included a `statusline_unset` warning. Do not
-auto-invoke on session start without that signal.
+Signal priority (first match wins, blank when nothing applies):
+
+- `⚠ N unattested` — bypass commits since cairn init
+- `⚑ N draft[s]` — pending decision drafts in attention queue
+- `◐ gc` — GC sweep in progress
+- `TSK-NNNN <title>` — active task in flight
+- (idle) — blank; just brand + ctx meter
 
 ## Step 1 — surface the inline prompt
 
-Render:
+Render via `AskUserQuestion`:
 
 > Wire the cairn statusline into your user-level settings? It shows
 > a one-line ground-state summary in every Claude Code session.
-> `[a]` set it up now
-> `[b]` skip — you can run this skill later
 
-`AskUserQuestion`. The question is the entire turn.
+- `[a]` set it up now
+- `[b]` skip — re-run `/cairn-statusline-setup` later
 
 ## Step 2 — locate the shim file
 
@@ -52,7 +50,7 @@ project — surface:
 
 > Cairn's plugin hasn't fired SessionStart yet on this project. Open
 > Claude Code in a cairn-adopted repo first; the shim file appears
-> after the first session. Re-run this skill afterward.
+> after the first session. Re-run this command afterward.
 
 End the turn.
 
@@ -81,8 +79,9 @@ existing file content as `old_string` to do the merge atomically.
 ## Step 4 — confirm + suggest restart
 
 > Statusline configured. Restart Claude Code to see the badge appear.
-> `⬡ cairn  decisions:N  inv:N  ready` (or `⚑` when attention pending,
-> `◐` during GC, `●` for active task).
+> Idle sessions show `⬡ cairn  [ctx pct%]`; mid-flight tasks render
+> `TSK-NNNN <title>`; pending attention adds `⚑ N draft[s]`; bypass
+> commits add `⚠ N unattested`.
 
 ## Hard rules
 
@@ -92,7 +91,5 @@ existing file content as `old_string` to do the merge atomically.
   that away.
 - Never modify `~/.claude/settings.json` outside the `statusLine`
   field. Other fields are operator-owned.
-- The skill is idempotent — re-running rewrites the same `statusLine`
+- The command is idempotent — re-running rewrites the same `statusLine`
   entry without breaking existing config.
-- Caveman-ultra style for chat; full English in any code the skill
-  writes (settings.json values are JSON, not chat).

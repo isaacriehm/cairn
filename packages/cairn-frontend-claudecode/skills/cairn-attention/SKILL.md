@@ -1,13 +1,12 @@
 ---
 name: cairn-attention
-description: Resolve Cairn's pending-attention queue inline.
+description: Resolve Cairn's pending-attention queue inline (DEC drafts, baseline findings, drift events).
 when_to_use: |
-  Use when the SessionStart context flagged `attention_count > 0` —
-  pending DEC drafts in `_inbox/`, baseline sensor findings, or drift
-  detected during the last GC sweep. Skip when the operator is in
-  flight on a task or when the most recent turn already deferred this
-  surface.
-disable-model-invocation: true
+  Use when SessionStart flagged `attention_count > 0` — pending DEC
+  drafts in `_inbox/`, baseline sensor findings, or drift from last
+  GC sweep. Also chained from `cairn-adopt` Step 5 to drain fresh
+  DEC drafts. Skip when operator in-flight on task or recent turn
+  already deferred this surface.
 ---
 
 # Skill: cairn-attention
@@ -19,19 +18,11 @@ Spec: `docs/PLUGIN_ARCHITECTURE.md` §11.
 ## Step 0 — bootstrap preflight
 
 Before surfacing any DEC choices, verify the clone is bootstrapped.
-`cairn_resolve_attention` will refuse with `BOOTSTRAP_REQUIRED` on a
-non-bootstrapped clone — do not waste an operator interaction on a
-question that's destined to fail.
-
-```bash
-git config --get core.hooksPath
-```
-
-If the value is not `.cairn/git-hooks`, invoke `cairn-bootstrap`
-first (or run `node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" join`
-silently if this skill was reached as a chained call from
-`cairn-adopt` and the operator already consented to adoption). After
-bootstrap succeeds, continue.
+SessionStart auto-runs `cairn join` when `core.hooksPath` is unset,
+so by the time this skill engages bootstrap should be wired. If
+`cairn_resolve_attention` still refuses with `BOOTSTRAP_REQUIRED`,
+SessionStart's auto-bootstrap failed — surface its banner (already
+in additionalContext) and end the turn.
 
 ## Step 1 — read attention sources
 
@@ -66,19 +57,23 @@ Sort by:
 4. Drift events (kind=drift)
 5. Cross-session invalidation events (kind=invalidation)
 
-Surface at most **3 items per turn**. After three picks, prompt via
-`AskUserQuestion` (not inline markdown):
+Surface up to **4 items in a single `AskUserQuestion` call** — Claude
+Code's question tool accepts a `questions` array of length ≤ 4 and
+renders all of them in one inline panel. Batching keeps the operator
+out of repeated round-trips. If the queue has more than 4 pending,
+emit the first 4 in batch 1, then a separate single-question prompt:
 
-- `continue` — show the next batch
+- `continue` — show the next batch (up to 4 more)
 - `later` — defer until next session
 
-## Step 3 — surface each item via AskUserQuestion
+## Step 3 — surface up to 4 items per AskUserQuestion call
 
-For each item, render the question through `AskUserQuestion`. Pass
-the option's `detail` field as the AskUserQuestion `description` so
-the operator sees the secondary context (source path, severity)
-inline with each choice. **Do not also render the question as inline
-markdown** — the AskUserQuestion UI is the canonical render path.
+Build the `questions` array — one entry per item, all in the same
+tool call. For each entry, pass the option's `detail` field as the
+question `description` so the operator sees the secondary context
+(source path, severity) inline with each choice. **Do not also
+render any question as inline markdown** — the `AskUserQuestion` UI
+is the canonical render path.
 
 Per-kind option labels (≤ 30 chars each so mobile mode doesn't
 truncate):
@@ -87,38 +82,105 @@ truncate):
 **Baseline finding:** `triage now` / `suppress` / `defer`
 **Invalidation event:** `refresh in scope` / `continue under old` / `abort`
 
-After the operator picks, call:
+The tool returns answers as a parallel array (one answer per
+question, in the order they were sent). Loop through the answers
+and call `cairn_resolve_attention` once per item:
 
 ```
 cairn_resolve_attention({kind: "decision_draft", item_id: "DEC-0042", choice: "a"})
 ```
+
+Resolve calls can run in parallel (separate tool_use blocks in the
+same assistant turn) — the MCP write lock serializes them on disk.
 
 The tool dispatches by kind: `decision_draft` for accept/reject/edit,
 `baseline_finding` for triage/suppress/defer, `invalidation_event`
 for refresh/continue/abort, `bypass` and `review` for Stop-hook
 surfaces. On `decision_draft + a`, the tool also strips the
 originating source comment and replaces it with a bare `§DEC-NNNN`
-symbol (matching the `§V<N>` invariant convention; Cairn Lens
+symbol (matching the `§INV-NNNN` invariant convention; Cairn Lens
 resolves title + body from the ledger) when the DEC came from
 `init-source-comments`.
 
-## Step 4 — stamp the events poll cursor
+## Step 3a — `edit first` inline edit flow
 
-After draining cross-session invalidation events, advance the
-per-session marker so the next Stop hook poll only sees newer
-events:
+When the operator picks `edit first` on a DEC draft, the resolve
+call returns `{ resolved_kind: "decision_edit_pending", body }` with
+the full draft markdown. **Do not point the operator at the file**
+and **do not assume they can read the Read-tool output** — emit the
+body as a regular chat message so it lands in the conversation.
 
+### Step 3a.1 — render the draft as chat output (REQUIRED)
+
+Before any tool call in this turn, write a chat message containing:
+
+````markdown
+**Editing DEC-NNNN.**
+
+```markdown
+<paste the full body returned by cairn_resolve_attention here —
+title line, frontmatter, every section, no truncation>
 ```
-Bash: node -e "const x = require('@isaacriehm/cairn-core'); x.stampEventsPoll({repoRoot: process.cwd(), sessionId: process.env.CLAUDE_SESSION_ID, ts: Date.now()})"
-```
+````
 
-(The `stampEventsPoll` runtime helper lives in cairn-core/session;
-the Stop hook also calls it on every assistant turn end. Calling it
-here keeps the cursor fresh after the operator drains attention.)
+This is a **plain assistant message** — text content, NOT an
+AskUserQuestion `description` field, NOT a Read tool result. The
+operator must see the actual draft text in chat before they pick.
+Skipping this step is a bug — never ask "what to change?" without
+first showing what's there.
+
+### Step 3a.2 — menu
+
+After the rendered body, on the SAME turn, call `AskUserQuestion`
+with:
+
+- `[a]` Rewrite the title
+- `[b]` Rewrite the rationale (body)
+- `[c]` Rewrite both
+- `[d]` Cancel — keep the draft as-is and re-prompt accept/reject
+
+### Step 3a.3 — capture replacement text
+
+On `[a]` / `[b]` / `[c]`: ask the operator for the replacement
+text inline using a single follow-up `AskUserQuestion` per field
+with a freeform-style prompt — e.g.
+`question: "Replacement title for DEC-NNNN?"`. Operator types the
+new value in chat; capture it verbatim.
+
+### Step 3a.4 — apply the edit
+
+Use the `Edit` tool against the draft file at
+`.cairn/ground/decisions/_inbox/DEC-NNNN.draft.md`:
+
+- title rewrite → replace the `# DEC-NNNN — <old title>` line AND
+  the `title:` frontmatter field
+- rationale rewrite → replace the body content under
+  `## Proposed rationale` (or whatever the section is named in
+  this draft) up to the next `## ` heading or end-of-file
+
+### Step 3a.5 — re-render and re-prompt
+
+After the file is updated, re-render the NEW body as a chat message
+(same `markdown` block format as Step 3a.1) and re-prompt with a
+fresh `AskUserQuestion`: `[a] accept` / `[b] reject` /
+`[c] edit again`. Loop Step 3a.3–3a.5 until the operator picks
+accept or reject. Then call `cairn_resolve_attention` with that
+choice on the SAME `DEC-NNNN` to finalize.
+
+Never tell the operator "open the file in your editor." The whole
+point of inline attention resolution is keeping them in the chat.
+
+## Step 4 — close the turn
+
+Do not write a separate "events poll cursor" stamp. The Stop hook
+runs at the end of every assistant turn and advances the cursor as
+part of its normal cross-session event drain (see
+`cairn-core/src/hooks/runners/stop.ts`). Manual advancement is
+redundant.
 
 ## Hard rules
 
-- Surface ≤ 3 items per turn. Do not flood the chat.
+- Surface ≤ 4 items per turn. Do not flood the chat.
 - Every option must cite the underlying source (file path, sensor id,
   session id) so the operator has full context.
 - Never auto-resolve. Even soft conflicts route through

@@ -88,9 +88,9 @@ export function installInitCancelHandlers(): void {
   }
 }
 
-export type DiscoveryStatus = "ok" | "warn" | "err" | "info";
+type DiscoveryStatus = "ok" | "warn" | "err" | "info";
 
-export function icon(status: DiscoveryStatus): string {
+function icon(status: DiscoveryStatus): string {
   switch (status) {
     case "ok":
       return chalk.green("✓");
@@ -121,28 +121,8 @@ export function discoveryRow(opts: {
   process.stdout.write(`    ${icon(opts.status)}  ${chalk.dim(label)} ${value}\n`);
 }
 
-export function header(title: string): void {
-  process.stdout.write(`\n  ${chalk.bold("Cairn")} ${chalk.dim("—")} ${title}\n\n`);
-}
-
-export function sectionTitle(label: string): void {
-  process.stdout.write(`  ${chalk.bold(label)}\n`);
-}
-
-export function blankLine(): void {
-  process.stdout.write("\n");
-}
-
-export function dimLine(line: string): void {
-  process.stdout.write(`  ${chalk.dim(line)}\n`);
-}
-
-export function plainLine(line: string): void {
-  process.stdout.write(`  ${line}\n`);
-}
-
 /** A simple long-task spinner. Returns control object with succeed/fail. */
-export interface SpinnerHandle {
+interface SpinnerHandle {
   succeed(text?: string): void;
   fail(text?: string): void;
   update(text: string): void;
@@ -243,7 +223,7 @@ function formatDuration(ms: number): string {
 }
 
 /** Progress-bar handle for byte-counted downloads. */
-export interface ProgressHandle {
+interface ProgressHandle {
   set(current: number, payload?: Record<string, unknown>): void;
   stop(success: boolean, finalLabel?: string): void;
 }

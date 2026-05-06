@@ -50,25 +50,25 @@ export async function runPhase5Brand(state: PhaseState): Promise<PhaseResult> {
 
   const question: PhaseQuestion = {
     id: "5-brand",
-    prompt: "Brand DEC drafts — how should Cairn populate them?",
+    prompt: "Auto-fill brand text (positioning + voice)?",
     options: [
       {
-        id: "skip",
-        label: "skip — keep drafts blank",
-        detail: ".cairn/ground/brand/* stays status: draft",
+        id: "auto-fill",
+        label: "yes, auto-fill",
+        detail: "Use the mapper's domain summary; mark brand files current",
       },
       {
-        id: "auto-fill",
-        label: "auto-fill from mapper summary",
-        detail: "positioning.md gets the mapper's summary, status flips to current",
+        id: "skip",
+        label: "skip for now",
+        detail: "Brand files stay as drafts; populate later when ready",
       },
       {
         id: "manual",
-        label: "manual — edit drafts first",
-        detail: "Drafts stay status: draft; you can populate them later",
+        label: "I'll edit the drafts myself",
+        detail: "Open .cairn/ground/brand/* after adoption to fill in",
       },
     ],
-    default: "skip",
+    default: "auto-fill",
   };
   return { status: "needs_input", question, state };
 }

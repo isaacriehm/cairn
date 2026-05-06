@@ -8,8 +8,9 @@
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { appendTrace } from "../../trace/index.js";
 
-export const CAIRN_HOOK_VERSION = "0.0.0";
+export const CAIRN_HOOK_VERSION = "0.2.0";
 
 export interface ClaudeHookPayload {
   session_id?: string;
@@ -68,23 +69,37 @@ export interface HookTelemetryRow {
  * Telemetry must never throw — failures are swallowed.
  */
 export function recordHookTelemetry(row: HookTelemetryRow): void {
+  const ts = new Date().toISOString();
+  const body = {
+    ts,
+    hook_version: CAIRN_HOOK_VERSION,
+    hook: row.hook,
+    ...(row.sessionId !== null ? { session_id: row.sessionId } : {}),
+    ...(row.source !== null ? { source: row.source } : {}),
+    ...(row.repoRoot !== null ? { repo_root: row.repoRoot } : {}),
+    duration_ms: row.durationMs,
+    warnings: row.warnings,
+    ...(row.extra ?? {}),
+  };
   try {
     const dir = resolve(homedir(), ".local", "cairn", "state");
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     const path = join(dir, `${row.hook}.jsonl`);
-    const body = {
-      ts: new Date().toISOString(),
-      hook_version: CAIRN_HOOK_VERSION,
-      hook: row.hook,
-      ...(row.sessionId !== null ? { session_id: row.sessionId } : {}),
-      ...(row.source !== null ? { source: row.source } : {}),
-      ...(row.repoRoot !== null ? { repo_root: row.repoRoot } : {}),
-      duration_ms: row.durationMs,
-      warnings: row.warnings,
-      ...(row.extra ?? {}),
-    };
     appendFileSync(path, `${JSON.stringify(body)}\n`, "utf8");
   } catch {
     // Telemetry must never block the hook.
   }
+  appendTrace({
+    ts,
+    source: "hook",
+    kind: row.hook,
+    repo_root: row.repoRoot,
+    session_id: row.sessionId,
+    duration_ms: row.durationMs,
+    payload: {
+      ...(row.source !== null ? { source: row.source } : {}),
+      warnings: row.warnings,
+      ...(row.extra ?? {}),
+    },
+  });
 }

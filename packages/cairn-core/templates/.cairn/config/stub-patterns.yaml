@@ -1,12 +1,12 @@
 # Layer A — mechanical stub-pattern catalog.
 #
-# Initial seed (~30 patterns). Grows additively via the /oops dialog
-# (PRIMER §10 Layer A; L25). Patterns NEVER added by typed CLI command.
+# Initial seed (~30 patterns). Grows additively via the attention flow.
+# Patterns NEVER added by typed CLI command.
 #
 # Each pattern is language-tagged. The orchestrator filters patterns by the
 # stack profile's language list before running. False-positive cases are not
-# silenced by editing this file — they're handled per-failure via the /oops
-# dialog (PRIMER §11 anti-pattern: do NOT disable sensors to make diffs pass).
+# silenced by editing this file — they're handled per-failure via the attention
+# flow (do NOT disable sensors to make diffs pass).
 #
 # Format:
 #   - id: <stable identifier; cited in failure messages>

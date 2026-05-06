@@ -17,7 +17,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { extname, join, relative } from "node:path";
 
 const SOURCE_EXTENSIONS = new Set<string>([
@@ -138,7 +138,11 @@ export interface CommentBlock {
 
 export interface WalkOptions {
   repoRoot: string;
-  /** Cap on files to read; default unlimited (full repo per spec). */
+  /**
+   * Cap on files to read. Defaults to DEFAULT_FILE_CAP (5_000) so adoption
+   * on a 50k-file repo doesn't read the whole tree into memory. Pass
+   * Number.POSITIVE_INFINITY to disable the cap explicitly.
+   */
   fileCap?: number;
   /** When set, only walk these paths (repo-relative). Used by tests. */
   onlyFiles?: string[];
@@ -151,7 +155,19 @@ export interface WalkResult {
   fileCountByLang: Record<string, number>;
   /** Total raw chars scanned. */
   bytesScanned: number;
+  /** Total source files discovered before the cap was applied. */
+  filesAvailable: number;
+  /** True when the file count hit the cap and was sliced. */
+  truncatedAtFileCap: boolean;
 }
+
+/**
+ * Default file cap for the source-comment walker. Above this, the walker
+ * reads only the first `DEFAULT_FILE_CAP` source files (sorted) and reports
+ * truncation in the result. Operator can re-run `cairn init` with a
+ * narrowed pilot scope to extend coverage.
+ */
+const DEFAULT_FILE_CAP = 5_000;
 
 /* -------------------------------------------------------------------------- */
 /* Public API                                                                 */
@@ -159,7 +175,23 @@ export interface WalkResult {
 
 export function walkSourceComments(opts: WalkOptions): WalkResult {
   const repoRoot = opts.repoRoot;
-  const files = opts.onlyFiles ?? listSourceFiles(repoRoot, opts.fileCap);
+  const cap = opts.fileCap ?? DEFAULT_FILE_CAP;
+  let filesAvailable = 0;
+  let truncatedAtFileCap = false;
+  let files: string[];
+  if (opts.onlyFiles !== undefined) {
+    files = opts.onlyFiles;
+    filesAvailable = files.length;
+  } else {
+    const all = listSourceFiles(repoRoot);
+    filesAvailable = all.length;
+    if (Number.isFinite(cap) && all.length > cap) {
+      truncatedAtFileCap = true;
+      files = all.slice(0, cap);
+    } else {
+      files = all;
+    }
+  }
   const blocks: CommentBlock[] = [];
   const fileCountByLang: Record<string, number> = {};
   let bytesScanned = 0;
@@ -180,21 +212,19 @@ export function walkSourceComments(opts: WalkOptions): WalkResult {
     for (const b of fileBlocks) blocks.push(b);
   }
 
-  return { files, blocks, fileCountByLang, bytesScanned };
+  return { files, blocks, fileCountByLang, bytesScanned, filesAvailable, truncatedAtFileCap };
 }
 
 /* -------------------------------------------------------------------------- */
 /* File discovery                                                             */
 /* -------------------------------------------------------------------------- */
 
-function listSourceFiles(repoRoot: string, fileCap?: number): string[] {
+function listSourceFiles(repoRoot: string): string[] {
   const fromGit = listFromGit(repoRoot);
   const list = fromGit ?? listFromFs(repoRoot);
-  const filtered = list.filter((p) => SOURCE_EXTENSIONS.has(extname(p).toLowerCase()));
-  if (fileCap !== undefined && filtered.length > fileCap) {
-    return filtered.slice(0, fileCap);
-  }
-  return filtered;
+  return list
+    .filter((p) => SOURCE_EXTENSIONS.has(extname(p).toLowerCase()))
+    .sort();
 }
 
 function listFromGit(repoRoot: string): string[] | null {
@@ -772,17 +802,18 @@ function readLineCluster(
   i: number,
   marker: string,
 ): ClusterRead | null {
-  // Verify we're at a line start.
+  // Verify we're at a line start (or preceded only by whitespace on this line).
   if (!atLineStart(body, i)) {
-    // Allow leading whitespace before marker (indented comments).
     let j = i;
     while (j > 0 && (body[j - 1] === " " || body[j - 1] === "\t")) j -= 1;
-    if (j === 0 || body[j - 1] === "\n") {
-      i = j;
-    } else {
+    if (j !== 0 && body[j - 1] !== "\n") {
       return null;
     }
+    // j is the line start; i stays at the marker for startOffset/raw anchoring.
   }
+  // startOffset points at the first comment-marker character so that
+  // strip-replace's leadingIndent correctly finds the indentation between
+  // the line start and the marker.
   const startLine = offsetToLine(lineStarts, i);
   const startOffset = i;
   let cursor = i;
@@ -868,9 +899,3 @@ export const HEURISTIC = {
   MIN_CHARS,
   MIN_JSDOC_WORDS,
 };
-
-export function _existsForTest(p: string): boolean {
-  return existsSync(p);
-}
-
-void statSync; // keep imports stable across edits

@@ -2,7 +2,7 @@
  * `cairn hook read-enrich` — PostToolUse hook on the Read tool.
  *
  * Scans the file content the agent just read for cairn citation
- * patterns (`§V<N>`, `TODO(TSK-<id>)`, banned `DEC-<N>`) and prepends a
+ * patterns (`§INV-NNNN`, `TODO(TSK-<id>)`, banned `DEC-<N>`) and prepends a
  * legend block via Claude Code's documented Shape-B `additionalContext`
  * field so the agent sees authoritative resolutions inline with the
  * file content. No MCP round-trip; all sources read directly from
@@ -12,9 +12,12 @@
  */
 
 import { relative } from "node:path";
+import { readHookStdin } from "../runners/payload.js";
 import { resolveRepoRoot } from "../../session-start/index.js";
+import { appendTrace } from "../../trace/index.js";
 import { scanCitations } from "./citation-scanner.js";
 import {
+  getDecisionsLedger,
   getInvariantsLedger,
   getScopeIndexEntry,
   lookupTask,
@@ -33,10 +36,17 @@ interface ClaudePostToolUsePayload {
   hook_event_name?: string;
   tool_name?: string;
   tool_input?: { file_path?: string };
+  /**
+   * Claude Code wraps the Read tool response as
+   *   { type: "text", file: { filePath, content, numLines } }
+   * but older / alternate shapes (`{ content }`, `{ text }`, `{ output }`)
+   * also appear in some tool responses. `pickContent` walks all of them.
+   */
   tool_response?: {
     content?: string;
     text?: string;
     output?: string;
+    file?: { content?: string; text?: string; [key: string]: unknown };
     [key: string]: unknown;
   };
 }
@@ -47,22 +57,6 @@ interface PostToolUseShapeBOutput {
     hookEventName: "PostToolUse";
     additionalContext: string;
   };
-}
-
-function readStdin(): Promise<string> {
-  return new Promise((resolveP) => {
-    const chunks: Buffer[] = [];
-    process.stdin.on("data", (chunk: Buffer) => chunks.push(chunk));
-    process.stdin.on("end", () => {
-      resolveP(Buffer.concat(chunks).toString("utf8"));
-    });
-    process.stdin.on("error", () => {
-      resolveP("");
-    });
-    if (process.stdin.isTTY) {
-      resolveP("");
-    }
-  });
 }
 
 function parsePayload(text: string): ClaudePostToolUsePayload {
@@ -79,6 +73,14 @@ function pickContent(
   resp: ClaudePostToolUsePayload["tool_response"],
 ): string | undefined {
   if (!resp || typeof resp !== "object") return undefined;
+  // Claude Code's Read tool wraps the body as `tool_response.file.content`.
+  // Check the nested file shape FIRST so it wins over any same-named key
+  // at the top level.
+  if (resp.file !== undefined && typeof resp.file === "object" && resp.file !== null) {
+    const f = resp.file;
+    if (typeof f.content === "string" && f.content.length > 0) return f.content;
+    if (typeof f.text === "string" && f.text.length > 0) return f.text;
+  }
   const candidates = ["content", "text", "output"] as const;
   for (const k of candidates) {
     const v = resp[k];
@@ -128,11 +130,17 @@ function emitShapeB(additionalContext: string): void {
 }
 
 export async function runReadEnricher(): Promise<void> {
+  const ts = new Date().toISOString();
+  let outcome: Record<string, unknown> = { skip: "unknown" };
+  let repoRootForTrace: string | null = null;
+  let sessionForTrace: string | null = null;
   try {
-    const raw = await readStdin();
+    const raw = await readHookStdin();
     const payload = parsePayload(raw);
+    sessionForTrace = typeof payload.session_id === "string" ? payload.session_id : null;
 
     if (payload.tool_name !== "Read") {
+      outcome = { skip: "non-read-tool", tool_name: payload.tool_name };
       emitShapeB("");
       return;
     }
@@ -142,34 +150,46 @@ export async function runReadEnricher(): Promise<void> {
         : undefined;
     const content = pickContent(payload.tool_response);
     if (filePath === undefined || content === undefined || content.length === 0) {
+      outcome = {
+        skip: "no-content",
+        file_path: filePath ?? null,
+        content_present: content !== undefined,
+        content_chars: content?.length ?? 0,
+      };
       emitShapeB("");
       return;
     }
 
     if (content.length > MAX_CONTENT_BYTES) {
+      outcome = { skip: "content-too-large", content_chars: content.length };
       emitShapeB("");
       return;
     }
 
     const repoRoot = resolveRepoRoot(filePath);
+    repoRootForTrace = repoRoot;
     if (repoRoot === null) {
+      outcome = { skip: "no-cairn-ancestor", file_path: filePath };
       emitShapeB("");
       return;
     }
 
     const relPath = computeRelPath(repoRoot, filePath);
     if (isExcludedPath(relPath)) {
+      outcome = { skip: "excluded-path", rel_path: relPath };
       emitShapeB("");
       return;
     }
 
     if (isBinary(content)) {
+      outcome = { skip: "binary-content", rel_path: relPath };
       emitShapeB("");
       return;
     }
 
     const matches = scanCitations(content);
-    const ledger = getInvariantsLedger(repoRoot);
+    const invariantsLedger = getInvariantsLedger(repoRoot);
+    const decisionsLedger = getDecisionsLedger(repoRoot);
     const cachedEntry = getScopeIndexEntry(repoRoot, relPath);
     const scopeHint: ScopeIndexHint | null =
       cachedEntry !== null
@@ -181,18 +201,55 @@ export async function runReadEnricher(): Promise<void> {
     const resolveTaskFn = (taskId: string): TaskLookupResult =>
       lookupTask(repoRoot, taskId);
 
-    const legend = buildLegend(matches, ledger, scopeHint, resolveTaskFn);
+    const legend = buildLegend(
+      matches,
+      invariantsLedger,
+      decisionsLedger,
+      scopeHint,
+      resolveTaskFn,
+    );
     if (legend === null) {
+      outcome = {
+        skip: "no-citations-no-scope",
+        rel_path: relPath,
+        decisions_matched: matches.decisions.length,
+        invariants_matched: matches.invariants.length,
+        todos_matched: matches.todos.length,
+      };
       emitShapeB("");
       return;
     }
+    outcome = {
+      emitted: true,
+      rel_path: relPath,
+      legend_chars: legend.length,
+      decisions_matched: matches.decisions.length,
+      invariants_matched: matches.invariants.length,
+      todos_matched: matches.todos.length,
+    };
     emitShapeB(legend);
-  } catch {
+  } catch (err) {
+    outcome = { error: err instanceof Error ? err.message : String(err) };
     // Defer-fail gracefully — the hook is a no-op enrichment, NOT a gate.
     try {
       emitShapeB("");
     } catch {
       // Last-resort: nothing we can do.
+    }
+  } finally {
+    // Skip trace writes for non-cairn projects — keeps
+    // ~/.local/cairn/trace/ quiet outside cairn-adopted repos so the
+    // hook leaves no footprint when there's nothing to enrich.
+    if (outcome["skip"] !== "no-cairn-ancestor") {
+      appendTrace({
+        ts,
+        source: "hook",
+        kind: "read-enrich",
+        repo_root: repoRootForTrace,
+        session_id: sessionForTrace,
+        ok: outcome["error"] === undefined,
+        payload: outcome,
+      });
     }
   }
 }

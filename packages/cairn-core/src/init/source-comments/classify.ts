@@ -24,6 +24,13 @@ const BATCH_SIZE = 20;
 const PER_BATCH_TIMEOUT_MS = 90_000;
 const PROSE_CAP_PER_BLOCK = 1500;
 
+/**
+ * Concurrent Haiku batches per round. Haiku has higher TPM ceilings than
+ * Sonnet so 4-at-a-time is well within rate limits even for large adoptions
+ * (10k+ essay blocks → 500+ batches → ~125 rounds).
+ */
+const PARALLEL_ROUND_SIZE = 4;
+
 export type CommentClassKind =
   | "rationale"
   | "constraint"
@@ -36,7 +43,7 @@ export interface CommentClassification {
   kind: CommentClassKind;
   /** Proposed DEC draft title — non-empty only when classifier suggests one. */
   suggestedDecDraft: string;
-  /** Proposed §V invariant body — non-empty only when classifier suggests one. */
+  /** Proposed §INV invariant body — non-empty only when classifier suggests one. */
   suggestedInvariant: string;
   /** Canonical-map topic slug. */
   suggestedCanonicalTopic: string;
@@ -117,7 +124,7 @@ Return JSON: { "results": [ { block_id, kind, suggested_dec_draft?, suggested_in
 
 \`kind\` choices:
   - "rationale"  comment explains *why* a non-obvious choice was made (DEC candidate)
-  - "constraint" comment states a domain/system invariant (§V candidate)
+  - "constraint" comment states a domain/system invariant (§INV candidate)
   - "citation"   comment is a reference to docs/spec/issue (canonical-map candidate)
   - "license"    comment is a license / copyright header — pass through, never strip
   - "other"      banal narration ("returns the user object"), TODO chatter, debug notes
@@ -164,53 +171,78 @@ export async function classifyBlocks(args: ClassifyArgs): Promise<ClassifyResult
   let batchesRun = 0;
   let batchesFailed = 0;
 
-  for (let batchIdx = 0; batchIdx < total; batchIdx++) {
+  // Dispatch batches in parallel rounds. Each batch is independent — its
+  // start index is `batchIdx * BATCH_SIZE` and writes only to that slice of
+  // `out`, so concurrent Promise.allSettled is safe.
+  const runOneBatch = async (
+    batchIdx: number,
+  ): Promise<{ batchIdx: number; outcome: BatchOutcome }> => {
     const start = batchIdx * BATCH_SIZE;
     const end = Math.min(start + BATCH_SIZE, blocks.length);
     const batch = blocks.slice(start, end);
-    let batchResult: BatchOutcome;
     try {
-      batchResult = await classifyOneBatch(batch);
-      batchesRun += 1;
-      inputTokens += batchResult.inputTokens;
-      outputTokens += batchResult.outputTokens;
+      const outcome = await classifyOneBatch(batch);
+      return { batchIdx, outcome };
     } catch (err) {
-      batchesFailed += 1;
       const msg = err instanceof Error ? err.message : String(err);
       log.warn({ batchIdx, total, err: msg }, "batch classify failed");
-      batchResult = {
-        byId: new Map(),
-        inputTokens: 0,
-        outputTokens: 0,
-        errorMessage: msg,
+      return {
+        batchIdx,
+        outcome: {
+          byId: new Map(),
+          inputTokens: 0,
+          outputTokens: 0,
+          errorMessage: msg,
+        },
       };
     }
-    for (let i = 0; i < batch.length; i++) {
-      const b = batch[i];
-      if (b === undefined) continue;
-      const pre = batchResult.byId.get(b.id);
-      if (pre !== undefined) {
-        out[start + i] = pre;
+  };
+
+  for (let roundStart = 0; roundStart < total; roundStart += PARALLEL_ROUND_SIZE) {
+    const roundEnd = Math.min(roundStart + PARALLEL_ROUND_SIZE, total);
+    const indices: number[] = [];
+    for (let i = roundStart; i < roundEnd; i++) indices.push(i);
+    const settled = await Promise.allSettled(indices.map(runOneBatch));
+    for (const s of settled) {
+      if (s.status !== "fulfilled") continue;
+      const { batchIdx, outcome } = s.value;
+      const start = batchIdx * BATCH_SIZE;
+      const end = Math.min(start + BATCH_SIZE, blocks.length);
+      const batch = blocks.slice(start, end);
+      if (outcome.errorMessage === undefined) {
+        batchesRun += 1;
+        inputTokens += outcome.inputTokens;
+        outputTokens += outcome.outputTokens;
       } else {
-        out[start + i] = {
-          blockId: b.id,
-          kind: b.kind === "license" ? "license" : "other",
-          suggestedDecDraft: "",
-          suggestedInvariant: "",
-          suggestedCanonicalTopic: "",
-          failed: batchResult.errorMessage !== undefined,
-          ...(batchResult.errorMessage !== undefined
-            ? { errorMessage: batchResult.errorMessage }
-            : {}),
-        };
+        batchesFailed += 1;
       }
+      for (let i = 0; i < batch.length; i++) {
+        const b = batch[i];
+        if (b === undefined) continue;
+        const pre = outcome.byId.get(b.id);
+        if (pre !== undefined) {
+          out[start + i] = pre;
+        } else {
+          out[start + i] = {
+            blockId: b.id,
+            kind: b.kind === "license" ? "license" : "other",
+            suggestedDecDraft: "",
+            suggestedInvariant: "",
+            suggestedCanonicalTopic: "",
+            failed: outcome.errorMessage !== undefined,
+            ...(outcome.errorMessage !== undefined
+              ? { errorMessage: outcome.errorMessage }
+              : {}),
+          };
+        }
+      }
+      args.onBatchProgress?.({
+        index: batchIdx,
+        total,
+        classified: out.filter((c) => c !== undefined && !c.failed).length,
+        failed: out.filter((c) => c !== undefined && c.failed).length,
+      });
     }
-    args.onBatchProgress?.({
-      index: batchIdx,
-      total,
-      classified: out.filter((c) => c !== undefined && !c.failed).length,
-      failed: out.filter((c) => c !== undefined && c.failed).length,
-    });
   }
 
   return {
@@ -317,7 +349,7 @@ function buildBatchPrompt(batch: CommentBlock[]): string {
   return lines.join("\n");
 }
 
-export const _internal = {
+const _internal = {
   buildBatchPrompt,
   BATCH_SIZE,
   BATCH_SCHEMA,

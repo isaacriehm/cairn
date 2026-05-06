@@ -133,10 +133,8 @@ export function cleanupSession(repoRoot: string, sessionId: string): boolean {
 
 export interface GcStaleSessionsArgs {
   repoRoot: string;
-  /** ISO time threshold; dirs older than this AND with a dead PID are removed. Default 24h. */
+  /** Staleness threshold in ms; dirs older than this AND with a dead PID are removed. Default 24h. */
   maxAgeMs?: number;
-  /** Override Date.now() for tests. */
-  now?: () => number;
 }
 
 export interface GcStaleSessionsResult {
@@ -160,7 +158,7 @@ export function gcStaleSessions(args: GcStaleSessionsArgs): GcStaleSessionsResul
   if (!existsSync(root)) return { removed, kept };
 
   const maxAge = args.maxAgeMs ?? MAX_STALE_AGE_MS;
-  const now = args.now ? args.now() : Date.now();
+  const now = Date.now();
 
   const entries = readdirSync(root, { withFileTypes: true, encoding: "utf8" });
   for (const entry of entries) {

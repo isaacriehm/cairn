@@ -1,11 +1,6 @@
 /**
  * Phase 12-multidev — detect per-host package manager(s) and emit
- * JOIN.md hints for new contributors.
- *
- * No filesystem mutation outside the result payload. The `.cairn/`
- * skeleton + `.attested-commits` seeding moved to phase 3b-seed; the
- * Claude Code SessionStart bootstrap banner replaces the old
- * `package.json` `prepare` patching path. Idempotent.
+ * JOIN.md hints for new contributors. Idempotent.
  */
 
 import {

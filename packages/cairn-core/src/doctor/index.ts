@@ -7,7 +7,7 @@
  *   1 — at least one error (missing core file, broken layout)
  *   2 — at least one warning (drafty brand, empty scope, GC overdue, …)
  *
- * Spec: BUILD_REPORT.md "Task D — cairn doctor command".
+ * Spec: docs/PLUGIN_ARCHITECTURE.md §6 (adoption output).
  */
 
 import {

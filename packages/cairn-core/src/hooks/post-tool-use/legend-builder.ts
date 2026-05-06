@@ -6,12 +6,16 @@
  */
 
 import type { ScannedCitations } from "./citation-scanner.js";
-import type { LedgerSnapshot, TaskLookupResult } from "./ledger-cache.js";
+import type {
+  DecisionsLedgerSnapshot,
+  LedgerSnapshot,
+  TaskLookupResult,
+} from "./ledger-cache.js";
 
 export interface ScopeIndexHint {
   /** DEC-IDs in scope for the file. */
   decisions: string[];
-  /** Invariant IDs in scope (e.g. "V0041"). */
+  /** Invariant IDs in scope (e.g. "INV-0041"). */
   invariants: string[];
 }
 
@@ -25,7 +29,8 @@ function row(content: string): string {
 
 export function buildLegend(
   matches: ScannedCitations,
-  ledger: LedgerSnapshot | null,
+  invariantsLedger: LedgerSnapshot | null,
+  decisionsLedger: DecisionsLedgerSnapshot | null,
   scopeHint: ScopeIndexHint | null,
   resolveTask: (taskId: string) => TaskLookupResult,
 ): string | null {
@@ -35,7 +40,7 @@ export function buildLegend(
   const hasCitations =
     matches.invariants.length > 0 ||
     matches.todos.length > 0 ||
-    matches.decIds.length > 0;
+    matches.decisions.length > 0;
 
   if (!hasScopeHint && !hasCitations) return null;
 
@@ -60,24 +65,48 @@ export function buildLegend(
     lines.push(row(`Invariants in scope: ${formatted}`));
   }
 
+  for (const dec of matches.decisions) {
+    lines.push(row(renderDecision(dec.id, decisionsLedger)));
+  }
   for (const inv of matches.invariants) {
-    lines.push(row(renderInvariant(inv.id, ledger)));
+    lines.push(row(renderInvariant(inv.id, invariantsLedger)));
   }
   for (const todo of matches.todos) {
     lines.push(row(renderTodo(todo.id, resolveTask(todo.id))));
-  }
-  for (const dec of matches.decIds) {
-    lines.push(
-      row(`${dec.id} → [POLICY VIOLATION — DEC-id comments banned]`),
-    );
   }
 
   lines.push(BOTTOM_BORDER);
   return lines.join("\n");
 }
 
+function renderDecision(
+  id: string,
+  ledger: DecisionsLedgerSnapshot | null,
+): string {
+  // id arrives as "DEC-0042" — display with the §-prefix.
+  const label = `§${id}`;
+  if (ledger === null) {
+    return `${label} → [NOT FOUND — orphaned citation, GC will flag]`;
+  }
+  const entry = ledger.decisionsByid.get(id);
+  if (!entry) {
+    return `${label} → [NOT FOUND — orphaned citation, GC will flag]`;
+  }
+  if (entry.superseded_by !== undefined && entry.superseded_by.length > 0) {
+    const sup = entry.superseded_by.startsWith("DEC-")
+      ? `§${entry.superseded_by}`
+      : entry.superseded_by;
+    return `${label} → [SUPERSEDED by ${sup} — update this citation]`;
+  }
+  if (entry.status === "superseded" || entry.status === "archived") {
+    return `${label} → [${entry.status.toUpperCase()} — update this citation]`;
+  }
+  const title = entry.title.length > 0 ? entry.title : "(no title)";
+  return `${label} → ${title}  [${entry.status}]`;
+}
+
 function renderInvariant(id: string, ledger: LedgerSnapshot | null): string {
-  // id arrives as "V0023" — display with the §-prefix.
+  // id arrives as "INV-0023" — display with the §-prefix.
   const label = `§${id}`;
   if (ledger === null) {
     return `${label} → [NOT FOUND — orphaned citation, GC will flag]`;
@@ -87,7 +116,7 @@ function renderInvariant(id: string, ledger: LedgerSnapshot | null): string {
     return `${label} → [NOT FOUND — orphaned citation, GC will flag]`;
   }
   if (entry.superseded_by !== undefined && entry.superseded_by.length > 0) {
-    const sup = entry.superseded_by.startsWith("V")
+    const sup = entry.superseded_by.startsWith("INV-")
       ? `§${entry.superseded_by}`
       : entry.superseded_by;
     return `${label} → [SUPERSEDED by ${sup} — update this citation]`;

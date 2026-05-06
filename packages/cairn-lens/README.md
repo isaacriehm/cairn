@@ -30,11 +30,11 @@ Then install the `.vsix` per Option 1.
 
 ## Features
 
-- **Hover** — point at a `§V<N>` token to see the resolved invariant title,
+- **Hover** — point at a `§INV-NNNN` token to see the resolved invariant title,
   status, and source decision. `TODO(TSK-<id>)` tokens resolve to the active
   task title.
-- **Inline ghost text** — after each `§V<N>` token, the editor renders
-  `✓ <title>` (active), `⚠ superseded by §V<M>` (superseded), or
+- **Inline ghost text** — after each `§INV-NNNN` token, the editor renders
+  `✓ <title>` (active), `⚠ superseded by §INV-NNNN` (superseded), or
   `? not in ledger` (orphan).
 - **Gutter icons** — `●` active, `◐` superseded, `○` orphan.
 - **Code Lens** — for files with decisions in scope per `scope-index.yaml`,
@@ -59,7 +59,7 @@ In your VS Code / Cursor settings (`Cmd/Ctrl+,` → search "cairn"):
 | Setting | Default | What |
 |---------|---------|------|
 | `cairn.lens.enabled` | `true` | Master switch. |
-| `cairn.lens.inlineDecorations` | `true` | Ghost-text annotations after `§V<N>` tokens. |
+| `cairn.lens.inlineDecorations` | `true` | Ghost-text annotations after `§INV-NNNN` tokens. |
 | `cairn.lens.gutterIcons` | `true` | Per-line gutter status icons. |
 | `cairn.lens.codeLens` | `true` | One-liner above functions when DECs apply. |
 | `cairn.lens.decExplorer` | `false` | Sidebar tree view. Off by default — opt in. |

@@ -1,22 +1,25 @@
 /**
  * Hover provider for cairn citation tokens.
  *
- * Triggers on §DEC-NNNN, §V<N>, and TODO(TSK-<id>) tokens. Renders a
+ * Triggers on §DEC-NNNN, §INV-NNNN, and TODO(TSK-<id>) tokens. Renders a
  * Markdown card with resolved title, status, and links to the underlying
  * ground file.
  */
 
 import * as vscode from "vscode";
 import { LensResolver } from "../resolver.js";
+import { lensLog } from "../debug-log.js";
 
 // Matches the new bare-token format:  §DEC-0001  or  # §DEC-0001
-const DECISION_TOKEN_RE = /§(DEC-\d+)/g;
-const INVARIANT_TOKEN_RE = /§(V\d+)/g;
+// Width + boundary disciplined to match decoration-provider; see
+// providers/decoration-provider.ts for the rationale.
+const DECISION_TOKEN_RE = /§(DEC-\d{4,})\b/g;
+const INVARIANT_TOKEN_RE = /§(INV-\d{1,5})\b/g;
 const TASK_TOKEN_RE = /TODO\(TSK-[A-Za-z0-9_-]+\)/g;
 
 interface TokenMatch {
   kind: "decision" | "invariant" | "task";
-  id: string; // "DEC-0001", "V0023", or "TSK-foo"
+  id: string; // "DEC-0001", "INV-0023", or "TSK-foo"
   range: vscode.Range;
 }
 
@@ -45,7 +48,7 @@ function findTokenAt(
     if (position.character >= start && position.character <= end) {
       return {
         kind: "invariant",
-        id: m[1] as string, // "V0023"
+        id: m[1] as string, // "INV-0023"
         range: new vscode.Range(position.line, start, position.line, end),
       };
     }
@@ -75,7 +78,15 @@ export class CitationHoverProvider implements vscode.HoverProvider {
     position: vscode.Position,
   ): vscode.ProviderResult<vscode.Hover> {
     const token = findTokenAt(document, position);
-    if (token === null) return null;
+    if (token === null) {
+      lensLog(
+        `provideHover ${document.uri.fsPath}:${position.line + 1}:${position.character} → no token`,
+      );
+      return null;
+    }
+    lensLog(
+      `provideHover ${document.uri.fsPath}:${position.line + 1} matched ${token.kind}=${token.id}`,
+    );
 
     const md = new vscode.MarkdownString();
     md.isTrusted = false;
@@ -86,7 +97,7 @@ export class CitationHoverProvider implements vscode.HoverProvider {
       const statusLabel =
         r.status === "accepted"
           ? "$(check) accepted"
-          : "$(question) not in ledger — run `cairn init` or re-adopt to generate decisions.ledger.yaml";
+          : "$(question) not in ledger";
       md.appendMarkdown(`**§${r.id}** — ${escapeMd(r.title)}\n\n`);
       md.appendMarkdown(`${statusLabel}\n\n`);
       md.appendMarkdown(

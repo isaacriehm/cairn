@@ -1,6 +1,6 @@
-import { type Dirent, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { type Dirent, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { stringify as stringifyYaml } from "yaml";
 import { logger } from "../logger.js";
 import { parseFrontmatter } from "./frontmatter.js";
 import {
@@ -58,7 +58,7 @@ export function writeDecisionsLedger(opts: LedgerOptions): {
   const entries = buildDecisionsLedger(opts);
   const path = decisionsLedgerPath(opts.repoRoot);
   mkdirSync(decisionsDir(opts.repoRoot), { recursive: true });
-  writeFileSync(path, stringifyYaml(entries), "utf8");
+  atomicWrite(path, stringifyYaml(entries));
   log.debug({ path, count: entries.length }, "wrote decisions ledger");
   return { entries, path };
 }
@@ -100,9 +100,15 @@ export function writeInvariantsLedger(opts: LedgerOptions): {
   const entries = buildInvariantsLedger(opts);
   const path = invariantsLedgerPath(opts.repoRoot);
   mkdirSync(invariantsDir(opts.repoRoot), { recursive: true });
-  writeFileSync(path, stringifyYaml(entries), "utf8");
+  atomicWrite(path, stringifyYaml(entries));
   log.debug({ path, count: entries.length }, "wrote invariants ledger");
   return { entries, path };
+}
+
+function atomicWrite(dest: string, content: string): void {
+  const tmp = `${dest}.tmp`;
+  writeFileSync(tmp, content, "utf8");
+  renameSync(tmp, dest);
 }
 
 function listMarkdown(dir: string): string[] {
@@ -117,7 +123,3 @@ function listMarkdown(dir: string): string[] {
     .map((d) => d.name)
     .sort();
 }
-
-// Re-exports for tests / callers that want raw entries.
-export { parseYaml };
-export { resolve };

@@ -232,8 +232,8 @@ async function runSmoke(): Promise<void> {
       "Step 3: onboarding header missing",
     );
     assert(
-      ctx.additionalContext.includes("/direction"),
-      "Step 3: onboarding /direction tip missing",
+      ctx.additionalContext.includes("/cairn-direction"),
+      "Step 3: onboarding /cairn-direction tip missing",
     );
     console.log("  ✓ Step 3 — onboarding injected at session start");
   }

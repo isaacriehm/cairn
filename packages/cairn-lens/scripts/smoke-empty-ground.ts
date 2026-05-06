@@ -59,7 +59,7 @@ function runSmoke(): void {
     let threw = false;
     let result;
     try {
-      result = resolver.resolveInvariant("V0099");
+      result = resolver.resolveInvariant("INV-0099");
     } catch {
       threw = true;
     }
@@ -95,7 +95,7 @@ function runSmoke(): void {
       files: {
         "src/main.ts": {
           decisions: ["DEC-0001", "DEC-0002"],
-          invariants: ["V0001"],
+          invariants: ["INV-0001"],
         },
       },
     });
@@ -120,7 +120,7 @@ function runSmoke(): void {
         `Step 3: title fallback wrong: ${JSON.stringify(scope.decisions[0])}`,
       );
       assert(
-        scope.invariants.length === 1 && scope.invariants[0]?.id === "V0001",
+        scope.invariants.length === 1 && scope.invariants[0]?.id === "INV-0001",
         `Step 3: invariants wrong: ${JSON.stringify(scope.invariants)}`,
       );
     }

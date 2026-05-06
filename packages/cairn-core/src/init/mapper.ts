@@ -34,15 +34,16 @@ import type {
   InvariantLedgerEntry,
 } from "../ground/schemas.js";
 import {
-  MAPPER_OUTPUT_SCHEMA as PROMPTS_SCHEMA,
-  MAPPER_SYSTEM_PROMPT as PROMPTS_SYSTEM,
-  buildMapperUserPrompt as PROMPTS_BUILD,
+  MAPPER_OUTPUT_SCHEMA,
+  MAPPER_SYSTEM_PROMPT,
+  buildMapperUserPrompt,
 } from "./mapper-prompts.js";
 import {
   mapModulesParallel,
   type ModuleProposal,
 } from "./mapper-parallel.js";
 import { mergeModuleProposals } from "./mapper-merge.js";
+import { inferGlobsFromDetection } from "./glob-inference.js";
 import { sliceModules, type ModuleSlice } from "./module-slicer.js";
 import type { DetectionResult } from "./types.js";
 import type { RepoSummary } from "./walker.js";
@@ -94,19 +95,26 @@ export interface MapperResult {
   model: string;
   /** Per-module proposals from the parallel pipeline. */
   module_proposals?: ModuleProposal[];
-  usage?: {
-    input_tokens?: number;
-    output_tokens?: number;
-  };
+  /** Total slices detected before MAPPER_SLICE_CAP was applied. */
+  slices_detected: number;
+  /** True when the slicer hit MAPPER_SLICE_CAP and was sliced. */
+  truncated_at_slice_cap: boolean;
 }
+
+/**
+ * Hard cap on per-module Sonnet calls. The mapper dispatches one call per
+ * slice in parallel rounds of 4. Above this cap a 200-package monorepo
+ * spends 25+ minutes on adoption with rate-limit risk on the operator's
+ * Claude plan. Operator can re-run `cairn scope rebuild` later with a
+ * narrower scope to extend coverage.
+ */
+const MAPPER_SLICE_CAP = 50;
 
 // ── Re-exports — `cairn scope rebuild` and other consumers import these. ──
 
-export const MAPPER_OUTPUT_SCHEMA = PROMPTS_SCHEMA;
-export const MAPPER_SYSTEM_PROMPT = PROMPTS_SYSTEM;
-export const buildMapperUserPrompt = PROMPTS_BUILD;
+export { MAPPER_OUTPUT_SCHEMA, MAPPER_SYSTEM_PROMPT, buildMapperUserPrompt };
 
-export function isMapperOutput(value: unknown): value is MapperOutput {
+function isMapperOutput(value: unknown): value is MapperOutput {
   if (typeof value !== "object" || value === null) return false;
   const v = value as Record<string, unknown>;
   if (
@@ -170,15 +178,29 @@ export async function runMapper(args: RunMapperArgs): Promise<MapperResult> {
   const startedAt = Date.now();
 
   // 1. Slice the repo into modules. The slicer always returns at least one
-  //    slice (single-package repos get one whole-repo slice).
-  const slices = sliceModules({ repoRoot: args.repoRoot });
+  //    slice (single-package repos get one whole-repo slice). MAPPER_SLICE_CAP
+  //    bounds large monorepos — slicer truncates deterministically.
+  const allSlices = sliceModules({ repoRoot: args.repoRoot });
+  const slicesDetected = allSlices.length;
+  const truncatedAtSliceCap = slicesDetected > MAPPER_SLICE_CAP;
+  const slices = truncatedAtSliceCap
+    ? allSlices.slice(0, MAPPER_SLICE_CAP)
+    : allSlices;
   const decisions = readLedgerSafely<DecisionLedgerEntry>(args.repoRoot, "decisions");
   const invariants = readLedgerSafely<InvariantLedgerEntry>(args.repoRoot, "invariants");
   if (args.onSlicesDetected !== undefined) args.onSlicesDetected(slices);
 
+  if (truncatedAtSliceCap) {
+    log.warn(
+      { slicesDetected, cap: MAPPER_SLICE_CAP },
+      "mapper truncated to slice cap; operator can extend coverage with `cairn scope rebuild`",
+    );
+  }
   log.info(
     {
       slices: slices.length,
+      slices_detected: slicesDetected,
+      truncated: truncatedAtSliceCap,
       slice_slugs: slices.map((s) => s.moduleSlug),
       decisions: decisions.length,
       invariants: invariants.length,
@@ -207,10 +229,13 @@ export async function runMapper(args: RunMapperArgs): Promise<MapperResult> {
 
   // 4. Merge call (Haiku).
   const workspacePackageJson = readIfExists(join(args.repoRoot, "package.json"));
+  const inferredGlobs = inferGlobsFromDetection(args.detection, args.repoRoot);
   const merged = await mergeModuleProposals({
     proposals,
     workspacePackageJson,
     projectSlug: args.detection.project_slug,
+    detectionSensors: args.detection.proposed_sensors,
+    inferredGlobs,
   });
 
   log.info(
@@ -229,6 +254,8 @@ export async function runMapper(args: RunMapperArgs): Promise<MapperResult> {
     model: "haiku+sonnet",
     duration_ms: Date.now() - startedAt,
     module_proposals: proposals,
+    slices_detected: slicesDetected,
+    truncated_at_slice_cap: truncatedAtSliceCap,
   };
 }
 

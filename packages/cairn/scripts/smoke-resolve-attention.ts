@@ -103,8 +103,9 @@ async function runSmoke(): Promise<void> {
       rationale: "outdated",
     });
     assert(result.resolved_kind === "decision_rejected", "Step 2: resolved_kind mismatch");
-    assert(!existsSync(draftPath), "Step 2: draft should be moved out of inbox");
-    assert(existsSync(join(repoRoot, ".archive")), "Step 2: archive dir should exist");
+    assert(!existsSync(draftPath), "Step 2: draft .draft.md should be gone from inbox");
+    const rejectedPath = join(repoRoot, ".cairn", "ground", "decisions", "_inbox", "DEC-1002.rejected.md");
+    assert(existsSync(rejectedPath), "Step 2: .rejected.md tombstone should block id recycling");
     console.log("  ✓ Step 2 — DEC reject");
   }
 

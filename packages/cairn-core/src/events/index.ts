@@ -3,7 +3,7 @@
  *
  * Locked write tools emit events after their write completes. Plugin
  * Stop hooks in other live sessions poll this directory and surface an
- * inline A/B/C if an event touches a DEC/§V/path the reader has in
+ * inline A/B/C if an event touches a DEC/§INV/path the reader has in
  * scope. 7-day retention via `gcStaleEvents`.
  *
  * Spec: PLUGIN_ARCHITECTURE §7 (three-layer conflict catch, layer 2).

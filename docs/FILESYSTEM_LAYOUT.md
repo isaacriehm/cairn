@@ -57,7 +57,7 @@ The layout below is **stack-agnostic**. Subdirectories under `.cairn/ground/{sch
 │   │   │   ├── DEC-0001.md         ← committed accepted decisions
 │   │   │   └── decisions.ledger.yaml ← compact, always-loaded summary
 │   │   ├── invariants/
-│   │   │   ├── V0001.md            ← §V invariant (monotonic, never reused)
+│   │   │   ├── INV-0001.md         ← §INV invariant (monotonic, never reused)
 │   │   │   └── invariants.ledger.yaml
 │   │   ├── canonical-map/
 │   │   │   └── topics.yaml         ← topic → canonical-doc-path
@@ -259,7 +259,7 @@ assertions:
     before_returning: true
 human_review_hint: |
   Verify all CandidateAction emitters write actor_user_id natively.
-related_invariants: [V0042]
+related_invariants: [INV-0042]
 ---
 
 # DEC-0042 — actor_user_id denormalization
@@ -290,11 +290,11 @@ Compact ledger at `.cairn/ground/decisions/decisions.ledger.yaml`:
 
 ---
 
-## 5. Invariant file shape (`.cairn/ground/invariants/V<N>.md`)
+## 5. Invariant file shape (`.cairn/ground/invariants/INV-<N>.md`)
 
 ```yaml
 ---
-id: V0042
+id: INV-0042
 title: No JSONB-userId filter in dashboard scope
 type: invariant
 status: active
@@ -304,12 +304,12 @@ verified-at: 2026-05-02T03:14:00Z
 source-run: run-abc123
 source-decision: DEC-0042
 introduced_for_bug: "Found in run-abc103: dashboard query used JSONB filter on commandPayload->>'userId', causing full-table scan."
-sensor: cairn/scripts/check-v0042-no-jsonb-userid-filter.ts
-e2e: e2e/V0042_actor_user_id_denorm.spec.ts
-naming_convention: "Tests must cite invariant ID — e.g., TestV0042_RefundIdempotent."
+sensor: cairn/scripts/check-inv0042-no-jsonb-userid-filter.ts
+e2e: e2e/INV-0042_actor_user_id_denorm.spec.ts
+naming_convention: "Tests must cite invariant ID — e.g., TestINV0042_RefundIdempotent."
 ---
 
-# §V0042 — No JSONB-userId filter in dashboard scope
+# §INV-0042 — No JSONB-userId filter in dashboard scope
 
 (invariant body — full text)
 ```
@@ -548,7 +548,7 @@ files:
     classification: decision
     audience: dual
     verified_at: 2026-05-01T18:23:00Z
-    related_invariants: [V0042]
+    related_invariants: [INV-0042]
   - path: docs/engineering/api-map.md
     sha256: ...
     classification: generated
@@ -699,7 +699,7 @@ Locked direction (operator decision 2026-05-04): **no PreToolUse hooks.** Soft e
 
 | Hook | Matcher | Purpose |
 |------|---------|---------|
-| `SessionStart` | always | Inject curated state context per `docs/SESSIONSTART_SPEC.md`: two-zone reminder, decisions in scope, §V invariants, current task, weakest modules from quality grades, pending decision drafts, MCP tool quick-reference. Implementation: `cairn hook session-start`. |
+| `SessionStart` | always | Inject curated state context per `docs/SESSIONSTART_SPEC.md`: two-zone reminder, decisions in scope, §INV invariants, current task, weakest modules from quality grades, pending decision drafts, MCP tool quick-reference. Implementation: `cairn hook session-start`. |
 | `UserPromptSubmit` (planned, Phase 2) | always | Route operator's `/direction <text>` and free-text directives into `cairn-core`'s decision-capture pipeline. Not yet implemented. |
 | `Stop` (planned, Phase 3) | always | Backprop trigger candidate on session end; defer until SessionStart + UserPromptSubmit are stable. |
 | `PreToolUse` | — | **Rejected.** Two-zone separation is enforced via SessionStart instruction + walker exclusion + `cairn_query_history` MCP escape. See PRIMER §11 anti-pattern entry. |

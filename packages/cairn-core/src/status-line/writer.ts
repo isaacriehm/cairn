@@ -19,6 +19,11 @@ export function statusJsonPath(repoRoot: string, sessionId: string): string {
  * the pretty-printed result back. Creates the per-session directory if
  * missing.
  *
+ * Refuses to write when the repo's `.cairn/` directory is missing — a
+ * caller that forgot to gate on `resolveRepoRoot` would otherwise
+ * `mkdir -p` a phantom `.cairn/sessions/` tree in a non-adopted
+ * project.
+ *
  * Best-effort write; no atomic-rename ceremony. The status file is
  * cosmetic — torn writes self-heal on the next hook tick.
  */
@@ -27,6 +32,8 @@ export function writeStatusJson(
   sessionId: string,
   patch: Partial<StatusJson>,
 ): void {
+  if (!existsSync(join(repoRoot, ".cairn"))) return;
+
   const stateDir = sessionStateDir(repoRoot, sessionId);
   const filePath = join(stateDir, "status.json");
 
@@ -61,9 +68,11 @@ export function defaultStatusJson(): StatusJson {
     decisions_in_scope: 0,
     invariants_in_scope: 0,
     task_state: "idle",
+    task_id: null,
     task_module: null,
     gc_running: false,
     attention_count: 0,
+    bypass_count: 0,
     last_run_result: null,
     last_run_at: null,
   };

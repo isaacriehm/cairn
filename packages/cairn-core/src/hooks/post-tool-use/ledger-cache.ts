@@ -26,6 +26,13 @@ export interface LedgerSnapshot {
   >;
 }
 
+export interface DecisionsLedgerSnapshot {
+  decisionsByid: Map<
+    string,
+    { title: string; status: string; superseded_by?: string }
+  >;
+}
+
 export interface TaskLookupResult {
   found: "active" | "done" | "not_found";
   title?: string;
@@ -35,6 +42,12 @@ interface InvariantsCacheEntry {
   repoRoot: string;
   mtimeMs: number;
   snapshot: LedgerSnapshot;
+}
+
+interface DecisionsCacheEntry {
+  repoRoot: string;
+  mtimeMs: number;
+  snapshot: DecisionsLedgerSnapshot;
 }
 
 interface TasksDirCacheEntry {
@@ -85,6 +98,7 @@ function hashFilePrefix(path: string, bytes: number): string | null {
 }
 
 let invariantsCache: InvariantsCacheEntry | null = null;
+let decisionsCache: DecisionsCacheEntry | null = null;
 let activeTasksCache: TasksDirCacheEntry | null = null;
 let doneTasksCache: TasksDirCacheEntry | null = null;
 let scopeIndexCache: ScopeIndexCacheEntry | null = null;
@@ -150,6 +164,72 @@ export function getInvariantsLedger(repoRoot: string): LedgerSnapshot | null {
 
   const snapshot: LedgerSnapshot = { invariantsByid: map };
   invariantsCache = { repoRoot, mtimeMs, snapshot };
+  return snapshot;
+}
+
+function decisionsLedgerFile(repoRoot: string): string {
+  return join(
+    repoRoot,
+    ".cairn",
+    "ground",
+    "decisions",
+    "decisions.ledger.yaml",
+  );
+}
+
+export function getDecisionsLedger(
+  repoRoot: string,
+): DecisionsLedgerSnapshot | null {
+  const path = decisionsLedgerFile(repoRoot);
+  if (!existsSync(path)) return null;
+  let mtimeMs: number;
+  try {
+    mtimeMs = statSync(path).mtimeMs;
+  } catch {
+    return null;
+  }
+  if (
+    decisionsCache !== null &&
+    decisionsCache.repoRoot === repoRoot &&
+    decisionsCache.mtimeMs === mtimeMs
+  ) {
+    return decisionsCache.snapshot;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = parseYaml(readFileSync(path, "utf8"));
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(parsed)) return null;
+
+  const map = new Map<
+    string,
+    { title: string; status: string; superseded_by?: string }
+  >();
+  for (const raw of parsed) {
+    if (typeof raw !== "object" || raw === null) continue;
+    const r = raw as Record<string, unknown>;
+    const id = typeof r["id"] === "string" ? (r["id"] as string) : null;
+    const title = typeof r["title"] === "string" ? (r["title"] as string) : "";
+    const status =
+      typeof r["status"] === "string" ? (r["status"] as string) : "accepted";
+    const supersededByRaw = r["superseded_by"];
+    const supersededBy =
+      typeof supersededByRaw === "string" && supersededByRaw.length > 0
+        ? supersededByRaw
+        : undefined;
+    if (id === null) continue;
+    map.set(id, {
+      title,
+      status,
+      ...(supersededBy !== undefined ? { superseded_by: supersededBy } : {}),
+    });
+  }
+
+  const snapshot: DecisionsLedgerSnapshot = { decisionsByid: map };
+  decisionsCache = { repoRoot, mtimeMs, snapshot };
   return snapshot;
 }
 

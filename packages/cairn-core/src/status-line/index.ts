@@ -24,9 +24,11 @@ export interface StatusJson {
   decisions_in_scope: number;
   invariants_in_scope: number;
   task_state: TaskState;
+  task_id: string | null;
   task_module: string | null;
   gc_running: boolean;
   attention_count: number;
+  bypass_count: number;
   last_run_result: "succeeded" | "failed" | null;
   last_run_at: string | null;
 }
@@ -37,4 +39,4 @@ export {
   writeStatusJson,
 } from "./writer.js";
 export { readStatusForCLI } from "./reader.js";
-export { formatStatus } from "./format.js";
+export { formatStatus, renderCtxMeter, type CtxMeterInput } from "./format.js";

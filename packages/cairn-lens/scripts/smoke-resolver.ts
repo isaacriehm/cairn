@@ -67,12 +67,12 @@ function runSmoke(): void {
     const repoRoot = mkFixture();
     mkdirSync(join(repoRoot, ".cairn", "ground", "invariants"), { recursive: true });
     const resolver = new LensResolver(repoRoot);
-    const r = resolver.resolveInvariant("V0023");
+    const r = resolver.resolveInvariant("INV-0023");
     assert(
       r.status === "unknown",
       `Step 2: expected unknown, got ${r.status}`,
     );
-    assert(r.id === "V0023", "Step 2: id round-trip");
+    assert(r.id === "INV-0023", "Step 2: id round-trip");
     console.log("  ✓ Step 2 — resolveInvariant unknown path");
   }
 
@@ -83,26 +83,26 @@ function runSmoke(): void {
     mkdirSync(invDir, { recursive: true });
     writeFileSync(
       join(invDir, "invariants.ledger.yaml"),
-      `- id: V0023
+      `- id: INV-0023
   title: null-check before array destructure
   status: active
-- id: V0041
+- id: INV-0041
   title: bearer tokens must expire in ≤24h
   status: active
-  superseded_by: V0042
+  superseded_by: INV-0042
 `,
       "utf8",
     );
     const resolver = new LensResolver(repoRoot);
-    const active = resolver.resolveInvariant("V0023");
+    const active = resolver.resolveInvariant("INV-0023");
     assert(
       active.status === "active" && active.title.includes("null-check"),
-      `Step 3: V0023 should be active, got ${JSON.stringify(active)}`,
+      `Step 3: INV-0023 should be active, got ${JSON.stringify(active)}`,
     );
-    const sup = resolver.resolveInvariant("V0041");
+    const sup = resolver.resolveInvariant("INV-0041");
     assert(
-      sup.status === "superseded" && sup.supersededBy === "V0042",
-      `Step 3: V0041 should be superseded by V0042, got ${JSON.stringify(sup)}`,
+      sup.status === "superseded" && sup.supersededBy === "INV-0042",
+      `Step 3: INV-0041 should be superseded by INV-0042, got ${JSON.stringify(sup)}`,
     );
     console.log("  ✓ Step 3 — resolveInvariant active + superseded");
   }
@@ -137,7 +137,7 @@ function runSmoke(): void {
       files: {
         "src/auth/login.ts": {
           decisions: ["DEC-0042"],
-          invariants: ["V0023"],
+          invariants: ["INV-0023"],
         },
         ".eslintrc.json": {
           decisions: [],
@@ -155,7 +155,7 @@ function runSmoke(): void {
       `Step 5: decisions wrong, got ${JSON.stringify(scope.decisions)}`,
     );
     assert(
-      scope.invariants.length === 1 && scope.invariants[0]?.id === "V0023",
+      scope.invariants.length === 1 && scope.invariants[0]?.id === "INV-0023",
       `Step 5: invariants wrong, got ${JSON.stringify(scope.invariants)}`,
     );
     const lint = resolver.resolveScopeWithTitles(".eslintrc.json");

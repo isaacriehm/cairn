@@ -10,7 +10,6 @@
   "include": ["src/**/*"],
   "exclude": ["dist", "node_modules"],
   "references": [
-    { "path": "../cairn-core" },
-    { "path": "../cairn-frontend-stub" }
+    { "path": "../cairn-core" }
   ]
 }

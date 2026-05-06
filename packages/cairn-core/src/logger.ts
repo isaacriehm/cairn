@@ -54,8 +54,6 @@ export function logger(module: string): Logger {
   return root.child({ module });
 }
 
-export const rootLogger = root;
-
 /**
  * Redirect all subsequent pino output to `absPath`. Creates parent dirs as
  * needed. Returns the path written to. Subsequent calls swap to the new

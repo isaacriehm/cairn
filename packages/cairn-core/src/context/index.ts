@@ -1,12 +1,12 @@
 /**
- * Context module — handoff builder, checkpoint writer, and spec-delta
- * computation. Consumed by the SessionStart Section-0 injector + the
- * Stop hook checkpoint pass.
+ * Context module — handoff builder, spec-delta computation, active-task
+ * summary. Consumed by the SessionStart Section-0 injector + statusline.
  *
  * Spec: docs/CONTEXT_CONTINUITY_SPEC.md §2.2 (handoff) + §10 (spec delta).
  */
 
 export { buildHandoffBlock } from "./handoff-builder.js";
-export { writeCheckpoint } from "./checkpoint.js";
 export { buildSpecDelta } from "./spec-delta.js";
 export type { SpecDelta } from "./spec-delta.js";
+export { readActiveTaskSummary } from "./task-summary.js";
+export type { ActiveTaskSummary } from "./task-summary.js";

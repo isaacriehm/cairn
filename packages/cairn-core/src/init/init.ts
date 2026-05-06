@@ -330,9 +330,8 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   printDiscovery(detection, decidedSlug, warnings, repoSummary);
 
   // ── Dialog 1 (auto-mode proceed sentinel) — only fired in --no-prompt
-  // smoke runs. Interactive runs skip the explicit confirm per INIT_SPEC
-  // §3 (single confirm). The pilot-module prompt at the end of mapper
-  // proposal is the single operator gate.
+  // smoke runs. Interactive runs skip the explicit confirm; the pilot-module
+  // prompt at the end of mapper proposal is the single operator gate.
   const proceedChoice =
     mode === "auto"
       ? args.autoProceed ?? "a"
@@ -370,7 +369,7 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
 
   // ── Init mapper (Tier 2 / Sonnet) — proposes pilot_module + project_globs.
   // Without this, project_globs.{route_handler,dto,generator_source,high_stakes}
-  // sit empty and Layer-D sensors never fire on real diffs (rework brief §3.1).
+  // sit empty and Layer-D sensors never fire on real diffs.
   const mapperRunResult = await maybeRunMapper({
     repoRoot,
     detection,
@@ -748,7 +747,7 @@ async function maybeRunMapper(
   // Reuse the summary built during Phase-1 discovery — no second walk.
   const summary = args.repoSummary;
 
-  // Mapper dispatches automatically per INIT_SPEC §3 — no per-run cost prompt.
+  // Mapper dispatches automatically — no per-run cost prompt.
   // The orchestrator handles parallel module calls + Haiku merge internally;
   // the single-call path is the fallback when every module call fails.
   let mapperResult: MapperResult;
@@ -817,6 +816,11 @@ async function maybeRunMapper(
   if (fallbackSlugs.length > 0) {
     args.warnings.push(
       `mapper fallback used for: ${fallbackSlugs.join(", ")} — rerun \`cairn scope rebuild\` for full classification`,
+    );
+  }
+  if (mapperResult.truncated_at_slice_cap) {
+    args.warnings.push(
+      `mapper capped at ${mapperResult.module_proposals?.length ?? 0}/${mapperResult.slices_detected} modules — rerun \`cairn scope rebuild\` with a narrower scope to extend coverage`,
     );
   }
   return { output: mapperResult.output, fallbackSlugs };
@@ -1518,13 +1522,16 @@ function describeCanonical(ingestion: IngestionResult | null): string | null {
 
 function describeBaseline(audit: BaselineAuditResult | null): string | null {
   if (audit === null) return null;
+  const fileNote = audit.truncatedAtFileCap
+    ? `${audit.filesScanned}/${audit.filesAvailable} files — sample mode`
+    : `${audit.filesScanned} files`;
   if (audit.totalFindings === 0) {
     if (audit.skippedSensorIds.length > 0 && audit.cleanSensorIds.length === 0) {
       return null;
     }
-    return `0 findings  (run on ${audit.filesScanned} files)`;
+    return `0 findings  (run on ${fileNote})`;
   }
-  return `${audit.totalFindings} existing sensor finding${audit.totalFindings === 1 ? "" : "s"}  (run cairn attention)`;
+  return `${audit.totalFindings} existing sensor finding${audit.totalFindings === 1 ? "" : "s"}  (run cairn attention; ${fileNote})`;
 }
 
 function remoteShorthand(url: string): string {

@@ -109,7 +109,7 @@ Return JSON matching the schema. \`kind\` must be exactly one of:
 Optional fields:
   - proposed_dec_title  5-10 word imperative title (only when kind = "rule-net-new")
   - proposed_rationale  2-3 sentence summary (only when kind = "rule-net-new")
-  - conflicts_with      DEC-NNNN or §V<N> id (only when kind = "rule-conflict")
+  - conflicts_with      DEC-NNNN or §INV-NNNN id (only when kind = "rule-conflict")
 
 Be conservative. When in doubt, "informational".`;
 
