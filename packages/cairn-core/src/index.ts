@@ -32,6 +32,7 @@ export {
 } from "./lock.js";
 export type { WithLockOptions } from "./lock.js";
 
+export * from "./attention/index.js";
 export * from "./claude/index.js";
 export * from "./context/index.js";
 export * from "./decision-capture/index.js";

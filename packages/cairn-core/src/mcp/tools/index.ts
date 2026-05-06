@@ -1,5 +1,6 @@
 import type { ToolDef } from "./types.js";
 import { archiveTool } from "./archive.js";
+import { bulkAcceptAttentionTool } from "./bulk-accept-attention.js";
 import { canonicalForTopicTool } from "./canonical-for-topic.js";
 import { decisionGetTool } from "./decision-get.js";
 import { decisionsForSymbolTool } from "./decisions-for-symbol.js";
@@ -39,6 +40,7 @@ export const allTools: ToolDef<unknown>[] = [
   archiveTool as ToolDef<unknown>,
   // Write — plugin-era
   resolveAttentionTool as ToolDef<unknown>,
+  bulkAcceptAttentionTool as ToolDef<unknown>,
   // Write — init pipeline (v0.2.0 MCP-native init)
   initResumeTool as ToolDef<unknown>,
   ...(initPhaseTools as ToolDef<unknown>[]),
