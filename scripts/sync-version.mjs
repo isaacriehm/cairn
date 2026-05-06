@@ -8,7 +8,6 @@
  *
  *   - packages/cairn-core/package.json
  *   - packages/cairn-frontend-claudecode/package.json
- *   - packages/cairn-frontend-stub/package.json
  *   - packages/cairn-lens/package.json
  *   - packages/cairn-frontend-claudecode/.claude-plugin/plugin.json
  *   - .claude-plugin/marketplace.json   (metadata.version + plugins[].version)
@@ -40,7 +39,6 @@ const TARGETS = [
   pkgJsonTarget("packages/cairn/package.json"),
   pkgJsonTarget("packages/cairn-core/package.json"),
   pkgJsonTarget("packages/cairn-frontend-claudecode/package.json"),
-  pkgJsonTarget("packages/cairn-frontend-stub/package.json"),
   pkgJsonTarget("packages/cairn-lens/package.json"),
   pkgJsonTarget("packages/cairn-frontend-claudecode/.claude-plugin/plugin.json"),
   {

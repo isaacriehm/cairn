@@ -11,7 +11,7 @@
  * Two-zone enforcement is soft: this module emits the reminder text +
  * the canonical-only ledgers; canonical-only walkers + the
  * cairn_query_history MCP tool do the rest. There is no PreToolUse
- * hook (locked decision per RESUME §2).
+ * hook (PreToolUse is forbidden — see PLUGIN_ARCHITECTURE hard rules).
  */
 
 export {
@@ -23,7 +23,4 @@ export type {
   BuildSessionStartContextResult,
   SessionStartSection,
 } from "./build.js";
-export {
-  TWO_ZONE_REMINDER_BASE,
-  TOOL_QUICK_REFERENCE,
-} from "./templates.js";
+export { TWO_ZONE_REMINDER_BASE } from "./templates.js";

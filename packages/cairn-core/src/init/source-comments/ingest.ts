@@ -4,8 +4,12 @@
  * Output:
  *   - DEC drafts (one per "rationale" classification with non-empty title)
  *     written to `.cairn/ground/decisions/_inbox/<id>.draft.md`
- *   - Invariant proposals appended to
- *     `.cairn/baseline/invariant-proposals-<ISO>.yaml`
+ *   - Invariant files (one per "constraint" classification with non-empty
+ *     suggestedInvariant) written directly to
+ *     `.cairn/ground/invariants/INV-<NNNN>.md` with `status: active`. Auto-
+ *     promote — the operator can edit / supersede via cairn-attention or
+ *     direct edit. Invariants don't go through an `_inbox/` review queue
+ *     because the classifier emits hard rules, not policy decisions.
  *   - Canonical-map citations appended to
  *     `.cairn/baseline/canonical-citations-<ISO>.yaml`
  *   - Full audit (every block + classification) at
@@ -18,10 +22,25 @@ import { dirname, join } from "node:path";
 import { stringify as stringifyYaml } from "yaml";
 import {
   allocateDecisionId,
+  allocateInvariantId,
   scanExistingDecisionIds,
+  scanExistingInvariantIds,
 } from "../../decision-capture/id.js";
-import { decisionsDir } from "../../ground/paths.js";
+import { writeInvariantsLedger } from "../../ground/ledgers.js";
+import { decisionsDir, invariantsDir } from "../../ground/paths.js";
+import {
+  coerceInvariantIds,
+  readScopeIndex,
+  writeScopeIndex,
+  type ScopeIndex,
+  type ScopeIndexEntry,
+} from "../../ground/scope-index.js";
 import { logger } from "../../logger.js";
+import {
+  applyStripReplace,
+  formatBareCitation,
+  type ReplaceItem,
+} from "./strip-replace.js";
 import { classifyBlocks } from "./classify.js";
 import type {
   ClassifyArgs,
@@ -51,6 +70,31 @@ export interface IngestSourceCommentsResult {
   walk: WalkResult;
   classifications: CommentClassification[];
   decDraftsWritten: { id: string; path: string; sourceFile: string }[];
+  /**
+   * INV-<NNNN>.md files written directly to `.cairn/ground/invariants/`
+   * with `status: active`. The cairn-adopt summary surfaces the count.
+   */
+  invariantsWritten: { id: string; path: string; sourceFile: string }[];
+  /** Files where the source comment was successfully replaced with `// §INV-NNNN`. */
+  invariantStripFilesModified: number;
+  /** Number of strip items that landed (one per invariant comment). */
+  invariantStripItemsApplied: number;
+  /** Number of strip items that skipped (range-mismatch, dirty, missing, etc.). */
+  invariantStripItemsSkipped: number;
+  /** Per-file strip outcomes — debug surface for "wrote ground state but not source". */
+  invariantStripOutcomes: {
+    file: string;
+    applied: number;
+    skipped: { blockId: string; reason: string }[];
+    fileSkipReason: string | null;
+  }[];
+  /** Set when applyStripReplace threw — null on the happy path. */
+  invariantStripError: string | null;
+  /**
+   * Count of "constraint" classifications regardless of whether they
+   * produced a non-empty suggestedInvariant. Always equals
+   * invariantsWritten.length when no proposals had empty bodies.
+   */
   invariantProposalsAdded: number;
   canonicalCitationsAdded: number;
   auditPath: string;
@@ -106,10 +150,17 @@ export async function runSourceCommentsIngestion(
   }
 
   const decDraftsWritten: { id: string; path: string; sourceFile: string }[] = [];
+  const invariantsWritten: { id: string; path: string; sourceFile: string }[] = [];
   const invariantProposals: InvariantProposal[] = [];
   const canonicalCitations: CanonicalCitation[] = [];
+  // Strip-replace items collected during the classification loop —
+  // applied in one batch at the end so a single dirty-check round
+  // covers all files. Each item points at the original constraint
+  // comment block; replacement is `// §INV-NNNN`.
+  const invariantStripItems: ReplaceItem[] = [];
 
   const existingIds = scanExistingDecisionIds(repoRoot);
+  const existingInvariantIds = scanExistingInvariantIds(repoRoot);
 
   for (let i = 0; i < walk.blocks.length; i++) {
     const block = walk.blocks[i];
@@ -150,6 +201,40 @@ export async function runSourceCommentsIngestion(
         proposed: cls.suggestedInvariant,
         canonical_topic: cls.suggestedCanonicalTopic,
       });
+      const invId = allocateInvariantId(repoRoot, existingInvariantIds);
+      existingInvariantIds.add(invId);
+      if (args.dryRun !== true) {
+        const written = writeInvariantFile({
+          repoRoot,
+          id: invId,
+          block,
+          classification: cls,
+          generatedAt: nowIso,
+        });
+        invariantsWritten.push({
+          id: invId,
+          path: written.relPath,
+          sourceFile: block.file,
+        });
+      } else {
+        invariantsWritten.push({
+          id: invId,
+          path: `.cairn/ground/invariants/${invId}.md`,
+          sourceFile: block.file,
+        });
+      }
+      // Stage strip-replace for the source comment so the file ends
+      // up carrying `// §INV-NNNN` (or `# §INV-NNNN` in hash-comment
+      // languages) instead of the original essay block. Run after
+      // the loop so all items go through one applyStripReplace pass.
+      invariantStripItems.push({
+        blockId: block.id,
+        file: block.file,
+        startOffset: block.startOffset,
+        endOffset: block.endOffset,
+        replacement: formatBareCitation(block.lang, invId),
+        expectedRaw: block.raw,
+      });
     }
 
     if (cls.kind === "citation" && cls.suggestedCanonicalTopic.length > 0) {
@@ -173,6 +258,8 @@ export async function runSourceCommentsIngestion(
     writeYaml(auditPath, {
       run_at: nowIso,
       files_scanned: walk.files.length,
+      files_available: walk.filesAvailable,
+      ...(walk.truncatedAtFileCap ? { truncated_at_file_cap: true } : {}),
       blocks_detected: walk.blocks.length,
       bytes_scanned: walk.bytesScanned,
       file_count_by_lang: walk.fileCountByLang,
@@ -193,6 +280,7 @@ export async function runSourceCommentsIngestion(
         word_count: b.wordCount,
         start_offset: b.startOffset,
         end_offset: b.endOffset,
+        raw: b.raw,
         classification: classifyResult.classifications[idx] ?? null,
       })),
     });
@@ -228,10 +316,105 @@ export async function runSourceCommentsIngestion(
     "source-comments ingestion complete",
   );
 
+  // Rebuild the invariants ledger after writing new INV-<NNNN>.md files so
+  // that §INV-NNNN tokens are resolvable before the strip-replace stage writes
+  // bare citations into source. Lens + MCP read tools resolve through the
+  // ledger, not by re-walking the dir.
+  if (args.dryRun !== true && invariantsWritten.length > 0) {
+    try {
+      writeInvariantsLedger({ repoRoot });
+    } catch (err) {
+      log.warn(
+        { err: err instanceof Error ? err.message : String(err) },
+        "invariants ledger rebuild failed",
+      );
+    }
+  }
+
+  // Strip the original constraint comment from each source file and
+  // replace with a bare `// §INV-NNNN` cite. Adoption assumes a clean
+  // working tree (init phase 1's preflight); pass `overwrite` for
+  // every file so dirty-skip doesn't bite us — the operator
+  // consented to source mutation when they consented to adoption.
+  let invariantStripFilesModified = 0;
+  let invariantStripItemsApplied = 0;
+  let invariantStripItemsSkipped = 0;
+  let invariantStripOutcomes: {
+    file: string;
+    applied: number;
+    skipped: { blockId: string; reason: string }[];
+    fileSkipReason: string | null;
+  }[] = [];
+  let invariantStripError: string | null = null;
+  if (args.dryRun !== true && invariantStripItems.length > 0) {
+    log.info(
+      {
+        items: invariantStripItems.length,
+        files: [...new Set(invariantStripItems.map((it) => it.file))],
+      },
+      "invariant strip-replace: starting",
+    );
+    try {
+      const dirtyDecisions: Record<string, "overwrite"> = {};
+      for (const item of invariantStripItems) dirtyDecisions[item.file] = "overwrite";
+      const result = applyStripReplace({
+        repoRoot,
+        items: invariantStripItems,
+        dirtyDecisions,
+      });
+      invariantStripFilesModified = result.filesModified;
+      invariantStripItemsApplied = result.itemsApplied;
+      invariantStripItemsSkipped = result.itemsSkipped;
+      invariantStripOutcomes = result.files.map((o) => ({
+        file: o.file,
+        applied: o.itemsApplied,
+        skipped: o.itemsSkipped.map((s) => ({ blockId: s.blockId, reason: s.reason })),
+        fileSkipReason: o.fileSkipReason ?? null,
+      }));
+      log.info(
+        {
+          filesModified: result.filesModified,
+          itemsApplied: result.itemsApplied,
+          itemsSkipped: result.itemsSkipped,
+          outcomes: invariantStripOutcomes,
+        },
+        "invariant strip-replace: complete",
+      );
+      // Now that we know which §INV-NNNN landed in which file, populate
+      // the scope-index for those files. Phase 3 mapper ran before any
+      // invariants existed, so its scope_index entries for these files
+      // had empty `invariants: []` arrays. Without this update the
+      // read-enricher legend's "Invariants in scope" header stays blank
+      // even though the source carries the cite tokens.
+      try {
+        updateScopeIndexFromStripItems(repoRoot, invariantStripItems);
+      } catch (err) {
+        log.warn(
+          { err: err instanceof Error ? err.message : String(err) },
+          "scope-index update from strip items failed",
+        );
+      }
+    } catch (err) {
+      invariantStripError = err instanceof Error ? err.message : String(err);
+      log.warn(
+        { err: invariantStripError },
+        "invariant strip-replace failed",
+      );
+    }
+  } else if (invariantStripItems.length === 0) {
+    log.info("invariant strip-replace: no items (no constraint blocks classified)");
+  }
+
   return {
     walk,
     classifications: classifyResult.classifications,
     decDraftsWritten,
+    invariantsWritten,
+    invariantStripFilesModified,
+    invariantStripItemsApplied,
+    invariantStripItemsSkipped,
+    invariantStripOutcomes,
+    invariantStripError,
     invariantProposalsAdded: invariantProposals.length,
     canonicalCitationsAdded: canonicalCitations.length,
     auditPath,
@@ -244,6 +427,73 @@ export async function runSourceCommentsIngestion(
     batchesFailed: classifyResult.batchesFailed,
     kindCounts,
   };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Scope-index post-population                                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * After the strip-replace pass inserts `// §INV-NNNN` cites into source
+ * files, fold those IDs into `.cairn/ground/scope-index.yaml`. The Phase
+ * 3 mapper that originally seeded scope-index ran before any invariants
+ * existed, so its `invariants: []` arrays for these files were correctly
+ * empty. Now that the cite tokens are landed, the read-enricher's
+ * "Invariants in scope" header should reflect them.
+ *
+ * Each file's existing invariants array gets unioned with the new IDs,
+ * de-duplicated, and re-coerced (defense-in-depth). Files absent from
+ * the scope-index get a fresh entry. Decisions arrays are left
+ * untouched — DEC strips happen at accept-time via cairn-attention,
+ * not in this Phase 7b bulk pass.
+ */
+function updateScopeIndexFromStripItems(
+  repoRoot: string,
+  items: ReplaceItem[],
+): void {
+  if (items.length === 0) return;
+  const idsByFile = new Map<string, Set<string>>();
+  const idMatch = /§(INV-\d{4,})/;
+  for (const item of items) {
+    const m = item.replacement.match(idMatch);
+    if (m === null) continue;
+    const id = m[1];
+    if (id === undefined) continue;
+    let set = idsByFile.get(item.file);
+    if (set === undefined) {
+      set = new Set<string>();
+      idsByFile.set(item.file, set);
+    }
+    set.add(id);
+  }
+  if (idsByFile.size === 0) return;
+
+  const existing = readScopeIndex(repoRoot) ?? {
+    generated: new Date().toISOString(),
+    files: {},
+  };
+  for (const [file, ids] of idsByFile) {
+    const prior = existing.files[file];
+    const merged = coerceInvariantIds([
+      ...(prior?.invariants ?? []),
+      ...ids,
+    ]);
+    const next: ScopeIndexEntry = {
+      decisions: prior?.decisions ?? [],
+      invariants: merged,
+    };
+    if (prior?.unscoped === true) next.unscoped = true;
+    existing.files[file] = next;
+  }
+  const updated: ScopeIndex = {
+    generated: new Date().toISOString(),
+    files: existing.files,
+  };
+  writeScopeIndex(repoRoot, updated);
+  log.info(
+    { files: idsByFile.size },
+    "scope-index updated with §INV cite tokens from strip-replace",
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -316,6 +566,57 @@ function writeDecDraft(args: WriteDecDraftArgs): { absPath: string; relPath: str
   lines.push("## Proposed rationale");
   lines.push("");
   lines.push(args.block.prose);
+  lines.push("");
+  writeFileSync(abs, lines.join("\n"), "utf8");
+  return { absPath: abs, relPath: rel };
+}
+
+interface WriteInvariantArgs {
+  repoRoot: string;
+  id: string;
+  block: CommentBlock;
+  classification: CommentClassification;
+  generatedAt: string;
+}
+
+function writeInvariantFile(
+  args: WriteInvariantArgs,
+): { absPath: string; relPath: string } {
+  const dir = invariantsDir(args.repoRoot);
+  mkdirSync(dir, { recursive: true });
+  const filename = `${args.id}.md`;
+  const abs = join(dir, filename);
+  const rel = `.cairn/ground/invariants/${filename}`;
+  const fm: Record<string, unknown> = {
+    id: args.id,
+    title: args.classification.suggestedInvariant.split("\n")[0]?.slice(0, 120) ?? args.id,
+    type: "invariant",
+    status: "active",
+    audience: "dual",
+    generated: args.generatedAt,
+    "verified-at": args.generatedAt,
+    source_decision: null,
+    sourceFile: args.block.file,
+    sourceRange: `${args.block.startLine}-${args.block.endLine}`,
+    blockId: args.block.id,
+    canonicalTopic: args.classification.suggestedCanonicalTopic,
+  };
+  const lines: string[] = [];
+  lines.push("---");
+  lines.push(stringifyYaml(fm).trimEnd());
+  lines.push("---");
+  lines.push("");
+  lines.push(`# §${args.id} — ${fm["title"] as string}`);
+  lines.push("");
+  lines.push("## Constraint");
+  lines.push("");
+  lines.push(args.classification.suggestedInvariant.trim());
+  lines.push("");
+  lines.push("## Source comment");
+  lines.push("");
+  lines.push("```");
+  lines.push(args.block.raw);
+  lines.push("```");
   lines.push("");
   writeFileSync(abs, lines.join("\n"), "utf8");
   return { absPath: abs, relPath: rel };

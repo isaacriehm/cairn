@@ -1,12 +1,6 @@
 ---
 name: reviewer
-description: |
-  Spawned by main Claude as the LAST step of any non-trivial Cairn
-  task. Reads the staged + unstaged diff, every dispatched subagent's
-  attestation.yaml, and any sensor findings; extracts non-obvious
-  decisions as DEC drafts; writes a consolidated attestation.yaml at
-  `.cairn/tasks/active/<task_id>/attestation.yaml`. Returns a short
-  attestation summary the main Claude relays to the operator.
+description: Spawned LAST in multi-chunk Cairn tasks. Reads diff + per-subagent attestations + sensor findings, drafts DECs from non-obvious decisions, writes the task's attestation.yaml.
 tools:
   - Bash
   - Read
@@ -55,7 +49,7 @@ Combine both. Walk the diff per-file. For each file:
 
 - Confirm it's within `target_path_globs`.
 - Confirm any new code that touches an in-scope decision or invariant
-  cites it via `// §V<N>` (per spec §15 comment policy).
+  cites it via `// §INV-NNNN` (per spec §15 comment policy).
 - Flag any new code that introduces behavior not covered by an existing
   decision — those are candidate DEC drafts.
 
@@ -72,7 +66,7 @@ subagent_id: <hex>
 brief_excerpt: <first line of brief>
 files_changed: [<rel paths>]
 decisions_cited: [<DEC ids>]
-invariants_cited: [<§V ids>]
+invariants_cited: [<§INV ids>]
 ambiguities_resolved:
   - description: <what was unclear>
     resolution: <how it was resolved>
@@ -121,7 +115,7 @@ spec_path: .cairn/tasks/active/<task_id>/spec.tightened.md
 files_changed:
   - <rel path>
 decisions_cited: [<unique DEC ids across subagents>]
-invariants_cited: [<unique §V ids>]
+invariants_cited: [<unique §INV ids>]
 dec_drafts_emitted: [<DEC ids you just recorded>]
 sensor_status: passed | failed | skipped
 ambiguities_resolved:
@@ -165,7 +159,10 @@ the operator can drill in via `/cairn-attention` if drafts surface.
 - If `attestation.yaml` already exists at the target path, treat the
   prior content as authoritative for any field your pipeline didn't
   touch (you may be a re-review).
-- Caveman-ultra style for the summary reply; full English in the
-  attestation.yaml body.
+- When you spot a partial implementation a chunk left behind (deferred
+  edge case, missing piece, "// TODO" without a TSK cite), surface
+  it under `remaining_concerns`. Do NOT add `// TODO(TSK-<id>)` cites
+  yourself — reviewer is read-only on the working tree. The operator
+  decides whether to spawn a follow-up task on the next pass.
 - Caveman-ultra style for the summary reply; full English in the
   attestation.yaml body.

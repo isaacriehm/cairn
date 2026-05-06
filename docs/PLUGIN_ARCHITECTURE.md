@@ -121,16 +121,16 @@ On `[a]`, the skill (or CLI) spawns the init pipeline as a subprocess and **stre
 | 5 | Brand setup — 4 questions inline A/B/C | Brand name / positioning / voice tone / domain |
 | 6 | Writes `.cairn/` skeleton, baseline `status.json` | "Writing .cairn/" → file count |
 | 7a | **Docs ingestion (Haiku/doc, parallel)** — every doc classified into DEC drafts / canonical-map / voice updates / consolidate-with-existing | Per-doc status icons; DEC draft count grows |
-| 7b | **Source comment ingestion (full repo, no cap)** — deterministic walker finds essay-style comment blocks (heuristic: block comment > 3 lines OR > 200 chars OR JSDoc with > 30 words of prose) across **every** source file. Haiku batch-classifies each block (20 blocks per batch call) into DEC draft / §V invariant proposal / canonical-map citation. Detection deterministic, classification LLM, replacement deterministic (see Phase 10). One-time spend acceptable per the "fully processes once" mandate. | Per-batch status; DEC + §V counts grow; total Haiku tokens displayed |
+| 7b | **Source comment ingestion (full repo, no cap)** — deterministic walker finds essay-style comment blocks (heuristic: block comment > 3 lines OR > 200 chars OR JSDoc with > 30 words of prose) across **every** source file. Haiku batch-classifies each block (20 blocks per batch call) into DEC draft / §INV invariant proposal / canonical-map citation. Detection deterministic, classification LLM, replacement deterministic (see Phase 10). One-time spend acceptable per the "fully processes once" mandate. | Per-batch status; DEC + §INV counts grow; total Haiku tokens displayed |
 | 7c | **Existing project rules merge** — `CLAUDE.md`, `AGENTS.md`, `.claude/CLAUDE.md`, `.claude/rules/` ingested and reconciled with Cairn state. Post-adoption: Cairn regenerates `CLAUDE.md` and `AGENTS.md` from ground state on each `cairn sweep`; operator-written sections preserved between `<!-- cairn:keep-start -->` and `<!-- cairn:keep-end -->` markers | "Merging project rules…" → diff summary |
 | 8 | Baseline sensor audit — every sensor runs against full repo, findings to `.cairn/baseline/sensor-audit-<ISO>.yaml` | Per-sensor status; finding counts |
 | 9 | **Inconsistency detection** — hard conflicts (factual contradictions across decisions/docs) block + A/B/C inline; soft (scope/phrasing) deferred to attention | "Conflict: DEC-0019 says X; docs/auth.md says Y. `[a]` …" |
-| 10 | **Comment policy enforcement** — strip essay comments, replace with `// §V<N>` cites. **Detection + replacement deterministic (no LLM).** Pre-check: skip files with uncommitted changes; surface "stash and process / skip / overwrite" inline. Originals backed up to `.cairn/backups/source/<rel-path>.original`. Consent-gated per module: A/B/C with full diff preview before any write. | Per-module preview + A/B/C "strip all `[a]` / review per-file `[b]` / skip `[c]`" |
+| 10 | **Comment policy enforcement** — strip essay comments, replace with `// §INV-NNNN` cites. **Detection + replacement deterministic (no LLM).** Pre-check: skip files with uncommitted changes; surface "stash and process / skip / overwrite" inline. Originals backed up to `.cairn/backups/source/<rel-path>.original`. Consent-gated per module: A/B/C with full diff preview before any write. | Per-module preview + A/B/C "strip all `[a]` / review per-file `[b]` / skip `[c]`" |
 | 11 | **Project rules write** — plugin enabling auto-merges Cairn's hooks/MCP/skills into user-level `~/.claude/settings.json` `enabledPlugins`. No project-level config touched | "Plugin enabled at user scope" |
 | 12 | **Multi-dev enforcement install** — versioned git hooks at `.cairn/git-hooks/`, `core.hooksPath` configured, CI workflow `.github/workflows/cairn-check.yml` written, `package.json` `prepare` script added (Node projects), `.cairn/JOIN.md` written for new contributors. See §17. | "Installed git hooks + CI gate" |
 | 13 | Final summary + `cairn attention` count | Markdown summary table; pending counts |
 
-After this single pass, Cairn IS the project maintainer. Source files are clean (only `// §V<N>` and `// TODO(TSK-)` cites). All prior decisions are canonicalized. Existing rules are merged. Sensors are baselined. Inconsistencies are resolved or queued.
+After this single pass, Cairn IS the project maintainer. Source files are clean (only `// §INV-NNNN` and `// TODO(TSK-)` cites). All prior decisions are canonicalized. Existing rules are merged. Sensors are baselined. Inconsistencies are resolved or queued.
 
 ## §7 State model
 
@@ -149,7 +149,7 @@ Session ID generated at plugin SessionStart (Claude Code session id if exposed, 
 - **Per-write `flock`** on `.cairn/.write-lock` for any global-state write. OS-level — auto-release on process crash. Reads unlocked.
 - **Whole-operation locks** on `.cairn/.gc-lock` and `.cairn/.audit-lock` for sweep operations. Second concurrent sweep bails fast with "another in progress".
 - **DEC ID allocation** atomic under the per-write lock. Two sessions calling `cairn_record_decision` get distinct DEC-NNNN values.
-- **Invalidation events**: when a global write completes, Cairn writes `.cairn/events/<ts>-<event>.json`. Plugin instances poll the events directory at Stop hook (chokidar file watcher armed, debounced). If an event touches a DEC/§V in the current session's in-scope set → surface inline:
+- **Invalidation events**: when a global write completes, Cairn writes `.cairn/events/<ts>-<event>.json`. Plugin instances poll the events directory at Stop hook (chokidar file watcher armed, debounced). If an event touches a DEC/§INV in the current session's in-scope set → surface inline:
   > A modified DEC-0042 (which you're using). `[a]` refresh in-scope `[b]` continue under old `[c]` abort
 
 Default `[a]`. Event log retention: last 7 days, GC'd by sweep.
@@ -177,7 +177,7 @@ State freshness is event-driven, not wall-clock-driven. Every stateful operation
 | **CI** | Sensor sweep + version-sync gate + bootstrap-required gate | `.github/workflows/cairn-check.yml` |
 | **GC sweep** | Stale `_inbox/` drafts, drift detection, decision-to-symbol re-index | `cairn gc` (manual or invoked by Stop when overdue) |
 
-**Stale state never blocks anything dangerous.** The session-boundary contract is: between two SessionStarts (or between a SessionStart and the next Stop), state can grow stale, but no destructive operation runs against the stale view. Sensor sweeps against the live tree at commit time; in-scope DECs/§Vs are re-read by the MCP read tools on every call. The result is "eventually consistent" — fast for the operator, no background process, drift caught at the next session boundary.
+**Stale state never blocks anything dangerous.** The session-boundary contract is: between two SessionStarts (or between a SessionStart and the next Stop), state can grow stale, but no destructive operation runs against the stale view. Sensor sweeps against the live tree at commit time; in-scope DECs/§INVs are re-read by the MCP read tools on every call. The result is "eventually consistent" — fast for the operator, no background process, drift caught at the next session boundary.
 
 ## §8 Daily flow (post-adoption)
 
@@ -228,7 +228,7 @@ Operator commits → pre-commit git hook (canonical backstop)
    - Hard fail blocks commit, soft warn passes
 ```
 
-PostToolUse hook on `Read`/`Grep`/`Glob` enriches tool results with citation legend (§V references + relevant DEC summaries). Banned: PreToolUse (bricks session per prior anti-pattern).
+PostToolUse hook on `Read`/`Grep`/`Glob` enriches tool results with citation legend (§INV references + relevant DEC summaries). Banned: PreToolUse (bricks session per prior anti-pattern).
 
 ## §9 MCP surface
 
@@ -299,7 +299,7 @@ Write tools wrap their work in the per-write flock helper from `cairn-core/src/l
 |------|-----|
 | `SessionStart` | Build handoff context (git diff since last session, in-scope decisions/invariants, brand/positioning); detect adoption state (has `.cairn/`?); detect attention (pending DEC drafts, baseline findings, drift) and stage the session to auto-invoke `cairn-attention` skill if non-zero; clean up stale per-session state directories |
 | `Stop` | (1) Run sensors on staged + unstaged diff; surface findings inline. (2) Poll `.cairn/events/` for invalidation events touching session's in-scope; surface refresh prompt if any. (3) Scan `.cairn/tasks/active/<id>/` for tasks created this session without `attestation.yaml`; if any → spawn reviewer subagent to attest. (4) Compare HEAD's last 5 commits against `.cairn/.attested-commits` marker file; surface backfill prompt for any commit that bypassed pre-commit hook (i.e. `--no-verify`). (5) Update per-session `status.json` |
-| `PostToolUse` (Read/Grep/Glob) | Citation enrichment — inject §V references + decision summaries into the tool result text |
+| `PostToolUse` (Read/Grep/Glob) | Citation enrichment — inject §INV references + decision summaries into the tool result text |
 | `PreToolUse` | **BANNED** — bricks the session if the hook fails. Never use. |
 
 ## §11 Skills + subagents + slash commands
@@ -340,12 +340,12 @@ Reviewer: spawn LAST after all dispatched subagents complete.
   brief: |
     Read .cairn/tasks/active/<task-id>/spec.tightened.md.
     Implement the auth middleware portion (files: services/auth/*.ts).
-    Cite §V42, §V43 in any new code. Write attestation.yaml on completion.
+    Cite §INV-0042, §INV-0043 in any new code. Write attestation.yaml on completion.
 - subagent: general-purpose
   brief: |
     Read the same spec.
     Implement the billing portion (files: services/billing/*.ts).
-    Cite §V12. Write attestation.yaml.
+    Cite §INV-0012. Write attestation.yaml.
 ```
 ````
 
@@ -359,7 +359,7 @@ For 1-chunk dispatches, the skill omits the `dispatch` block and just hands the 
 |---------|------------------|
 | `.cairn/ground/` (own state) | Full auto |
 | `.cairn/sessions/<id>/` (own per-session state) | Full auto |
-| Source files (comment strips, §V cites) | A/B/C per module-batch with per-file escalation on reject |
+| Source files (comment strips, §INV cites) | A/B/C per module-batch with per-file escalation on reject |
 | Existing docs (consolidation, rewrites) | A/B/C per doc or batch |
 | `~/.claude/settings.json` (`enabledPlugins` map only) | Auto on `/plugin install` |
 | Project's `.claude/settings.json` | **Never written.** Plugin's contributions merge at runtime |
@@ -405,7 +405,7 @@ tier0 output is JSON: `{ ready: boolean, questions?: Question[], spec_seed?: str
 
 **Two legal citations** in source files:
 
-- `// §V<N>` — invariant reference
+- `// §INV-NNNN` — invariant reference
 - `// TODO(TSK-<id>)` — linked task
 
 Banned: DEC-id comments, essay JSDoc, multi-paragraph rationale, restated requirements.
@@ -416,7 +416,7 @@ Banned: DEC-id comments, essay JSDoc, multi-paragraph rationale, restated requir
 |-------|------|--------------|
 | **Detection** | **No** — deterministic | Walker finds essay-style comment blocks via heuristic: block comment > 3 lines OR > 200 chars OR JSDoc with > 30 words of prose. Per-language tweaks (Python `"""…"""`, Rust `///`, Go `//`, etc.) |
 | **Extraction** | **Yes** — Haiku batch | 20 detected blocks per Haiku call → JSON: `{ block_id, type: "rationale" | "constraint" | "citation" | "license" | "other", suggested_dec_draft?, suggested_invariant?, suggested_canonical_topic? }`. License headers + "other" left in source untouched |
-| **Replacement** | **No** — deterministic | Mechanical string substitution: strip the original block, insert `// §V<N>` (if §V exists or was just proposed) or `// TODO(TSK-<id>)` (if linked to active task). Never LLM-rewritten |
+| **Replacement** | **No** — deterministic | Mechanical string substitution: strip the original block, insert `// §INV-NNNN` (if §INV exists or was just proposed) or `// TODO(TSK-<id>)` (if linked to active task). Never LLM-rewritten |
 
 ### Pre-write safety checks
 
@@ -431,12 +431,12 @@ Before any source file is modified during Phase 10:
 
 **Per-module batch (default):**
 
-> Module `core/auth` has 23 essay-style comment blocks. Extracted: 8 DEC drafts, 3 §V candidate invariants. Diff preview: [collapsible].
+> Module `core/auth` has 23 essay-style comment blocks. Extracted: 8 DEC drafts, 3 §INV candidate invariants. Diff preview: [collapsible].
 > `[a]` strip all (review extractions in `_inbox/`) `[b]` review per-file (escalation) `[c]` skip module
 
 **Per-file escalation when operator picks `[b]`:**
 
-> `services/auth.ts:42-78` — 24-line JSDoc on JWT signing rationale. Extracted as DEC-draft-0042 + §V42 invariant proposal. Replacement: `// §V42`. Diff: [collapsible].
+> `services/auth.ts:42-78` — 24-line JSDoc on JWT signing rationale. Extracted as DEC-draft-0042 + §INV-0042 invariant proposal. Replacement: `// §INV-0042`. Diff: [collapsible].
 > `[a]` apply `[b]` keep as-is `[c]` modify (open in editor)
 
 If the file has uncommitted changes the per-file prompt also shows the dirty-file warning.
@@ -582,7 +582,7 @@ The following decisions were made during drafting and folded into the relevant s
 The plugin pivot landed across ten steps. Per-step deliverables:
 
 1. **Repo unification** — five workspace packages live under `packages/*`.
-2. **Tier0 Haiku** — replace pre-pivot local-classifier backend with `claude --model haiku` subprocess + JSON-schema output.
+2. **Tier-1 Haiku subprocess** — `claude --model haiku` subprocess + JSON-schema output replaces the pre-pivot local-classifier backend. (The earlier Tier-0 prompt-classifier layer was later folded into the cairn-direction skill's `when_to_use` gate; the Haiku tier is now the lowest active backend tier.)
 3. **Flock + per-session state partition + invalidation events** — `cairn-core/src/lock.ts`, `.cairn/sessions/<id>/`, `.cairn/events/`. Every write tool wraps in flock; per-session marker + Stop-hook poll cursor.
 4. **Plugin scaffold** — `cairn-frontend-claudecode/` manifest, `.mcp.json`, `hooks/hooks.json`, hook bin entrypoints under `cairn-core/dist/hooks/`.
 5. **Skills + slash commands** — cairn-adopt, cairn-direction, cairn-attention; `/cairn-init`, `/cairn-direction`.

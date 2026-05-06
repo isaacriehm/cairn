@@ -30,11 +30,7 @@ interface TimelineEvent {
   detail?: string;
 }
 
-/**
- * Returns chronologically ordered run/event records intersecting the scope
- * window. Naive — reads runs/terminal/<id>/meta.json files. Phase 4 baseline;
- * heavier indexing later.
- */
+/** Returns chronologically ordered run/event records intersecting the scope window. */
 async function handler(ctx: McpContext, input: Input): Promise<unknown> {
   const out: TimelineEvent[] = [];
   const since = input.since ? Date.parse(input.since) : 0;
@@ -52,7 +48,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
       const tsMs = Date.parse(ts);
       if (Number.isNaN(tsMs) || tsMs < since || tsMs > until) continue;
       if (wantKinds && !wantKinds.has("run")) continue;
-      // scope filter — naive: the run's scoped_module substring match.
+      // scope filter — scoped_module substring match.
       if (input.scope && input.scope.length > 0 && meta.scoped_module) {
         const hit = input.scope.some((g) => meta.scoped_module?.includes(g) ?? false);
         if (!hit) continue;
@@ -82,7 +78,7 @@ function readJson<T>(path: string): T | null {
 export const timelineTool: ToolDef<Input> = {
   name: "cairn_timeline",
   description:
-    "Chronological run-event stream intersecting the scope window. Reads runs/terminal/. Useful for `what happened to <module> this week` without reading file bodies.",
+    "Chronological run-event stream intersecting the scope window. Reads runs/terminal/.",
   inputSchema: timelineInput,
   handler,
 };

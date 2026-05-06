@@ -10,10 +10,7 @@ export type {
   WalkOptions,
   WalkResult,
 } from "./walker.js";
-export {
-  classifyBlocks,
-  _internal as _classifyInternal,
-} from "./classify.js";
+export { classifyBlocks } from "./classify.js";
 export type {
   ClassifyArgs,
   ClassifyResult,
@@ -25,11 +22,7 @@ export type {
   IngestSourceCommentsArgs,
   IngestSourceCommentsResult,
 } from "./ingest.js";
-export {
-  applyStripReplace,
-  previewStripReplace,
-  _internal as _stripReplaceInternal,
-} from "./strip-replace.js";
+export { applyStripReplace, previewStripReplace } from "./strip-replace.js";
 export type {
   DirtyDecision,
   FileOutcome,

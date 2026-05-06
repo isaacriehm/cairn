@@ -1,0 +1,30 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "workspaces": {
+    "packages/cairn-core": {
+      "entry": [
+        "src/hooks/session-start.ts",
+        "src/hooks/session-end.ts",
+        "src/hooks/stop.ts",
+        "src/hooks/read-enrich.ts",
+        "src/hooks/write-guard.ts",
+        "src/mcp/serve.ts"
+      ],
+      "project": "src/**/*.ts"
+    },
+    "packages/cairn": {
+      "entry": ["scripts/*.ts"],
+      "project": "src/**/*.ts"
+    },
+    "packages/cairn-frontend-claudecode": {
+      "entry": ["src/bundle-entry.ts"],
+      "project": "src/**/*.ts",
+      "ignoreDependencies": ["@isaacriehm/cairn-core"]
+    },
+    "packages/cairn-lens": {
+      "entry": ["scripts/*.ts"],
+      "project": "src/**/*.ts"
+    }
+  },
+  "ignoreBinaries": ["package"]
+}

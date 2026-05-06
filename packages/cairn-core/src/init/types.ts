@@ -1,10 +1,8 @@
 /**
- * Phase 16 — `cairn init` adoption wizard.
+ * `cairn init` adoption wizard — detection types.
  *
- * Detection-driven, no stack profiles. Per operator decision 2026-05-02:
- * "should be agnostic, why are we shipping with profiles." Profiles bake
- * stack assumptions into the cairn pkg; detection treats every project
- * generically and proposes per-sensor approval at adoption.
+ * Detection-driven, no stack profiles. Treats every project generically
+ * and proposes per-sensor approval at adoption.
  */
 
 export type StackKind =

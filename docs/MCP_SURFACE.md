@@ -75,7 +75,7 @@ Returns:
     { "id": "a1", "kind": "schema_must_contain", ... }
   ],
   "human_review_hint": "...",
-  "related_invariants": ["V0042"],
+  "related_invariants": ["INV-0042"],
   "body_markdown": "(full ADR text)"
 }
 ```
@@ -147,7 +147,7 @@ Returns the chain forward to current binding decision:
 
 #### `cairn_invariant_get`
 
-Same shape as `cairn_decision_get` but for `.cairn/ground/invariants/V<N>.md`. Returns `id, title, status, source-run, source-decision, sensor, e2e, body_markdown`.
+Same shape as `cairn_decision_get` but for `.cairn/ground/invariants/INV-<N>.md`. Returns `id, title, status, source-run, source-decision, sensor, e2e, body_markdown`.
 
 #### `cairn_invariants_in_scope`
 
@@ -169,7 +169,7 @@ Returns compact index records (~50 tokens each):
 ```json
 [
   { "id": "DEC-0042", "kind": "decision", "title": "actor_user_id denormalization", "score": 0.91 },
-  { "id": "V0042", "kind": "invariant", "title": "No JSONB-userId filter", "score": 0.88 }
+  { "id": "INV-0042", "kind": "invariant", "title": "No JSONB-userId filter", "score": 0.88 }
 ]
 ```
 
@@ -335,7 +335,7 @@ Deliberate omissions, with reasons:
    summary into context (per docs/SESSIONSTART_SPEC.md)
 2. Agent sees DEC-0042 in the rendered list ("actor_user_id denormalization on dashboard/")
 3. Agent calls: cairn_decision_get("DEC-0042") → full ADR + assertions
-4. Agent calls: cairn_invariants_in_scope(["core/src/dashboard/**"]) → [V0042]
+4. Agent calls: cairn_invariants_in_scope(["core/src/dashboard/**"]) → [INV-0042]
 5. Agent reads relevant code (canonical zone — Cairn walkers exclude historical paths)
 6. Agent makes change
 7. Agent emits `attestation.yaml` (runtime reads it directly from run dir)
@@ -355,8 +355,11 @@ Deliberate omissions, with reasons:
 
 ```
 1. Operator types prompt in Claude Code chat
-2. cairn-direction skill invokes tier0 classifier (Haiku)
-3. Tier0 flags as direction-change → spec tightener (Sonnet) drafts a candidate decision
+2. cairn-direction skill engages on the operator message (verb-led OR
+   bug report OR observation per its when_to_use trigger gate)
+3. Skill gathers in-scope context (cairn_decisions_in_scope,
+   cairn_invariants_in_scope), asks ≤3 clarifying questions per round,
+   tightens the spec
 4. Plugin calls: cairn_record_decision({ ..., target: "inbox" }) → DEC-0099 draft created in _inbox/
 5. Stop hook surfaces inline: "Review DEC-0099 draft? [a] accept [b] reject [c] edit"
 6. Operator picks [a]

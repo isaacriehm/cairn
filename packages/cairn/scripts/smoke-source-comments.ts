@@ -250,22 +250,22 @@ async function main(): Promise<void> {
     file: block.file,
     startOffset: block.startOffset,
     endOffset: block.endOffset,
-    replacement: "// §V42",
+    replacement: "// §INV-0042",
   };
 
   const preview = previewStripReplace({ repoRoot: repoRoot3, items: [item] });
   assert(preview.length === 1, "preview returns one file entry");
   assert(preview[0]?.before !== preview[0]?.after, "preview before/after differ");
-  assert(preview[0]?.after.includes("// §V42"), "preview shows §V42");
+  assert(preview[0]?.after.includes("// §INV-0042"), "preview shows §INV-0042");
 
   const apply = applyStripReplace({ repoRoot: repoRoot3, items: [item] });
   assert(apply.filesModified === 1, "one file modified");
   assert(apply.itemsApplied === 1, "one item applied");
   const newContent = readFileSync(join(repoRoot3, "src/db.ts"), "utf8");
-  assert(newContent.includes("// §V42"), "file now contains §V42");
+  assert(newContent.includes("// §INV-0042"), "file now contains §INV-0042");
   assert(!newContent.includes("/* one"), "original block removed");
   // Indentation preserved (4 spaces leading)
-  assert(/^ {4}\/\/ §V42$/m.test(newContent), "leading indent preserved");
+  assert(/^ {4}\/\/ §INV-0042$/m.test(newContent), "leading indent preserved");
   // Backup written
   const backup = join(repoRoot3, ".cairn/backups/source/src/db.ts.original");
   assert(existsSync(backup), "backup .original written");
@@ -273,7 +273,55 @@ async function main(): Promise<void> {
   assert(backupContent.includes("/* one"), "backup retains original block");
   console.log("  ✓ Step 5 — strip-replace mechanical edit + backup");
 
-  step("Step 6 — strip-replace honors dirty-check");
+  step("Step 6 — strip-replace indented line-cluster preserves indent");
+  // Indented // line-cluster — the startOffset must point at the marker, not
+  // the line start, so leadingIndent in strip-replace finds the 2-space indent.
+  const lcRoot = mkRepoRoot();
+  execFileSync("git", ["init", "-q", "--initial-branch=main"], { cwd: lcRoot });
+  execFileSync("git", ["config", "user.email", "smoke@example.com"], { cwd: lcRoot });
+  execFileSync("git", ["config", "user.name", "Smoke"], { cwd: lcRoot });
+  writeFile(
+    lcRoot,
+    "src/svc.ts",
+    [
+      "function foo() {",
+      "  // first line of cluster explaining something",
+      "  // second line keeps going with more detail",
+      "  // third line to exceed the min-lines heuristic",
+      "  // fourth line to pass the four-line threshold",
+      "  return 1;",
+      "}",
+    ].join("\n") + "\n",
+  );
+  execFileSync("git", ["add", "."], { cwd: lcRoot });
+  execFileSync("git", ["commit", "-q", "-m", "init"], { cwd: lcRoot });
+  const walkLc = walkSourceComments({ repoRoot: lcRoot });
+  const lcBlock = walkLc.blocks[0];
+  assert(lcBlock !== undefined, "indented // cluster found");
+  assert(lcBlock.kind === "line-cluster", "line-cluster kind");
+  // startOffset must point at the first '/' not the line start.
+  const lcFileBody = readFileSync(join(lcRoot, "src/svc.ts"), "utf8");
+  assert(
+    lcFileBody[lcBlock.startOffset] === "/" && lcFileBody[lcBlock.startOffset + 1] === "/",
+    "startOffset at comment marker not line-start",
+  );
+  const lcItem: ReplaceItem = {
+    blockId: lcBlock.id,
+    file: lcBlock.file,
+    startOffset: lcBlock.startOffset,
+    endOffset: lcBlock.endOffset,
+    replacement: "// §INV-0099",
+    expectedRaw: lcBlock.raw,
+  };
+  const lcApply = applyStripReplace({ repoRoot: lcRoot, items: [lcItem] });
+  assert(lcApply.filesModified === 1, "lc: file modified");
+  assert(lcApply.itemsApplied === 1, "lc: item applied");
+  const lcContent = readFileSync(join(lcRoot, "src/svc.ts"), "utf8");
+  assert(lcContent.includes("// §INV-0099"), "lc: citation present");
+  assert(/^ {2}\/\/ §INV-0099$/m.test(lcContent), "lc: 2-space indent preserved");
+  console.log("  ✓ Step 6 — strip-replace indented line-cluster preserves indent");
+
+  step("Step 7 — strip-replace honors dirty-check");
   // Modify file uncommitted.
   writeFileSync(join(repoRoot3, "src/db.ts"), `${newContent}\n// hand-edit\n`, "utf8");
   // Re-walk to get current block layout (none expected since stripped).
@@ -283,12 +331,12 @@ async function main(): Promise<void> {
     file: "src/db.ts",
     startOffset: 0,
     endOffset: 5,
-    replacement: "// §V99",
+    replacement: "// §INV-0099",
   };
   const apply2 = applyStripReplace({ repoRoot: repoRoot3, items: [item2] });
   assert(apply2.filesSkipped === 1, "dirty file skipped without decision");
   assert(apply2.files[0]?.fileSkipReason === "dirty-no-decision", "skip reason recorded");
-  console.log("  ✓ Step 6 — strip-replace honors dirty-check");
+  console.log("  ✓ Step 7 — strip-replace honors dirty-check");
 
   step("Cleanup");
   cleanup();

@@ -129,6 +129,6 @@ function composeCommitMessage(count: number, now: Date): string {
   const subject = `chore(gc): refresh frontmatter verified-at on ${count} doc${count === 1 ? "" : "s"} (${ymd})`;
   const body =
     "GC frontmatter-freshness pass — content unchanged; bumping verified-at to today.\n" +
-    "Auto-applied as safe-class per L16 (PRIMER §12.2).\n";
+    "Auto-applied as safe-class (GC auto-merge policy).\n";
   return `${subject}\n\n${body}`;
 }

@@ -5,7 +5,7 @@
  * every locked write to global state emits a small JSON file under
  * `.cairn/events/`. Plugin Stop hooks in other live sessions poll
  * that directory and surface an inline A/B/C if the event touches a
- * DEC/§V they have in scope.
+ * DEC/§INV they have in scope.
  *
  * Files: `.cairn/events/<msTs>-<kind>.json` — sortable by name. ts
  * collisions resolved with a short crypto suffix.

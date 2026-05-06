@@ -2,8 +2,6 @@
  * `cairn scope <subcommand>` — scope-index commands.
  *
  *   cairn scope rebuild [--repo <path>]   — re-run mapper, rewrite scope-index.yaml
- *
- * Spec: BUILD_REPORT.md Gap 1 / DOCS_SPEC.md §3.8.
  */
 
 import { existsSync } from "node:fs";
@@ -43,7 +41,7 @@ async function rebuildHandler(argv: string[]): Promise<void> {
     process.exit(2);
   }
 
-  process.stdout.write("⬡ cairn scope rebuild — running mapper LLM…\n");
+  process.stdout.write("⬡ cairn scope rebuild — deterministic regex rescan…\n");
   try {
     const result = await rebuildScopeIndex({ repoRoot });
     const relPath = result.path.startsWith(repoRoot)
@@ -52,12 +50,12 @@ async function rebuildHandler(argv: string[]): Promise<void> {
     process.stdout.write(
       `  ✓ wrote ${relPath} — ${result.filesClassified} file${
         result.filesClassified === 1 ? "" : "s"
-      } classified  (${result.mapperDurationMs}ms, ${result.model})\n`,
+      } scanned  (${result.durationMs}ms)\n`,
     );
     process.exit(0);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`cairn scope rebuild: mapper failed — ${msg}`);
+    console.error(`cairn scope rebuild: rescan failed — ${msg}`);
     process.exit(1);
   }
 }

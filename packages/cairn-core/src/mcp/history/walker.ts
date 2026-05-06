@@ -102,7 +102,7 @@ export function walkArchive(opts: WalkArchiveOptions): WalkArchiveResult {
   }
   bucketsScanned.sort();
 
-  // BFS so the closest-to-root files come first when caps trigger.
+  // DFS per bucket; caps bound total output regardless of traversal order.
   const stack: { absDir: string; bucket: string }[] = bucketsScanned.map((b) => ({
     absDir: join(archiveRoot, b),
     bucket: b,

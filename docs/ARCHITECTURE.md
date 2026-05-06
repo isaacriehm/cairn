@@ -100,15 +100,20 @@ What lives here:
   ensureSessionDir, gcStaleSessions.
 - `status-line/` — per-session status.json writer + Claude Code status-line
   reader.
-- `tightener/` — spec quality gate. Tier-1 LLM call; scores task body,
-  surfaces ambiguities, proposes tightened spec.
 - `claude/` — subprocess wrapper for `claude --print --output-format json
-  --json-schema`. Used by tightener, mapper, classifiers.
-- `tier0/` — fast Haiku classifier (intent + activity-summary).
+  --json-schema`. Used by mapper, source-comments classifier, rules-merge,
+  docs-ingest, history summarizer.
 - `join/` — per-clone bootstrap orchestrator. `runJoin` + `inspectJoinState`.
 - `lock.ts` — per-write `flock` on `.cairn/.write-lock` for global writes.
-- `frontend-types.ts` — `FrontendAdapter` contract for the test stub.
 - `logger.ts` — pino setup.
+
+**Tier model.** Backend LLM calls flow through three tiers:
+`haiku` (Tier 1, classifiers + summarizers), `sonnet` (Tier 2, the
+mapper + reviewer subagent), `opus` (Tier 3, currently unused — kept
+in the `ClaudeTier` union as an escape hatch). The earlier Tier 0
+prompt-classifier layer was folded into the cairn-direction skill's
+`when_to_use` gate; routing is now main-Claude judgment, not a
+backend call.
 
 ### 3.2 `cairn` — umbrella + CLI
 
@@ -133,7 +138,7 @@ update post; programmable response for dialog round-trips.
 
 ### 3.5 `cairn-lens` — VS Code / Cursor extension
 
-Hover provider, inlay hints, CodeLens for inline §V references and DEC
+Hover provider, inlay hints, CodeLens for inline §INV references and DEC
 links. Read-only consumer of the same ground state.
 
 ## §4 The MCP surface — Cairn's public API

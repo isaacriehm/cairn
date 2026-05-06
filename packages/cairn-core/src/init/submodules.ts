@@ -21,7 +21,7 @@ export interface SubmoduleInfo {
   shortSha: string | null;
 }
 
-export interface SubmoduleScan {
+interface SubmoduleScan {
   /** True when `.gitmodules` exists at repo root. */
   hasGitmodules: boolean;
   /** Parsed `git submodule status` output. Empty when no .gitmodules. */
@@ -65,7 +65,7 @@ export async function scanSubmodules(repoRoot: string): Promise<SubmoduleScan> {
   return { hasGitmodules, submodules };
 }
 
-export interface InitSubmodulesResult {
+interface InitSubmodulesResult {
   ok: boolean;
   /** Stderr summary when the command failed. */
   errorSummary: string | null;

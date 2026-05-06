@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * build-bundle — esbuild the cairn CLI into a single self-contained
- * dist/cli.cjs that the Claude Code plugin invokes via
- * `node ${CLAUDE_PLUGIN_ROOT}/dist/cli.cjs <subcommand>`.
+ * dist/cli.mjs that the Claude Code plugin invokes via
+ * `node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs <subcommand>`.
  *
  * Self-contained = the plugin marketplace clone runs the bundle without
  * any `npm install -g`, npx, or PATH dependency. Replaces the v0.1.x
@@ -12,7 +12,7 @@
  *
  * Two build-time defines collapse cairn-core's import.meta.url-relative
  * filesystem walks into the bundle's flat layout:
- *   __CAIRN_BUNDLED__ = true     → templates resolved beside dist/cli.cjs
+ *   __CAIRN_BUNDLED__ = true     → templates resolved beside dist/cli.mjs
  *   __CAIRN_VERSION__ = "<ver>"  → VERSION baked in (no package.json read)
  *
  * After esbuild we also mirror cairn-core/templates/ to dist/templates/

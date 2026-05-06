@@ -187,10 +187,10 @@ export async function buildSpecDelta(
   // Scope via the cutoff inv's source_decision → look up in HEAD decisions.
   const invariantsSuperseded: { id: string; supersededBy: string; title: string }[] = [];
   for (const inv of cutoffInvariants) {
+    const headEntry = headInvariants.find((h) => h.id === inv.id);
     const droppedFromHead = !headInvariantIds.has(inv.id);
     const supersededInHead =
-      headInvariants.find((h) => h.id === inv.id)?.superseded_by !== undefined &&
-      headInvariants.find((h) => h.id === inv.id)?.superseded_by !== null;
+      headEntry?.superseded_by !== undefined && headEntry?.superseded_by !== null;
     if (!droppedFromHead && !supersededInHead) continue;
     const sourceDecision = inv.source_decision ?? null;
     if (sourceDecision === null) continue;
@@ -199,7 +199,6 @@ export async function buildSpecDelta(
     if (scope.length === 0) continue;
     const overlaps = paths.some((p) => matchAnyGlob(p, scope));
     if (!overlaps) continue;
-    const headEntry = headInvariants.find((h) => h.id === inv.id);
     invariantsSuperseded.push({
       id: inv.id,
       supersededBy: headEntry?.superseded_by ?? "",

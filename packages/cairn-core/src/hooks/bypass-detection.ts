@@ -59,7 +59,11 @@ export function renderBypassHint(bypassed: BypassedCommit[]): string {
   const lines: string[] = [];
   const noun = bypassed.length === 1 ? "commit" : "commits";
   lines.push(
-    `**Cairn — ${bypassed.length} ${noun} not attested.** Likely a \`--no-verify\` commit or a missing per-clone bootstrap.`,
+    `## Cairn — ${bypassed.length} ${noun} not attested`,
+  );
+  lines.push("");
+  lines.push(
+    "Likely a `--no-verify` commit or a missing per-clone bootstrap.",
   );
   lines.push("");
   for (const c of bypassed) {
@@ -67,7 +71,7 @@ export function renderBypassHint(bypassed: BypassedCommit[]): string {
   }
   lines.push("");
   lines.push(
-    "`[a]` record bypass · `[b]` acknowledge · `[c]` defer 24h",
+    "Invoke the `cairn-attention` skill on the next turn so the operator can pick record bypass / acknowledge / defer through `AskUserQuestion`.",
   );
   return lines.join("\n");
 }

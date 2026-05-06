@@ -81,7 +81,6 @@ function classify(rel: string): string {
   if (rel.startsWith(".cairn/config/")) return "cairn-config";
   if (rel.startsWith(".cairn/ground/")) return "ground";
   if (rel.startsWith(".cairn/tasks/")) return "task";
-  if (rel.startsWith("docs/decisions/")) return "decision";
   if (rel.startsWith("docs/")) return "doc";
   return "other";
 }

@@ -31,15 +31,19 @@ export type { DriftSnapshot } from "./drift.js";
 export { buildQualityGrades, writeQualityGrades } from "./quality-grades.js";
 export type { QualityGradesOptions } from "./quality-grades.js";
 export {
+  coerceDecisionIds,
+  coerceInvariantIds,
   lookupScope,
   readScopeIndex,
   rebuildScopeIndex,
+  rescanScopeIndex,
   scopeIndexPath,
   writeScopeIndex,
 } from "./scope-index.js";
 export type {
   RebuildScopeIndexOptions,
   RebuildScopeIndexResult,
+  RescanScopeIndexResult,
   ScopeIndex,
   ScopeIndexEntry,
 } from "./scope-index.js";

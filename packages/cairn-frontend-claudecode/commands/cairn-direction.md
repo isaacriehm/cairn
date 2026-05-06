@@ -1,9 +1,5 @@
 ---
-description: |
-  Force the cairn-direction question-asker / spec-tightener pipeline on
-  the supplied prompt. Escape hatch when auto-invocation misses — e.g.
-  the prompt is borderline conversational, or the operator wants to
-  force tightening on a question-shaped message.
+description: Force cairn-direction tightening on the supplied prompt. Escape hatch when auto-invocation misses.
 argument-hint: "<task description>"
 ---
 

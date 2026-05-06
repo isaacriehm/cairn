@@ -47,28 +47,65 @@ export async function runPhase4Pilot(state: PhaseState): Promise<PhaseResult> {
 
   const out = mapper.output;
   const candidates: PhaseOption[] = [];
-  // Empty path = repo root. Render as `.` so the operator sees a
-  // meaningful label instead of an empty string between backticks.
-  const pretty = (p: string): string => (p.length === 0 ? "." : p);
+  // Canonicalize repo-root forms — mapper can emit "" (key_module),
+  // "." (Haiku merge override), or "ALL" (mapper-merge fallback) for
+  // the same logical "whole repo" pick. Collapse them so dedup works.
+  const canonId = (p: string): string => {
+    const trimmed = p.trim();
+    if (trimmed.length === 0 || trimmed === "ALL") return ".";
+    return trimmed;
+  };
+  // Render the repo-root canonical id with a contextual label so the
+  // operator doesn't see a bare dot or the literal "ALL" between
+  // backticks.
+  const labelFor = (p: string): string => (canonId(p) === "." ? "Repo root (.)" : p);
+  const seen = new Set<string>();
+  const pushUnique = (opt: PhaseOption): void => {
+    if (seen.has(opt.id)) return;
+    seen.add(opt.id);
+    candidates.push(opt);
+  };
   // Pilot first (always at least repo-root, even when empty).
-  candidates.push({
-    id: out.pilot_module.length > 0 ? out.pilot_module : ".",
-    label: pretty(out.pilot_module),
+  pushUnique({
+    id: canonId(out.pilot_module),
+    label: labelFor(out.pilot_module),
     detail: "Mapper's first pick",
   });
-  // Top 2 key_modules other than pilot.
+  // Top 2 key_modules other than pilot — dedup by canonical id so a
+  // key_module pointing at the same path as the pilot doesn't surface
+  // as a phantom second option.
   for (const km of out.key_modules) {
     if (candidates.length >= MAX_OPTIONS) break;
-    if (km.path === out.pilot_module) continue;
-    candidates.push({
-      id: km.path.length > 0 ? km.path : ".",
-      label: pretty(km.path),
+    pushUnique({
+      id: canonId(km.path),
+      label: labelFor(km.path),
       detail: km.purpose,
     });
   }
   // Fallback if mapper produced nothing.
   if (candidates.length === 0) {
-    candidates.push({ id: ".", label: ".", detail: "Whole repo as the pilot scope" });
+    pushUnique({
+      id: ".",
+      label: "Repo root (.)",
+      detail: "Whole repo as the pilot scope",
+    });
+  }
+
+  // Single candidate → no real choice for the operator. Auto-pick and
+  // skip the prompt rather than burning an interaction on a one-option
+  // AskUserQuestion.
+  if (candidates.length === 1) {
+    const picked = candidates[0]!.id;
+    const next: PhaseState = {
+      ...state,
+      outputs: { ...state.outputs, "4-pilot": { picked } },
+      answer: undefined,
+    };
+    return {
+      status: "complete",
+      nextPhase: "5-brand",
+      state: advancePhase(next),
+    };
   }
 
   const question: PhaseQuestion = {

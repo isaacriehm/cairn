@@ -21,7 +21,7 @@ This directory holds files that were once canonical but are no longer current. *
 
 ## What does NOT live here
 
-- Files marked `[STALE]` in canonical paths — Cairn rejects this pattern. Stale files are MOVED here, never banner-flagged in place. (See `docs/PRIMER.md` §11 anti-patterns.)
+- Files marked `[STALE]` in canonical paths — Cairn rejects this pattern. Stale files are MOVED here, never banner-flagged in place.
 - Branches or tagged refs — `.archive/` is filesystem-only.
 - Secrets — `.env*` patterns stay in `.gitignore` regardless.
 
@@ -54,7 +54,7 @@ PreToolUse-style interception is **not** used (operator decision 2026-05-04). Th
 
 ## Writing to `.archive/`
 
-Only via `cairn_archive(path, reason)`. Direct moves are accepted but discouraged because they bypass the audit log. The MCP tool records the reason, the operator who issued the move (frontend-adapter user-id), and the timestamp.
+Only via `cairn_archive(path, reason)`. Direct moves are accepted but discouraged because they bypass the audit log. The MCP tool records the reason and timestamp.
 
 ## Why we don't delete
 
@@ -64,4 +64,4 @@ Only via `cairn_archive(path, reason)`. Direct moves are accepted but discourage
 
 ## Restoring an archived file
 
-`cairn restore <path>` (CLI subcommand, future) — moves a file out of `.archive/<bucket>/` back to its original location and writes a `cairn_record_run_event` of the restoration. Use sparingly.
+`cairn restore <path>` (CLI subcommand, future) — moves a file out of `.archive/<bucket>/` back to its original location and logs the restoration. Use sparingly.

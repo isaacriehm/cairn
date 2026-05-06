@@ -2,7 +2,7 @@
  * Module slicer — partitions a repo into per-module slices for the chunked
  * parallel mapper. Each ModuleSlice is the focused input one Sonnet call sees.
  *
- * Per `docs/INIT_SPEC.md` §3 (chunked parallel path):
+ * Module detection strategy:
  *   - Detect modules via .gitmodules, pnpm/yarn/lerna workspaces, top-level
  *     package.json children, OR top-level dirs with >20 source files.
  *   - Single-package repos collapse to one slice covering the whole repo.

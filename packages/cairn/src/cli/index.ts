@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readStatusForCLI, VERSION } from "../index.js";
+import { type CtxMeterInput, readStatusForCLI, VERSION } from "../index.js";
 import { attentionCli } from "./attention.js";
 import { doctorCli, fixCli } from "./doctor.js";
 import { gcCli } from "./gc.js";
@@ -9,32 +9,54 @@ import { joinCli } from "./join.js";
 import { mcpCli } from "./mcp.js";
 import { scopeCli } from "./scope.js";
 import { sensorRunCli } from "./sensor-run.js";
+import { traceCli } from "./trace.js";
 
-async function readSessionIdFromStdin(): Promise<string | null> {
+interface StatusLinePayload {
+  sessionId: string | null;
+  ctx: CtxMeterInput | null;
+}
+
+function decodePayload(text: string): StatusLinePayload {
+  if (text.length === 0) return { sessionId: null, ctx: null };
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    return { sessionId: null, ctx: null };
+  }
+  const sid = parsed["session_id"];
+  const sessionId = typeof sid === "string" && sid.length > 0 ? sid : null;
+
+  const cw = parsed["context_window"];
+  let ctx: CtxMeterInput | null = null;
+  if (cw !== null && typeof cw === "object") {
+    const w = cw as Record<string, unknown>;
+    const remaining = w["remaining_percentage"];
+    const total = w["total_tokens"];
+    if (typeof remaining === "number" && typeof total === "number" && total > 0) {
+      const usedPct = Math.max(0, Math.min(100, 100 - remaining));
+      const usedTokens = Math.round((total * usedPct) / 100);
+      ctx = { usedPct, usedTokens };
+    }
+  }
+  return { sessionId, ctx };
+}
+
+async function readStatusLinePayload(): Promise<StatusLinePayload> {
   return new Promise((resolveP) => {
     const chunks: Buffer[] = [];
     let settled = false;
-    const settle = (value: string | null): void => {
+    const settle = (value: StatusLinePayload): void => {
       if (settled) return;
       settled = true;
       resolveP(value);
     };
     process.stdin.on("data", (chunk: Buffer) => chunks.push(chunk));
     process.stdin.on("end", () => {
-      const text = Buffer.concat(chunks).toString("utf8").trim();
-      if (text.length === 0) return settle(null);
-      try {
-        const parsed = JSON.parse(text) as { session_id?: unknown };
-        if (typeof parsed?.session_id === "string" && parsed.session_id.length > 0) {
-          return settle(parsed.session_id);
-        }
-      } catch {
-        // fall through to null
-      }
-      settle(null);
+      settle(decodePayload(Buffer.concat(chunks).toString("utf8").trim()));
     });
-    process.stdin.on("error", () => settle(null));
-    setTimeout(() => settle(null), 250);
+    process.stdin.on("error", () => settle({ sessionId: null, ctx: null }));
+    setTimeout(() => settle({ sessionId: null, ctx: null }), 250);
   });
 }
 
@@ -71,6 +93,9 @@ switch (subcommand) {
   case "sensor-run":
     await sensorRunCli(rest);
     break;
+  case "trace":
+    await traceCli(rest);
+    break;
   case "status-line": {
     const projectRootIdx = rest.indexOf("--project-root");
     let projectRoot: string;
@@ -86,6 +111,7 @@ switch (subcommand) {
     }
     const sessionIdIdx = rest.indexOf("--session-id");
     let sessionId: string | null = null;
+    let ctx: CtxMeterInput | null = null;
     if (sessionIdIdx !== -1 && sessionIdIdx + 1 < rest.length) {
       const candidate = rest[sessionIdIdx + 1];
       if (candidate === undefined) {
@@ -94,9 +120,11 @@ switch (subcommand) {
       }
       sessionId = candidate;
     } else if (!process.stdin.isTTY) {
-      sessionId = await readSessionIdFromStdin();
+      const payload = await readStatusLinePayload();
+      sessionId = payload.sessionId;
+      ctx = payload.ctx;
     }
-    process.stdout.write(`${readStatusForCLI(projectRoot, sessionId)}\n`);
+    process.stdout.write(`${readStatusForCLI(projectRoot, sessionId, ctx ?? undefined)}\n`);
     process.exit(0);
   }
   case "--version":
@@ -123,6 +151,9 @@ switch (subcommand) {
         "  hook       Claude Code hook runner (stdin = hook payload JSON)\n" +
         "             (subcommands: session-start | read-enrich | write-guard)\n" +
         "  sensor-run git-hook sensor sweep (--staged | --commit-msg <path>)\n" +
+        "  trace      pretty-print the unified live-session trace log\n" +
+        "             (--tail | --session <id> | --repo <path> | --source <name> |\n" +
+        "              --kind <substr> | --errors-only | --wide | --json)\n" +
         "  status-line  print formatted status line\n" +
         "               (--project-root <path>? --session-id <id>?\n" +
         "                or pipe Claude Code status-line payload JSON on stdin)",

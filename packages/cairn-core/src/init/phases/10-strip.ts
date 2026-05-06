@@ -92,8 +92,7 @@ function normalizeChoice(answer: string): "strip" | "keep" | "skip" {
 
 function computeFlaggedModules(_state: PhaseState): string[] {
   // Source-comment + docs-ingest classifiers don't currently flag
-  // module-level strip candidates explicitly; v0.2.x will extend
-  // those classifiers to surface them. For now the queue starts empty
+  // module-level strip candidates explicitly. Queue starts empty
   // → phase 10 completes silently.
   return [];
 }

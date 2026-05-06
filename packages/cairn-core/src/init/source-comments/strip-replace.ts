@@ -3,7 +3,7 @@
  *
  * Mechanical only. Never LLM-rewritten. Inputs are `ReplaceItem[]` produced
  * by the caller from a `source-comments-<ISO>.yaml` audit + a resolution map
- * (which §V or TSK to cite). Per-file consent + backup + diff preview is the
+ * (which §INV or TSK to cite). Per-file consent + backup + diff preview is the
  * caller's responsibility (the skill that surfaces inline A/B/C). This module
  * owns the safety and replacement primitives:
  *
@@ -42,7 +42,7 @@ export interface ReplaceItem {
   endOffset: number;
   /**
    * Replacement comment text. Caller composes per spec §15:
-   *   - "// §V<N>" for invariant cites
+   *   - "// §INV-NNNN" for invariant cites
    *   - "// TODO(TSK-<id>)" for active-task links
    *   - leave undefined (item omitted entirely) to skip stripping a block
    *
@@ -51,6 +51,13 @@ export interface ReplaceItem {
   replacement: string;
   /** Default true — strip the original block & re-indent the replacement. */
   preserveIndent?: boolean;
+  /**
+   * Bytes the audit captured at [startOffset, endOffset). When present,
+   * applyToFileContent skips the item with reason `range-mismatch` if
+   * the file has been edited between the audit and the strip — protects
+   * against silently corrupting unrelated source on stale offsets.
+   */
+  expectedRaw?: string;
 }
 
 export interface StripReplaceArgs {
@@ -252,6 +259,24 @@ export function previewStripReplace(args: {
   return out;
 }
 
+/**
+ * Build a bare-symbol citation comment for a given language + symbol id.
+ *
+ *   §DEC-0042   →  `// §DEC-0042`   in C-like languages
+ *   §DEC-0042   →  `# §DEC-0042`    in py / rb / sh / lua
+ *
+ * Single source of truth for citation formatting — both phase 7b's
+ * inline invariant strip-replace and the post-DEC-accept strip in
+ * `cairn_resolve_attention` resolve through this helper so the two
+ * paths stay consistent.
+ */
+const HASH_LANGS = new Set(["py", "rb", "sh", "lua"]);
+
+export function formatBareCitation(lang: string, symbolId: string): string {
+  if (HASH_LANGS.has(lang)) return `# §${symbolId}`;
+  return `// §${symbolId}`;
+}
+
 /* -------------------------------------------------------------------------- */
 /* Internals                                                                  */
 /* -------------------------------------------------------------------------- */
@@ -294,6 +319,15 @@ function applyToFileContent(original: string, items: ReplaceItem[]): ApplyOutcom
   const skipped: { blockId: string; reason: SkipReason }[] = [];
   for (const it of sorted) {
     if (it.startOffset < 0 || it.endOffset > content.length) {
+      skipped.push({ blockId: it.blockId, reason: "range-mismatch" });
+      continue;
+    }
+    if (
+      it.expectedRaw !== undefined &&
+      content.slice(it.startOffset, it.endOffset) !== it.expectedRaw
+    ) {
+      // The file changed between the audit run and now — strip would
+      // overwrite unrelated bytes. Skip safely.
       skipped.push({ blockId: it.blockId, reason: "range-mismatch" });
       continue;
     }
@@ -373,7 +407,7 @@ function stashFile(repoRoot: string, relFile: string, dryRun: boolean): boolean 
   }
 }
 
-export const _internal = {
+const _internal = {
   applyToFileContent,
   detectOverlaps,
   leadingIndent,

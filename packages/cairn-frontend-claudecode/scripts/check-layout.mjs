@@ -15,6 +15,17 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = resolve(HERE, "..");
 
+// Operator-set heuristic for the bare `description` field — keeps
+// the one-liner readable in /skills + chat.
+const DESCRIPTION_CAP = 180;
+
+// Claude Code's hard per-entry cap on the skill listing sent to the
+// model (settings: skillListingMaxDescChars, default 1536). The
+// listing concatenates `description` + `when_to_use`; over-cap
+// entries are silently dropped (operator sees "1 description exceeds
+// the per-entry cap" in /doctor). Cap at 1400 to leave headroom.
+const SKILL_LISTING_CAP = 1400;
+
 const errors = [];
 
 function fail(message) {
@@ -76,7 +87,7 @@ if (hooksFile) {
     fail(`hooks.json: top-level "hooks" record required (zod loader rejects without it)`);
   } else {
     const hooks = hooksFile.hooks;
-    for (const event of ["SessionStart", "SessionEnd", "Stop", "PostToolUse"]) {
+    for (const event of ["SessionStart", "SessionEnd", "Stop", "UserPromptSubmit", "PostToolUse"]) {
       if (!Array.isArray(hooks[event]) || hooks[event].length === 0) {
         fail(`hooks.json: hooks.${event} must be a non-empty array`);
       }
@@ -87,6 +98,7 @@ if (hooksFile) {
       "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook session-start",
       "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook session-end",
       "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook stop",
+      "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook user-prompt-submit",
       "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook read-enrich",
       "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook write-guard",
     ]);
@@ -103,7 +115,7 @@ if (hooksFile) {
         }
       }
     };
-    for (const event of ["SessionStart", "SessionEnd", "Stop", "PostToolUse"]) {
+    for (const event of ["SessionStart", "SessionEnd", "Stop", "UserPromptSubmit", "PostToolUse"]) {
       if (Array.isArray(hooks[event])) visit(event, hooks[event]);
     }
   }
@@ -125,6 +137,7 @@ if (existsSync(skillsDir)) {
       continue;
     }
     validateMarkdownFrontmatter(skillFile, ["name", "description"], `skill ${entry.name}`);
+    checkSkillListingCap(skillFile, `skill ${entry.name}`);
   }
 }
 
@@ -175,6 +188,62 @@ function validateMarkdownFrontmatter(path, requiredKeys, label) {
     }
   }
   if (body.length === 0) fail(`${label}: body is empty`);
+
+  // Description-length cap. Handles both inline ("description: text")
+  // and `|` / `>` block forms (multi-line indented blocks).
+  const descLength = measureDescriptionLength(fmBlock);
+  if (descLength !== null && descLength > DESCRIPTION_CAP) {
+    fail(
+      `${label}: description is ${descLength} chars — cap is ${DESCRIPTION_CAP} ` +
+        `(over-cap descriptions get silently dropped from Claude Code's skill listing). ` +
+        `Trim the description to a tight one-liner; push detail into when_to_use.`,
+    );
+  }
+}
+
+function measureDescriptionLength(fmBlock) {
+  return measureFieldLength(fmBlock, "description");
+}
+
+function measureFieldLength(fmBlock, key) {
+  const lines = fmBlock.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const m = line.match(new RegExp(`^${key}:\\s*(.*)$`));
+    if (m === null) continue;
+    const inline = m[1].trim();
+    if (inline === "|" || inline === ">") {
+      // Block scalar — collect indented lines until the next top-level key.
+      const blockLines = [];
+      for (let j = i + 1; j < lines.length; j++) {
+        const next = lines[j];
+        if (/^\S/.test(next)) break; // top-level key — block ended
+        blockLines.push(next.trimStart());
+      }
+      return blockLines.join(" ").trim().length;
+    }
+    // Inline form — strip surrounding quotes if present.
+    return inline.replace(/^["']|["']$/g, "").length;
+  }
+  return null;
+}
+
+function checkSkillListingCap(path, label) {
+  const text = readFileSync(path, "utf8");
+  if (!text.startsWith("---\n")) return;
+  const end = text.indexOf("\n---", 4);
+  if (end === -1) return;
+  const fmBlock = text.slice(4, end);
+  const descLen = measureFieldLength(fmBlock, "description") ?? 0;
+  const whenToUseLen = measureFieldLength(fmBlock, "when_to_use") ?? 0;
+  const combined = descLen + whenToUseLen;
+  if (combined > SKILL_LISTING_CAP) {
+    fail(
+      `${label}: description+when_to_use is ${combined} chars — Claude Code skill-listing cap is ${SKILL_LISTING_CAP} ` +
+        `(over-cap → /doctor flags "exceeds the per-entry cap" and the skill is silently dropped from the listing). ` +
+        `Trim when_to_use.`,
+    );
+  }
 }
 
 if (errors.length > 0) {

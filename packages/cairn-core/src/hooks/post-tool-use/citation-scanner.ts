@@ -1,7 +1,9 @@
 /**
  * Scans the visible body of a Read tool's content for cairn citation
- * patterns: §V invariants, TODO(TSK-...) linked todos, and (banned)
- * DEC-id references.
+ * patterns: §INV invariants, §DEC decisions, and TODO(TSK-...) linked
+ * todos. Both `§INV-NNNN` and `§DEC-NNNN` are the canonical bare-symbol
+ * citation forms produced by the strip-replace phase and resolved by
+ * the read-enricher into the legend.
  *
  * Per READ_ENRICHER_SPEC §3 — line numbers in the legend should reflect
  * the original source line, so when content is `cat -n`-prefixed
@@ -10,7 +12,7 @@
  */
 
 export interface CitationMatch {
-  /** Citation id, e.g. "V0023" or "TSK-auth-refactor" or "DEC-0042". */
+  /** Citation id, e.g. "INV-0023" or "TSK-auth-refactor" or "DEC-0042". */
   id: string;
   /** 1-indexed line number from cat -n prefix, or iteration index. */
   line: number;
@@ -19,22 +21,26 @@ export interface CitationMatch {
 export interface ScannedCitations {
   invariants: CitationMatch[];
   todos: CitationMatch[];
-  /** Banned DEC-N citations — for the policy-violation legend. */
-  decIds: CitationMatch[];
+  /** §DEC-NNNN citations resolved against the decisions ledger. */
+  decisions: CitationMatch[];
 }
 
-const INVARIANT_RE = /§V(\d+)/g;
+const INVARIANT_RE = /§INV-(\d+)/g;
 const TODO_RE = /TODO\(TSK-([^)]+)\)/g;
-const DEC_RE = /DEC-(\d+)/g;
+// Require `§` prefix so plain `DEC-NNNN` strings (URL fragments, prose
+// citations in markdown bodies, GitHub-style refs) don't false-match.
+// The strip-replace phase ALWAYS emits the `§` prefix on accepted
+// decision tokens (per LENS_SPEC + CLAUDE.md "bare symbols only").
+const DEC_RE = /§DEC-(\d+)/g;
 const CAT_N_PREFIX_RE = /^(\d+)\t/;
 
 export function scanCitations(content: string): ScannedCitations {
   const invariants: CitationMatch[] = [];
   const todos: CitationMatch[] = [];
-  const decIds: CitationMatch[] = [];
+  const decisions: CitationMatch[] = [];
 
   if (content.length === 0) {
-    return { invariants, todos, decIds };
+    return { invariants, todos, decisions };
   }
 
   const lines = content.split(/\r?\n/);
@@ -56,7 +62,7 @@ export function scanCitations(content: string): ScannedCitations {
     for (const m of lineText.matchAll(INVARIANT_RE)) {
       const digits = m[1];
       if (digits === undefined) continue;
-      invariants.push({ id: `V${digits}`, line: lineNumber });
+      invariants.push({ id: `INV-${digits}`, line: lineNumber });
     }
     for (const m of lineText.matchAll(TODO_RE)) {
       const tail = m[1];
@@ -66,9 +72,9 @@ export function scanCitations(content: string): ScannedCitations {
     for (const m of lineText.matchAll(DEC_RE)) {
       const digits = m[1];
       if (digits === undefined) continue;
-      decIds.push({ id: `DEC-${digits}`, line: lineNumber });
+      decisions.push({ id: `DEC-${digits}`, line: lineNumber });
     }
   }
 
-  return { invariants, todos, decIds };
+  return { invariants, todos, decisions };
 }

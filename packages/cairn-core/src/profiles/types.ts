@@ -1,6 +1,6 @@
 /**
  * Stack profile — extension surface for project-specific generators, sensors,
- * and adoption-time defaults. Per L47 (Codex audit Q8).
+ * and adoption-time defaults.
  *
  * The cairn package code is project-agnostic. All references to specific
  * stacks (NestJS, Drizzle, Rails, etc.) live inside profile implementations,

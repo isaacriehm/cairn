@@ -23,14 +23,15 @@ import {
   type ScopeIndex,
   type ScopeIndexEntry,
 } from "@isaacriehm/cairn-core";
+import { lensLog } from "./debug-log.js";
 
-export interface DecisionResolution {
+interface DecisionResolution {
   id: string;
   title: string;
   status: "accepted" | "unknown";
 }
 
-export interface InvariantResolution {
+interface InvariantResolution {
   id: string;
   title: string;
   status: "active" | "superseded" | "unknown";
@@ -38,13 +39,13 @@ export interface InvariantResolution {
   sourceDecision: string | null;
 }
 
-export interface TaskResolution {
+interface TaskResolution {
   id: string;
   found: "active" | "done" | "not_found";
   title: string | null;
 }
 
-export interface ScopeRulesForFile {
+interface ScopeRulesForFile {
   decisions: { id: string; title: string }[];
   invariants: { id: string; title: string }[];
   unscoped: boolean;
@@ -84,19 +85,29 @@ export class LensResolver {
    */
   resolveDecision(id: string): DecisionResolution {
     try {
-      for (const d of buildDecisionsLedger({ repoRoot: this.repoRoot })) {
+      const ledger = buildDecisionsLedger({ repoRoot: this.repoRoot });
+      lensLog(
+        `resolveDecision(${id}): scanned ${ledger.length} accepted decisions`,
+      );
+      for (const d of ledger) {
         if (d.id === id) {
+          lensLog(`resolveDecision(${id}) → accepted: ${d.title}`);
           return { id, title: d.title, status: "accepted" };
         }
       }
-    } catch {
-      // ignore — fall through to unknown
+    } catch (err) {
+      lensLog(
+        `resolveDecision(${id}) FAILED: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
     }
+    lensLog(`resolveDecision(${id}) → unknown (not in ledger)`);
     return { id, title: id, status: "unknown" };
   }
 
   /**
-   * Resolve a §V<N> citation to a structured result.
+   * Resolve a §INV-NNNN citation to a structured result.
    *
    * The cached `getInvariantsLedger` reader from cairn-core only carries
    * active entries; superseded ids appear only when the invariants-ledger
@@ -109,6 +120,11 @@ export class LensResolver {
       const cached = snapshot.invariantsByid.get(id);
       if (cached !== undefined) {
         const supersededBy = cached.superseded_by ?? null;
+        lensLog(
+          `resolveInvariant(${id}) → cached hit (status=${
+            supersededBy !== null ? "superseded" : "active"
+          })`,
+        );
         return {
           id,
           title: cached.title,
@@ -117,12 +133,24 @@ export class LensResolver {
           sourceDecision: null,
         };
       }
+      lensLog(
+        `resolveInvariant(${id}) — cached snapshot has ${snapshot.invariantsByid.size} entries but id miss; falling through`,
+      );
+    } else {
+      lensLog(
+        `resolveInvariant(${id}) — cached snapshot null; falling through to direct read`,
+      );
     }
     // Fall back to the directly-built ledger which scans frontmatter — it has
     // the source_decision field populated for active entries.
     try {
-      for (const entry of buildInvariantsLedger({ repoRoot: this.repoRoot })) {
+      const direct = buildInvariantsLedger({ repoRoot: this.repoRoot });
+      lensLog(
+        `resolveInvariant(${id}): direct scan returned ${direct.length} entries`,
+      );
+      for (const entry of direct) {
         if (entry.id === id) {
+          lensLog(`resolveInvariant(${id}) → active: ${entry.title}`);
           return {
             id,
             title: entry.title,
@@ -132,9 +160,14 @@ export class LensResolver {
           };
         }
       }
-    } catch {
-      // ignore — fall through to unknown
+    } catch (err) {
+      lensLog(
+        `resolveInvariant(${id}) FAILED: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
     }
+    lensLog(`resolveInvariant(${id}) → unknown (not in ledger)`);
     return {
       id,
       title: id,

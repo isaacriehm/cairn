@@ -2,12 +2,12 @@
  * GC pass — citation integrity.
  *
  * Walks every source file in the repo and scans for cairn citations
- * (§V invariants, TODO(TSK-...) linked todos, banned DEC-N comments).
- * Each citation is resolved against the appropriate source of truth:
- *   - §V<N>  → invariants.ledger.yaml. Missing → orphaned. superseded_by set
- *               anywhere in the ledger → superseded citation.
- *   - DEC-<N> → always a policy violation per PRIMER §10 (DEC-id inline
- *               comments are banned).
+ * (§INV invariants, §DEC decisions, TODO(TSK-...) linked todos). Each
+ * citation is resolved against the appropriate source of truth:
+ *   - §INV-NNNN → invariants.ledger.yaml. Missing → orphaned. superseded_by
+ *                  set → superseded citation.
+ *   - §DEC-<N>  → decisions.ledger.yaml. Missing → orphaned. status:
+ *                  superseded / archived → superseded citation.
  *   - TODO(TSK-<id>) → tasks/{active,done}/<id>/. Missing → orphan; "done"
  *                       isn't a finding (TODO will be removed when the agent
  *                       gets to it; flagging is noisy).
@@ -16,8 +16,8 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import { buildInvariantsLedger } from "../ground/index.js";
-import { invariantsLedgerPath } from "../ground/paths.js";
+import { buildDecisionsLedger, buildInvariantsLedger } from "../ground/index.js";
+import { decisionsLedgerPath, invariantsLedgerPath } from "../ground/paths.js";
 import { scanCitations } from "../hooks/post-tool-use/citation-scanner.js";
 import type { GcFinding } from "./types.js";
 import { walkSourceTree } from "./walk-source.js";
@@ -41,21 +41,46 @@ export interface CitationIntegrityResult {
   findings: GcFinding[];
 }
 
-interface InvariantInfo {
-  active: Set<string>;        // ids of currently-active entries
+interface LedgerInfo {
+  active: Set<string>;              // ids of currently-active entries
   superseded: Map<string, string>;  // id → supersededBy
 }
 
-function loadInvariants(repoRoot: string): InvariantInfo {
+function loadInvariants(repoRoot: string): LedgerInfo {
   const active = new Set<string>();
   for (const e of buildInvariantsLedger({ repoRoot })) {
     active.add(e.id);
   }
   const superseded = new Map<string, string>();
   const path = invariantsLedgerPath(repoRoot);
-  if (!existsSync(path)) {
+  if (!existsSync(path)) return { active, superseded };
+  let parsed: unknown;
+  try {
+    parsed = parseYaml(readFileSync(path, "utf8"));
+  } catch {
     return { active, superseded };
   }
+  if (!Array.isArray(parsed)) return { active, superseded };
+  for (const entry of parsed) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const e = entry as Record<string, unknown>;
+    const id = typeof e["id"] === "string" ? (e["id"] as string) : null;
+    const supBy = typeof e["superseded_by"] === "string" ? (e["superseded_by"] as string) : null;
+    if (id !== null && supBy !== null && supBy.length > 0) {
+      superseded.set(id, supBy);
+    }
+  }
+  return { active, superseded };
+}
+
+function loadDecisions(repoRoot: string): LedgerInfo {
+  const active = new Set<string>();
+  for (const e of buildDecisionsLedger({ repoRoot })) {
+    active.add(e.id);
+  }
+  const superseded = new Map<string, string>();
+  const path = decisionsLedgerPath(repoRoot);
+  if (!existsSync(path)) return { active, superseded };
   let parsed: unknown;
   try {
     parsed = parseYaml(readFileSync(path, "utf8"));
@@ -86,6 +111,7 @@ export function runCitationIntegrity(opts: CitationIntegrityOptions): CitationIn
   const maxBytes = opts.maxFileBytes ?? 256 * 1024;
 
   const invariants = loadInvariants(opts.repoRoot);
+  const decisions = loadDecisions(opts.repoRoot);
 
   const files = walkSourceTree(opts.repoRoot);
   for (const rel of files) {
@@ -109,7 +135,7 @@ export function runCitationIntegrity(opts: CitationIntegrityOptions): CitationIn
 
     const matches = scanCitations(content);
 
-    // §V invariants
+    // §INV invariants
     for (const m of matches.invariants) {
       if (invariants.superseded.has(m.id)) {
         const supBy = invariants.superseded.get(m.id) ?? "(unknown)";
@@ -135,16 +161,30 @@ export function runCitationIntegrity(opts: CitationIntegrityOptions): CitationIn
       }
     }
 
-    // DEC-N inline comments — always a policy violation per PRIMER §10
-    for (const m of matches.decIds) {
-      findings.push({
-        pass: PASS_ID,
-        kind: "banned_dec_comment",
-        path: rel,
-        detail: `${rel}:${m.line} contains ${m.id} inline comment — DEC-id citations are banned per PRIMER §10`,
-        severity: "warn",
-        line: m.line,
-      });
+    // §DEC-NNNN bare-symbol citations — resolve against decisions ledger
+    for (const m of matches.decisions) {
+      if (decisions.superseded.has(m.id)) {
+        const supBy = decisions.superseded.get(m.id) ?? "(unknown)";
+        findings.push({
+          pass: PASS_ID,
+          kind: "superseded_citation",
+          path: rel,
+          detail: `${rel}:${m.line} cites §${m.id}, which is superseded by §${supBy}`,
+          severity: "warn",
+          line: m.line,
+        });
+        continue;
+      }
+      if (!decisions.active.has(m.id)) {
+        findings.push({
+          pass: PASS_ID,
+          kind: "orphaned_citation",
+          path: rel,
+          detail: `${rel}:${m.line} cites §${m.id}, which is not in the decisions ledger`,
+          severity: "warn",
+          line: m.line,
+        });
+      }
     }
 
     // TODO(TSK-...) — check active/done dirs

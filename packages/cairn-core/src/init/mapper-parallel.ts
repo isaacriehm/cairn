@@ -2,7 +2,7 @@
  * Parallel module mapper — dispatches one Sonnet call per ModuleSlice in
  * parallel via Promise.allSettled, with a per-module progress display.
  *
- * Per `docs/INIT_SPEC.md` §3:
+ * Dispatch strategy:
  *   - One Sonnet call per slice, ~8k token input each.
  *   - Failed call → ModuleProposal with confidence: 0 and empty arrays.
  *     Never throws; allSettled handles errors.
@@ -16,12 +16,15 @@
 
 import { runClaude } from "../claude/index.js";
 import { logger } from "../logger.js";
+import {
+  coerceDecisionIds,
+  coerceInvariantIds,
+} from "../ground/scope-index.js";
 import type {
   DecisionLedgerEntry,
   InvariantLedgerEntry,
 } from "../ground/schemas.js";
 import type {
-  MapperProposedSensor,
   MapperScopeIndex,
 } from "./mapper.js";
 import type { ModuleSlice } from "./module-slicer.js";
@@ -46,7 +49,6 @@ export interface ModuleProposal {
   generatorSourceGlobs: string[];
   highStakesGlobs: string[];
   offLimitsGlobs: string[];
-  sensorProposals: MapperProposedSensor[];
   scopeIndex: MapperScopeIndex;
   notes: string;
   /** Set when the module call failed; downstream merge skips it. */
@@ -66,19 +68,6 @@ const MODULE_OUTPUT_SCHEMA = {
     generator_source_globs: { type: "array", items: { type: "string" } },
     high_stakes_globs: { type: "array", items: { type: "string" } },
     off_limits_globs: { type: "array", items: { type: "string" } },
-    sensor_proposals: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          id: { type: "string" },
-          description: { type: "string" },
-          applies_to_globs: { type: "array", items: { type: "string" } },
-        },
-        required: ["id", "description", "applies_to_globs"],
-      },
-    },
     scope_index: {
       type: "object",
       additionalProperties: false,
@@ -110,7 +99,6 @@ const MODULE_OUTPUT_SCHEMA = {
     "generator_source_globs",
     "high_stakes_globs",
     "off_limits_globs",
-    "sensor_proposals",
     "notes",
   ],
 } as const;
@@ -139,8 +127,8 @@ const MODULE_SYSTEM_PROMPT = [
   "  - `generator_source_globs` — globs whose changes mean a generator must re-run. Examples: `core/openapi.json`, `core/src/db/schema.ts` (Drizzle), `**/*.proto`, `prisma/schema.prisma`.",
   "  - `high_stakes_globs` — globs for high-risk surfaces in this module (auth, billing, payments, multi-tenant, integrations storing tokens, telephony). Be conservative.",
   "  - `off_limits_globs` — globs the cairn MUST NOT touch beyond defaults. Vendored code, large fixtures, copied snapshots.",
-  "  - `sensor_proposals` — module-specific sensors. Each `{ id, description, applies_to_globs }`.",
   "  - `scope_index` — `{ files: { \"<repo-relative-path>\": { decisions: [], invariants: [], unscoped?: true } } }`. The user prompt provides the in-scope decisions + invariants list. Map only files within THIS module. Use `unscoped: true` for lockfiles, generated, vendored, or dotfile config.",
+  "  - IMPORTANT: scope_index decisions[] and invariants[] arrays MUST contain ONLY IDs (e.g. \"DEC-0042\", \"INV-0023\"). NEVER copy ledger titles or descriptive prose into these arrays — IDs only.",
   "  - `notes` — anything notable that didn't fit a structured field.",
   "",
   "Rules:",
@@ -316,26 +304,6 @@ function parseModuleProposal(
     const x = v[k];
     return Array.isArray(x) ? x.filter((s): s is string => typeof s === "string") : [];
   };
-  const sensorRaw = Array.isArray(v["sensor_proposals"]) ? v["sensor_proposals"] : [];
-  const sensors: MapperProposedSensor[] = [];
-  for (const s of sensorRaw) {
-    if (typeof s !== "object" || s === null) continue;
-    const ss = s as Record<string, unknown>;
-    if (
-      typeof ss["id"] !== "string" ||
-      typeof ss["description"] !== "string" ||
-      !Array.isArray(ss["applies_to_globs"])
-    ) {
-      continue;
-    }
-    sensors.push({
-      id: ss["id"],
-      description: ss["description"],
-      applies_to_globs: (ss["applies_to_globs"] as unknown[]).filter(
-        (g): g is string => typeof g === "string",
-      ),
-    });
-  }
   const scopeRaw = v["scope_index"];
   const scopeIndex: MapperScopeIndex = { files: {} };
   if (
@@ -351,11 +319,14 @@ function parseModuleProposal(
     for (const [path, entry] of Object.entries(filesRaw)) {
       if (typeof entry !== "object" || entry === null) continue;
       const e = entry as Record<string, unknown>;
+      // ID-coerce — mapper LLMs occasionally smuggle ledger title prose
+      // past the `items: { type: "string" }` JSON-mode gate. Drop anything
+      // not matching the canonical DEC-NNNN / INV-NNNN format.
       const decs = Array.isArray(e["decisions"])
-        ? (e["decisions"] as unknown[]).filter((s): s is string => typeof s === "string")
+        ? coerceDecisionIds(e["decisions"] as unknown[])
         : [];
       const invs = Array.isArray(e["invariants"])
-        ? (e["invariants"] as unknown[]).filter((s): s is string => typeof s === "string")
+        ? coerceInvariantIds(e["invariants"] as unknown[])
         : [];
       const out: { decisions: string[]; invariants: string[]; unscoped?: true } = {
         decisions: decs,
@@ -379,7 +350,6 @@ function parseModuleProposal(
     generatorSourceGlobs: arr("generator_source_globs"),
     highStakesGlobs: arr("high_stakes_globs"),
     offLimitsGlobs: arr("off_limits_globs"),
-    sensorProposals: sensors,
     scopeIndex,
     notes: typeof v["notes"] === "string" ? v["notes"] : "",
     failed: false,
@@ -403,7 +373,7 @@ const FALLBACK_HIGH_STAKES_PATTERNS: RegExp[] = [
 /**
  * Build a ModuleProposal for a slice whose Sonnet call timed out or threw.
  *
- * Per `INIT_SPEC.md` §3 fallback policy: don't drop the module entirely.
+ * Fallback policy: don't drop the module entirely.
  * Mark it `failed: true` (so completion summary can name it), give it a
  * confidence: 0.1, derive high-stakes globs heuristically from path
  * segments, and stamp the slice's full directory tree into the scope index
@@ -474,7 +444,6 @@ function buildFailedProposal(slice: ModuleSlice, reason: string): ModuleProposal
     generatorSourceGlobs: [],
     highStakesGlobs: [...highStakesGlobs],
     offLimitsGlobs: [],
-    sensorProposals: [],
     scopeIndex,
     notes: `module mapper call failed: ${reason}; partial fallback used`,
     failed: true,

@@ -8,7 +8,7 @@
  * directly via the library export.
  *
  * Flags:
- *   --repo-root <path>     adopted-project repo root (default cwd)
+ *   --repo-root <path>     adopted-project repo root (required; defaults to cwd)
  *   --session-id <id>      Claude Code session id (stamped onto invalidation events)
  *   --run-id <id>          scope telemetry to a run id
  */
@@ -44,11 +44,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     }
   }
   return {
-    repoRoot:
-      repoRoot ??
-      (process.env["CAIRN_REPO_ROOT"]
-        ? resolve(process.env["CAIRN_REPO_ROOT"])
-        : process.cwd()),
+    repoRoot: repoRoot ?? resolve(process.cwd()),
     sessionId,
     runId,
   };

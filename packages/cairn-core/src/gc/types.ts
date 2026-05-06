@@ -45,8 +45,7 @@ export type GcFindingKind =
   | "scope_index_missing"
   | "task_integrity_error"
   | "orphaned_citation"
-  | "superseded_citation"
-  | "banned_dec_comment";
+  | "superseded_citation";
 
 export type GcAutoMergeClass = "safe" | "code" | "high-stakes";
 
@@ -125,24 +124,4 @@ export interface GcBatchResult {
   canary_failures: string[];
   /** True when batch was rolled back due to canary fail. */
   rolled_back: boolean;
-}
-
-/**
- * Synthetic context used by verifyBatchCanary to render workflow.md against
- * a known-good fixture. The fixture mirrors the values the orchestrator would
- * inject for a real run — if any of these tokens fail to resolve, the batch
- * has broken the prompt template and must not be pushed.
- */
-export interface CanarySyntheticContext {
-  agent_role: string;
-  project_name: string;
-  run_id: string;
-  mirror_path: string;
-  sha_pin: string;
-  tightened_spec_body: string;
-  acceptance_criteria: string[];
-  in_scope_decisions: { id: string; title: string; scope_summary: string }[];
-  in_scope_invariants: { id: string; title: string }[];
-  off_limits: string[];
-  scoped_sensors: { id: string; description: string }[];
 }

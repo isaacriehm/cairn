@@ -1,15 +1,13 @@
 # Cairn sensor registry.
 #
-# Sensors are mechanical checks the orchestrator runs against an agent's diff.
+# Sensors are mechanical checks run against an agent's diff.
 # Listed here are the GENERIC kinds that ship with the Cairn package. Stack
-# profiles (typescript-next-nest, python-fastapi, rails, go, rust, unknown — see
-# INTEGRATION_PLAN.md §16.1) propose profile-specific sensors at adoption; the
-# operator confirms each one. Project-specific sensors live in the adopting
-# project's extension block (see workflow.md).
+# profiles propose profile-specific sensors at adoption; the operator confirms
+# each one. Project-specific sensors live in the adopting project's extension
+# block (see workflow.md).
 #
-# Per operator answer S1: Cairn package code does NOT hardcode any specific
-# project's sensor names. All concrete sensor identifiers below are
-# stack-profile-agnostic primitives.
+# Cairn package code does NOT hardcode any specific project's sensor names.
+# All concrete sensor identifiers below are stack-profile-agnostic primitives.
 
 version: 1
 
@@ -80,11 +78,11 @@ sensors:
       - every_run
     fail_severity: hard
 
-  # ── §V invariant sensors (auto-registered by backprop) ───────────────────
+  # ── §INV invariant sensors (auto-registered by backprop) ────────────────
   - id: invariant-suite
     layer: invariants
     kind: invariant_runner
-    description: "Runs every active §V invariant's linked sensor script (see backprop protocol — PRIMER §13). Active invariants accumulate over time; superseded ones are skipped."
+    description: "Runs every active §INV invariant's linked sensor script. Active invariants accumulate over time; superseded ones are skipped."
     triggers:
       - every_run
     sources:
@@ -95,25 +93,25 @@ sensors:
   - id: reviewer-subagent
     layer: C
     kind: inferential
-    description: "Same model as implementer; fresh context. Reads only spec.tightened.md + diff + decisions ledger + in-scope assertions. Anti-completionist framing. For high-stakes runs, also enforces query-scope completeness (Codex audit Q1)."
+    description: "Same model as implementer; fresh context. Reads only spec.tightened.md + diff + decisions ledger + in-scope assertions. Anti-completionist framing. For high-stakes runs, also enforces query-scope completeness."
     model_strategy: same_as_implementer
     triggers:
       - all_layer_d_sensors_passed
-    fail_severity: soft   # produces verdict; orchestrator gates on operator override or auto-fail
+    fail_severity: soft
 
   # ── Layer E — high-stakes E2E / demo ─────────────────────────────────────
   - id: e2e-real-db
     layer: E
     kind: e2e
-    description: "Runs the project's E2E suite against a real database (no mocks). High-stakes UAT MUST include a cross-tenant negative fixture (Codex audit Q1) — a request from user/org B against a resource owned by user/org A returning the expected denial."
+    description: "Runs the project's E2E suite against a real database (no mocks). High-stakes UAT MUST include a cross-tenant negative fixture — a request from user/org B against a resource owned by user/org A returning the expected denial."
     triggers:
       - high_stakes_glob_match
     profile_hook: profile.e2e_command
     fail_severity: hard
     requires:
-      cross_tenant_fixture: true   # per L43
+      cross_tenant_fixture: true
 
-  # ── Layer U — UAT-on-phone ───────────────────────────────────────────────
+  # ── Layer U — UAT headless ───────────────────────────────────────────────
   - id: uat-headless-chrome
     layer: U
     kind: uat
@@ -131,7 +129,7 @@ sensors:
       - nightly_cron
     fail_severity: soft
 
-  # ── Local-dirty-overlap gate (per Codex audit Q3) ─────────────────────────
+  # ── Local-dirty-overlap gate ──────────────────────────────────────────────
   - id: local-dirty-overlap
     layer: pre_dispatch
     kind: working_tree_check
@@ -139,7 +137,7 @@ sensors:
     triggers:
       - pre_dispatch
       - pre_push
-    fail_severity: soft   # operator decides resolution
+    fail_severity: soft
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Scoped-glob keys.
@@ -178,8 +176,7 @@ copy_safety:
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Disable list — sensors known to false-positive at >50% on a given project.
-# Default empty; populated per-project via /oops dialog (PRIMER §11 anti-pattern:
-# we DO NOT mock or stub sensor results to make them pass).
+# Default empty; populated per-project via the attention flow.
 # ──────────────────────────────────────────────────────────────────────────────
 
 disabled_per_project: []

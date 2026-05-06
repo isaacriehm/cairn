@@ -82,14 +82,22 @@ function runStopHook(repoRoot: string, sessionId: string): { stdout: string; std
   };
 }
 
-interface HookOutput {
-  continue: boolean;
-  /** Stop hook injects text via top-level systemMessage; absent when no surface. */
-  systemMessage?: string;
+/** Pass — nothing to surface. */
+interface StopPassOutput {
+  continue: true;
 }
 
+/** Block — injects reason into Claude's context via decision:block. */
+interface StopBlockOutput {
+  decision: "block";
+  reason: string;
+}
+
+type HookOutput = StopPassOutput | StopBlockOutput;
+
+/** Returns the Claude-facing reason text, or "" when nothing surfaced. */
 function ctxOf(out: HookOutput): string {
-  return out.systemMessage ?? "";
+  return "reason" in out ? out.reason : "";
 }
 
 function parseOutput(stdout: string): HookOutput {
@@ -118,29 +126,28 @@ function runSmoke(): void {
   console.log("smoke-stop-hook — start");
   assert(existsSync(STOP_BIN), `expected compiled stop bin at ${STOP_BIN} (run pnpm -r build first)`);
 
-  // ── Step 1 — empty repo: empty additionalContext, ok exit ────────
+  // ── Step 1 — empty repo: no block, no reason ─────────────────────
   {
     const repoRoot = mkRepoRoot("session-empty");
     const out = runStopHook(repoRoot, "session-empty");
     assert(out.status === 0, `Step 1: exit 0 expected, got ${out.status}; stderr=${out.stderr}`);
     const parsed = parseOutput(out.stdout);
-    assert(ctxOf(parsed) === "", "Step 1: additionalContext should be empty");
-    console.log("  ✓ Step 1 — empty repo → empty context");
+    assert(ctxOf(parsed) === "", "Step 1: reason should be empty when nothing to surface");
+    console.log("  ✓ Step 1 — empty repo → no block");
   }
 
-  // ── Step 2 — task pending review surfaces in additionalContext ──
+  // ── Step 2 — task pending review blocks stop with reason ─────────
   {
     const repoRoot = mkRepoRoot("session-pending");
     writeTightenedSpec(repoRoot, "TSK-2026-05-04-test-12345");
     const out = runStopHook(repoRoot, "session-pending");
     assert(out.status === 0, `Step 2: exit 0 expected, got ${out.status}; stderr=${out.stderr}`);
     const parsed = parseOutput(out.stdout);
-    assert(/awaiting review attestation/.test(ctxOf(parsed)), `Step 2: additionalContext missing reviewer hint, got: ${ctxOf(parsed)}`);
+    assert("decision" in parsed && parsed.decision === "block", "Step 2: should emit decision:block");
+    assert(/awaiting review attestation/.test(ctxOf(parsed)), `Step 2: reason missing reviewer hint, got: ${ctxOf(parsed)}`);
     assert(ctxOf(parsed).includes("TSK-2026-05-04-test-12345"), "Step 2: task id should appear");
-    // Reviewer agent path lives in the cairn-attention skill body, not the
-    // user-facing Stop hint — assert the hint shows the A/B/C choice line.
-    assert(/run review/.test(ctxOf(parsed)), "Step 2: hint should surface run-review choice");
-    console.log("  ✓ Step 2 — pending review surfaced");
+    assert(/cairn-attention/.test(ctxOf(parsed)), "Step 2: hint should instruct cairn-attention skill invocation");
+    console.log("  ✓ Step 2 — pending review blocks stop");
   }
 
   // ── Step 3 — task with attestation does NOT surface ──────────────

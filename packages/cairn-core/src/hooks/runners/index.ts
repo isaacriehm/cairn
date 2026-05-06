@@ -7,6 +7,7 @@
 export { runSessionStartHook } from "./session-start.js";
 export { runSessionEndHook } from "./session-end.js";
 export { runStopHook } from "./stop.js";
+export { runUserPromptSubmitHook } from "./user-prompt-submit.js";
 export {
   renderBypassHint,
   scanBypassedCommits,

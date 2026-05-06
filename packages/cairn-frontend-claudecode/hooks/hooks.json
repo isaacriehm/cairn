@@ -30,9 +30,19 @@
         ]
       }
     ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook user-prompt-submit"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
-        "matcher": "Read|Grep|Glob",
+        "matcher": "Read",
         "hooks": [
           {
             "type": "command",

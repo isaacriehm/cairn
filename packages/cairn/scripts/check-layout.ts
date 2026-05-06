@@ -113,8 +113,6 @@ checkFile(`${corePkg}/tsconfig.json`);
 checkFile(`${corePkg}/src/index.ts`);
 checkFile(`${corePkg}/src/logger.ts`);
 checkFile(`${corePkg}/src/prompt.ts`);
-checkFile(`${corePkg}/src/inbox.ts`);
-checkFile(`${corePkg}/src/frontend-types.ts`);
 
 // paths (slug + project state path utilities; mirror/ moved to _dormant)
 checkFile(`${corePkg}/src/paths/index.ts`);
@@ -161,11 +159,10 @@ for (const tool of [
   "search",
   "timeline",
   "query-history",
-  "append",
-  "record-run-event",
-  "drop-task",
   "archive",
   "record-decision",
+  "resolve-attention",
+  "init-phases",
 ]) {
   checkFile(`${corePkg}/src/mcp/tools/${tool}.ts`);
 }
@@ -173,15 +170,13 @@ checkFile(`${corePkg}/templates/.cairn/ground/canonical-map/topics.yaml`, {
   requireYaml: true,
 });
 
-// claude / tier0 / tightener / decision-capture / gc / init / sensors
+// claude / decision-capture / gc / init / sensors
 for (const sub of [
   "claude",
   "decision-capture",
   "gc",
   "init",
   "sensors",
-  "tier0",
-  "tightener",
 ]) {
   checkFile(`${corePkg}/src/${sub}/index.ts`);
 }
@@ -189,13 +184,6 @@ for (const sub of [
 // ── cairn-runtime + cairn-frontend-discord ────────────────────────────
 // Both moved to _dormant/ per docs/PLUGIN_ARCHITECTURE.md §16. Not part of
 // the active build. No layout check.
-
-// ── cairn-frontend-stub ──────────────────────────────────────────────────
-const stubPkg = "packages/cairn-frontend-stub";
-checkFile(`${stubPkg}/package.json`);
-checkFile(`${stubPkg}/tsconfig.json`);
-checkFile(`${stubPkg}/src/index.ts`);
-checkFile(`${stubPkg}/src/stub/index.ts`);
 
 // ── cairn-core's `files` field must include templates so they ship ──────
 const corePkgJson = JSON.parse(

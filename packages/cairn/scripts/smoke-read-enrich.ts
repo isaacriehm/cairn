@@ -46,46 +46,47 @@ function mkFixture(): string {
 function runSmoke(): void {
   console.log("smoke-read-enrich — start");
 
-  // ── Step 1 — scanCitations finds §V / TODO / DEC ─────────────────
+  // ── Step 1 — scanCitations finds §INV / TODO / DEC ─────────────────
   {
-    const sample = `// §V0023 ground truth
+    const sample = `// §INV-0023 ground truth
 const x = 1;
 // TODO(TSK-foo) finish this
-// DEC-0042 inline (banned)
+// §DEC-0042 explicit route file
+// DEC-9999 prose ref (no §) — should NOT match
 `;
     const matches = scanCitations(sample);
     assert(
-      matches.invariants.length === 1 && matches.invariants[0]?.id === "V0023",
-      `Step 1: expected one §V0023 match, got ${JSON.stringify(matches.invariants)}`,
+      matches.invariants.length === 1 && matches.invariants[0]?.id === "INV-0023",
+      `Step 1: expected one §INV-0023 match, got ${JSON.stringify(matches.invariants)}`,
     );
     assert(
       matches.todos.length === 1 && matches.todos[0]?.id === "TSK-foo",
       `Step 1: expected one TSK-foo match, got ${JSON.stringify(matches.todos)}`,
     );
     assert(
-      matches.decIds.length === 1 && matches.decIds[0]?.id === "DEC-0042",
-      `Step 1: expected one DEC-0042 match, got ${JSON.stringify(matches.decIds)}`,
+      matches.decisions.length === 1 && matches.decisions[0]?.id === "DEC-0042",
+      `Step 1: expected one §DEC-0042 match, got ${JSON.stringify(matches.decisions)}`,
     );
-    console.log("  ✓ Step 1 — scanCitations");
+    console.log("  ✓ Step 1 — scanCitations (DEC requires § prefix)");
   }
 
   // ── Step 2 — empty content → buildLegend returns null ────────────
   {
     const empty = scanCitations("");
-    const result = buildLegend(empty, null, null, () => ({ found: "not_found" }));
+    const result = buildLegend(empty, null, null, null, () => ({ found: "not_found" }));
     assert(result === null, `Step 2: expected null on empty input, got ${String(result)}`);
     console.log("  ✓ Step 2 — empty content → null legend");
   }
 
   // ── Step 3 — non-empty citations produce a legend block ──────────
   {
-    const matches = scanCitations("// §V0023 something");
-    const result = buildLegend(matches, null, null, () => ({ found: "not_found" }));
+    const matches = scanCitations("// §INV-0023 something");
+    const result = buildLegend(matches, null, null, null, () => ({ found: "not_found" }));
     assert(result !== null, "Step 3: expected non-null legend");
     if (result === null) return;
     assert(
-      result.includes("§V0023"),
-      `Step 3: expected §V0023 in legend, got ${result}`,
+      result.includes("§INV-0023"),
+      `Step 3: expected §INV-0023 in legend, got ${result}`,
     );
     console.log("  ✓ Step 3 — citation legend");
   }
@@ -99,7 +100,7 @@ const x = 1;
       files: {
         "src/auth/login.ts": {
           decisions: ["DEC-0042"],
-          invariants: ["V0041"],
+          invariants: ["INV-0041"],
         },
       },
     });
@@ -116,13 +117,13 @@ const x = 1;
     assert(miss === null, "Step 4: missing path should resolve to null");
 
     // Build legend with scope hint — should produce header lines
-    const matches = scanCitations("// §V0041 cited");
+    const matches = scanCitations("// §INV-0041 cited");
     const hint: ScopeIndexHint = {
       decisions: hit.decisions,
       invariants: hit.invariants,
     };
     const ledger = getInvariantsLedger(repoRoot); // null is fine here
-    const legend = buildLegend(matches, ledger, hint, (id) =>
+    const legend = buildLegend(matches, ledger, null, hint, (id) =>
       lookupTask(repoRoot, id),
     );
     assert(legend !== null, "Step 4: legend with scope-hint should be non-null");

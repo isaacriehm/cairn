@@ -1,6 +1,6 @@
 {
   "name": "@isaacriehm/cairn-frontend-claudecode",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Claude Code plugin frontend for Cairn — invisible project maintainer.",
   "type": "module",
   "engines": {
@@ -28,6 +28,6 @@
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
-    "esbuild": "^0.25.0"
+    "esbuild": "^0.28.0"
   }
 }

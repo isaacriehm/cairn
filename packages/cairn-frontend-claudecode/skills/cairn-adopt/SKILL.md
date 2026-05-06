@@ -2,14 +2,11 @@
 name: cairn-adopt
 description: One-time Cairn adoption pipeline for a new project.
 when_to_use: |
-  Use when the operator opens Claude Code in a project that does not yet
-  have a `.cairn/` directory and Cairn has not been declined for this
-  project. Walks the operator through one-time adoption inline by
-  driving the cairn_init_phase_* MCP tools as a state machine — each
-  phase result is either complete (advance) or needs_input (render
-  AskUserQuestion, thread the answer back, re-invoke). Skip when
-  `.cairn/` already exists or when the operator selected "never" for
-  this project.
+  Use when operator opens Claude Code in project without `.cairn/`
+  AND Cairn not declined. Drives one-time adoption inline via
+  cairn_init_phase_* MCP tools as state machine — each phase returns
+  complete (advance) or needs_input (AskUserQuestion, thread answer,
+  re-invoke). Skip when `.cairn/` exists or operator picked "never".
 allowed-tools: Skill(cairn:cairn-attention)
 ---
 
@@ -24,9 +21,12 @@ once finished, Cairn runs invisibly forever. Refer to
 
 Open the skill with **one** `ToolSearch` call that batch-loads every
 deferred tool the loop needs. This avoids one round-trip per phase.
+Use the **fully-qualified MCP tool names** (the bare `cairn_…` form
+silently no-ops in `select:`). `AskUserQuestion` is built-in and stays
+unprefixed.
 
 ```
-ToolSearch(select:cairn_init_resume,cairn_init_phase_1_detect,cairn_init_phase_2_walker,cairn_init_phase_3_mapper,cairn_init_phase_3b_seed,cairn_init_phase_4_pilot,cairn_init_phase_5_brand,cairn_init_phase_6_docs_ingest,cairn_init_phase_7b_source_comments,cairn_init_phase_7c_rules_merge,cairn_init_phase_8_baseline,cairn_init_phase_10_strip,cairn_init_phase_12_multidev,cairn_decision_get,cairn_resolve_attention,AskUserQuestion)
+ToolSearch(select:mcp__plugin_cairn_cairn__cairn_init_resume,mcp__plugin_cairn_cairn__cairn_init_phase_1_detect,mcp__plugin_cairn_cairn__cairn_init_phase_2_walker,mcp__plugin_cairn_cairn__cairn_init_phase_3_mapper,mcp__plugin_cairn_cairn__cairn_init_phase_3b_seed,mcp__plugin_cairn_cairn__cairn_init_phase_4_pilot,mcp__plugin_cairn_cairn__cairn_init_phase_5_brand,mcp__plugin_cairn_cairn__cairn_init_phase_6_docs_ingest,mcp__plugin_cairn_cairn__cairn_init_phase_7b_source_comments,mcp__plugin_cairn_cairn__cairn_init_phase_7c_rules_merge,mcp__plugin_cairn_cairn__cairn_init_phase_8_baseline,mcp__plugin_cairn_cairn__cairn_init_phase_10_strip,mcp__plugin_cairn_cairn__cairn_init_phase_12_multidev,mcp__plugin_cairn_cairn__cairn_decision_get,mcp__plugin_cairn_cairn__cairn_resolve_attention,AskUserQuestion)
 ```
 
 After this single call all phase tools + the question tool + the
@@ -120,12 +120,45 @@ The phase tools persist `state` to `.cairn/init-state.json` after every
 return so a mid-init `/exit` resumes cleanly on the next session — the
 top of this loop just calls `cairn_init_resume` again.
 
-**During each phase**, surface a one-line status update before invoking
-the tool ("Phase 3-mapper — Sonnet domain map, ~30s") so the operator
-sees progress. **Do not render the phase's question inline** when a
-phase returns `needs_input` — `AskUserQuestion` is the only render
-path; double-rendering produces the question as scrollback text AND
-as an interactive widget.
+**During each phase**, render a styled status banner BEFORE invoking
+the tool. The banner is a markdown horizontal rule + bold phase name +
+em-dashed description. This is the operator's primary progress signal
+during the long-running phases (3-mapper, 6-docs-ingest, 7b/7c).
+
+Format (one banner per phase, posted as plain assistant text — not as
+a tool call):
+
+```markdown
+---
+**Phase <id>** — <one-line description> · ~<eta>
+```
+
+Use this exact phase registry — pick the matching row, substitute the
+`<id>`, render. Do NOT improvise descriptions:
+
+| `<id>` | description | eta |
+|---|---|---|
+| `1-detect` | environment + stack signature scan | <1s |
+| `2-walker` | repo summary scan | <1s |
+| `3-mapper` | Sonnet domain map (per-module) | ~30-60s |
+| `3b-seed` | seed `.cairn/` skeleton + grandfather commits | <1s |
+| `4-pilot` | pick seed module | operator |
+| `5-brand` | brand auto-fill | operator |
+| `6-docs-ingest` | Haiku ingest of README + docs/ → DEC drafts | ~15-30s |
+| `7b-source-comments` | classify essay comments → DEC + invariant drafts | ~30s |
+| `7c-rules-merge` | merge CLAUDE.md / AGENTS.md sections → drafts | ~45s |
+| `8-baseline` | first sensor sweep | <1s |
+| `10-strip` | per-module strip-replace consent | operator |
+| `12-multidev` | per-host package manager hints | <1s |
+
+When the phase is operator-driven (`<eta>` = `operator`) the
+`AskUserQuestion` widget appears immediately after the banner — do NOT
+add a third "what would you like to do" line; the widget is the prompt.
+
+**Do not render the phase's question inline** when a phase returns
+`needs_input` — `AskUserQuestion` is the only render path;
+double-rendering produces the question as scrollback text AND as an
+interactive widget.
 
 ## Step 4 — auto-bootstrap the just-adopted clone
 
@@ -145,25 +178,38 @@ if it succeeds; on failure, surface the stderr + `AskUserQuestion`
 
 ## Step 5 — final summary + hand off to attention
 
-Render a tight summary sourced from `state.outputs`:
+**This step is mandatory and produces a single assistant turn that
+contains BOTH a summary text block AND a `Skill` tool call. Do NOT
+end the turn with text only — the operator has not seen the pending
+DEC drafts yet, and ending here orphans them in `_inbox/`.**
 
-- Pilot module (`outputs["4-pilot"].picked`)
-- DEC drafts proposed (count from `outputs["6-docs-ingest"]` +
-  `outputs["7b-source-comments"]` + `outputs["7c-rules-merge"]`)
-- Invariant rules seeded (count from
-  `outputs["7b-source-comments"].invariantProposalsAdded`)
-- Baseline sensor findings (`outputs["8-baseline"].totalFindings`)
-- Multi-dev install (`outputs["12-multidev"].steps` rolled up)
+In the same assistant message, do both:
 
-Use plain operator-facing language. Do **not** say "§V invariant
-proposals" or other internal-spec jargon — say "invariant rules
-seeded" or "hard constraints logged".
+1. Emit a tight summary sourced from `state.outputs`:
 
-Then invoke the `cairn-attention` skill (the `allowed-tools` line in
-this skill's frontmatter pre-approves that single chained call) to
-drain any pending DEC drafts. Do not surface "Now reviewing the N
-pending DEC drafts…" prose — the next skill's prompt is the operator's
-next surface.
+   - Pilot module (`outputs["4-pilot"].picked`)
+   - DEC drafts proposed (count from `outputs["6-docs-ingest"]` +
+     `outputs["7b-source-comments"]` + `outputs["7c-rules-merge"]`)
+   - Invariants seeded into ground state (count from
+     `outputs["7b-source-comments"].invariantsWritten.length` —
+     each entry is a `INV-<NNNN>` file already at status `active`)
+   - Baseline sensor findings (`outputs["8-baseline"].totalFindings`)
+   - Multi-dev install (`outputs["12-multidev"].steps` rolled up)
+
+   Use plain operator-facing language. Do **not** say "§INV invariant
+   proposals" or other internal-spec jargon — say "invariant rules
+   seeded" or "hard constraints logged".
+
+2. Immediately call the `Skill` tool with `skill: "cairn:cairn-attention"`
+   to drain pending DEC drafts. The `allowed-tools` line in this skill's
+   frontmatter pre-approves that single chained call. The cairn-attention
+   skill renders DEC-0001 directly via `AskUserQuestion`; do not surface
+   "Now reviewing the N pending DEC drafts…" prose — the next skill's
+   prompt is the operator's next surface.
+
+If you emit only the summary text and end the turn, adoption is
+incomplete — the operator never gets the chance to accept/reject
+drafts. The Skill call is the contract that adoption finished.
 
 If a phase returned `error` and the operator chose `abort`, the state
 file persists at `.cairn/init-state.json`; the next session's

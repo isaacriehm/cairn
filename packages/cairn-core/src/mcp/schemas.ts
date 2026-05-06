@@ -41,7 +41,7 @@ export const supersedesChainInput = {
 };
 
 export const invariantGetInput = {
-  id: z.string().regex(/^V\d{4,}$/, "invariant id must match V<NNNN>"),
+  id: z.string().regex(/^INV-\d{4,}$/, "invariant id must match INV-NNNN"),
 };
 
 export const invariantsInScopeInput = {
@@ -81,10 +81,29 @@ export const queryHistoryInput = {
 
 // ── Write tools ────────────────────────────────────────────────────────────
 
-export const appendInput = {
-  path: z.string().min(1),
-  content: z.string(),
-  newline_separator: z.boolean().optional(),
+export const taskCreateInput = {
+  slug: z
+    .string()
+    .regex(
+      /^[a-z][a-z0-9-]{1,40}[a-z0-9]$/,
+      "slug must be lowercase kebab — letters, digits, hyphens; 3-42 chars",
+    ),
+  title: z
+    .string()
+    .min(3)
+    .max(50, "title must be ≤50 chars (renders in the statusline + lens)"),
+  goal: z.string().min(1),
+  target_path_globs: z.array(z.string().min(1)).min(1),
+  in_scope_decisions: z
+    .array(z.string().regex(/^DEC-\d{4,}$/, "decision id must match DEC-NNNN"))
+    .optional(),
+  in_scope_invariants: z
+    .array(z.string().regex(/^INV-\d{4,}$/, "invariant id must match INV-NNNN"))
+    .optional(),
+  constraints: z.array(z.string().min(1)).optional(),
+  out_of_scope: z.array(z.string().min(1)).optional(),
+  acceptance: z.array(z.string().min(1)).optional(),
+  module: z.string().optional(),
 };
 
 export const recordDecisionInput = {
@@ -99,53 +118,10 @@ export const recordDecisionInput = {
   target: z.enum(["inbox", "accepted"]).optional(),
 };
 
-export const recordRunEventInput = {
-  run_id: z.string().min(1),
-  event: z.object({
-    kind: z.string().min(1),
-    payload: z.unknown().optional(),
-  }),
-};
-
-export const dropTaskInput = {
-  title: z.string().min(1),
-  body: z.string().min(1),
-  intent: z.enum([
-    "run_pilot",
-    "review_module",
-    "fix_issue",
-    "eval",
-    "staleness_scan",
-    "unknown",
-  ]),
-  target_path_globs: z.array(z.string()).optional(),
-  priority: z.number().int().min(1).max(10).optional(),
-  parent_task_id: z.string().optional(),
-  source: z.string().optional(),
-};
-
 export const archiveInput = {
   path: z.string().min(1),
   reason: z.string().min(1),
   archive_dir: z.string().optional(),
-};
-
-export const appendRunNoteInput = {
-  /**
-   * Path-safe task id matching the directory under `.cairn/tasks/active/`.
-   * The note appends to `.cairn/tasks/active/<run_id>/notes.md`. The field
-   * is named `run_id` to match the spec; the agent is responsible for passing
-   * the id that aligns with its current task dir.
-   */
-  run_id: z
-    .string()
-    .min(1)
-    .max(80)
-    .regex(/^[A-Za-z0-9_-]+$/, "run_id must be path-safe"),
-  /** Phase label, e.g. "phase-2", "sensor-check". Free-form; ≤80 chars. */
-  phase: z.string().min(1).max(80),
-  /** The note body. Free text. */
-  note: z.string().min(1),
 };
 
 export const resolveAttentionInput = {
@@ -190,28 +166,3 @@ export const resolveAttentionInput = {
   rationale: z.string().optional(),
 };
 
-export const askOperatorInput = {
-  /** The agent's run id — files land under runs/active/<run_id>/questions/. */
-  run_id: z.string().min(1),
-  /** The question text shown to the operator. */
-  question: z.string().min(1),
-  /**
-   * Optional A/B/C/D candidate resolutions. When present the operator
-   * dialog uses buttons; when empty the operator must reply free-form
-   * (the orchestrator falls back to a follow-up message handler).
-   */
-  options: z.array(z.string().min(1)).max(4).optional(),
-  /**
-   * Why the agent needs the operator's input. One of:
-   *   "ambiguity"   — spec is genuinely vague / multiple valid paths
-   *   "permission"  — about to take a non-recoverable action (delete,
-   *                   force-push, etc.)
-   *   "stuck"       — couldn't make progress without external info
-   *   "verify"      — operator should confirm the agent's interpretation
-   */
-  category: z
-    .enum(["ambiguity", "permission", "stuck", "verify"])
-    .optional(),
-  /** Per-call timeout. Default 10 minutes. */
-  timeout_ms: z.number().int().min(1000).max(86_400_000).optional(),
-};

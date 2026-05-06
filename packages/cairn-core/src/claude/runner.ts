@@ -1,9 +1,17 @@
 import { spawn, spawnSync } from "node:child_process";
 import { logger } from "../logger.js";
+import { appendTrace } from "../trace/index.js";
 import { ClaudeError, classifyClaudeError } from "./error.js";
 import type { ClaudeTier, RunClaudeOptions, RunClaudeResult } from "./types.js";
 
 const log = logger("claude.runner");
+
+/** Cap previewed text in trace so payloads stay scannable (full body still in stderr/stdout if needed). */
+const TRACE_PREVIEW_CHARS = 600;
+function preview(s: string): string {
+  if (s.length <= TRACE_PREVIEW_CHARS) return s;
+  return `${s.slice(0, TRACE_PREVIEW_CHARS)}…(+${s.length - TRACE_PREVIEW_CHARS} chars)`;
+}
 
 /** Tier → model alias passed to `claude --model`. */
 const TIER_MODEL: Record<ClaudeTier, string> = {
@@ -27,7 +35,7 @@ export function claudeIsAvailable(): boolean {
  *
  * Auth path: relies on the operator's existing Claude Code login (OAuth /
  * keychain). No `--bare`, no `ANTHROPIC_API_KEY`. The whole point is to use
- * the operator's coding-plan subscription quota per L42.
+ * the operator's Claude Code coding-plan subscription quota.
  */
 export async function runClaude(opts: RunClaudeOptions): Promise<RunClaudeResult> {
   const model = TIER_MODEL[opts.tier];
@@ -54,6 +62,24 @@ export async function runClaude(opts: RunClaudeOptions): Promise<RunClaudeResult
   const timeoutMs = opts.timeoutMs ?? 120_000;
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
 
+  appendTrace({
+    ts: new Date().toISOString(),
+    source: "claude",
+    kind: "request",
+    repo_root: opts.repoRoot ?? null,
+    session_id: opts.sessionId ?? null,
+    payload: {
+      tier: opts.tier,
+      model,
+      purpose: opts.purpose ?? null,
+      prompt_chars: opts.prompt.length,
+      system_chars: opts.system?.length ?? 0,
+      json_schema: opts.jsonSchema !== undefined,
+      prompt_preview: preview(opts.prompt),
+      ...(opts.system !== undefined ? { system_preview: preview(opts.system) } : {}),
+    },
+  });
+
   return new Promise<RunClaudeResult>((resolve, reject) => {
     const child = spawn("claude", args, {
       cwd: opts.cwd ?? process.cwd(),
@@ -75,6 +101,23 @@ export async function runClaude(opts: RunClaudeOptions): Promise<RunClaudeResult
       if (code !== 0) {
         const message = `claude exited ${code}${stderr ? `: ${stderr.trim()}` : ""}`;
         const kind = classifyClaudeError({ message, exitCode: code, stderr });
+        appendTrace({
+          ts: new Date().toISOString(),
+          source: "claude",
+          kind: "response",
+          repo_root: opts.repoRoot ?? null,
+          session_id: opts.sessionId ?? null,
+          duration_ms: Date.now() - startedAt,
+          ok: false,
+          payload: {
+            tier: opts.tier,
+            model,
+            purpose: opts.purpose ?? null,
+            error_kind: kind,
+            exit_code: code,
+            stderr_preview: preview(stderr),
+          },
+        });
         reject(new ClaudeError({ message, kind, exitCode: code, stderr }));
         return;
       }
@@ -127,6 +170,25 @@ export async function runClaude(opts: RunClaudeOptions): Promise<RunClaudeResult
         },
         "claude call complete",
       );
+      appendTrace({
+        ts: new Date().toISOString(),
+        source: "claude",
+        kind: "response",
+        repo_root: opts.repoRoot ?? null,
+        session_id: opts.sessionId ?? null,
+        duration_ms: durationMs,
+        ok: true,
+        payload: {
+          tier: opts.tier,
+          model,
+          purpose: opts.purpose ?? null,
+          input_tokens: usage?.["input_tokens"] ?? null,
+          output_tokens: usage?.["output_tokens"] ?? null,
+          response_chars: text.length,
+          response_preview: preview(text),
+          parsed_present: parsed !== undefined,
+        },
+      });
       resolve({
         text,
         ...(parsed !== undefined ? { parsed } : {}),

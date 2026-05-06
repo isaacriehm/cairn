@@ -58,9 +58,11 @@ export * from "./hooks/runners/index.js";
 export * from "./session/index.js";
 export * from "./session-start/index.js";
 export * from "./status-line/index.js";
-export * from "./tier0/index.js";
-export * from "./tightener/index.js";
-export * from "./frontend-types.js";
-export { writeInboxRow } from "./inbox.js";
-export { loadWorkflowTemplate, renderTemplate } from "./prompt.js";
-export type { TemplateContext } from "./prompt.js";
+export {
+  appendTrace,
+  nowEvent,
+  traceDir,
+  traceFilePath,
+  type TraceEvent,
+  type TraceSource,
+} from "./trace/index.js";

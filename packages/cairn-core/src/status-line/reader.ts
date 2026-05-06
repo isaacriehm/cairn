@@ -1,9 +1,8 @@
-import { existsSync, readFileSync } from "node:fs";
-import { formatStatus } from "./format.js";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { type CtxMeterInput, formatStatus, renderCtxMeter } from "./format.js";
 import type { StatusJson, TaskState } from "./index.js";
 import { statusJsonPath } from "./writer.js";
-
-const PLACEHOLDER = "⬡ cairn  no session  ○";
 
 const TASK_STATES: readonly TaskState[] = [
   "idle",
@@ -35,46 +34,87 @@ function isStatusJson(x: unknown): x is StatusJson {
     typeof o["decisions_in_scope"] === "number" &&
     typeof o["invariants_in_scope"] === "number" &&
     isTaskState(o["task_state"]) &&
+    isStringOrNull(o["task_id"]) &&
     isStringOrNull(o["task_module"]) &&
     typeof o["gc_running"] === "boolean" &&
     typeof o["attention_count"] === "number" &&
+    typeof o["bypass_count"] === "number" &&
     isLastRunResult(o["last_run_result"]) &&
     isStringOrNull(o["last_run_at"])
   );
 }
 
 /**
+ * Ground-state fallback when no per-session status.json is available.
+ * Counts pending drafts from `_inbox/`; renders `⬡ cairn  ⚑ N drafts` or
+ * just `⬡ cairn`. Returns empty string when `.cairn/` is absent.
+ *
+ * Ctx meter is appended when supplied — operator-side dropdown stays
+ * informative even when the session hook hasn't written status yet.
+ */
+function groundStateFallback(repoRoot: string, ctx?: CtxMeterInput): string {
+  const cairnDir = join(repoRoot, ".cairn");
+  if (!existsSync(cairnDir)) return "";
+
+  let drafts = 0;
+  const inboxDir = join(cairnDir, "ground", "decisions", "_inbox");
+  if (existsSync(inboxDir)) {
+    try {
+      drafts = readdirSync(inboxDir, { encoding: "utf8" }).filter((f) =>
+        f.endsWith(".draft.md"),
+      ).length;
+    } catch {
+      drafts = 0;
+    }
+  }
+
+  const parts: string[] = ["⬡ cairn"];
+  if (drafts > 0) {
+    const noun = drafts === 1 ? "draft" : "drafts";
+    parts.push(`⚑ ${drafts} ${noun}`);
+  }
+  if (ctx) parts.push(renderCtxMeter(ctx));
+  return parts.join("  ");
+}
+
+/**
  * Render the current status-line string for a session inside the
  * adopted repo at `repoRoot`. `sessionId` is the Claude Code session id
- * (passed via the status-line hook's stdin payload).
+ * (passed via the status-line hook's stdin payload). `ctx` is the
+ * decoded `context_window` block from the same payload.
  *
- * Returns the placeholder `⬡ cairn  no session  ○` when:
- *   - `sessionId` is null/empty (status-line invoked outside a session)
- *   - the per-session status.json is missing
- *   - the file is unreadable, malformed JSON, or fails shape validation
+ * Falls back to ground-state summary when:
+ *   - `sessionId` is null/empty
+ *   - the per-session status.json is missing, unreadable, or malformed
+ *
+ * Returns empty string when `.cairn/` doesn't exist (cairn not adopted).
  *
  * Hot path — invoked on every Claude Code prompt. Keep this cheap.
  */
-export function readStatusForCLI(repoRoot: string, sessionId: string | null): string {
-  if (sessionId === null || sessionId.length === 0) return PLACEHOLDER;
+export function readStatusForCLI(
+  repoRoot: string,
+  sessionId: string | null,
+  ctx?: CtxMeterInput,
+): string {
+  if (sessionId === null || sessionId.length === 0) return groundStateFallback(repoRoot, ctx);
   const filePath = statusJsonPath(repoRoot, sessionId);
-  if (!existsSync(filePath)) return PLACEHOLDER;
+  if (!existsSync(filePath)) return groundStateFallback(repoRoot, ctx);
 
   let raw: string;
   try {
     raw = readFileSync(filePath, "utf8");
   } catch {
-    return PLACEHOLDER;
+    return groundStateFallback(repoRoot, ctx);
   }
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    return PLACEHOLDER;
+    return groundStateFallback(repoRoot, ctx);
   }
 
-  if (!isStatusJson(parsed)) return PLACEHOLDER;
+  if (!isStatusJson(parsed)) return groundStateFallback(repoRoot, ctx);
 
-  return formatStatus(parsed);
+  return formatStatus(parsed, ctx);
 }

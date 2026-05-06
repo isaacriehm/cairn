@@ -50,7 +50,7 @@ Anything important about the input that affects how the agent should treat your 
 
 Output ONLY the JSON object.`;
 
-export interface BuildHistoryUserPromptArgs {
+interface BuildHistoryUserPromptArgs {
   /** Operator's free-text scope description. */
   scope: string;
   /** Repo-relative pathHint glob, when provided. */

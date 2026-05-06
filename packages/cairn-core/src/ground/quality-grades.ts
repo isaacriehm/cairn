@@ -28,7 +28,7 @@ export interface QualityGradesOptions {
 export function buildQualityGrades(opts: QualityGradesOptions): QualityGrades {
   const dir = runsTerminalDir(opts.repoRoot);
   const limit = opts.recentRunCount ?? 50;
-  const moduleAccum = new Map<string, { passes: number; total: number; drifts: number; latest: string }>();
+  const moduleAccum = new Map<string, { passes: number; total: number; drifts: number; latest: string; runs: number }>();
 
   if (existsSync(dir)) {
     const runIds = listRecentRuns(dir, limit);
@@ -41,7 +41,9 @@ export function buildQualityGrades(opts: QualityGradesOptions): QualityGrades {
         total: 0,
         drifts: 0,
         latest: "",
+        runs: 0,
       };
+      acc.runs += 1;
       if (sensors) {
         for (const s of sensors) {
           if (s.status === "skip") continue;
@@ -66,7 +68,7 @@ export function buildQualityGrades(opts: QualityGradesOptions): QualityGrades {
       pass_rate: Number(passRate.toFixed(3)),
       drift_count: acc.drifts,
       last_updated: acc.latest || new Date().toISOString(),
-      recent_run_count: acc.total === 0 ? 0 : Math.ceil(acc.total / 10), // rough run count proxy
+      recent_run_count: acc.runs,
     });
   }
   modules.sort((a, b) => a.score - b.score); // weakest first

@@ -1,7 +1,7 @@
 /**
  * Merge call — synthesize per-module ModuleProposals into one MapperOutput.
  *
- * Per `docs/INIT_SPEC.md` §3:
+ * Merge strategy:
  *   - Cheap Haiku call gets all proposals + the workspace-level package.json.
  *   - Task: dedupe overlapping sensor proposals (same id → keep highest
  *     confidence), pick pilot module (first pilotModuleCandidate, else
@@ -17,12 +17,18 @@
 
 import { runClaude } from "../claude/index.js";
 import { logger } from "../logger.js";
+import {
+  coerceDecisionIds,
+  coerceInvariantIds,
+} from "../ground/scope-index.js";
 import type {
   MapperKeyModule,
   MapperOutput,
   MapperProposedSensor,
   MapperScopeIndex,
 } from "./mapper.js";
+import type { SensorProposal } from "./types.js";
+import type { InferredGlobs } from "./glob-inference.js";
 import type { ModuleProposal } from "./mapper-parallel.js";
 
 const log = logger("init.mapper-merge");
@@ -59,11 +65,15 @@ export interface MergeArgs {
   workspacePackageJson: string | null;
   /** Project slug for filling MapperOutput. */
   projectSlug: string;
+  /** Sensors from Phase 1 detection — passed through as proposed_sensors. */
+  detectionSensors: SensorProposal[];
+  /** Deterministic globs inferred from framework conventions. Unioned with LLM globs. */
+  inferredGlobs: InferredGlobs;
 }
 
 export async function mergeModuleProposals(args: MergeArgs): Promise<MapperOutput> {
   // Mechanical assembly first — guaranteed even if Haiku call fails.
-  const baseline = mechanicalMerge(args.proposals);
+  const baseline = mechanicalMerge(args.proposals, args.detectionSensors, args.inferredGlobs);
 
   // Fast path: if all proposals failed, no point calling Haiku.
   const successful = args.proposals.filter((p) => !p.failed);
@@ -113,9 +123,13 @@ export async function mergeModuleProposals(args: MergeArgs): Promise<MapperOutpu
  *   - scope_index: union of per-module file maps.
  *   - notes: list of any failed-module reasons.
  */
-export function mechanicalMerge(proposals: ModuleProposal[]): MapperOutput {
+export function mechanicalMerge(
+  proposals: ModuleProposal[],
+  detectionSensors: SensorProposal[],
+  inferredGlobs: InferredGlobs,
+): MapperOutput {
   if (proposals.length === 0) {
-    return emptyMapperOutput();
+    return emptyMapperOutput(detectionSensors, inferredGlobs);
   }
   const successful = proposals.filter((p) => !p.failed);
 
@@ -150,33 +164,37 @@ export function mechanicalMerge(proposals: ModuleProposal[]): MapperOutput {
     purpose: p.domain.length > 0 ? p.domain : "(no domain proposed)",
   }));
 
-  // sensors — dedupe by id, keep highest-confidence variant.
-  const sensorMap = new Map<string, { sensor: MapperProposedSensor; confidence: number }>();
-  for (const p of successful) {
-    for (const s of p.sensorProposals) {
-      const existing = sensorMap.get(s.id);
-      if (existing === undefined || existing.confidence < p.confidence) {
-        sensorMap.set(s.id, { sensor: s, confidence: p.confidence });
-      }
-    }
-  }
-  const proposedSensors = [...sensorMap.values()].map((x) => x.sensor);
+  // proposed_sensors — sourced from Phase 1 detection, mapped to MapperProposedSensor shape.
+  const proposedSensors: MapperProposedSensor[] = detectionSensors.map((s) => ({
+    id: s.id,
+    description: s.reason,
+    applies_to_globs: [],
+  }));
 
-  // scope_index — union of per-module maps. On collision: union decisions + invariants.
+  // scope_index — union of per-module maps. On collision: union decisions
+  // + invariants. Defense-in-depth: re-coerce IDs at merge time so anything
+  // the parser missed (or any future caller bypassing the parser) still
+  // gets ID-only arrays before they hit the on-disk scope-index.
   const scopeIndex: MapperScopeIndex = { files: {} };
   for (const p of successful) {
     for (const [path, entry] of Object.entries(p.scopeIndex.files)) {
       const existing = scopeIndex.files[path];
       if (existing === undefined) {
         const out: { decisions: string[]; invariants: string[]; unscoped?: true } = {
-          decisions: [...entry.decisions],
-          invariants: [...entry.invariants],
+          decisions: coerceDecisionIds(entry.decisions),
+          invariants: coerceInvariantIds(entry.invariants),
         };
         if (entry.unscoped === true) out.unscoped = true;
         scopeIndex.files[path] = out;
       } else {
-        existing.decisions = [...new Set([...existing.decisions, ...entry.decisions])];
-        existing.invariants = [...new Set([...existing.invariants, ...entry.invariants])];
+        existing.decisions = coerceDecisionIds([
+          ...existing.decisions,
+          ...entry.decisions,
+        ]);
+        existing.invariants = coerceInvariantIds([
+          ...existing.invariants,
+          ...entry.invariants,
+        ]);
         if (entry.unscoped === true) existing.unscoped = true;
       }
     }
@@ -199,11 +217,26 @@ export function mechanicalMerge(proposals: ModuleProposal[]): MapperOutput {
     pilot_module: pilotPath,
     domain_summary: domainSummary,
     key_modules: keyModules,
-    route_handler_globs: unionGlobs(successful, (p) => p.routeHandlerGlobs),
-    dto_globs: unionGlobs(successful, (p) => p.dtoGlobs),
-    generator_source_globs: unionGlobs(successful, (p) => p.generatorSourceGlobs),
-    high_stakes_globs: unionGlobs(successful, (p) => p.highStakesGlobs),
-    off_limits_globs: unionGlobs(successful, (p) => p.offLimitsGlobs),
+    route_handler_globs: unionGlobSets(
+      inferredGlobs.route_handler_globs,
+      unionGlobs(successful, (p) => p.routeHandlerGlobs),
+    ),
+    dto_globs: unionGlobSets(
+      inferredGlobs.dto_globs,
+      unionGlobs(successful, (p) => p.dtoGlobs),
+    ),
+    generator_source_globs: unionGlobSets(
+      inferredGlobs.generator_source_globs,
+      unionGlobs(successful, (p) => p.generatorSourceGlobs),
+    ),
+    high_stakes_globs: unionGlobSets(
+      inferredGlobs.high_stakes_globs,
+      unionGlobs(successful, (p) => p.highStakesGlobs),
+    ),
+    off_limits_globs: unionGlobSets(
+      inferredGlobs.off_limits_globs,
+      unionGlobs(successful, (p) => p.offLimitsGlobs),
+    ),
     proposed_sensors: proposedSensors,
     notes,
     scope_index: scopeIndex,
@@ -221,21 +254,37 @@ function unionGlobs(
   return [...set];
 }
 
+function unionGlobSets(...sets: string[][]): string[] {
+  const out = new Set<string>();
+  for (const s of sets) {
+    for (const g of s) out.add(g);
+  }
+  return [...out];
+}
+
 function sortByConfidence(proposals: ModuleProposal[]): ModuleProposal[] {
   return [...proposals].sort((a, b) => b.confidence - a.confidence);
 }
 
-function emptyMapperOutput(): MapperOutput {
+function emptyMapperOutput(
+  detectionSensors: SensorProposal[],
+  inferredGlobs: InferredGlobs,
+): MapperOutput {
+  const proposedSensors: MapperProposedSensor[] = detectionSensors.map((s) => ({
+    id: s.id,
+    description: s.reason,
+    applies_to_globs: [],
+  }));
   return {
     pilot_module: "ALL",
     domain_summary: "",
     key_modules: [],
-    route_handler_globs: [],
-    dto_globs: [],
-    generator_source_globs: [],
-    high_stakes_globs: [],
-    off_limits_globs: [],
-    proposed_sensors: [],
+    route_handler_globs: [...inferredGlobs.route_handler_globs],
+    dto_globs: [...inferredGlobs.dto_globs],
+    generator_source_globs: [...inferredGlobs.generator_source_globs],
+    high_stakes_globs: [...inferredGlobs.high_stakes_globs],
+    off_limits_globs: [...inferredGlobs.off_limits_globs],
+    proposed_sensors: proposedSensors,
     notes: "no module proposals available",
     scope_index: { files: {} },
   };

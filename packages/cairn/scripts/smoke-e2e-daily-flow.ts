@@ -8,9 +8,9 @@
  *   1. Adopt a fresh fixture (mocked classifiers, full pipeline) and run
  *      `cairn join` so the bootstrap guard passes.
  *   2. Run SessionStart bin against the adopted clone — assert per-session
- *      status.json + events-marker land, additionalContext non-empty.
+ *      status.json + events-marker land, hookSpecificOutput.additionalContext non-empty.
  *   3. Drop a tightened task spec without an attestation; run Stop bin →
- *      assert reviewer-pending hint surfaces.
+ *      assert reviewer-pending hint surfaces via decision:block+reason.
  *   4. Drop the attestation; run Stop again → hint disappears.
  *   5. Drop a DEC draft into _inbox/, call resolve_attention(accept) →
  *      assert canonical DEC file appears, draft moved to .accepted.bak.
@@ -82,19 +82,30 @@ function writeFile(repoRoot: string, rel: string, body: string): void {
   writeFileSync(abs, body, "utf8");
 }
 
-interface HookOutput {
-  continue: boolean;
-  /** SessionStart shape — hookSpecificOutput.additionalContext. */
-  hookSpecificOutput?: {
-    hookEventName?: string;
-    additionalContext?: string;
-  };
-  /** Stop hook shape — top-level systemMessage. */
-  systemMessage?: string;
+/** SessionStart emits hookSpecificOutput.additionalContext. */
+interface SessionStartOutput {
+  continue: true;
+  hookSpecificOutput: { hookEventName: "SessionStart"; additionalContext: string };
 }
 
+/** Stop emits decision:block+reason when surfacing context to Claude. */
+interface StopBlockOutput {
+  decision: "block";
+  reason: string;
+}
+
+/** Stop emits continue:true when nothing to surface. */
+interface StopPassOutput {
+  continue: true;
+}
+
+type HookOutput = SessionStartOutput | StopBlockOutput | StopPassOutput;
+
+/** Returns the Claude-facing context text from any hook output shape. */
 function ctxOf(out: HookOutput): string {
-  return out.systemMessage ?? out.hookSpecificOutput?.additionalContext ?? "";
+  if ("reason" in out) return out.reason;
+  if ("hookSpecificOutput" in out) return out.hookSpecificOutput.additionalContext;
+  return "";
 }
 
 function runHookBin(
@@ -248,6 +259,10 @@ async function main(): Promise<void> {
   const stop1 = runHookBin(STOP_BIN, { session_id: sessionId, cwd: repoRoot });
   assert(stop1.status === 0, `stop exit 0; stderr=${stop1.stderr}`);
   assert(
+    "decision" in stop1.parsed && stop1.parsed.decision === "block",
+    "stop with pending review emits decision:block",
+  );
+  assert(
     /awaiting review attestation/.test(ctxOf(stop1.parsed)),
     `expected reviewer-pending hint, got: ${ctxOf(stop1.parsed)}`,
   );
@@ -344,8 +359,8 @@ async function main(): Promise<void> {
     `expected bypass-detection hint, got: ${ctxOf(stop3.parsed)}`,
   );
   assert(
-    ctxOf(stop3.parsed).includes("[a]"),
-    "bypass hint includes [a] backfill",
+    /cairn-attention/.test(ctxOf(stop3.parsed)),
+    "bypass hint instructs cairn-attention skill invocation",
   );
   console.log("  ✓ Step 5 — bypass hint surfaces with new SHA");
 

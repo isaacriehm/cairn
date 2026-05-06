@@ -116,16 +116,21 @@ async function main(): Promise<void> {
   assert(r5.bypassed.length === 0, "sha3 out of window — no bypasses");
   console.log("  ✓ Step 5 — 5-commit lookback window");
 
-  step("Step 6 — renderBypassHint includes A/B/C choices");
+  step("Step 6 — renderBypassHint instructs cairn-attention skill");
   const hint = renderBypassHint([
     { sha: "abcdef0123456", shortSha: "abcdef0", subject: "feat: thing" },
   ]);
-  assert(hint.includes("[a]"), "renders [a]");
-  assert(hint.includes("[b]"), "renders [b]");
-  assert(hint.includes("[c]"), "renders [c]");
+  // Stop-hook prose is Claude-facing additionalContext — it must
+  // instruct the cairn-attention skill (which renders the
+  // record/acknowledge/defer choice through AskUserQuestion) instead
+  // of inlining `[a]/[b]/[c]` text that nobody renders.
+  assert(/cairn-attention/.test(hint), "renders cairn-attention skill instruction");
+  assert(/record bypass/.test(hint), "renders record-bypass intent");
+  assert(/acknowledge/.test(hint), "renders acknowledge intent");
+  assert(/defer/.test(hint), "renders defer intent");
   assert(hint.includes("abcdef0"), "renders short sha");
   assert(hint.includes("feat: thing"), "renders subject");
-  console.log("  ✓ Step 6 — render includes A/B/C");
+  console.log("  ✓ Step 6 — render delegates to cairn-attention skill");
 
   step("Cleanup");
   cleanup();

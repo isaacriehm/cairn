@@ -1,14 +1,13 @@
 # Trust policy.
 #
-# Per-command trust posture (WORKFLOW_GUIDE.md §3 + §8). Three classes:
+# Per-command trust posture. Three classes:
 #
 #   read_only            no friction — runs without any operator confirmation
 #   write_creating       light friction — single-tap reaction or button confirm
 #   configuration        heavy friction — operator must edit a config file
 #
-# Auto-merge classes (PRIMER §12.2) live in workflow.md trust_posture_defaults
-# and the project block; this file governs operator INTERACTION friction, not
-# git-push friction.
+# Auto-merge classes live in workflow.md trust_posture_defaults and the project
+# block; this file governs operator INTERACTION friction, not git-push friction.
 
 version: 1
 
@@ -16,12 +15,6 @@ commands:
 
   # ── Read-only — no friction ───────────────────────────────────────────
   - id: status
-    posture: read_only
-    surface: slash
-  - id: queue
-    posture: read_only
-    surface: slash
-  - id: eval
     posture: read_only
     surface: slash
   - id: agent_list
@@ -32,19 +25,6 @@ commands:
     surface: slash
 
   # ── Write-creating — single-tap confirm ────────────────────────────────
-  - id: task
-    posture: write_creating
-    surface: slash
-    confirmation: none           # spec tightener handles ambiguity downstream
-  - id: run
-    posture: write_creating
-    surface: slash
-    confirmation: reaction_if_outside_pilot_scope
-    timeout_seconds: 30
-  - id: oops
-    posture: write_creating
-    surface: slash
-    confirmation: per_step_inline_reaction
   - id: direction
     posture: write_creating
     surface: slash
@@ -60,10 +40,6 @@ commands:
   - id: ship_anyway
     posture: write_creating_logged_override
     surface: slash
-    confirmation: none           # logged for audit; no friction
-  - id: halt
-    posture: write_creating
-    surface: slash
     confirmation: none
 
   # ── Configuration — high-friction by design ─────────────────────────────
@@ -76,12 +52,6 @@ commands:
   - id: change_pilot_module
     posture: configuration
     surface: workflow_yaml_edit
-  - id: change_collaboration_mode
-    posture: configuration
-    surface: workflow_yaml_edit
-  - id: register_frontend_adapter
-    posture: configuration
-    surface: workflow_yaml_edit
   - id: change_off_limits
     posture: configuration
     surface: workflow_yaml_edit
@@ -91,5 +61,3 @@ notification_routing:
   errors: all_registered_adapters
   completions: all_registered_adapters
   paged_events: all_registered_adapters
-  uat_approval_request: first_registered_adapter
-  voice_capable_only: discord

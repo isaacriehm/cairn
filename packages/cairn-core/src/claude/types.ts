@@ -1,14 +1,12 @@
 /**
  * Subprocess wrapper for the `claude` CLI.
  *
- * Per WORKFLOW_GUIDE §2.2 budget metric (operator answer T1): every Tier-1/2/3 LLM call goes through the
- * operator's Claude Code coding-plan subscription via `claude --print
- * --model <tier> --output-format json`. No direct Anthropic SDK calls.
+ * Every LLM call goes through the operator's Claude Code coding-plan
+ * subscription via `claude --print --model <tier> --output-format json`.
+ * No direct Anthropic SDK calls.
  *
- * Tier mapping is hardcoded (no env vars per operator profile). The CLI's
- * model alias resolution maps `haiku|sonnet|opus` to the latest model id
- * for that family — we don't pin specific snapshots here so the wrapper
- * keeps tracking newer models as Anthropic ships them.
+ * Tier mapping is hardcoded (no env vars). The CLI's model alias resolution
+ * maps `haiku|sonnet|opus` to the latest model for that family.
  */
 
 export type ClaudeTier = "haiku" | "sonnet" | "opus";
@@ -33,6 +31,15 @@ export interface RunClaudeOptions {
    * etc. when the caller knows what they want.
    */
   extraArgs?: string[];
+  /**
+   * Free-form purpose tag (e.g. "init.mapper", "decision-extractor",
+   * "tier0.classify") for trace logs. Helps the operator find which
+   * call surface emitted a given subprocess invocation.
+   */
+  purpose?: string;
+  /** Repo root + Claude Code session id for trace correlation, when known. */
+  repoRoot?: string;
+  sessionId?: string;
 }
 
 export interface ClaudeUsage {

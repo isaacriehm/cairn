@@ -23,6 +23,6 @@ init subprocess, and the phase-by-phase A/B/C surface.
 
 If `.cairn/` already exists, the skill detects this and surfaces:
 
-> Project is already Cairn-adopted. `[a]` re-run init (`npx -y @isaacriehm/cairn init --force --no-prompt`, may overwrite ground state)  `[b]` doctor (verify health)  `[c]` cancel
+> Project is already Cairn-adopted. `[a]` re-run init (warning: may overwrite ground state)  `[b]` doctor (verify health)  `[c]` cancel
 
 Default to `[c]` cancel for safety.

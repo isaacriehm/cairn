@@ -2,22 +2,13 @@
  * Phase 3b-seed — write `.cairn/` skeleton + project overlay +
  * grandfather pre-adoption commits.
  *
- * Bridges 3-mapper and 4-pilot. Without this phase the v0.2.0 init
- * pipeline produced an `.cairn/` populated only by side effects of
- * downstream phases (events/, baseline/, ground/decisions/_inbox/)
- * but never wrote `config.yaml`, `git-hooks/`, or the brand /
- * canonical-map / capabilities skeleton — leaving the project in a
- * "half-adopted" shape that subsequent SessionStarts could not
- * detect as adopted.
- *
  * Steps:
  *   1. seedCairnLayout (templates → .cairn/)
  *   2. updateWorkflowSlugBlock (mapper output → workflow.md)
  *   3. write .cairn/config.yaml + .cairn/ground/scope-index.yaml
  *   4. seed .cairn/.attested-commits with every reachable HEAD SHA
  *      so the Stop-hook bypass detector grandfathers pre-adoption
- *      history (otherwise the very next assistant turn flags every
- *      pre-adoption commit as a `--no-verify` bypass).
+ *      history.
  *
  * No operator input. Always advances. Idempotent — re-running on a
  * project that already has .cairn/ keeps existing files (collisions

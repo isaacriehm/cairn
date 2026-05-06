@@ -37,23 +37,30 @@ export async function startMcpServer(opts: StartServerOptions): Promise<{
           payload = await tool.handler(ctx, rawInput as never);
         } catch (err) {
           payload = mcpError(
-            "OPERATION_TIMEOUT",
+            "INTERNAL_ERROR",
             err instanceof Error ? err.message : "tool handler threw",
           );
           log.error({ tool: tool.name, err: String(err) }, "tool handler threw");
         }
         const durationMs = Number(process.hrtime.bigint() - start) / 1_000_000;
         const result = asMcpResult(payload);
-        const resultSize =
-          result.content?.[0]?.type === "text" ? result.content[0].text.length : 0;
+        const resultText =
+          result.content?.[0]?.type === "text" ? result.content[0].text : "";
+        const isErr = isMcpError(payload);
         try {
           recordCall(ctx, {
             ts: new Date().toISOString(),
             tool: tool.name,
             args: rawInput ?? {},
-            result_kind: isMcpError(payload) ? "error" : "ok",
-            result_size: resultSize,
+            result_kind: isErr ? "error" : "ok",
+            result_size: resultText.length,
             duration_ms: Math.round(durationMs * 100) / 100,
+            ...(isErr
+              ? {
+                  result_preview:
+                    resultText.length > 400 ? `${resultText.slice(0, 400)}…` : resultText,
+                }
+              : {}),
           });
         } catch {
           // telemetry must not break tool calls

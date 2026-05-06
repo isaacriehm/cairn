@@ -23,15 +23,11 @@ export type {
   GcFindingKind,
   GcPassId,
   GcSweepResult,
-  CanarySyntheticContext,
 } from "./types.js";
 
 export { applyCommit } from "./apply.js";
 export type { ApplyCommitOptions, ApplyCommitResult } from "./apply.js";
-export {
-  verifyBatchCanary,
-  buildSyntheticContext,
-} from "./canary.js";
+export { verifyBatchCanary } from "./canary.js";
 export type {
   BatchCanaryResult,
   BatchCanaryOptions,

@@ -118,9 +118,9 @@ UAT fixtures must include a cross-tenant denial.
   );
 
   writeFileSync(
-    join(invariantsDir, "V0001.md"),
+    join(invariantsDir, "INV-0001.md"),
     `---
-id: V0001
+id: INV-0001
 title: No JSONB-userId filter in dashboard queries
 type: invariant
 status: active
@@ -129,10 +129,10 @@ generated: 2026-04-20T00:00:00Z
 verified-at: 2026-05-04T00:00:00Z
 source_run: run-abc123
 source_decision: DEC-0001
-sensor: scripts/check-v0001-no-jsonb-userid.ts
+sensor: scripts/check-inv0001-no-jsonb-userid.ts
 ---
 
-# §V0001
+# §INV-0001
 `,
     "utf8",
   );
@@ -238,7 +238,6 @@ async function runSmoke(): Promise<void> {
     const result = await buildSessionStartContext({ repoRoot });
     assert(result.sectionsRendered.includes("header"), "Step 2: header missing");
     assert(result.sectionsRendered.includes("two_zone_reminder"), "Step 2: two_zone_reminder missing");
-    assert(result.sectionsRendered.includes("tool_quick_reference"), "Step 2: tool_quick_reference missing");
     assert(!result.sectionsRendered.includes("decisions_in_scope"), "Step 2: decisions_in_scope should be absent");
     assert(!result.sectionsRendered.includes("invariants_active"), "Step 2: invariants_active should be absent");
     assert(!result.sectionsRendered.includes("current_task"), "Step 2: current_task should be absent");
@@ -247,7 +246,12 @@ async function runSmoke(): Promise<void> {
     console.log("  ✓ Step 2 — empty .cairn");
   }
 
-  // ── Step 3 — full fixture renders all 7 sections ─────────────────
+  // ── Step 3 — full fixture, no scope: ground-state SUMMARY only ────
+  // Without a scopeRelPath, SessionStart no longer dumps every accepted
+  // DEC + active invariant into context (token-waste anti-pattern).
+  // Instead a one-line ground-state summary renders so the agent knows
+  // the scale; bare §DEC / §INV citations resolve on-demand via the
+  // PostToolUse(Read) hook.
   {
     const repoRoot = mkFixture();
     seedFullFixture(repoRoot);
@@ -256,16 +260,18 @@ async function runSmoke(): Promise<void> {
     const expected: typeof result.sectionsRendered = [
       "header",
       "two_zone_reminder",
-      "tool_quick_reference",
       "current_task",
       "decisions_in_scope",
-      "invariants_active",
       "pending_drafts",
       "quality_grades_tail",
     ];
     for (const want of expected) {
       assert(result.sectionsRendered.includes(want), `Step 3: section "${want}" missing from rendered`);
     }
+    assert(
+      !result.sectionsRendered.includes("invariants_active"),
+      "Step 3: invariants_active should NOT render without scopeRelPath (compact-summary path)",
+    );
     assert(result.counts.decisions === 2, `Step 3: counts.decisions expected 2, got ${result.counts.decisions}`);
     assert(result.counts.invariants === 1, `Step 3: counts.invariants expected 1, got ${result.counts.invariants}`);
     assert(result.counts.activeTasks === 1, `Step 3: counts.activeTasks expected 1, got ${result.counts.activeTasks}`);
@@ -273,25 +279,61 @@ async function runSmoke(): Promise<void> {
     assert(result.counts.qualityGrades === 3, `Step 3: counts.qualityGrades expected 3, got ${result.counts.qualityGrades}`);
 
     const ctx = result.additionalContext;
-    assert(ctx.includes("DEC-0001"), "Step 3: DEC-0001 missing from context");
-    assert(ctx.includes("DEC-0002"), "Step 3: DEC-0002 missing from context");
-    assert(ctx.includes("V0001"), "Step 3: V0001 missing from context");
+    assert(
+      ctx.includes("Cairn ground state"),
+      `Step 3: summary heading missing — ctx=${ctx.slice(0, 200)}`,
+    );
+    assert(
+      ctx.includes("2 accepted decisions") && ctx.includes("1 active invariant"),
+      "Step 3: count line missing from ground-state summary",
+    );
+    assert(
+      !ctx.includes("DEC-0001") && !ctx.includes("DEC-0002"),
+      "Step 3: individual DEC ids should NOT pre-load into context (compact-summary path)",
+    );
     assert(ctx.includes("TSK-2026-05-04-feature-1"), "Step 3: task id missing from context");
     assert(ctx.includes("DEC-0003"), "Step 3: pending draft id missing from context");
     assert(ctx.includes("core/src/integrations"), "Step 3: weakest module missing from context");
     assert(ctx.includes("cairn_query_history"), "Step 3: two-zone reminder missing query_history reference");
-    assert(ctx.includes("cairn_decision_get"), "Step 3: tool quick-reference missing");
     assert(result.warnings.length === 0, `Step 3: unexpected warnings ${JSON.stringify(result.warnings)}`);
-    console.log("  ✓ Step 3 — full fixture");
+    console.log("  ✓ Step 3 — compact ground-state summary (no scope)");
+  }
+
+  // ── Step 3b — scopeRelPath set: full decisions + invariants render ─
+  {
+    const repoRoot = mkFixture();
+    seedFullFixture(repoRoot);
+    const result = await buildSessionStartContext({
+      repoRoot,
+      scopeRelPath: "core/src",
+    });
+    assert(
+      result.sectionsRendered.includes("decisions_in_scope"),
+      "Step 3b: decisions_in_scope should render with scopeRelPath",
+    );
+    assert(
+      result.sectionsRendered.includes("invariants_active"),
+      "Step 3b: invariants_active should render with scopeRelPath",
+    );
+    const ctx = result.additionalContext;
+    assert(
+      ctx.includes("DEC-0001") || ctx.includes("DEC-0002"),
+      "Step 3b: at least one DEC id should appear in scoped render",
+    );
+    console.log("  ✓ Step 3b — scoped render includes full DEC + invariant bodies");
   }
 
   // ── Step 4 — truncation drops sections in priority order ─────────
   {
     const repoRoot = mkFixture();
     seedFullFixture(repoRoot);
-    const result = await buildSessionStartContext({ repoRoot, maxChars: 1_500 });
-    assert(result.totalChars <= 1_500, `Step 4: totalChars ${result.totalChars} exceeds cap 1500`);
+    const result = await buildSessionStartContext({ repoRoot, maxChars: 2_500 });
+    assert(result.totalChars <= 2_500, `Step 4: totalChars ${result.totalChars} exceeds cap 2500`);
     assert(result.sectionsRendered.includes("header"), "Step 4: header should survive truncation");
+    assert(
+      result.sectionsRendered.includes("code_change_contract"),
+      "Step 4: code_change_contract is the load-bearing rule and must survive",
+    );
     assert(result.sectionsRendered.includes("two_zone_reminder"), "Step 4: two_zone_reminder should survive truncation");
     // The lowest-priority sections should be dropped first.
     assert(
@@ -309,7 +351,6 @@ async function runSmoke(): Promise<void> {
     const result = await buildSessionStartContext({ repoRoot, maxChars: 4_000 });
     assert(result.sectionsRendered.includes("header"), "Step 5: header missing");
     assert(result.sectionsRendered.includes("two_zone_reminder"), "Step 5: two_zone_reminder missing");
-    assert(result.sectionsRendered.includes("tool_quick_reference"), "Step 5: tool_quick_reference missing");
     assert(result.sectionsRendered.includes("current_task"), "Step 5: current_task missing — should fit in 4000-char cap");
     console.log("  ✓ Step 5 — resume flavor");
   }

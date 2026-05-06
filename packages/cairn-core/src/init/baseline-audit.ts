@@ -1,5 +1,5 @@
 /**
- * Phase 6.4 — baseline sensor sweep.
+ * Phase 8 — baseline sensor sweep.
  *
  * Runs every sensor that can operate without an LLM call or an external
  * command against a synthetic "every file added at SHA-zero" diff. Each
@@ -35,6 +35,16 @@ import { logger } from "../logger.js";
 const log = logger("init.baseline-audit");
 
 const MAX_FILE_BYTES = 1_000_000; // skip lock files / minified bundles
+
+/**
+ * Hard cap on baseline-audit file count. The per-sensor finding-collection
+ * pass is O(files × sensors), and `buildSyntheticDiff` holds every file's
+ * full text in a single in-memory array. Above this cap we deterministically
+ * sort by path and slice; the audit yaml records the truncation. Operator
+ * can re-run after narrowing pilot scope or running `cairn scope rebuild`
+ * with a focused subset.
+ */
+const BASELINE_FILE_CAP = 5_000;
 const SOURCE_EXTS = new Set([
   ".ts",
   ".tsx",
@@ -107,6 +117,10 @@ export interface BaselineAuditResult {
   totalFindings: number;
   /** Number of source files synthesized into the audit diff. */
   filesScanned: number;
+  /** Total source files available before the file cap was applied. */
+  filesAvailable: number;
+  /** True when the file count hit BASELINE_FILE_CAP and was sliced. */
+  truncatedAtFileCap: boolean;
   /** Sensor IDs that ran clean. */
   cleanSensorIds: string[];
   /** Sensor IDs that produced at least one finding. */
@@ -278,7 +292,18 @@ export async function runBaselineAudit(
     .filter((id) => !disabled.has(id));
 
   // Stable sort: registry order preserved.
-  const filePaths = await listRepoSourceFiles(args.repoRoot);
+  const allFilePaths = (await listRepoSourceFiles(args.repoRoot)).sort();
+  const filesAvailable = allFilePaths.length;
+  const truncatedAtFileCap = filesAvailable > BASELINE_FILE_CAP;
+  const filePaths = truncatedAtFileCap
+    ? allFilePaths.slice(0, BASELINE_FILE_CAP)
+    : allFilePaths;
+  if (truncatedAtFileCap) {
+    log.warn(
+      { filesAvailable, cap: BASELINE_FILE_CAP },
+      "baseline audit truncated to file cap; sample mode",
+    );
+  }
   const diff = buildSyntheticDiff(args.repoRoot, filePaths);
 
   const sensors: BaselineAuditSensorRow[] = [];
@@ -371,6 +396,10 @@ export async function runBaselineAudit(
       })),
       total_findings: total,
       files_scanned: diff.length,
+      files_available: filesAvailable,
+      ...(truncatedAtFileCap
+        ? { truncated_at_file_cap: BASELINE_FILE_CAP }
+        : {}),
     });
   }
 
@@ -381,6 +410,8 @@ export async function runBaselineAudit(
     sensors,
     totalFindings: total,
     filesScanned: diff.length,
+    filesAvailable,
+    truncatedAtFileCap,
     cleanSensorIds,
     dirtySensorIds,
     skippedSensorIds,

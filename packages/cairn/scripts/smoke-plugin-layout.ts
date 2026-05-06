@@ -133,8 +133,6 @@ function runSmoke(): void {
       "cairn-adopt",
       "cairn-direction",
       "cairn-attention",
-      "cairn-bootstrap",
-      "cairn-statusline-setup",
     ];
     for (const slug of expected) {
       const path = join(PLUGIN_ROOT, "skills", slug, "SKILL.md");
@@ -154,7 +152,7 @@ function runSmoke(): void {
 
   // ── Step 4c — required slash commands present ───────────────────
   {
-    const expected = ["cairn-init.md", "cairn-direction.md"];
+    const expected = ["cairn-init.md", "cairn-direction.md", "cairn-statusline-setup.md"];
     for (const filename of expected) {
       const path = join(PLUGIN_ROOT, "commands", filename);
       assert(existsSync(path), `Step 4c: missing command ${filename}`);

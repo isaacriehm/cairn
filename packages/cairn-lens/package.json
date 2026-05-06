@@ -1,8 +1,8 @@
 {
   "name": "cairn-lens",
   "displayName": "Cairn Lens",
-  "description": "Inline citation context for §V invariants and TODO(TSK-) tokens. Hovers, gutter icons, code lens — resolved from .cairn/ground/ ledgers.",
-  "version": "0.2.0",
+  "description": "Inline citation context for §INV invariants and TODO(TSK-) tokens. Hovers, gutter icons, code lens — resolved from .cairn/ground/ ledgers.",
+  "version": "0.3.0",
   "publisher": "isaacriehm",
   "type": "module",
   "engines": {
@@ -14,7 +14,12 @@
   ],
   "main": "./dist/extension.cjs",
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onCommand:cairn-lens.showLog",
+    "onCommand:cairn-lens.diagnose",
+    "onCommand:cairn-lens.refresh",
+    "onCommand:cairn-lens.openDecisionsLedger",
+    "onCommand:cairn-lens.openInvariantsLedger"
   ],
   "contributes": {
     "configuration": {
@@ -28,7 +33,7 @@
         "cairn.lens.inlineDecorations": {
           "type": "boolean",
           "default": true,
-          "description": "Render ghost text after §V<N> tokens with the resolved invariant title."
+          "description": "Render ghost text after §INV-NNNN tokens with the resolved invariant title."
         },
         "cairn.lens.gutterIcons": {
           "type": "boolean",
@@ -44,6 +49,23 @@
           "type": "boolean",
           "default": false,
           "description": "Show the DEC Explorer sidebar tree view."
+        },
+        "cairn.lens.inlineMode": {
+          "type": "string",
+          "default": "ghost",
+          "enum": [
+            "ghost",
+            "replace",
+            "below",
+            "off"
+          ],
+          "enumDescriptions": [
+            "Ghost text appended after the token (default).",
+            "Replace the rest of the comment line after the token with the resolved title.",
+            "Insert the resolved title on a separate line below the token.",
+            "Disable inline display entirely."
+          ],
+          "description": "Controls how resolved titles are displayed inline."
         }
       }
     },
@@ -55,7 +77,34 @@
           "when": "config.cairn.lens.decExplorer && config.cairn.lens.enabled"
         }
       ]
-    }
+    },
+    "commands": [
+      {
+        "command": "cairn-lens.showLog",
+        "title": "Show Debug Log",
+        "category": "Cairn"
+      },
+      {
+        "command": "cairn-lens.diagnose",
+        "title": "Diagnose",
+        "category": "Cairn"
+      },
+      {
+        "command": "cairn-lens.refresh",
+        "title": "Refresh All Decorations",
+        "category": "Cairn"
+      },
+      {
+        "command": "cairn-lens.openDecisionsLedger",
+        "title": "Open Decisions Ledger",
+        "category": "Cairn"
+      },
+      {
+        "command": "cairn-lens.openInvariantsLedger",
+        "title": "Open Invariants Ledger",
+        "category": "Cairn"
+      }
+    ]
   },
   "license": "MIT",
   "author": "Isaac Riehm",
@@ -71,8 +120,8 @@
     "build": "tsc -b",
     "typecheck": "tsc -b",
     "clean": "rm -rf dist *.tsbuildinfo *.vsix",
-    "bundle": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node22 --outfile=dist/extension.cjs --external:vscode --external:fsevents",
-    "package": "pnpm clean && pnpm bundle && vsce package --no-dependencies",
+    "bundle": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node22 --outfile=dist/extension.cjs --external:vscode --external:fsevents --define:__CAIRN_BUNDLED__=false --banner:js=\"const __filename_polyfill=require('path').join(__dirname,'extension.cjs');const __cairn_meta_url=require('url').pathToFileURL(__filename_polyfill).href;\" --define:import.meta.url=__cairn_meta_url",
+    "package": "pnpm clean && pnpm build && pnpm bundle && vsce package --no-dependencies",
     "smoke:resolver": "tsx scripts/smoke-resolver.ts",
     "smoke:dec-tokens": "tsx scripts/smoke-dec-tokens.ts",
     "smoke:empty-ground": "tsx scripts/smoke-empty-ground.ts"

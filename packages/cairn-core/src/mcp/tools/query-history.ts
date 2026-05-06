@@ -43,12 +43,12 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
       if (isQuotaKind(err.kind)) {
         return mcpError(
           "OPERATION_TIMEOUT",
-          `history summarizer quota / rate-limit issue: ${err.message}`,
+          `history summarizer quota / rate-limit: ${err.message}`,
           { kind: err.kind, exit_code: err.exitCode ?? null },
         );
       }
       return mcpError(
-        "OPERATION_TIMEOUT",
+        "INTERNAL_ERROR",
         `history summarizer call failed: ${err.message}`,
         { kind: err.kind, exit_code: err.exitCode ?? null },
       );
@@ -59,7 +59,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
       stderr: "",
     });
     return mcpError(
-      "OPERATION_TIMEOUT",
+      "INTERNAL_ERROR",
       `history summarizer threw: ${err instanceof Error ? err.message : String(err)}`,
       { kind },
     );

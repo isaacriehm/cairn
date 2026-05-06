@@ -122,7 +122,16 @@ export const DecisionFrontmatter = z
     id: z.string().regex(/^DEC-\d{4,}$/, "decision id must match DEC-NNNN"),
     title: z.string(),
     type: z.literal("adr").optional(),
-    status: z.enum(["draft", "accepted", "superseded", "archived"]),
+    status: z
+      .string()
+      .refine(
+        (s) =>
+          s === "accepted" ||
+          s === "superseded" ||
+          s === "archived" ||
+          /^draft(?:-from-[a-z-]+)?$/.test(s),
+        "decision status must be draft | draft-from-<source> | accepted | superseded | archived",
+      ),
     audience: Audience.optional(),
     generated: z.string().optional(),
     "verified-at": z.string().optional(),
@@ -141,7 +150,7 @@ export type DecisionFrontmatter = z.infer<typeof DecisionFrontmatter>;
 
 export const InvariantFrontmatter = z
   .object({
-    id: z.string().regex(/^V\d{4,}$/, "invariant id must match V<NNNN>"),
+    id: z.string().regex(/^INV-\d{4,}$/, "invariant id must match INV-NNNN"),
     title: z.string(),
     type: z.literal("invariant").optional(),
     status: z.enum(["active", "superseded"]).optional(),

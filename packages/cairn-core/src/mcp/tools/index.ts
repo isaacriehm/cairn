@@ -1,5 +1,4 @@
 import type { ToolDef } from "./types.js";
-import { appendRunNoteTool } from "./append-run-note.js";
 import { archiveTool } from "./archive.js";
 import { canonicalForTopicTool } from "./canonical-for-topic.js";
 import { decisionGetTool } from "./decision-get.js";
@@ -15,6 +14,7 @@ import { recordDecisionTool } from "./record-decision.js";
 import { resolveAttentionTool } from "./resolve-attention.js";
 import { searchTool } from "./search.js";
 import { supersedesChainTool } from "./supersedes-chain.js";
+import { taskCreateTool } from "./task-create.js";
 import { timelineTool } from "./timeline.js";
 
 export const allTools: ToolDef<unknown>[] = [
@@ -35,7 +35,7 @@ export const allTools: ToolDef<unknown>[] = [
   queryHistoryTool as ToolDef<unknown>,
   // Write
   recordDecisionTool as ToolDef<unknown>,
-  appendRunNoteTool as ToolDef<unknown>,
+  taskCreateTool as ToolDef<unknown>,
   archiveTool as ToolDef<unknown>,
   // Write — plugin-era
   resolveAttentionTool as ToolDef<unknown>,

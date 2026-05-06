@@ -1,7 +1,7 @@
 {
   "name": "@isaacriehm/cairn-core",
-  "version": "0.2.0",
-  "description": "Cairn core — state + context layer. Curated `.cairn/ground/` (decisions, §V invariants, canonical-map, brand, quality-grades), MCP server, init wizard, hook runners, sensors, GC drift sweep.",
+  "version": "0.3.0",
+  "description": "Cairn core — state + context layer. Curated `.cairn/ground/` (decisions, §INV invariants, canonical-map, brand, quality-grades), MCP server, init wizard, hook runners, sensors, GC drift sweep.",
   "author": "Isaac Riehm",
   "license": "MIT",
   "homepage": "https://github.com/isaacriehm/cairn",
@@ -48,7 +48,6 @@
   "devDependencies": {
     "@types/cli-progress": "^3.11.6",
     "@types/node": "^25.6.0",
-    "tsx": "^4.21.0",
     "typescript": "^6.0.3"
   }
 }

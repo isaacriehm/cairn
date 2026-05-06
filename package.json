@@ -6,11 +6,13 @@
   "engines": {
     "node": ">=22"
   },
-  "packageManager": "pnpm@10.33.2",
+  "packageManager": "pnpm@10.33.3",
   "scripts": {
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
+    "knip": "knip",
+    "knip:strict": "knip --no-progress --max-issues 0",
     "version:check": "node scripts/sync-version.mjs --check",
     "version:sync": "node scripts/sync-version.mjs",
     "release:patch": "node scripts/sync-version.mjs --bump patch",
@@ -19,6 +21,7 @@
     "release:set": "node scripts/sync-version.mjs --set"
   },
   "devDependencies": {
+    "knip": "^6.11.0",
     "typescript": "^6.0.3"
   }
 }

@@ -71,6 +71,32 @@ npm install -g @isaacriehm/cairn
 cairn init
 ```
 
+### Skill listing budget on Sonnet (and other lower-context models)
+
+Claude Code reserves **1% of the model's context window** for the
+skill listing by default. On Opus (1M ctx) that's ~10 000 chars —
+plenty of room. On Sonnet (200k ctx) it's ~2 000 chars, which is
+tight once you add a few user-level plugins (design skills, image
+generators, etc.). The cairn family ships ~3 skills + 3 commands; if
+your listing is over budget, Claude Code drops the lowest-priority
+descriptions — `cairn-direction` is a frequent victim, which means
+the auto-invoke trigger gate never sees the prompt.
+
+Diagnose with `/doctor`. If it reports `N descriptions dropped`, raise
+the budget in `~/.claude/settings.json`:
+
+```jsonc
+{
+  "skillListingBudgetFraction": 0.03  // 3% — fits cairn + ~30 user skills on Sonnet
+}
+```
+
+Restart Claude Code. `/doctor` should now show `0 dropped`. If you
+prefer to keep the 1% budget, disable user-level skills you don't
+use (the `/skills` UI toggles each one), or add `skillOverrides`
+entries in settings.json to set them to `"user-invocable-only"`
+(hidden from the auto-invoke listing, still reachable via `/<name>`).
+
 ## Why
 
 I'm a solo developer. I let Claude Code drive most of my coding. The
