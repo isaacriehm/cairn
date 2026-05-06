@@ -668,7 +668,7 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
       mapper_applied_to_workflow: mapperAppliedToWorkflow,
       mapper_applied_to_config: mapperAppliedToConfig,
       brand_answered: brandSetup?.answered ?? null,
-      ingestion_drafts: phase6.ingestion?.decDraftsWritten.length ?? null,
+      ingestion_drafts: phase6.ingestion?.decsWritten.length ?? null,
       baseline_findings: phase6.baselineAudit?.totalFindings ?? null,
       warnings: warnings.length,
     },
@@ -1428,16 +1428,18 @@ async function runPhaseSix(args: PhaseSixArgs): Promise<PhaseSixResult> {
   // ── 6.1 — docs ingestion (Haiku per doc; cap 20 largest) ───────────
   let ingestion: IngestionResult | null = null;
   try {
+    let lastTotal = 0;
+    let processedCount = 0;
     ingestion = await runDocsIngestion({
       repoRoot: args.repoRoot,
-      onGroupProgress: (row) => {
-        const status = row.ok ? "✓" : "✗";
-        const label = row.group.padEnd(20);
-        const summary =
-          row.drafts > 0
-            ? `${row.drafts} DEC draft${row.drafts === 1 ? "" : "s"} proposed`
-            : `${row.total} doc${row.total === 1 ? "" : "s"} scanned`;
-        process.stdout.write(`    ${label} ${status}  ${summary}\n`);
+      onEntryProgress: (row) => {
+        processedCount += 1;
+        lastTotal = row.total;
+        if (processedCount === row.total) {
+          process.stdout.write(
+            `    ${"docs".padEnd(20)} ✓  ${processedCount}/${lastTotal} entries processed\n`,
+          );
+        }
       },
     });
   } catch (err) {
@@ -1499,25 +1501,20 @@ async function runPhaseSix(args: PhaseSixArgs): Promise<PhaseSixResult> {
 
 function describeIngestion(ingestion: IngestionResult | null): string | null {
   if (ingestion === null) return null;
-  const draftCount = ingestion.decDraftsWritten.length;
-  if (draftCount === 0 && !ingestion.voiceUpdated) {
-    return `0 proposed  (no actionable docs found)`;
+  const decCount = ingestion.decsWritten.length;
+  if (decCount === 0) {
+    if (ingestion.scannedEntries === 0) {
+      return `0 emitted  (no docs/* paragraphs in topic-index)`;
+    }
+    return `0 emitted  (${ingestion.scannedEntries} entries scanned, none classified as decision/domain-rule)`;
   }
-  const parts: string[] = [];
-  parts.push(
-    `${draftCount} proposed${draftCount > 0 ? "  (run cairn attention to review)" : ""}`,
-  );
-  if (ingestion.voiceUpdated) {
-    parts.push("brand/voice.md filled from existing doc");
-  }
-  return parts.join("; ");
+  return `${decCount} DEC${decCount === 1 ? "" : "s"} written verbatim from docs/* (auto-promoted)`;
 }
 
-function describeCanonical(ingestion: IngestionResult | null): string | null {
-  if (ingestion === null) return null;
-  const n = ingestion.canonicalTopicsAdded.length;
-  if (n === 0) return null;
-  return `${n} topic${n === 1 ? "" : "s"} seeded`;
+function describeCanonical(_ingestion: IngestionResult | null): string | null {
+  // canonical-map seeding moved out of phase 6 in v0.5.0 — handled by
+  // the standalone topic-index pipeline instead.
+  return null;
 }
 
 function describeBaseline(audit: BaselineAuditResult | null): string | null {

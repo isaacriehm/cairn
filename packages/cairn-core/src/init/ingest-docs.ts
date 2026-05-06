@@ -1,63 +1,45 @@
 /**
- * Phase 6 — docs ingestion sweep.
+ * Phase 6 — docs ingestion (v0.5.0 SoT model).
  *
- * Scans the adopted repo for existing documentation, classifies each file
- * via a Haiku call, and:
- *   - decision / domain-rule  → DEC draft in decisions/_inbox/
- *   - voice-guidelines        → brand/voice.md (only when current is empty placeholder)
- *   - api-docs / other        → canonical-map topics.yaml entry (when topicSlug present)
+ * Reads the topic-index built by phase 5b, filters to entries whose SoT
+ * source lives under `docs/*`, and emits verbatim DEC files under
+ * `.cairn/ground/decisions/`. Auto-promoted to `status: accepted`. No
+ * draft inbox, no LLM paraphrase — the doc paragraph itself IS the
+ * canonical body, recorded with `sot_kind: path` so the lens renders
+ * the live source on every read.
  *
- * Cap 20 docs total — largest by byte count first. One Haiku call per doc.
- * Concurrency cap of 4 in-flight to avoid rate limits.
+ * Per-entry Haiku call decides `kind` only (decision / domain-rule /
+ * voice-guidelines / api-docs / other). The first two emit a DEC; the
+ * rest are skipped at this layer (voice + canonical-topic flows are
+ * handled by other tooling now — they were file-level concerns under
+ * the v0.4.x model and have no clean paragraph-level analogue).
  */
 
 import {
   existsSync,
-  mkdirSync,
   readFileSync,
   readdirSync,
   statSync,
-  writeFileSync,
 } from "node:fs";
 import { join, relative } from "node:path";
-import { stringify as stringifyYaml } from "yaml";
+import type { Dirent } from "node:fs";
 import { runClaude } from "../claude/index.js";
-import { computeDecisionId, scanExistingDecisionIds } from "../decision-capture/id.js";
-import { decisionsDir } from "../ground/paths.js";
+import {
+  readAnchorMap,
+  readTopicIndex,
+  writeSotBindings,
+  writeSotCache,
+  type TopicIndexEntry,
+} from "../ground/index.js";
 import { logger } from "../logger.js";
+import { emitFromTopicIndex, type EmitClassification } from "./sot-emit.js";
 
 const log = logger("init.ingest-docs");
 
-const MAX_DOCS = 20;
-const CONCURRENCY = 4;
 const PER_DOC_TIMEOUT_MS = 60_000;
 const DOC_BODY_CAP = 8_000;
 
-const VOICE_PLACEHOLDER_MARKER = "(operator: replace this paragraph";
-
-/** Where init looks for existing docs. */
-const DISCOVER_DIRS = [
-  "docs",
-  ".planning",
-  "planning",
-  "decisions",
-  "adr",
-  "architecture",
-];
-
-/** Top-level files always considered.
- *
- * AGENTS.md / CLAUDE.md / .claude/CLAUDE.md are intentionally excluded
- * here — phase 7c-rules-merge owns rule files and ingests them at H2/H3
- * section granularity. If we also processed them here as whole-file
- * "decision" drafts, the operator would see two DEC drafts covering the
- * same content (one whole-file, one per-section). README.md remains
- * because it usually carries narrative + canonical-topic seeding, not
- * rules.
- */
-const DISCOVER_TOP_FILES = ["README.md"];
-
-/** Subdirs we never descend into. */
+/** Subdirs we never descend into when discovering candidate doc files. */
 const SKIP_DIRS = new Set([
   ".cairn",
   "node_modules",
@@ -72,12 +54,13 @@ const SKIP_DIRS = new Set([
   ".archive",
 ]);
 
+/* -------------------------------------------------------------------------- */
+/* Public types                                                               */
+/* -------------------------------------------------------------------------- */
+
 export interface DocCandidate {
-  /** Repo-relative path. */
   path: string;
-  /** Byte count for largest-first ordering. */
   size: number;
-  /** Bucket reported on the per-folder progress display. */
   group: string;
 }
 
@@ -91,142 +74,82 @@ export type DocClassificationKind =
 export interface DocClassification {
   kind: DocClassificationKind;
   proposedTitle: string;
-  proposedRationale: string;
-  topicSlug: string;
 }
 
 export interface ClassifiedDoc {
   candidate: DocCandidate;
   classification: DocClassification;
-  /** Set when the Haiku call failed; the doc is skipped downstream. */
   failed: boolean;
   errorMessage?: string;
 }
 
 export interface IngestionResult {
-  /** Per-doc classification outcomes. */
-  classifications: ClassifiedDoc[];
-  /** DEC drafts written to decisions/_inbox/. */
-  decDraftsWritten: { id: string; path: string; sourceFile: string }[];
-  /** Canonical-map topic entries appended to topics.yaml. */
-  canonicalTopicsAdded: { topic: string; canonicalPath: string }[];
-  /** brand/voice.md was rewritten from the placeholder. */
-  voiceUpdated: boolean;
-  /** Group → progress row text shown during ingestion. */
-  groupCounts: { group: string; drafts: number; total: number }[];
+  /** Verbatim DEC files written under `.cairn/ground/decisions/`. */
+  decsWritten: { id: string; path: string; sourceFile: string; slug: string }[];
+  /** Topic-index entries that were not emitted, with reasons. */
+  skipped: { slug: string; reason: string }[];
+  /** Number of topic-index entries considered (sot_source under docs/). */
+  scannedEntries: number;
 }
 
 export interface RunDocsIngestionArgs {
   repoRoot: string;
-  /** Called with one row per group as it finishes. */
-  onGroupProgress?: (row: { group: string; drafts: number; total: number; ok: boolean }) => void;
-  /**
-   * Skip the LLM round-trip — used by smokes. When set, every candidate is
-   * classified as "other" with empty fields; nothing is written.
-   */
-  mockClassify?: (candidate: DocCandidate, body: string) => DocClassification;
-  /**
-   * Caller-supplied DEC id Set. When provided, skips the local
-   * `scanExistingDecisionIds` and mutates the supplied Set as ids are
-   * allocated. The parallel pipeline orchestrator passes one Set across
-   * all 3 phases so concurrent allocations don't collide on disk.
-   */
+  /** Smoke override — feed canned classifications keyed by slug. */
+  mockClassify?: (
+    entry: TopicIndexEntry,
+    body: string,
+  ) => DocClassification;
+  /** Caller-supplied id collision Set (parallel pipeline). */
   existingDecIds?: Set<string>;
+  /** Progress callback fired once per emitted entry. */
+  onEntryProgress?: (row: { slug: string; emitted: boolean; total: number }) => void;
 }
 
 /* -------------------------------------------------------------------------- */
-/* Discovery                                                                  */
+/* Discovery (still useful for sanity checks + external callers)              */
 /* -------------------------------------------------------------------------- */
 
 export function discoverDocs(repoRoot: string): DocCandidate[] {
+  const docsDir = join(repoRoot, "docs");
+  if (!existsSync(docsDir)) return [];
   const out: DocCandidate[] = [];
-
-  for (const f of DISCOVER_TOP_FILES) {
-    const abs = join(repoRoot, f);
-    if (!existsSync(abs)) continue;
-    try {
-      const st = statSync(abs);
-      if (!st.isFile()) continue;
-      out.push({ path: f, size: st.size, group: f });
-    } catch {
-      continue;
-    }
-  }
-
-  for (const d of DISCOVER_DIRS) {
-    const abs = join(repoRoot, d);
-    if (!existsSync(abs)) continue;
-    let dirStat;
-    try {
-      dirStat = statSync(abs);
-    } catch {
-      continue;
-    }
-    if (!dirStat.isDirectory()) continue;
-    walkMarkdown(abs, repoRoot, `${d}/`, out);
-  }
-
-  // Top-level loose .md files that aren't already covered. Skip the
-  // rule files that phase 7c-rules-merge owns (AGENTS.md, CLAUDE.md)
-  // so we don't duplicate per-section DECs as whole-file decisions.
-  const RULE_FILES_OWNED_BY_RULES_MERGE = new Set(["AGENTS.md", "CLAUDE.md"]);
-  let topEntries: string[] = [];
-  try {
-    topEntries = readdirSync(repoRoot, { encoding: "utf8" });
-  } catch {
-    topEntries = [];
-  }
-  for (const e of topEntries) {
-    if (!e.endsWith(".md")) continue;
-    if (DISCOVER_TOP_FILES.includes(e)) continue;
-    if (RULE_FILES_OWNED_BY_RULES_MERGE.has(e)) continue;
-    const abs = join(repoRoot, e);
-    let st;
-    try {
-      st = statSync(abs);
-    } catch {
-      continue;
-    }
-    if (!st.isFile()) continue;
-    out.push({ path: e, size: st.size, group: "(root)" });
-  }
-
+  walkDocsDir(docsDir, repoRoot, out);
   return out;
 }
 
-function walkMarkdown(
-  dir: string,
-  repoRoot: string,
-  group: string,
-  out: DocCandidate[],
-): void {
-  let entries: import("node:fs").Dirent[];
+function walkDocsDir(dir: string, repoRoot: string, out: DocCandidate[]): void {
+  let entries: Dirent[];
   try {
     entries = readdirSync(dir, { withFileTypes: true, encoding: "utf8" });
   } catch {
     return;
   }
-  for (const e of entries) {
-    const abs = join(dir, e.name);
-    if (e.isDirectory()) {
-      if (SKIP_DIRS.has(e.name) || e.name.startsWith(".")) continue;
-      walkMarkdown(abs, repoRoot, group, out);
+  for (const ent of entries) {
+    if (SKIP_DIRS.has(ent.name)) continue;
+    const abs = join(dir, ent.name);
+    if (ent.isDirectory()) {
+      walkDocsDir(abs, repoRoot, out);
       continue;
     }
-    if (!e.isFile()) continue;
-    if (!e.name.endsWith(".md")) continue;
+    if (!ent.isFile() || !ent.name.endsWith(".md")) continue;
     let st;
     try {
       st = statSync(abs);
     } catch {
       continue;
     }
-    out.push({ path: relative(repoRoot, abs), size: st.size, group });
+    out.push({ path: relative(repoRoot, abs), size: st.size, group: dirGroup(relative(repoRoot, abs)) });
   }
 }
 
+function dirGroup(rel: string): string {
+  const parts = rel.split("/");
+  if (parts.length <= 1) return "(root)";
+  return `${parts[0]}/`;
+}
+
 /* -------------------------------------------------------------------------- */
-/* Classification (Haiku)                                                     */
+/* Haiku classifier — kind only, no rewriting                                 */
 /* -------------------------------------------------------------------------- */
 
 const CLASSIFY_SCHEMA = {
@@ -238,35 +161,32 @@ const CLASSIFY_SCHEMA = {
       enum: ["decision", "domain-rule", "voice-guidelines", "api-docs", "other"],
     },
     proposedTitle: { type: "string" },
-    proposedRationale: { type: "string" },
-    topicSlug: { type: "string" },
   },
-  required: ["kind", "proposedTitle", "proposedRationale", "topicSlug"],
+  required: ["kind", "proposedTitle"],
 } as const;
 
-const CLASSIFY_SYSTEM = `You classify project documentation files for Cairn adoption.
+const CLASSIFY_SYSTEM = `You classify project documentation paragraphs for Cairn's Single-Source-of-Truth ledger.
 
 Return JSON matching the supplied schema.
 
 \`kind\` choices:
-  - "decision"          file describes a binding decision or architectural choice
-  - "domain-rule"       file describes a domain rule or constraint
-  - "voice-guidelines"  file is user-facing copy / tone / brand voice guidance
-  - "api-docs"          file documents an API surface or schema
+  - "decision"          paragraph describes a binding decision or architectural choice
+  - "domain-rule"       paragraph describes a domain rule or constraint developers must obey
+  - "voice-guidelines"  paragraph is brand voice / tone guidance
+  - "api-docs"          paragraph documents an API surface or schema (descriptive, not binding)
   - "other"             nothing actionable for the cairn state layer
 
-\`proposedTitle\`     5-10 words, imperative voice, empty for "other"
-\`proposedRationale\` 2-3 sentences summarising the binding content, empty for "other"
-\`topicSlug\`         kebab-case slug suitable for canonical-map lookup, empty when no clear topic
+\`proposedTitle\` 5-10 words, imperative voice, empty for "other".
 
-Be conservative: prefer "other" over a low-confidence classification.`;
+Be conservative — false-positive decisions pollute the ground state worse
+than missed capture. Default to "other" when uncertain.`;
 
-async function classifyDoc(
-  candidate: DocCandidate,
+async function classifyEntry(
+  entry: TopicIndexEntry,
   body: string,
 ): Promise<DocClassification> {
   const capped = body.length > DOC_BODY_CAP ? `${body.slice(0, DOC_BODY_CAP)}\n…[truncated]` : body;
-  const prompt = `Path: ${candidate.path}\nSize: ${candidate.size} bytes\n\n---\n${capped}`;
+  const prompt = `Source: ${entry.sot_source}\nSlug: ${entry.slug}\n\n---\n${capped}`;
   const result = await runClaude({
     tier: "haiku",
     system: CLASSIFY_SYSTEM,
@@ -293,245 +213,7 @@ async function classifyDoc(
   return {
     kind,
     proposedTitle: typeof r["proposedTitle"] === "string" ? r["proposedTitle"] : "",
-    proposedRationale:
-      typeof r["proposedRationale"] === "string" ? r["proposedRationale"] : "",
-    topicSlug: typeof r["topicSlug"] === "string" ? r["topicSlug"] : "",
   };
-}
-
-/* -------------------------------------------------------------------------- */
-/* Concurrency-capped fan-out                                                 */
-/* -------------------------------------------------------------------------- */
-
-async function classifyAll(
-  candidates: DocCandidate[],
-  repoRoot: string,
-  mockClassify: RunDocsIngestionArgs["mockClassify"] | undefined,
-): Promise<ClassifiedDoc[]> {
-  const results: ClassifiedDoc[] = new Array(candidates.length);
-  let cursor = 0;
-  async function worker(): Promise<void> {
-    while (cursor < candidates.length) {
-      const idx = cursor++;
-      const candidate = candidates[idx];
-      if (candidate === undefined) continue;
-      let body = "";
-      try {
-        body = readFileSync(join(repoRoot, candidate.path), "utf8");
-      } catch (err) {
-        results[idx] = {
-          candidate,
-          classification: emptyClassification(),
-          failed: true,
-          errorMessage: err instanceof Error ? err.message : String(err),
-        };
-        continue;
-      }
-      try {
-        const classification =
-          mockClassify !== undefined
-            ? mockClassify(candidate, body)
-            : await classifyDoc(candidate, body);
-        results[idx] = { candidate, classification, failed: false };
-      } catch (err) {
-        log.warn(
-          { path: candidate.path, err: err instanceof Error ? err.message : String(err) },
-          "classifyDoc failed",
-        );
-        results[idx] = {
-          candidate,
-          classification: emptyClassification(),
-          failed: true,
-          errorMessage: err instanceof Error ? err.message : String(err),
-        };
-      }
-    }
-  }
-  const workers = Array.from({ length: Math.min(CONCURRENCY, candidates.length) }, () =>
-    worker(),
-  );
-  await Promise.all(workers);
-  return results;
-}
-
-function emptyClassification(): DocClassification {
-  return { kind: "other", proposedTitle: "", proposedRationale: "", topicSlug: "" };
-}
-
-/* -------------------------------------------------------------------------- */
-/* Persisters                                                                 */
-/* -------------------------------------------------------------------------- */
-
-function writeDecDraftFromDoc(args: {
-  repoRoot: string;
-  id: string;
-  classification: DocClassification;
-  sourceFile: string;
-}): { absPath: string; relPath: string } {
-  const dir = decisionsDir(args.repoRoot);
-  const inboxDir = join(dir, "_inbox");
-  mkdirSync(inboxDir, { recursive: true });
-  const filename = `${args.id}.draft.md`;
-  const abs = join(inboxDir, filename);
-  const rel = `.cairn/ground/decisions/_inbox/${filename}`;
-  const now = new Date().toISOString();
-  const fm: Record<string, unknown> = {
-    id: args.id,
-    title: args.classification.proposedTitle || `(untitled — from ${args.sourceFile})`,
-    type: "adr",
-    status: "draft-from-init-docs",
-    audience: "dual",
-    generated: now,
-    "verified-at": now,
-    decided_at: now,
-    decided_by: "cairn-init",
-    capture_source: "init-docs",
-    capture_confidence: "medium",
-    sourceFile: args.sourceFile,
-    proposedTitle: args.classification.proposedTitle,
-    proposedRationale: args.classification.proposedRationale,
-  };
-  const lines: string[] = [];
-  lines.push("---");
-  lines.push(stringifyYaml(fm).trimEnd());
-  lines.push("---");
-  lines.push("");
-  lines.push(`# ${args.id} — ${fm["title"] as string}`);
-  lines.push("");
-  lines.push("## Source");
-  lines.push(`Captured from \`${args.sourceFile}\` during \`cairn init\`.`);
-  lines.push("");
-  lines.push("## Proposed rationale");
-  lines.push(args.classification.proposedRationale.trim() || "(none extracted)");
-  lines.push("");
-  lines.push(
-    "Status: draft. Cairn will surface this for accept / edit / reject during the next attention pass; until accepted it is not binding.",
-  );
-  lines.push("");
-  writeFileSync(abs, lines.join("\n"), "utf8");
-  return { absPath: abs, relPath: rel };
-}
-
-interface CanonicalTopicEntry {
-  topic: string;
-  canonical_path: string;
-  audience?: string;
-  status?: string;
-}
-
-function appendCanonicalTopics(args: {
-  repoRoot: string;
-  entries: { topic: string; canonicalPath: string }[];
-}): { added: { topic: string; canonicalPath: string }[] } {
-  if (args.entries.length === 0) return { added: [] };
-  const path = join(
-    args.repoRoot,
-    ".cairn",
-    "ground",
-    "canonical-map",
-    "topics.yaml",
-  );
-  if (!existsSync(path)) {
-    // Seed file missing — bail rather than overwrite an unexpected state.
-    return { added: [] };
-  }
-  const text = readFileSync(path, "utf8");
-  const existing = parseExistingTopicSlugs(text);
-  const added: { topic: string; canonicalPath: string }[] = [];
-  const lines: string[] = [];
-  // Preserve original file by appending; keep operator's hand-curated comments.
-  lines.push(text.trimEnd());
-  lines.push("");
-  lines.push("# ── Added by cairn init Phase 6 — adoption ingestion ──");
-  for (const entry of args.entries) {
-    if (existing.has(entry.topic)) continue;
-    if (entry.topic.length === 0) continue;
-    const block: CanonicalTopicEntry = {
-      topic: entry.topic,
-      canonical_path: entry.canonicalPath,
-      audience: "dual",
-      status: "current",
-    };
-    lines.push(
-      formatTopicEntry(block).trimEnd(),
-    );
-    existing.add(entry.topic);
-    added.push(entry);
-  }
-  if (added.length === 0) return { added: [] };
-  lines.push("");
-  writeFileSync(path, lines.join("\n"), "utf8");
-  return { added };
-}
-
-function parseExistingTopicSlugs(text: string): Set<string> {
-  const out = new Set<string>();
-  const re = /^\s*-\s*topic:\s*([\w./:-]+)\s*$/gm;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) {
-    if (m[1] !== undefined) out.add(m[1]);
-  }
-  return out;
-}
-
-function formatTopicEntry(entry: CanonicalTopicEntry): string {
-  const lines: string[] = [];
-  lines.push(`  - topic: ${entry.topic}`);
-  lines.push(`    canonical_path: ${entry.canonical_path}`);
-  if (entry.audience !== undefined) lines.push(`    audience: ${entry.audience}`);
-  if (entry.status !== undefined) lines.push(`    status: ${entry.status}`);
-  return lines.join("\n");
-}
-
-function maybeUpdateVoiceFromDoc(args: {
-  repoRoot: string;
-  voiceDoc: ClassifiedDoc;
-}): boolean {
-  const path = join(args.repoRoot, ".cairn", "ground", "brand", "voice.md");
-  if (!existsSync(path)) return false;
-  let text: string;
-  try {
-    text = readFileSync(path, "utf8");
-  } catch {
-    return false;
-  }
-  if (!text.includes(VOICE_PLACEHOLDER_MARKER)) return false;
-  const sourceBody = readSourceBody(args.repoRoot, args.voiceDoc.candidate.path);
-  if (sourceBody === null) return false;
-  const now = new Date().toISOString();
-  const fm: Record<string, unknown> = {
-    type: "rule",
-    status: "current",
-    audience: "dual",
-    generated: now,
-    "verified-at": now,
-    "source-commits": ["init-ingestion"],
-    sourceFile: args.voiceDoc.candidate.path,
-  };
-  const out: string[] = [];
-  out.push("---");
-  out.push(stringifyYaml(fm).trimEnd());
-  out.push("---");
-  out.push("");
-  out.push("# Brand voice");
-  out.push("");
-  out.push(`<!-- Imported from \`${args.voiceDoc.candidate.path}\` during \`cairn init\`. -->`);
-  out.push("");
-  out.push(sourceBody.trim());
-  out.push("");
-  writeFileSync(path, out.join("\n"), "utf8");
-  return true;
-}
-
-function readSourceBody(repoRoot: string, relPath: string): string | null {
-  try {
-    const text = readFileSync(join(repoRoot, relPath), "utf8");
-    // Strip frontmatter if present so we don't double-stack it.
-    const m = text.match(/^---\n[\s\S]*?\n---\n?([\s\S]*)$/);
-    return m?.[1] ?? text;
-  } catch {
-    return null;
-  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -541,108 +223,94 @@ function readSourceBody(repoRoot: string, relPath: string): string | null {
 export async function runDocsIngestion(
   args: RunDocsIngestionArgs,
 ): Promise<IngestionResult> {
-  const candidates = discoverDocs(args.repoRoot);
-  candidates.sort((a, b) => b.size - a.size);
-  const top = candidates.slice(0, MAX_DOCS);
-  if (top.length === 0) {
-    return {
-      classifications: [],
-      decDraftsWritten: [],
-      canonicalTopicsAdded: [],
-      voiceUpdated: false,
-      groupCounts: [],
-    };
+  const topicIndex = readTopicIndex(args.repoRoot);
+  const anchorMap = readAnchorMap(args.repoRoot);
+
+  const candidateEntries = Object.values(topicIndex.topics).filter((entry) =>
+    isDocSoT(entry) && entry.dec_id === undefined,
+  );
+
+  if (candidateEntries.length === 0) {
+    log.info("phase 6 found no eligible docs entries in topic-index");
+    return { decsWritten: [], skipped: [], scannedEntries: 0 };
   }
 
-  const classifications = await classifyAll(top, args.repoRoot, args.mockClassify);
+  let processed = 0;
 
-  // Derive content-addressed DEC ids — re-running on the same docs
-  // produces the same ids (idempotent ingest). The caller's shared Set
-  // (parallel pipeline) doubles as a collision check across phases.
-  const seenIds = args.existingDecIds ?? scanExistingDecisionIds(args.repoRoot);
-  const decDraftsWritten: IngestionResult["decDraftsWritten"] = [];
-  const canonicalEntries: { topic: string; canonicalPath: string }[] = [];
-  let voiceUpdated = false;
-
-  for (const c of classifications) {
-    if (c.failed) continue;
-    const k = c.classification.kind;
-    if (k === "decision" || k === "domain-rule") {
-      const id = computeDecisionId(
-        {
-          title: c.classification.proposedTitle,
-          rationale: c.classification.proposedRationale,
-          capture_source: "init-docs-ingest",
-          source_file: c.candidate.path,
-        },
-        seenIds,
-      );
-      seenIds.add(id);
-      const written = writeDecDraftFromDoc({
-        repoRoot: args.repoRoot,
-        id,
-        classification: c.classification,
-        sourceFile: c.candidate.path,
-      });
-      decDraftsWritten.push({
-        id,
-        path: written.relPath,
-        sourceFile: c.candidate.path,
-      });
-    }
-    if (k === "voice-guidelines" && !voiceUpdated) {
-      voiceUpdated = maybeUpdateVoiceFromDoc({
-        repoRoot: args.repoRoot,
-        voiceDoc: c,
-      });
-    }
-    if (c.classification.topicSlug.length > 0) {
-      canonicalEntries.push({
-        topic: c.classification.topicSlug,
-        canonicalPath: c.candidate.path,
-      });
-    }
-  }
-
-  const canonical = appendCanonicalTopics({
+  const result = await emitFromTopicIndex({
     repoRoot: args.repoRoot,
-    entries: canonicalEntries,
+    topicIndex,
+    anchorMap,
+    filter: (entry) => isDocSoT(entry) && entry.dec_id === undefined,
+    classifier: async ({ body, entry }) => {
+      let cls: DocClassification;
+      try {
+        cls = args.mockClassify !== undefined
+          ? args.mockClassify(entry, body)
+          : await classifyEntry(entry, body);
+      } catch (err) {
+        log.warn(
+          { slug: entry.slug, err: err instanceof Error ? err.message : String(err) },
+          "classifier failed; skipping",
+        );
+        return { kind: "skip", title: "" } satisfies EmitClassification;
+      }
+      processed += 1;
+      if (args.onEntryProgress !== undefined) {
+        args.onEntryProgress({
+          slug: entry.slug,
+          emitted: cls.kind === "decision" || cls.kind === "domain-rule",
+          total: candidateEntries.length,
+        });
+      }
+      if (cls.kind === "decision" || cls.kind === "domain-rule") {
+        return { kind: "decision", title: cls.proposedTitle } satisfies EmitClassification;
+      }
+      return { kind: "skip", title: cls.proposedTitle } satisfies EmitClassification;
+    },
+    sot_kind: "path",
+    capture_source: "init-docs-ingest",
   });
 
-  // Group rollup for the progress display.
-  const groupCounts = rollupGroupCounts(classifications, decDraftsWritten);
-  if (args.onGroupProgress !== undefined) {
-    for (const row of groupCounts) {
-      args.onGroupProgress({ ...row, ok: true });
-    }
-  }
+  writeSotBindings(args.repoRoot, result.bindings);
+  writeSotCache(args.repoRoot, result.cache);
+
+  const decsWritten = result.emitted.map((rec) => ({
+    id: rec.id,
+    path: relativeDecPath(rec.id),
+    sourceFile: rec.source_file,
+    slug: rec.slug,
+  }));
+
+  log.info(
+    {
+      scanned: candidateEntries.length,
+      emitted: decsWritten.length,
+      skipped: result.skipped.length,
+      processed,
+    },
+    "phase 6 complete",
+  );
 
   return {
-    classifications,
-    decDraftsWritten,
-    canonicalTopicsAdded: canonical.added,
-    voiceUpdated,
-    groupCounts,
+    decsWritten,
+    skipped: result.skipped,
+    scannedEntries: candidateEntries.length,
   };
 }
 
-function rollupGroupCounts(
-  classifications: ClassifiedDoc[],
-  drafts: IngestionResult["decDraftsWritten"],
-): IngestionResult["groupCounts"] {
-  const draftsByPath = new Set(drafts.map((d) => d.sourceFile));
-  const totals = new Map<string, { drafts: number; total: number }>();
-  for (const c of classifications) {
-    const key = c.candidate.group;
-    const cur = totals.get(key) ?? { drafts: 0, total: 0 };
-    cur.total += 1;
-    if (draftsByPath.has(c.candidate.path)) cur.drafts += 1;
-    totals.set(key, cur);
-  }
-  return Array.from(totals.entries()).map(([group, c]) => ({
-    group,
-    drafts: c.drafts,
-    total: c.total,
-  }));
+function relativeDecPath(id: string): string {
+  return `.cairn/ground/decisions/${id}.md`;
+}
+
+/**
+ * Phase 6 owns every topic-index entry whose SoT candidate was tagged
+ * `kind="doc"` by the phase 5b walker. Path-prefix matching would lock
+ * us to `docs/` and miss `documentation/`, `official_docs/`, etc.; the
+ * walker's per-candidate kind is already the right discriminant.
+ */
+function isDocSoT(entry: { sot_source: string; candidates: { file: string; kind: string }[] }): boolean {
+  const sot = entry.candidates.find((c) => c.file === entry.sot_source);
+  return sot !== undefined && sot.kind === "doc";
 }
 

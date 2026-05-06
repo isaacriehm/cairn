@@ -1,10 +1,15 @@
 /**
  * Phase 5b — cross-source prose-block walker.
  *
- * Discovers every prose block across the four narrative-bearing source
- * kinds the SoT model recognizes:
+ * Discovers every prose block across the narrative-bearing source kinds
+ * the SoT model recognizes. Doc discovery is layout-agnostic: any
+ * `.md` file outside the rule-owned set + skip dirs counts as a doc.
+ * That covers `docs/`, `documentation/`, `official_docs/`,
+ * `architecture/`, `notes/`, root-level READMEs, custom-named folders
+ * — anything an operator might use without cairn dictating naming.
  *
- *   - docs/*.md (excluding .archive)        kind = "doc",         paragraph-granularity
+ *   - any reachable `.md` (excluding rule paths + skip dirs)
+ *                                            kind = "doc",         paragraph-granularity
  *   - CLAUDE.md                              kind = "claudemd",    H2/H3-section-granularity
  *   - AGENTS.md                              kind = "agentsmd",    H2/H3-section-granularity
  *   - .claude/rules/*.md                     kind = "rule",        H2/H3-section-granularity
@@ -13,11 +18,9 @@
  * existing phase 7b walker and folded into the topic-index lazily by
  * phase 7b itself; phase 5b builds the doc / rules slice up front.
  *
- * Block extraction is intentionally simple — markdown formatting is
- * normalized in `slug.ts::normalizeBlock` so the slug is stable across
- * indentation changes, list-marker churn, etc. Headings are kept on the
- * first line of each section so the resolver can lift `proposedTitle`
- * without an extra LLM call.
+ * The Haiku classifier in phase 6 filters non-binding doc paragraphs
+ * (release notes, tutorials, raw API references) by returning
+ * kind=other, so being permissive here doesn't pollute the ledger.
  */
 
 import { type Dirent, existsSync, readFileSync, readdirSync, statSync } from "node:fs";
@@ -58,7 +61,20 @@ const SKIP_DIRS = new Set([
   ".cache",
   "coverage",
   ".archive",
+  ".pnpm-store",
+  ".yarn",
+  "vendor",
+  "target",
+  ".gradle",
+  ".idea",
+  ".vscode",
 ]);
+
+/** Files owned by phase 7c (rules merge); excluded from the doc walk. */
+const RULE_OWNED_FILES = new Set(["CLAUDE.md", "AGENTS.md"]);
+
+/** Directory paths owned by phase 7c (relative to repo root). */
+const RULE_OWNED_DIRS = [".claude/rules"];
 
 /* -------------------------------------------------------------------------- */
 /* Public entry point                                                         */
@@ -74,16 +90,43 @@ export function walkProseBlocks(repoRoot: string): ProseBlock[] {
 }
 
 /* -------------------------------------------------------------------------- */
-/* docs/*.md — paragraph granularity                                          */
+/* Any reachable *.md (excluding rule-owned paths) → kind="doc"               */
+/*                                                                            */
+/* Layout-agnostic: walks the repo root and yields every markdown file        */
+/* that isn't claimed by phase 7c (CLAUDE.md / AGENTS.md / .claude/rules/*)   */
+/* and isn't inside a skip dir. Operator's chosen layout — `docs/`,           */
+/* `documentation/`, `notes/`, custom-named folder, root-level READMEs —      */
+/* all flow through this single discovery without configuration.              */
 /* -------------------------------------------------------------------------- */
 
 function walkDocs(repoRoot: string): ProseBlock[] {
-  const docsDir = join(repoRoot, "docs");
-  if (!existsSync(docsDir)) return [];
   const out: ProseBlock[] = [];
-  for (const file of listMarkdown(docsDir)) {
-    const rel = relative(repoRoot, file);
-    out.push(...extractParagraphs(rel, file, "doc"));
+  const ruleOwnedAbs = new Set(RULE_OWNED_DIRS.map((d) => join(repoRoot, d)));
+
+  const stack: string[] = [repoRoot];
+  while (stack.length > 0) {
+    const dir = stack.pop();
+    if (dir === undefined) break;
+    if (ruleOwnedAbs.has(dir)) continue;
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(dir, { withFileTypes: true, encoding: "utf8" });
+    } catch {
+      continue;
+    }
+    for (const ent of entries) {
+      if (SKIP_DIRS.has(ent.name)) continue;
+      const abs = join(dir, ent.name);
+      if (ent.isDirectory()) {
+        if (ruleOwnedAbs.has(abs)) continue;
+        stack.push(abs);
+        continue;
+      }
+      if (!ent.isFile() || !ent.name.endsWith(".md")) continue;
+      const rel = relative(repoRoot, abs);
+      if (RULE_OWNED_FILES.has(rel)) continue;
+      out.push(...extractParagraphs(rel, abs, "doc"));
+    }
   }
   return out;
 }
