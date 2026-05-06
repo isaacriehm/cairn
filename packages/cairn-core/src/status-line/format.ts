@@ -7,7 +7,7 @@ import type { StatusJson } from "./index.js";
  *
  * Signal priority (first match wins, blank when nothing applies):
  *   bypass_count > 0     → `⚠ N unattested`
- *   attention_count > 0  → `⚑ N draft[s]`
+ *   attention_count > 0  → `⚑ N pending` (drafts + baseline findings + drift)
  *   gc_running           → `◐ gc`
  *   task_state != idle   → `${task_id} ${task_module}` (or fallbacks)
  *
@@ -47,8 +47,11 @@ export function renderCtxMeter(ctx: CtxMeterInput): string {
 function renderSignal(s: StatusJson): string | null {
   if (s.bypass_count > 0) return `⚠ ${s.bypass_count} unattested`;
   if (s.attention_count > 0) {
-    const noun = s.attention_count === 1 ? "draft" : "drafts";
-    return `⚑ ${s.attention_count} ${noun}`;
+    // attention_count rolls up DEC drafts + baseline sensor findings +
+    // drift events, not just drafts. "pending" is the generic noun
+    // that fits the union; the cairn-attention skill renders the
+    // breakdown when the operator engages.
+    return `⚑ ${s.attention_count} pending`;
   }
   if (s.gc_running) return "◐ gc";
   if (s.task_state !== "idle") {

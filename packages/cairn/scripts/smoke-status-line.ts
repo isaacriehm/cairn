@@ -129,7 +129,7 @@ function runSmoke(): void {
         attention_count: 3,
       }),
     );
-    assert(out.includes("⚑ 3 drafts"), `Step 5: attention beats task, got ${out}`);
+    assert(out.includes("⚑ 3 pending"), `Step 5: attention beats task, got ${out}`);
     assert(!out.includes("wiring auth"), `Step 5: task surface should be hidden, got ${out}`);
     console.log("  ✓ Step 5 — attention priority");
   }
@@ -208,7 +208,7 @@ function runSmoke(): void {
       out.includes("⚠ 2 unattested"),
       `Step 9: bypass should beat all, got ${out}`,
     );
-    assert(!out.includes("drafts"), `Step 9: drafts hidden, got ${out}`);
+    assert(!out.includes("pending"), `Step 9: attention surface hidden, got ${out}`);
     assert(!out.includes("gc"), `Step 9: gc hidden, got ${out}`);
     assert(!out.includes("TSK-0099"), `Step 9: task hidden, got ${out}`);
     console.log("  ✓ Step 9 — bypass priority");

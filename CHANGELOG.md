@@ -4,6 +4,21 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.8] — 2026-05-06
+
+### Fixed
+
+- **Statusline noun mislabeling.** The `attention_count > 0`
+  branch rendered `⚑ N drafts` even though `attention_count`
+  rolls up DEC drafts + baseline sensor findings + drift events
+  (not drafts only). On a fresh adoption with 505 drafts + 486
+  baseline findings + 0 drift, the badge read `⚑ 991 drafts`
+  which was off by 486 from the real draft count. Renders as
+  `⚑ N pending` now; the cairn-attention skill renders the
+  per-kind breakdown when the operator engages.
+- **`smoke-status-line` Step 5 + Step 9** updated to assert the
+  new "pending" noun.
+
 ## [0.3.7] — 2026-05-06
 
 ### Added

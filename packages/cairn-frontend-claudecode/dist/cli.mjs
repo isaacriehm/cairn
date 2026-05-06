@@ -70122,8 +70122,7 @@ function renderSignal(s) {
   if (s.bypass_count > 0)
     return `\u26A0 ${s.bypass_count} unattested`;
   if (s.attention_count > 0) {
-    const noun = s.attention_count === 1 ? "draft" : "drafts";
-    return `\u2691 ${s.attention_count} ${noun}`;
+    return `\u2691 ${s.attention_count} pending`;
   }
   if (s.gc_running)
     return "\u25D0 gc";
@@ -70846,7 +70845,7 @@ async function runUserPromptSubmitHook() {
 // ../cairn-core/dist/index.js
 function readVersion() {
   if (true)
-    return "0.3.7";
+    return "0.3.8";
   const _here = dirname24(fileURLToPath3(import.meta.url));
   const _pkg = JSON.parse(readFileSync65(join79(_here, "..", "package.json"), "utf8"));
   return _pkg.version;
