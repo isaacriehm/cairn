@@ -553,9 +553,10 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
         },
       });
       process.stdout.write(
-        `    DEC drafts: ${sourceComments.decDraftsWritten.length}; ` +
-          `invariant proposals: ${sourceComments.invariantProposalsAdded}; ` +
-          `citations: ${sourceComments.canonicalCitationsAdded}\n`,
+        `    DECs: ${sourceComments.decsWritten.length}; ` +
+          `invariants: ${sourceComments.invsWritten.length}; ` +
+          `cites: ${sourceComments.citesEmitted.length}; ` +
+          `strip applied: ${sourceComments.stripItemsApplied}\n`,
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

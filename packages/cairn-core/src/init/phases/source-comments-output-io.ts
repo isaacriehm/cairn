@@ -88,18 +88,32 @@ export interface IngestSourceCommentsResultPersisted {
     filesAvailable: number;
     truncatedAtFileCap: boolean;
   };
-  decDraftsWritten: { id: string; path: string; sourceFile: string }[];
-  invariantsWritten: { id: string; path: string; sourceFile: string }[];
-  invariantStripFilesModified: number;
-  invariantStripItemsApplied: number;
-  invariantStripItemsSkipped: number;
-  invariantStripError: string | null;
-  invariantProposalsAdded: number;
-  canonicalCitationsAdded: number;
+  decsWritten: {
+    id: string;
+    path: string;
+    sourceFile: string;
+    slug: string;
+    status: "accepted";
+  }[];
+  invsWritten: {
+    id: string;
+    path: string;
+    sourceFile: string;
+    slug: string;
+    status: "accepted";
+  }[];
+  citesEmitted: {
+    id: string;
+    sourceFile: string;
+    lineRange: [number, number];
+    slug: string;
+  }[];
+  stripFilesModified: number;
+  stripItemsApplied: number;
+  stripItemsSkipped: number;
+  stripError: string | null;
   auditPath: string;
   auditRelPath: string;
-  invariantProposalsPath: string | null;
-  canonicalCitationsPath: string | null;
   inputTokens: number;
   outputTokens: number;
   batchesRun: number;
@@ -121,18 +135,15 @@ export function to7bResultPersisted(
       filesAvailable: full.walk.filesAvailable,
       truncatedAtFileCap: full.walk.truncatedAtFileCap,
     },
-    decDraftsWritten: full.decDraftsWritten,
-    invariantsWritten: full.invariantsWritten,
-    invariantStripFilesModified: full.invariantStripFilesModified,
-    invariantStripItemsApplied: full.invariantStripItemsApplied,
-    invariantStripItemsSkipped: full.invariantStripItemsSkipped,
-    invariantStripError: full.invariantStripError,
-    invariantProposalsAdded: full.invariantProposalsAdded,
-    canonicalCitationsAdded: full.canonicalCitationsAdded,
+    decsWritten: full.decsWritten,
+    invsWritten: full.invsWritten,
+    citesEmitted: full.citesEmitted,
+    stripFilesModified: full.stripFilesModified,
+    stripItemsApplied: full.stripItemsApplied,
+    stripItemsSkipped: full.stripItemsSkipped,
+    stripError: full.stripError,
     auditPath: full.auditPath,
     auditRelPath: full.auditRelPath,
-    invariantProposalsPath: full.invariantProposalsPath,
-    canonicalCitationsPath: full.canonicalCitationsPath,
     inputTokens: full.inputTokens,
     outputTokens: full.outputTokens,
     batchesRun: full.batchesRun,

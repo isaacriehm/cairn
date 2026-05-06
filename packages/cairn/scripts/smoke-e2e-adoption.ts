@@ -171,35 +171,14 @@ async function main(): Promise<void> {
     // Phase 7b: any rationale-shaped block gets marked rationale.
     mockSourceCommentClassify: (block: CommentBlock): CommentClassification => {
       if (block.kind === "license") {
-        return {
-          blockId: block.id,
-          kind: "license",
-          suggestedDecDraft: "",
-          suggestedInvariant: "",
-          suggestedCanonicalTopic: "",
-          failed: false,
-        };
+        return { blockId: block.id, kind: "license", failed: false };
       }
       // Treat the JWT JSDoc as rationale.
       if (/HS512|JWT/i.test(block.prose)) {
         phase7bDecCount += 1;
-        return {
-          blockId: block.id,
-          kind: "rationale",
-          suggestedDecDraft: "Sign JWTs with HS512 until KMS",
-          suggestedInvariant: "",
-          suggestedCanonicalTopic: "auth-jwt",
-          failed: false,
-        };
+        return { blockId: block.id, kind: "rationale", failed: false };
       }
-      return {
-        blockId: block.id,
-        kind: "other",
-        suggestedDecDraft: "",
-        suggestedInvariant: "",
-        suggestedCanonicalTopic: "",
-        failed: false,
-      };
+      return { blockId: block.id, kind: "other", failed: false };
     },
     // Phase 7c: "Brand voice" section becomes a net-new rule.
     mockRulesMergeClassify: (
@@ -260,11 +239,11 @@ async function main(): Promise<void> {
   assert(typeof config["cairn_version"] === "string", "cairn_version present");
   console.log(`  ✓ Step 2 — cairn_version=${String(config["cairn_version"])}`);
 
-  step("Step 3 — Phase 7b: source-comments audit + DEC drafts written");
+  step("Step 3 — Phase 7b: source-comments audit + DECs written");
   assert(result.source_comments !== null, "source_comments result populated");
   assert(
-    result.source_comments!.decDraftsWritten.length === phase7bDecCount,
-    `expected ${phase7bDecCount} DEC drafts from source-comments, got ${result.source_comments!.decDraftsWritten.length}`,
+    result.source_comments!.decsWritten.length === phase7bDecCount,
+    `expected ${phase7bDecCount} DECs from source-comments, got ${result.source_comments!.decsWritten.length}`,
   );
   assert(
     existsSync(join(repoRoot, result.source_comments!.auditRelPath)),
@@ -274,7 +253,7 @@ async function main(): Promise<void> {
   const licCount = result.source_comments!.kindCounts["license"];
   assert(licCount >= 1, "license header captured");
   console.log(
-    `  ✓ Step 3 — ${result.source_comments!.decDraftsWritten.length} DEC draft(s); audit at ${result.source_comments!.auditRelPath}`,
+    `  ✓ Step 3 — ${result.source_comments!.decsWritten.length} DEC(s); audit at ${result.source_comments!.auditRelPath}`,
   );
 
   step("Step 4 — Phase 7c: rules-merge audit + DEC drafts written");
@@ -300,15 +279,15 @@ async function main(): Promise<void> {
     `  ✓ Step 4 — ${result.rules_merge!.decDraftsWritten.length} DEC draft(s); operator-keep ${result.rules_merge!.kindCounts["operator-keep"]}`,
   );
 
-  step("Step 5 — DEC drafts in inbox total");
-  const inboxDir = join(repoRoot, ".cairn/ground/decisions/_inbox");
-  assert(existsSync(inboxDir), "_inbox dir exists");
-  const drafts = readFileSync(
-    join(inboxDir, `${result.source_comments!.decDraftsWritten[0]?.id}.draft.md`),
-    "utf8",
-  );
-  assert(drafts.includes("HS512"), "source-comment draft body cites HS512");
-  console.log("  ✓ Step 5 — drafts present + bodies wired");
+  step("Step 5 — Phase 7b DEC body landed in ground state");
+  const decDir = join(repoRoot, ".cairn/ground/decisions");
+  const firstDecId = result.source_comments!.decsWritten[0]?.id;
+  assert(typeof firstDecId === "string", "phase 7b emitted at least one DEC");
+  const decBody = readFileSync(join(decDir, `${firstDecId}.md`), "utf8");
+  assert(decBody.includes("HS512"), "source-comment DEC body cites HS512");
+  assert(decBody.includes("status: accepted"), "phase 7b DEC auto-promoted to accepted");
+  assert(decBody.includes("sot_kind: ledger"), "sot_kind=ledger");
+  console.log("  ✓ Step 5 — DECs accepted + bodies wired");
 
   step("Step 6 — Phase 12 multi-dev detection (no auto-prepare)");
   assert(result.multi_dev !== null, "multi_dev result populated");

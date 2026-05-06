@@ -119,6 +119,8 @@ export {
   bodyContentHash,
   deriveDecId,
   deriveInvId,
+  deriveLedgerDecId,
+  deriveLedgerInvId,
   normalizeBlock,
   topicSlug,
 } from "./slug.js";

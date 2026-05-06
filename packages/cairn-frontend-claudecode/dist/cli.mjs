@@ -43328,6 +43328,22 @@ function deriveInvId(input) {
   });
   return `INV-${createHash3("sha256").update(json2, "utf8").digest("hex").slice(0, 7)}`;
 }
+function deriveLedgerDecId(input) {
+  const json2 = JSON.stringify({
+    source_file: input.source_file,
+    source_offset: input.source_offset,
+    capture_source: input.capture_source
+  });
+  return `DEC-${createHash3("sha256").update(json2, "utf8").digest("hex").slice(0, 7)}`;
+}
+function deriveLedgerInvId(input) {
+  const json2 = JSON.stringify({
+    source_file: input.source_file,
+    source_offset: input.source_offset,
+    capture_source: input.capture_source
+  });
+  return `INV-${createHash3("sha256").update(json2, "utf8").digest("hex").slice(0, 7)}`;
+}
 
 // ../cairn-core/dist/context/handoff-builder.js
 var MAX_CHARS = 2400;
@@ -43660,15 +43676,6 @@ function canonicalDecision(input) {
     timestamp_ms: input.timestamp_ms ?? null
   });
 }
-function canonicalInvariant(input) {
-  return JSON.stringify({
-    title: input.title.trim().toLowerCase(),
-    source_file: input.source_file ?? null,
-    source_offset: input.source_offset ?? null,
-    raw: input.raw ?? null,
-    timestamp_ms: input.timestamp_ms ?? null
-  });
-}
 function computeDecisionId(input, existing) {
   const digest = createHash4("sha256").update(canonicalDecision(input)).digest("hex");
   for (let len = HASH_LEN; len <= digest.length; len++) {
@@ -43677,15 +43684,6 @@ function computeDecisionId(input, existing) {
       return candidate;
   }
   throw new Error("computeDecisionId: hash exhaustion (impossible at sha256)");
-}
-function computeInvariantId(input, existing) {
-  const digest = createHash4("sha256").update(canonicalInvariant(input)).digest("hex");
-  for (let len = HASH_LEN; len <= digest.length; len++) {
-    const candidate = `INV-${digest.slice(0, len)}`;
-    if (existing === void 0 || !existing.has(candidate))
-      return candidate;
-  }
-  throw new Error("computeInvariantId: hash exhaustion (impossible at sha256)");
 }
 function scanExistingDecisionIds(repoRoot) {
   const dir = decisionsDir(repoRoot);
@@ -51815,7 +51813,7 @@ import { existsSync as existsSync42, mkdirSync as mkdirSync23, readFileSync as r
 import { join as join39 } from "node:path";
 var log21 = logger("init.sot-emit");
 async function emitFromTopicIndex(args) {
-  const { repoRoot, topicIndex, anchorMap, filter, classifier, sot_kind, capture_source } = args;
+  const { repoRoot, topicIndex, anchorMap, filter, classifier, sot_kind, capture_source, idDeriver } = args;
   let bindings = readSotBindings(repoRoot);
   if (Object.keys(bindings.forward).length === 0)
     bindings = emptySotBindings();
@@ -51824,6 +51822,7 @@ async function emitFromTopicIndex(args) {
     cache = emptySotCache();
   const emitted = [];
   const skipped = [];
+  let updatedTopicIndex = topicIndex;
   for (const [slug, entry] of Object.entries(topicIndex.topics)) {
     if (!filter(entry))
       continue;
@@ -51850,11 +51849,12 @@ async function emitFromTopicIndex(args) {
       continue;
     }
     const titleSeed = cls.title.length > 0 ? cls.title : firstLineFallback(body);
+    const kindForId = cls.kind === "constraint" ? "constraint" : "decision";
+    const derivedId = idDeriver !== void 0 ? idDeriver({ entry, body, sot_path, capture_source, kind: kindForId, title: titleSeed }) : kindForId === "constraint" ? deriveInvId({ sot_path, title: titleSeed, capture_source }) : deriveDecId({ sot_path, title: titleSeed, capture_source });
     if (cls.kind === "constraint") {
-      const id = deriveInvId({ sot_path, title: titleSeed, capture_source });
       writeInvariantFile({
         repoRoot,
-        id,
+        id: derivedId,
         title: titleSeed,
         body,
         sot_kind,
@@ -51862,9 +51862,9 @@ async function emitFromTopicIndex(args) {
         source_file: entry.sot_source,
         capture_source
       });
-      bindings = bindDec(bindings, id, sot_path);
-      cache = setEntry(cache, id, {
-        dec_id: id,
+      bindings = bindDec(bindings, derivedId, sot_path);
+      cache = setEntry(cache, derivedId, {
+        dec_id: derivedId,
         sot_path,
         body_hash: bodyContentHash(body),
         tokens: Array.from(tokenize(body, { codeAware: true })),
@@ -51872,7 +51872,7 @@ async function emitFromTopicIndex(args) {
         mtime_ms: Date.now()
       });
       emitted.push({
-        id,
+        id: derivedId,
         kind: "INV",
         sot_path,
         body,
@@ -51881,10 +51881,9 @@ async function emitFromTopicIndex(args) {
         slug
       });
     } else {
-      const id = deriveDecId({ sot_path, title: titleSeed, capture_source });
       writeDecisionFile({
         repoRoot,
-        id,
+        id: derivedId,
         title: titleSeed,
         body,
         sot_kind,
@@ -51892,9 +51891,9 @@ async function emitFromTopicIndex(args) {
         source_file: entry.sot_source,
         capture_source
       });
-      bindings = bindDec(bindings, id, sot_path);
-      cache = setEntry(cache, id, {
-        dec_id: id,
+      bindings = bindDec(bindings, derivedId, sot_path);
+      cache = setEntry(cache, derivedId, {
+        dec_id: derivedId,
         sot_path,
         body_hash: bodyContentHash(body),
         tokens: Array.from(tokenize(body, { codeAware: true })),
@@ -51902,7 +51901,7 @@ async function emitFromTopicIndex(args) {
         mtime_ms: Date.now()
       });
       emitted.push({
-        id,
+        id: derivedId,
         kind: "DEC",
         sot_path,
         body,
@@ -51911,8 +51910,9 @@ async function emitFromTopicIndex(args) {
         slug
       });
     }
+    updatedTopicIndex = setTopic(updatedTopicIndex, slug, { ...entry, dec_id: derivedId });
   }
-  return { emitted, skipped, bindings, cache };
+  return { emitted, skipped, bindings, cache, topicIndex: updatedTopicIndex };
 }
 function readSotBody(repoRoot, entry, anchorMap) {
   const sot = entry.candidates.find((c4) => c4.file === entry.sot_source);
@@ -52095,6 +52095,7 @@ async function runDocsIngestion(args) {
   });
   writeSotBindings(args.repoRoot, result.bindings);
   writeSotCache(args.repoRoot, result.cache);
+  writeTopicIndex(args.repoRoot, result.topicIndex);
   const decsWritten = result.emitted.map((rec) => ({
     id: rec.id,
     path: relativeDecPath(rec.id),
@@ -52842,10 +52843,7 @@ var BATCH_SCHEMA = {
           kind: {
             type: "string",
             enum: ["rationale", "constraint", "citation", "license", "other"]
-          },
-          suggested_dec_draft: { type: "string" },
-          suggested_invariant: { type: "string" },
-          suggested_canonical_topic: { type: "string" }
+          }
         }
       }
     }
@@ -52860,7 +52858,7 @@ Each comment block in the batch has:
   - kind       \u2014 block | jsdoc | line-cluster | license
   - prose      \u2014 the comment text with markers stripped
 
-Return JSON: { "results": [ { block_id, kind, suggested_dec_draft?, suggested_invariant?, suggested_canonical_topic? } ] }
+Return JSON: { "results": [ { block_id, kind } ] }
 
 \`kind\` choices:
   - "rationale"  comment explains *why* a non-obvious choice was made (DEC candidate)
@@ -52874,11 +52872,6 @@ Heuristics:
   - Multi-paragraph rationale tying behavior to a domain rule = "rationale".
   - Hard-coded business rule that's wrong if violated = "constraint".
   - Cross-reference to RFC / spec / ticket / docs = "citation".
-
-Optional fields:
-  - suggested_dec_draft        5-10 word imperative title; populate only for "rationale"
-  - suggested_invariant        1-sentence invariant body; populate only for "constraint"
-  - suggested_canonical_topic  kebab-case topic slug; populate when topic is clear
 
 Be conservative. When in doubt, "other". Always echo the block_id verbatim.`;
 async function classifyBlocks(args) {
@@ -52957,9 +52950,6 @@ async function classifyBlocks(args) {
           out[start + i2] = {
             blockId: b2.id,
             kind: b2.kind === "license" ? "license" : "other",
-            suggestedDecDraft: "",
-            suggestedInvariant: "",
-            suggestedCanonicalTopic: "",
             failed: outcome.errorMessage !== void 0,
             ...outcome.errorMessage !== void 0 ? { errorMessage: outcome.errorMessage } : {}
           };
@@ -53055,9 +53045,6 @@ async function classifyOneBatch(batch, repoRoot) {
     byId.set(blockId, {
       blockId,
       kind,
-      suggestedDecDraft: typeof entry["suggested_dec_draft"] === "string" ? entry["suggested_dec_draft"] : "",
-      suggestedInvariant: typeof entry["suggested_invariant"] === "string" ? entry["suggested_invariant"] : "",
-      suggestedCanonicalTopic: typeof entry["suggested_canonical_topic"] === "string" ? entry["suggested_canonical_topic"] : "",
       failed: false
     });
   }
@@ -53091,6 +53078,7 @@ var import_yaml28 = __toESM(require_dist(), 1);
 import { mkdirSync as mkdirSync24, writeFileSync as writeFileSync23 } from "node:fs";
 import { dirname as dirname21, join as join41 } from "node:path";
 var log24 = logger("init.source-comments.ingest");
+var CAPTURE_SOURCE = "init-source-comments";
 async function runSourceCommentsIngestion(args) {
   const repoRoot = args.repoRoot;
   const nowIso = args.nowIso ?? (/* @__PURE__ */ new Date()).toISOString();
@@ -53121,127 +53109,225 @@ async function runSourceCommentsIngestion(args) {
       continue;
     kindCounts[c4.kind] = (kindCounts[c4.kind] ?? 0) + 1;
   }
-  const decDraftsWritten = [];
-  const invariantsWritten = [];
-  const invariantProposals = [];
-  const canonicalCitations = [];
-  const invariantStripItems = [];
-  const existingIds = args.existingDecIds ?? scanExistingDecisionIds(repoRoot);
-  const existingInvariantIds = args.existingInvIds ?? scanExistingInvariantIds(repoRoot);
-  for (let i2 = 0; i2 < walk2.blocks.length; i2++) {
+  let topicIndex = readTopicIndex(repoRoot);
+  if (Object.keys(topicIndex.topics).length === 0)
+    topicIndex = emptyTopicIndex();
+  let anchorMap = readAnchorMap(repoRoot);
+  if (Object.keys(anchorMap.anchors).length === 0)
+    anchorMap = emptyAnchorMap();
+  const resolutionByBlockId = /* @__PURE__ */ new Map();
+  const skipped = [];
+  const emitKindBySlug = /* @__PURE__ */ new Map();
+  for (let i2 = 0; i2 < walk2.blocks.length; i2 += 1) {
     const block = walk2.blocks[i2];
     const cls = classifyResult.classifications[i2];
     if (block === void 0 || cls === void 0)
       continue;
-    if (cls.kind === "rationale" && cls.suggestedDecDraft.length > 0) {
-      const id = computeDecisionId({
-        title: cls.suggestedDecDraft,
-        rationale: block.prose,
-        capture_source: "init-source-comments",
-        source_file: block.file,
-        source_offset: block.startLine,
-        raw: block.raw
-      }, existingIds);
-      existingIds.add(id);
-      const confidence = args.globs !== void 0 ? scoreDecDraft({
-        sourceFile: block.file,
-        prose: block.prose,
-        title: cls.suggestedDecDraft,
-        rawComment: block.raw,
-        globs: args.globs,
-        ...args.pilotModule !== void 0 ? { pilotModule: args.pilotModule } : {}
-      }) : void 0;
-      if (args.dryRun !== true) {
-        const written = writeDecDraft({
-          repoRoot,
-          id,
-          block,
-          classification: cls,
-          generatedAt: nowIso,
-          ...confidence !== void 0 ? { confidence } : {}
-        });
-        decDraftsWritten.push({
-          id,
-          path: written.relPath,
-          sourceFile: block.file
-        });
-      } else {
-        decDraftsWritten.push({
-          id,
-          path: `.cairn/ground/decisions/_inbox/${id}.draft.md`,
-          sourceFile: block.file
-        });
-      }
+    if (cls.kind !== "rationale" && cls.kind !== "constraint") {
+      skipped.push({ blockId: block.id, reason: `kind=${cls.kind}` });
+      continue;
     }
-    if (cls.kind === "constraint" && cls.suggestedInvariant.length > 0) {
-      invariantProposals.push({
-        block_id: block.id,
-        source_file: block.file,
-        start_line: block.startLine,
-        end_line: block.endLine,
-        proposed: cls.suggestedInvariant,
-        canonical_topic: cls.suggestedCanonicalTopic
-      });
-      const invId = computeInvariantId({
-        title: cls.suggestedInvariant,
-        source_file: block.file,
-        source_offset: block.startLine,
-        raw: block.raw
-      }, existingInvariantIds);
-      existingInvariantIds.add(invId);
-      const invConfidence = args.globs !== void 0 ? scoreInvariant({
-        sourceFile: block.file,
-        prose: cls.suggestedInvariant,
-        title: cls.suggestedInvariant.split("\n")[0] ?? "",
-        rawComment: block.raw,
-        globs: args.globs,
-        ...args.pilotModule !== void 0 ? { pilotModule: args.pilotModule } : {}
-      }) : void 0;
-      if (args.dryRun !== true) {
-        const written = writeInvariantFile2({
-          repoRoot,
-          id: invId,
-          block,
-          classification: cls,
-          generatedAt: nowIso,
-          ...invConfidence !== void 0 ? { confidence: invConfidence } : {}
-        });
-        invariantsWritten.push({
-          id: invId,
-          path: written.relPath,
-          sourceFile: block.file
-        });
-      } else {
-        invariantsWritten.push({
-          id: invId,
-          path: `.cairn/ground/invariants/${invId}.md`,
-          sourceFile: block.file
-        });
-      }
-      invariantStripItems.push({
+    if (cls.failed) {
+      skipped.push({
         blockId: block.id,
-        file: block.file,
-        startOffset: block.startOffset,
-        endOffset: block.endOffset,
-        replacement: formatBareCitation(block.lang, invId),
-        expectedRaw: block.raw
+        reason: `classifier failed: ${cls.errorMessage ?? "unknown"}`
+      });
+      continue;
+    }
+    const slug = topicSlug(block.prose);
+    const existing = topicIndex.topics[slug];
+    if (existing !== void 0 && existing.dec_id !== void 0) {
+      resolutionByBlockId.set(block.id, {
+        kind: "cite",
+        existingId: existing.dec_id,
+        slug
+      });
+      continue;
+    }
+    const emitKind = cls.kind === "constraint" ? "constraint" : "decision";
+    if (existing !== void 0) {
+      emitKindBySlug.set(slug, emitKind);
+      resolutionByBlockId.set(block.id, { kind: "emit", slug, emitKind });
+      continue;
+    }
+    const lineRange = [block.startLine, block.endLine];
+    const newEntry = {
+      slug,
+      sot_source: block.file,
+      candidates: [
+        {
+          file: block.file,
+          kind: "source-comment",
+          line_range: lineRange
+        }
+      ],
+      created_at: nowIso
+    };
+    topicIndex = setTopic(topicIndex, slug, newEntry);
+    anchorMap = setAnchor(anchorMap, slug, {
+      file: block.file,
+      content_hash: bodyContentHash(block.prose),
+      line_range: lineRange,
+      kind: "source-comment"
+    });
+    emitKindBySlug.set(slug, emitKind);
+    resolutionByBlockId.set(block.id, { kind: "emit", slug, emitKind });
+  }
+  const emit = await emitFromTopicIndex({
+    repoRoot,
+    topicIndex,
+    anchorMap,
+    filter: (entry) => entry.dec_id === void 0 && isSourceCommentEntry(entry) && emitKindBySlug.has(entry.slug),
+    classifier: async ({ entry }) => {
+      const k2 = emitKindBySlug.get(entry.slug);
+      if (k2 === void 0)
+        return { kind: "skip", title: "" };
+      return { kind: k2 === "constraint" ? "constraint" : "decision", title: "" };
+    },
+    sot_kind: "ledger",
+    capture_source: CAPTURE_SOURCE,
+    idDeriver: ({ entry, kind }) => {
+      const sot = entry.candidates.find((c4) => c4.file === entry.sot_source);
+      const range = sot?.line_range;
+      const offset = range !== void 0 ? range[0] : 0;
+      const inputs = {
+        source_file: entry.sot_source,
+        source_offset: offset,
+        capture_source: CAPTURE_SOURCE
+      };
+      return kind === "constraint" ? deriveLedgerInvId(inputs) : deriveLedgerDecId(inputs);
+    }
+  });
+  topicIndex = emit.topicIndex;
+  if (args.dryRun !== true) {
+    persistGroundState({
+      repoRoot,
+      topicIndex,
+      anchorMap,
+      bindings: emit.bindings,
+      cache: emit.cache
+    });
+  }
+  const decsWritten = [];
+  const invsWritten = [];
+  const emittedIdBySlug = /* @__PURE__ */ new Map();
+  for (const rec of emit.emitted) {
+    emittedIdBySlug.set(rec.slug, rec.id);
+    const target = {
+      id: rec.id,
+      path: rec.kind === "DEC" ? `.cairn/ground/decisions/${rec.id}.md` : `.cairn/ground/invariants/${rec.id}.md`,
+      sourceFile: rec.source_file,
+      slug: rec.slug,
+      status: "accepted"
+    };
+    if (rec.kind === "DEC")
+      decsWritten.push(target);
+    else
+      invsWritten.push(target);
+  }
+  for (const sk of emit.skipped) {
+    skipped.push({ blockId: `slug:${sk.slug}`, reason: sk.reason });
+  }
+  const citesEmitted = [];
+  const stripItems = [];
+  for (let i2 = 0; i2 < walk2.blocks.length; i2 += 1) {
+    const block = walk2.blocks[i2];
+    if (block === void 0)
+      continue;
+    const resolution = resolutionByBlockId.get(block.id);
+    if (resolution === void 0)
+      continue;
+    const targetId = resolution.kind === "cite" ? resolution.existingId : emittedIdBySlug.get(resolution.slug);
+    if (targetId === void 0) {
+      skipped.push({
+        blockId: block.id,
+        reason: `emit produced no id for slug ${resolution.slug}`
+      });
+      continue;
+    }
+    if (resolution.kind === "cite") {
+      citesEmitted.push({
+        id: targetId,
+        sourceFile: block.file,
+        lineRange: [block.startLine, block.endLine],
+        slug: resolution.slug
       });
     }
-    if (cls.kind === "citation" && cls.suggestedCanonicalTopic.length > 0) {
-      canonicalCitations.push({
-        block_id: block.id,
-        source_file: block.file,
-        start_line: block.startLine,
-        end_line: block.endLine,
-        topic: cls.suggestedCanonicalTopic,
-        excerpt: block.prose.slice(0, 240)
+    stripItems.push({
+      blockId: block.id,
+      file: block.file,
+      startOffset: block.startOffset,
+      endOffset: block.endOffset,
+      replacement: formatBareCitation(block.lang, targetId),
+      expectedRaw: block.raw
+    });
+  }
+  let stripFilesModified = 0;
+  let stripItemsApplied = 0;
+  let stripItemsSkipped = 0;
+  let stripOutcomes = [];
+  let stripError = null;
+  if (args.dryRun !== true && stripItems.length > 0) {
+    log24.info({
+      items: stripItems.length,
+      files: [...new Set(stripItems.map((it) => it.file))]
+    }, "strip-replace: starting");
+    try {
+      const dirtyDecisions = {};
+      for (const item of stripItems)
+        dirtyDecisions[item.file] = "overwrite";
+      const result = applyStripReplace({
+        repoRoot,
+        items: stripItems,
+        dirtyDecisions
       });
+      stripFilesModified = result.filesModified;
+      stripItemsApplied = result.itemsApplied;
+      stripItemsSkipped = result.itemsSkipped;
+      stripOutcomes = result.files.map((o2) => ({
+        file: o2.file,
+        applied: o2.itemsApplied,
+        skipped: o2.itemsSkipped.map((s) => ({
+          blockId: s.blockId,
+          reason: s.reason
+        })),
+        fileSkipReason: o2.fileSkipReason ?? null
+      }));
+      log24.info({
+        filesModified: result.filesModified,
+        itemsApplied: result.itemsApplied,
+        itemsSkipped: result.itemsSkipped
+      }, "strip-replace: complete");
+      try {
+        updateScopeIndexFromStripItems(repoRoot, stripItems);
+      } catch (err) {
+        log24.warn({ err: err instanceof Error ? err.message : String(err) }, "scope-index update from strip items failed");
+      }
+    } catch (err) {
+      stripError = err instanceof Error ? err.message : String(err);
+      log24.warn({ err: stripError }, "strip-replace failed");
+    }
+  } else if (stripItems.length === 0) {
+    log24.info("strip-replace: no items (no rationale/constraint blocks classified)");
+  }
+  if (args.dryRun !== true) {
+    if (invsWritten.length > 0) {
+      try {
+        writeInvariantsLedger({ repoRoot });
+      } catch (err) {
+        log24.warn({ err: err instanceof Error ? err.message : String(err) }, "invariants ledger rebuild failed");
+      }
+    }
+    if (decsWritten.length > 0) {
+      try {
+        writeDecisionsLedger({ repoRoot });
+      } catch (err) {
+        log24.warn({ err: err instanceof Error ? err.message : String(err) }, "decisions ledger rebuild failed");
+      }
     }
   }
   const auditRelPath = `.cairn/baseline/source-comments-${tsSlug}.yaml`;
   const auditPath = join41(repoRoot, auditRelPath);
-  let invariantProposalsPath = null;
-  let canonicalCitationsPath = null;
   if (args.dryRun !== true) {
     writeYaml(auditPath, {
       run_at: nowIso,
@@ -53256,6 +53342,9 @@ async function runSourceCommentsIngestion(args) {
       batches_failed: classifyResult.batchesFailed,
       input_tokens: classifyResult.inputTokens,
       output_tokens: classifyResult.outputTokens,
+      decs_written: decsWritten.length,
+      invs_written: invsWritten.length,
+      cites_emitted: citesEmitted.length,
       blocks: walk2.blocks.map((b2, idx) => ({
         block_id: b2.id,
         file: b2.file,
@@ -53269,105 +53358,37 @@ async function runSourceCommentsIngestion(args) {
         start_offset: b2.startOffset,
         end_offset: b2.endOffset,
         raw: b2.raw,
-        classification: classifyResult.classifications[idx] ?? null
+        classification: classifyResult.classifications[idx] ?? null,
+        resolution: serializeResolution(resolutionByBlockId.get(b2.id))
       }))
     });
-    if (invariantProposals.length > 0) {
-      const rel = `.cairn/baseline/invariant-proposals-${tsSlug}.yaml`;
-      invariantProposalsPath = join41(repoRoot, rel);
-      writeYaml(invariantProposalsPath, {
-        run_at: nowIso,
-        proposals: invariantProposals
-      });
-    }
-    if (canonicalCitations.length > 0) {
-      const rel = `.cairn/baseline/canonical-citations-${tsSlug}.yaml`;
-      canonicalCitationsPath = join41(repoRoot, rel);
-      writeYaml(canonicalCitationsPath, {
-        run_at: nowIso,
-        citations: canonicalCitations
-      });
-    }
   }
   log24.info({
     files: walk2.files.length,
     blocks: walk2.blocks.length,
     kindCounts,
-    decDrafts: decDraftsWritten.length,
-    invariantProposals: invariantProposals.length,
-    canonicalCitations: canonicalCitations.length,
+    decs: decsWritten.length,
+    invs: invsWritten.length,
+    cites: citesEmitted.length,
+    stripApplied: stripItemsApplied,
+    stripSkipped: stripItemsSkipped,
     inputTokens: classifyResult.inputTokens,
     outputTokens: classifyResult.outputTokens
   }, "source-comments ingestion complete");
-  if (args.dryRun !== true && invariantsWritten.length > 0) {
-    try {
-      writeInvariantsLedger({ repoRoot });
-    } catch (err) {
-      log24.warn({ err: err instanceof Error ? err.message : String(err) }, "invariants ledger rebuild failed");
-    }
-  }
-  let invariantStripFilesModified = 0;
-  let invariantStripItemsApplied = 0;
-  let invariantStripItemsSkipped = 0;
-  let invariantStripOutcomes = [];
-  let invariantStripError = null;
-  if (args.dryRun !== true && invariantStripItems.length > 0) {
-    log24.info({
-      items: invariantStripItems.length,
-      files: [...new Set(invariantStripItems.map((it) => it.file))]
-    }, "invariant strip-replace: starting");
-    try {
-      const dirtyDecisions = {};
-      for (const item of invariantStripItems)
-        dirtyDecisions[item.file] = "overwrite";
-      const result = applyStripReplace({
-        repoRoot,
-        items: invariantStripItems,
-        dirtyDecisions
-      });
-      invariantStripFilesModified = result.filesModified;
-      invariantStripItemsApplied = result.itemsApplied;
-      invariantStripItemsSkipped = result.itemsSkipped;
-      invariantStripOutcomes = result.files.map((o2) => ({
-        file: o2.file,
-        applied: o2.itemsApplied,
-        skipped: o2.itemsSkipped.map((s) => ({ blockId: s.blockId, reason: s.reason })),
-        fileSkipReason: o2.fileSkipReason ?? null
-      }));
-      log24.info({
-        filesModified: result.filesModified,
-        itemsApplied: result.itemsApplied,
-        itemsSkipped: result.itemsSkipped,
-        outcomes: invariantStripOutcomes
-      }, "invariant strip-replace: complete");
-      try {
-        updateScopeIndexFromStripItems(repoRoot, invariantStripItems);
-      } catch (err) {
-        log24.warn({ err: err instanceof Error ? err.message : String(err) }, "scope-index update from strip items failed");
-      }
-    } catch (err) {
-      invariantStripError = err instanceof Error ? err.message : String(err);
-      log24.warn({ err: invariantStripError }, "invariant strip-replace failed");
-    }
-  } else if (invariantStripItems.length === 0) {
-    log24.info("invariant strip-replace: no items (no constraint blocks classified)");
-  }
   return {
     walk: walk2,
     classifications: classifyResult.classifications,
-    decDraftsWritten,
-    invariantsWritten,
-    invariantStripFilesModified,
-    invariantStripItemsApplied,
-    invariantStripItemsSkipped,
-    invariantStripOutcomes,
-    invariantStripError,
-    invariantProposalsAdded: invariantProposals.length,
-    canonicalCitationsAdded: canonicalCitations.length,
+    decsWritten,
+    invsWritten,
+    citesEmitted,
+    skipped,
+    stripFilesModified,
+    stripItemsApplied,
+    stripItemsSkipped,
+    stripOutcomes,
+    stripError,
     auditPath,
     auditRelPath,
-    invariantProposalsPath,
-    canonicalCitationsPath,
     inputTokens: classifyResult.inputTokens,
     outputTokens: classifyResult.outputTokens,
     batchesRun: classifyResult.batchesRun,
@@ -53375,40 +53396,108 @@ async function runSourceCommentsIngestion(args) {
     kindCounts
   };
 }
+function isSourceCommentEntry(entry) {
+  const sot = entry.candidates.find((c4) => c4.file === entry.sot_source);
+  return sot?.kind === "source-comment";
+}
+function serializeResolution(resolution) {
+  if (resolution === void 0)
+    return null;
+  if (resolution.kind === "cite") {
+    return { kind: "cite", existing_id: resolution.existingId, slug: resolution.slug };
+  }
+  return { kind: "emit", slug: resolution.slug, emit_kind: resolution.emitKind };
+}
+function persistGroundState(args) {
+  const { repoRoot } = args;
+  const freshTopic = readTopicIndex(repoRoot);
+  const baseTopic = Object.keys(freshTopic.topics).length > 0 ? freshTopic : emptyTopicIndex();
+  for (const [slug, entry] of Object.entries(args.topicIndex.topics)) {
+    baseTopic.topics[slug] = entry;
+  }
+  baseTopic.generated = (/* @__PURE__ */ new Date()).toISOString();
+  writeTopicIndex(repoRoot, baseTopic);
+  const freshAnchor = readAnchorMap(repoRoot);
+  const baseAnchor = Object.keys(freshAnchor.anchors).length > 0 ? freshAnchor : emptyAnchorMap();
+  for (const [slug, anchor] of Object.entries(args.anchorMap.anchors)) {
+    baseAnchor.anchors[slug] = anchor;
+  }
+  baseAnchor.generated = (/* @__PURE__ */ new Date()).toISOString();
+  writeAnchorMap(repoRoot, baseAnchor);
+  const freshBindings = readSotBindings(repoRoot);
+  const baseBindings = Object.keys(freshBindings.forward).length > 0 ? freshBindings : emptySotBindings();
+  for (const [decId, sotPath] of Object.entries(args.bindings.forward)) {
+    baseBindings.forward[decId] = sotPath;
+  }
+  for (const [sotPath, decIds] of Object.entries(args.bindings.reverse)) {
+    const seen = new Set(baseBindings.reverse[sotPath] ?? []);
+    for (const id of decIds)
+      seen.add(id);
+    baseBindings.reverse[sotPath] = Array.from(seen);
+  }
+  baseBindings.generated = (/* @__PURE__ */ new Date()).toISOString();
+  writeSotBindings(repoRoot, baseBindings);
+  const freshCache = readSotCache(repoRoot);
+  let baseCache = Object.keys(freshCache.entries).length > 0 ? freshCache : emptySotCache();
+  for (const [decId, entry] of Object.entries(args.cache.entries)) {
+    baseCache = setEntry(baseCache, decId, entry);
+  }
+  baseCache.generated = (/* @__PURE__ */ new Date()).toISOString();
+  writeSotCache(repoRoot, baseCache);
+}
 function updateScopeIndexFromStripItems(repoRoot, items) {
   if (items.length === 0)
     return;
-  const idsByFile = /* @__PURE__ */ new Map();
-  const idMatch = /§(INV-[0-9a-f]{7,})/;
+  const decsByFile = /* @__PURE__ */ new Map();
+  const invsByFile = /* @__PURE__ */ new Map();
+  const decMatch = /§(DEC-[0-9a-f]{7,})/;
+  const invMatch = /§(INV-[0-9a-f]{7,})/;
   for (const item of items) {
-    const m = item.replacement.match(idMatch);
-    if (m === null)
-      continue;
-    const id = m[1];
-    if (id === void 0)
-      continue;
-    let set2 = idsByFile.get(item.file);
-    if (set2 === void 0) {
-      set2 = /* @__PURE__ */ new Set();
-      idsByFile.set(item.file, set2);
+    const decM = item.replacement.match(decMatch);
+    const invM = item.replacement.match(invMatch);
+    if (decM !== null) {
+      const id = decM[1];
+      if (id !== void 0) {
+        let set2 = decsByFile.get(item.file);
+        if (set2 === void 0) {
+          set2 = /* @__PURE__ */ new Set();
+          decsByFile.set(item.file, set2);
+        }
+        set2.add(id);
+      }
     }
-    set2.add(id);
+    if (invM !== null) {
+      const id = invM[1];
+      if (id !== void 0) {
+        let set2 = invsByFile.get(item.file);
+        if (set2 === void 0) {
+          set2 = /* @__PURE__ */ new Set();
+          invsByFile.set(item.file, set2);
+        }
+        set2.add(id);
+      }
+    }
   }
-  if (idsByFile.size === 0)
+  if (decsByFile.size === 0 && invsByFile.size === 0)
     return;
   const existing = readScopeIndex(repoRoot) ?? {
     generated: (/* @__PURE__ */ new Date()).toISOString(),
     files: {}
   };
-  for (const [file2, ids] of idsByFile) {
+  const allFiles = /* @__PURE__ */ new Set([...decsByFile.keys(), ...invsByFile.keys()]);
+  for (const file2 of allFiles) {
     const prior = existing.files[file2];
-    const merged = coerceInvariantIds([
+    const mergedDecs = coerceDecisionIds([
+      ...prior?.decisions ?? [],
+      ...decsByFile.get(file2) ?? []
+    ]);
+    const mergedInvs = coerceInvariantIds([
       ...prior?.invariants ?? [],
-      ...ids
+      ...invsByFile.get(file2) ?? []
     ]);
     const next = {
-      decisions: prior?.decisions ?? [],
-      invariants: merged
+      decisions: mergedDecs,
+      invariants: mergedInvs
     };
     if (prior?.unscoped === true)
       next.unscoped = true;
@@ -53419,92 +53508,11 @@ function updateScopeIndexFromStripItems(repoRoot, items) {
     files: existing.files
   };
   writeScopeIndex(repoRoot, updated);
-  log24.info({ files: idsByFile.size }, "scope-index updated with \xA7INV cite tokens from strip-replace");
-}
-function writeDecDraft(args) {
-  const dir = decisionsDir(args.repoRoot);
-  const inboxDir = join41(dir, "_inbox");
-  mkdirSync24(inboxDir, { recursive: true });
-  const filename = `${args.id}.draft.md`;
-  const abs = join41(inboxDir, filename);
-  const rel = `.cairn/ground/decisions/_inbox/${filename}`;
-  const fm = {
-    id: args.id,
-    title: args.classification.suggestedDecDraft || `(untitled \u2014 from ${args.block.file})`,
-    type: "adr",
-    status: "draft-from-source-comment",
-    audience: "dual",
-    generated: args.generatedAt,
-    "verified-at": args.generatedAt,
-    decided_at: args.generatedAt,
-    decided_by: "cairn-init",
-    capture_source: "init-source-comments",
-    capture_confidence: args.confidence ?? "medium",
-    sourceFile: args.block.file,
-    sourceRange: `${args.block.startLine}-${args.block.endLine}`,
-    blockId: args.block.id,
-    canonicalTopic: args.classification.suggestedCanonicalTopic
-  };
-  const lines = [];
-  lines.push("---");
-  lines.push((0, import_yaml28.stringify)(fm).trimEnd());
-  lines.push("---");
-  lines.push("");
-  lines.push(`# ${args.id} \u2014 ${fm["title"]}`);
-  lines.push("");
-  lines.push("## Source comment");
-  lines.push("");
-  lines.push("```");
-  lines.push(args.block.raw);
-  lines.push("```");
-  lines.push("");
-  lines.push("## Proposed rationale");
-  lines.push("");
-  lines.push(args.block.prose);
-  lines.push("");
-  writeFileSync23(abs, lines.join("\n"), "utf8");
-  return { absPath: abs, relPath: rel };
-}
-function writeInvariantFile2(args) {
-  const dir = invariantsDir(args.repoRoot);
-  mkdirSync24(dir, { recursive: true });
-  const filename = `${args.id}.md`;
-  const abs = join41(dir, filename);
-  const rel = `.cairn/ground/invariants/${filename}`;
-  const fm = {
-    id: args.id,
-    title: args.classification.suggestedInvariant.split("\n")[0]?.slice(0, 120) ?? args.id,
-    type: "invariant",
-    status: "active",
-    audience: "dual",
-    generated: args.generatedAt,
-    "verified-at": args.generatedAt,
-    capture_confidence: args.confidence ?? "medium",
-    source_decision: null,
-    sourceFile: args.block.file,
-    sourceRange: `${args.block.startLine}-${args.block.endLine}`,
-    blockId: args.block.id,
-    canonicalTopic: args.classification.suggestedCanonicalTopic
-  };
-  const lines = [];
-  lines.push("---");
-  lines.push((0, import_yaml28.stringify)(fm).trimEnd());
-  lines.push("---");
-  lines.push("");
-  lines.push(`# \xA7${args.id} \u2014 ${fm["title"]}`);
-  lines.push("");
-  lines.push("## Constraint");
-  lines.push("");
-  lines.push(args.classification.suggestedInvariant.trim());
-  lines.push("");
-  lines.push("## Source comment");
-  lines.push("");
-  lines.push("```");
-  lines.push(args.block.raw);
-  lines.push("```");
-  lines.push("");
-  writeFileSync23(abs, lines.join("\n"), "utf8");
-  return { absPath: abs, relPath: rel };
+  log24.info({
+    files: allFiles.size,
+    decs: Array.from(decsByFile.values()).reduce((acc, s) => acc + s.size, 0),
+    invs: Array.from(invsByFile.values()).reduce((acc, s) => acc + s.size, 0)
+  }, "scope-index updated with cite tokens from strip-replace");
 }
 function writeYaml(path2, payload) {
   mkdirSync24(dirname21(path2), { recursive: true });
@@ -53775,7 +53783,7 @@ async function runRulesMerge(args) {
       }, existingIds);
       existingIds.add(id);
       if (args.dryRun !== true) {
-        const written = writeDecDraft2({
+        const written = writeDecDraft({
           repoRoot,
           id,
           classification: cls,
@@ -53924,7 +53932,7 @@ function informational(args) {
     ...args.errorMessage !== void 0 ? { errorMessage: args.errorMessage } : {}
   };
 }
-function writeDecDraft2(args) {
+function writeDecDraft(args) {
   const dir = decisionsDir(args.repoRoot);
   const inboxDir = join43(dir, "_inbox");
   mkdirSync25(inboxDir, { recursive: true });
@@ -57829,7 +57837,7 @@ async function runInit(args = {}) {
           }
         }
       });
-      process.stdout.write(`    DEC drafts: ${sourceComments.decDraftsWritten.length}; invariant proposals: ${sourceComments.invariantProposalsAdded}; citations: ${sourceComments.canonicalCitationsAdded}
+      process.stdout.write(`    DECs: ${sourceComments.decsWritten.length}; invariants: ${sourceComments.invsWritten.length}; cites: ${sourceComments.citesEmitted.length}; strip applied: ${sourceComments.stripItemsApplied}
 `);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -59731,18 +59739,15 @@ function to7bResultPersisted(full) {
       filesAvailable: full.walk.filesAvailable,
       truncatedAtFileCap: full.walk.truncatedAtFileCap
     },
-    decDraftsWritten: full.decDraftsWritten,
-    invariantsWritten: full.invariantsWritten,
-    invariantStripFilesModified: full.invariantStripFilesModified,
-    invariantStripItemsApplied: full.invariantStripItemsApplied,
-    invariantStripItemsSkipped: full.invariantStripItemsSkipped,
-    invariantStripError: full.invariantStripError,
-    invariantProposalsAdded: full.invariantProposalsAdded,
-    canonicalCitationsAdded: full.canonicalCitationsAdded,
+    decsWritten: full.decsWritten,
+    invsWritten: full.invsWritten,
+    citesEmitted: full.citesEmitted,
+    stripFilesModified: full.stripFilesModified,
+    stripItemsApplied: full.stripItemsApplied,
+    stripItemsSkipped: full.stripItemsSkipped,
+    stripError: full.stripError,
     auditPath: full.auditPath,
     auditRelPath: full.auditRelPath,
-    invariantProposalsPath: full.invariantProposalsPath,
-    canonicalCitationsPath: full.canonicalCitationsPath,
     inputTokens: full.inputTokens,
     outputTokens: full.outputTokens,
     batchesRun: full.batchesRun,

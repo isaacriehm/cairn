@@ -29,6 +29,7 @@ import {
   readTopicIndex,
   writeSotBindings,
   writeSotCache,
+  writeTopicIndex,
   type TopicIndexEntry,
 } from "../ground/index.js";
 import { logger } from "../logger.js";
@@ -274,6 +275,7 @@ export async function runDocsIngestion(
 
   writeSotBindings(args.repoRoot, result.bindings);
   writeSotCache(args.repoRoot, result.cache);
+  writeTopicIndex(args.repoRoot, result.topicIndex);
 
   const decsWritten = result.emitted.map((rec) => ({
     id: rec.id,

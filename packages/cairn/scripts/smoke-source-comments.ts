@@ -178,8 +178,14 @@ async function main(): Promise<void> {
   assert(langs.has("rb"), "Ruby block detected");
   console.log("  ✓ Step 3 — multi-language coverage (rs/go/sh/rb)");
 
-  step("Step 4 — ingest writes audit + DEC drafts");
+  step("Step 4 — ingest emits verbatim ledger DEC + strip-replaces source");
   const ingestRoot = mkRepoRoot();
+  // git init so strip-replace's dirty-check can read porcelain output.
+  const childProcess = await import("node:child_process");
+  const execFileSync = childProcess.execFileSync;
+  execFileSync("git", ["init", "-q", "--initial-branch=main"], { cwd: ingestRoot });
+  execFileSync("git", ["config", "user.email", "smoke@example.com"], { cwd: ingestRoot });
+  execFileSync("git", ["config", "user.name", "Smoke"], { cwd: ingestRoot });
   writeFile(
     ingestRoot,
     "src/auth.ts",
@@ -193,12 +199,12 @@ async function main(): Promise<void> {
       "export function sign() {}",
     ].join("\n") + "\n",
   );
+  execFileSync("git", ["add", "."], { cwd: ingestRoot });
+  execFileSync("git", ["commit", "-q", "-m", "init"], { cwd: ingestRoot });
+
   const mock = (b: CommentBlock): CommentClassification => ({
     blockId: b.id,
     kind: "rationale",
-    suggestedDecDraft: "Sign JWTs with HS512 until KMS arrives",
-    suggestedInvariant: "",
-    suggestedCanonicalTopic: "auth-jwt",
     failed: false,
   });
   const result = await runSourceCommentsIngestion({
@@ -207,24 +213,114 @@ async function main(): Promise<void> {
   });
   assert(result.walk.blocks.length === 1, "one block detected");
   assert(result.kindCounts["rationale"] === 1, "one rationale classification");
-  assert(result.decDraftsWritten.length === 1, "one DEC draft written");
-  const draftPath = join(ingestRoot, result.decDraftsWritten[0]?.path ?? "");
-  assert(existsSync(draftPath), "DEC draft file exists");
-  const draft = readFileSync(draftPath, "utf8");
-  assert(draft.includes("HS512"), "draft body cites HS512");
-  assert(draft.includes("status: draft-from-source-comment"), "draft tagged source-comment");
+  assert(result.decsWritten.length === 1, "one DEC emitted");
+  assert(result.invsWritten.length === 0, "no INV emitted from rationale path");
+  assert(result.citesEmitted.length === 0, "no cite-existing — fresh slug");
+  const decId = result.decsWritten[0]?.id;
+  assert(typeof decId === "string" && /^DEC-[0-9a-f]{7,}$/.test(decId), "DEC id is hash form");
+  assert(result.decsWritten[0]?.status === "accepted", "auto-promoted to accepted");
+  const decPath = join(ingestRoot, result.decsWritten[0]?.path ?? "");
+  assert(existsSync(decPath), "DEC ground file exists");
+  const dec = readFileSync(decPath, "utf8");
+  assert(dec.includes("HS512"), "DEC body cites HS512 verbatim");
+  assert(dec.includes("status: accepted"), "frontmatter status: accepted");
+  assert(dec.includes("sot_kind: ledger"), "frontmatter sot_kind: ledger");
+  assert(dec.includes("sot_path: ledger"), "frontmatter sot_path: ledger");
+  assert(dec.includes("capture_source: init-source-comments"), "capture_source stamped");
+  // Source file should now carry `// §DEC-<hash>` instead of the original prose.
+  const stripped = readFileSync(join(ingestRoot, "src/auth.ts"), "utf8");
+  assert(stripped.includes(`// §${decId}`), `source file now cites §${decId}`);
+  assert(!stripped.includes("HS512"), "original comment prose stripped from source");
+  // sot-bindings.yaml records DEC → "ledger" for read-side resolution.
+  const bindings = parseYaml(
+    readFileSync(join(ingestRoot, ".cairn/ground/sot-bindings.yaml"), "utf8"),
+  ) as Record<string, unknown>;
+  const forward = bindings["forward"] as Record<string, string>;
+  assert(forward[decId] === "ledger", "sot-bindings.forward points DEC → ledger");
+  // topic-index.yaml carries the new source-comment entry with dec_id.
+  const ti = parseYaml(
+    readFileSync(join(ingestRoot, ".cairn/ground/topic-index.yaml"), "utf8"),
+  ) as Record<string, unknown>;
+  const topics = ti["topics"] as Record<string, Record<string, unknown>>;
+  const tiSlugs = Object.keys(topics);
+  assert(tiSlugs.length === 1, "one topic-index entry written");
+  const tiEntry = topics[tiSlugs[0]!]!;
+  assert(tiEntry["dec_id"] === decId, "topic-index entry stamped with dec_id");
+  assert(tiEntry["sot_source"] === "src/auth.ts", "sot_source = source file");
+  // Audit yaml landed.
   const auditAbs = join(ingestRoot, result.auditRelPath);
   assert(existsSync(auditAbs), "audit yaml written");
   const audit = parseYaml(readFileSync(auditAbs, "utf8")) as Record<string, unknown>;
   assert(typeof audit["files_scanned"] === "number", "audit has files_scanned");
   assert(Array.isArray(audit["blocks"]), "audit blocks array");
-  console.log("  ✓ Step 4 — ingest writes audit + DEC drafts (rationale path)");
+  console.log("  ✓ Step 4 — verbatim ledger DEC + strip-replace + bindings/topic-index updated");
+
+  step("Step 4b — topic-index lookup short-circuits to cite-existing");
+  const citeRoot = mkRepoRoot();
+  execFileSync("git", ["init", "-q", "--initial-branch=main"], { cwd: citeRoot });
+  execFileSync("git", ["config", "user.email", "smoke@example.com"], { cwd: citeRoot });
+  execFileSync("git", ["config", "user.name", "Smoke"], { cwd: citeRoot });
+  // Source comment whose prose mirrors a paragraph already owned by docs/.
+  const sharedProse = [
+    "We sign JWTs with HS512 not RS256 because the deployment topology",
+    "does not include a key rotation surface yet, and the token TTL is",
+    "15 minutes which keeps replay risk low. Revisit when KMS arrives.",
+  ].join("\n");
+  writeFile(
+    citeRoot,
+    "src/auth.ts",
+    [
+      "/**",
+      ` * ${sharedProse.split("\n").join("\n * ")}`,
+      " */",
+      "export function sign() {}",
+    ].join("\n") + "\n",
+  );
+  // Pre-seed topic-index so the lookup fires. Compute slug deterministically
+  // from `topicSlug(prose)`; mirror the production import path here.
+  const { topicSlug, emptyTopicIndex, setTopic, writeTopicIndex } = await import(
+    "@isaacriehm/cairn-core"
+  );
+  // The walker strips comment markers + leading whitespace from each line
+  // before yielding `block.prose`. Mirror the same trimming for the
+  // pre-seed slug so it matches the slug ingest computes from the walker
+  // output.
+  const proseAsWalkerWillSee = sharedProse;
+  const seededSlug = topicSlug(proseAsWalkerWillSee);
+  const seededDecId = "DEC-1234567";
+  let seededTi = emptyTopicIndex();
+  seededTi = setTopic(seededTi, seededSlug, {
+    slug: seededSlug,
+    dec_id: seededDecId,
+    sot_source: "docs/auth.md",
+    candidates: [
+      { file: "docs/auth.md", kind: "doc", line_range: [1, 3], anchor: "jwt-signing" },
+    ],
+    created_at: new Date().toISOString(),
+  });
+  writeTopicIndex(citeRoot, seededTi);
+  execFileSync("git", ["add", "."], { cwd: citeRoot });
+  execFileSync("git", ["commit", "-q", "-m", "init"], { cwd: citeRoot });
+
+  const citeResult = await runSourceCommentsIngestion({
+    repoRoot: citeRoot,
+    mockClassify: mock,
+  });
+  assert(citeResult.decsWritten.length === 0, "no new DEC — short-circuited to existing");
+  assert(citeResult.citesEmitted.length === 1, "one cite emitted to existing DEC");
+  assert(
+    citeResult.citesEmitted[0]?.id === seededDecId,
+    `cite resolves to seeded DEC (got ${citeResult.citesEmitted[0]?.id})`,
+  );
+  // Source file now carries §DEC-1234567.
+  const citedSource = readFileSync(join(citeRoot, "src/auth.ts"), "utf8");
+  assert(citedSource.includes(`// §${seededDecId}`), "source cites seeded DEC");
+  assert(!citedSource.includes("HS512"), "original prose stripped");
+  console.log("  ✓ Step 4b — topic-index lookup → cite existing DEC, no new DEC emitted");
 
   step("Step 5 — strip-replace mechanical edit + backup");
   const repoRoot3 = mkRepoRoot();
   // Init a git repo so dirty-check works.
-  // Using execFileSync via require to avoid heavy import.
-  const { execFileSync } = await import("node:child_process");
   execFileSync("git", ["init", "-q", "--initial-branch=main"], { cwd: repoRoot3 });
   execFileSync("git", ["config", "user.email", "smoke@example.com"], { cwd: repoRoot3 });
   execFileSync("git", ["config", "user.name", "Smoke"], { cwd: repoRoot3 });

@@ -1,11 +1,19 @@
 /**
  * Phase 7b — Haiku batch classifier for source-comment blocks.
  *
- * Walker outputs essay-style comment blocks; this module batches 20 per Haiku
- * call and returns one classification per block. Per spec §15 the categories
- * are: rationale | constraint | citation | license | other.
+ * Walker outputs essay-style comment blocks; this module batches them per
+ * Haiku call and returns one classification per block. Per plan §5.3 the
+ * classifier returns *kind only* — no paraphrased title, no rewritten
+ * invariant body, no canonical-topic suggestion. The verbatim comment
+ * prose is the canonical body, recorded straight onto the DEC/INV the
+ * ingest stage emits.
  *
- * Cost ceiling: full (operator picked "no cap" per RESUME §Open / deferred).
+ * Categories:
+ *   - rationale  — explains *why* a non-obvious choice was made
+ *   - constraint — states a domain/system invariant the code must obey
+ *   - citation   — pointer to RFC / spec / ticket / docs
+ *   - license    — copyright header (never strip, never canonicalize)
+ *   - other      — banal narration, TODO chatter, debug notes
  *
  * Resilience:
  *   - one batch failure doesn't fail the run; the block is reported as
@@ -42,12 +50,6 @@ export type CommentClassKind =
 export interface CommentClassification {
   blockId: string;
   kind: CommentClassKind;
-  /** Proposed DEC draft title — non-empty only when classifier suggests one. */
-  suggestedDecDraft: string;
-  /** Proposed §INV invariant body — non-empty only when classifier suggests one. */
-  suggestedInvariant: string;
-  /** Canonical-map topic slug. */
-  suggestedCanonicalTopic: string;
   /** True when the Haiku call (or batch parse) failed for this block. */
   failed: boolean;
   errorMessage?: string;
@@ -109,9 +111,6 @@ const BATCH_SCHEMA = {
             type: "string",
             enum: ["rationale", "constraint", "citation", "license", "other"],
           },
-          suggested_dec_draft: { type: "string" },
-          suggested_invariant: { type: "string" },
-          suggested_canonical_topic: { type: "string" },
         },
       },
     },
@@ -127,7 +126,7 @@ Each comment block in the batch has:
   - kind       — block | jsdoc | line-cluster | license
   - prose      — the comment text with markers stripped
 
-Return JSON: { "results": [ { block_id, kind, suggested_dec_draft?, suggested_invariant?, suggested_canonical_topic? } ] }
+Return JSON: { "results": [ { block_id, kind } ] }
 
 \`kind\` choices:
   - "rationale"  comment explains *why* a non-obvious choice was made (DEC candidate)
@@ -141,11 +140,6 @@ Heuristics:
   - Multi-paragraph rationale tying behavior to a domain rule = "rationale".
   - Hard-coded business rule that's wrong if violated = "constraint".
   - Cross-reference to RFC / spec / ticket / docs = "citation".
-
-Optional fields:
-  - suggested_dec_draft        5-10 word imperative title; populate only for "rationale"
-  - suggested_invariant        1-sentence invariant body; populate only for "constraint"
-  - suggested_canonical_topic  kebab-case topic slug; populate when topic is clear
 
 Be conservative. When in doubt, "other". Always echo the block_id verbatim.`;
 
@@ -234,9 +228,6 @@ export async function classifyBlocks(args: ClassifyArgs): Promise<ClassifyResult
           out[start + i] = {
             blockId: b.id,
             kind: b.kind === "license" ? "license" : "other",
-            suggestedDecDraft: "",
-            suggestedInvariant: "",
-            suggestedCanonicalTopic: "",
             failed: outcome.errorMessage !== undefined,
             ...(outcome.errorMessage !== undefined
               ? { errorMessage: outcome.errorMessage }
@@ -371,18 +362,6 @@ async function classifyOneBatch(
     byId.set(blockId, {
       blockId,
       kind,
-      suggestedDecDraft:
-        typeof entry["suggested_dec_draft"] === "string"
-          ? entry["suggested_dec_draft"]
-          : "",
-      suggestedInvariant:
-        typeof entry["suggested_invariant"] === "string"
-          ? entry["suggested_invariant"]
-          : "",
-      suggestedCanonicalTopic:
-        typeof entry["suggested_canonical_topic"] === "string"
-          ? entry["suggested_canonical_topic"]
-          : "",
       failed: false,
     });
   }

@@ -31,6 +31,7 @@ import {
   readSotBindings,
   readSotCache,
   setSotCacheEntry,
+  setTopic,
   type AnchorMap,
   type SotBindings,
   type SotCache,
@@ -53,6 +54,25 @@ interface EmitClassifier {
   (block: { slug: string; body: string; sot_source: string; entry: TopicIndexEntry }): Promise<EmitClassification>;
 }
 
+/**
+ * Override hook for id derivation. Default emit hashes
+ * `(sot_path, title, capture_source)` via `deriveDecId`/`deriveInvId`.
+ * Phase 7b's ledger captures need a richer input — `sot_path` is the
+ * literal string `"ledger"` for every source-comment DEC, so collisions
+ * are likely without source-location context. Phase 7b passes a deriver
+ * keyed on `(source_file, source_offset, capture_source)`.
+ */
+interface IdDeriverArgs {
+  entry: TopicIndexEntry;
+  body: string;
+  sot_path: string;
+  capture_source: string;
+  kind: "decision" | "constraint";
+  title: string;
+}
+
+type IdDeriver = (args: IdDeriverArgs) => string;
+
 interface EmitArgs {
   repoRoot: string;
   topicIndex: TopicIndex;
@@ -61,6 +81,8 @@ interface EmitArgs {
   classifier: EmitClassifier;
   sot_kind: SotKind;
   capture_source: string;
+  /** Optional id-derivation override; default is `(sot_path, title, capture_source)`. */
+  idDeriver?: IdDeriver;
 }
 
 interface EmittedRecord {
@@ -78,10 +100,16 @@ interface EmitResult {
   skipped: { slug: string; reason: string }[];
   bindings: SotBindings;
   cache: SotCache;
+  /**
+   * Updated topic-index with `dec_id` stamped on every freshly-emitted
+   * entry. Caller persists this so subsequent runs / cite lookups see
+   * the canonical mapping.
+   */
+  topicIndex: TopicIndex;
 }
 
 export async function emitFromTopicIndex(args: EmitArgs): Promise<EmitResult> {
-  const { repoRoot, topicIndex, anchorMap, filter, classifier, sot_kind, capture_source } = args;
+  const { repoRoot, topicIndex, anchorMap, filter, classifier, sot_kind, capture_source, idDeriver } = args;
 
   let bindings = readSotBindings(repoRoot);
   if (Object.keys(bindings.forward).length === 0) bindings = emptySotBindings();
@@ -90,6 +118,7 @@ export async function emitFromTopicIndex(args: EmitArgs): Promise<EmitResult> {
 
   const emitted: EmittedRecord[] = [];
   const skipped: { slug: string; reason: string }[] = [];
+  let updatedTopicIndex = topicIndex;
 
   for (const [slug, entry] of Object.entries(topicIndex.topics)) {
     if (!filter(entry)) continue;
@@ -128,12 +157,18 @@ export async function emitFromTopicIndex(args: EmitArgs): Promise<EmitResult> {
     }
 
     const titleSeed = cls.title.length > 0 ? cls.title : firstLineFallback(body);
+    const kindForId: "decision" | "constraint" =
+      cls.kind === "constraint" ? "constraint" : "decision";
+    const derivedId = idDeriver !== undefined
+      ? idDeriver({ entry, body, sot_path, capture_source, kind: kindForId, title: titleSeed })
+      : kindForId === "constraint"
+        ? deriveInvId({ sot_path, title: titleSeed, capture_source })
+        : deriveDecId({ sot_path, title: titleSeed, capture_source });
 
     if (cls.kind === "constraint") {
-      const id = deriveInvId({ sot_path, title: titleSeed, capture_source });
       writeInvariantFile({
         repoRoot,
-        id,
+        id: derivedId,
         title: titleSeed,
         body,
         sot_kind,
@@ -141,9 +176,9 @@ export async function emitFromTopicIndex(args: EmitArgs): Promise<EmitResult> {
         source_file: entry.sot_source,
         capture_source,
       });
-      bindings = bindDec(bindings, id, sot_path);
-      cache = setSotCacheEntry(cache, id, {
-        dec_id: id,
+      bindings = bindDec(bindings, derivedId, sot_path);
+      cache = setSotCacheEntry(cache, derivedId, {
+        dec_id: derivedId,
         sot_path,
         body_hash: bodyContentHash(body),
         tokens: Array.from(tokenize(body, { codeAware: true })),
@@ -151,7 +186,7 @@ export async function emitFromTopicIndex(args: EmitArgs): Promise<EmitResult> {
         mtime_ms: Date.now(),
       });
       emitted.push({
-        id,
+        id: derivedId,
         kind: "INV",
         sot_path,
         body,
@@ -160,10 +195,9 @@ export async function emitFromTopicIndex(args: EmitArgs): Promise<EmitResult> {
         slug,
       });
     } else {
-      const id = deriveDecId({ sot_path, title: titleSeed, capture_source });
       writeDecisionFile({
         repoRoot,
-        id,
+        id: derivedId,
         title: titleSeed,
         body,
         sot_kind,
@@ -171,9 +205,9 @@ export async function emitFromTopicIndex(args: EmitArgs): Promise<EmitResult> {
         source_file: entry.sot_source,
         capture_source,
       });
-      bindings = bindDec(bindings, id, sot_path);
-      cache = setSotCacheEntry(cache, id, {
-        dec_id: id,
+      bindings = bindDec(bindings, derivedId, sot_path);
+      cache = setSotCacheEntry(cache, derivedId, {
+        dec_id: derivedId,
         sot_path,
         body_hash: bodyContentHash(body),
         tokens: Array.from(tokenize(body, { codeAware: true })),
@@ -181,7 +215,7 @@ export async function emitFromTopicIndex(args: EmitArgs): Promise<EmitResult> {
         mtime_ms: Date.now(),
       });
       emitted.push({
-        id,
+        id: derivedId,
         kind: "DEC",
         sot_path,
         body,
@@ -190,9 +224,11 @@ export async function emitFromTopicIndex(args: EmitArgs): Promise<EmitResult> {
         slug,
       });
     }
+
+    updatedTopicIndex = setTopic(updatedTopicIndex, slug, { ...entry, dec_id: derivedId });
   }
 
-  return { emitted, skipped, bindings, cache };
+  return { emitted, skipped, bindings, cache, topicIndex: updatedTopicIndex };
 }
 
 /* -------------------------------------------------------------------------- */

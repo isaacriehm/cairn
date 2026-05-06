@@ -90,3 +90,38 @@ export function deriveInvId(input: {
   });
   return `INV-${createHash("sha256").update(json, "utf8").digest("hex").slice(0, 7)}`;
 }
+
+/**
+ * Ledger-DEC id derivation for source-comment captures (plan §5.3). The
+ * generic `deriveDecId` keys on `(sot_path, title, capture_source)`, which
+ * collapses for ledger entries because every source-comment DEC shares the
+ * literal `sot_path: "ledger"`. Title alone is not unique — two essay
+ * comments starting with the same line would collide. Source location is
+ * stable post-strip-replace, so `(source_file, source_offset, capture_source)`
+ * is the per-fact unique input.
+ */
+export function deriveLedgerDecId(input: {
+  source_file: string;
+  source_offset: number;
+  capture_source: string;
+}): string {
+  const json = JSON.stringify({
+    source_file: input.source_file,
+    source_offset: input.source_offset,
+    capture_source: input.capture_source,
+  });
+  return `DEC-${createHash("sha256").update(json, "utf8").digest("hex").slice(0, 7)}`;
+}
+
+export function deriveLedgerInvId(input: {
+  source_file: string;
+  source_offset: number;
+  capture_source: string;
+}): string {
+  const json = JSON.stringify({
+    source_file: input.source_file,
+    source_offset: input.source_offset,
+    capture_source: input.capture_source,
+  });
+  return `INV-${createHash("sha256").update(json, "utf8").digest("hex").slice(0, 7)}`;
+}
