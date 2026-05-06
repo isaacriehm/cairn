@@ -4,6 +4,29 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] — 2026-05-06
+
+Hotfix on top of v0.3.0.
+
+### Fixed
+
+- **Adopted-project CI workflow template was broken.** Phase 3b-seed
+  writes `.github/workflows/cairn-check.yml`; the template called
+  `cairn sensor-run --diff <range> --strict` which doesn't match the
+  actual CLI (`--staged | --commit-msg <path>`), exit 2. Replaced
+  with `cairn doctor` — read-only ground-state health check that
+  works today. Also bumped runner Node to `22` (cairn requires
+  `>=22`; v0.3.0 template still pinned `20`, triggering EBADENGINE
+  warnings on `npm install -g`).
+- **`resolveRepoRoot` falsely matched template content.** Walking
+  up from a file inside the cairn source tree picked up
+  `cairn-core/templates/.cairn/` (the adoption skeleton) and treated
+  the templates dir as a real adopted project — which made
+  `write-guardian` block edits on the cairn dev repo with
+  `decision: "block"`. Fix: require `.cairn/config.yaml` to be
+  present, not just the `.cairn/` directory. Adopted projects
+  always have `config.yaml` (Phase 3b-seed); templates never do.
+
 ## [0.3.0] — 2026-05-06
 
 Major architectural cleanup + deterministic-enforcement push. The

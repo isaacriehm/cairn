@@ -51,12 +51,17 @@ function mkFixture(): string {
 }
 
 function seedFullFixture(repoRoot: string): void {
-  const groundDir = join(repoRoot, ".cairn", "ground");
+  const cairnDir = join(repoRoot, ".cairn");
+  const groundDir = join(cairnDir, "ground");
   const decisionsDir = join(groundDir, "decisions");
   const inboxDir = join(decisionsDir, "_inbox");
   const invariantsDir = join(groundDir, "invariants");
-  const tasksDir = join(repoRoot, ".cairn", "tasks", "active", "TSK-2026-05-04-feature-1");
+  const tasksDir = join(cairnDir, "tasks", "active", "TSK-2026-05-04-feature-1");
 
+  mkdirSync(cairnDir, { recursive: true });
+  // `resolveRepoRoot` requires `.cairn/config.yaml` to distinguish
+  // a real adopted project from template content.
+  writeFileSync(join(cairnDir, "config.yaml"), "cairn_version: 0.3.0\n", "utf8");
   mkdirSync(decisionsDir, { recursive: true });
   mkdirSync(inboxDir, { recursive: true });
   mkdirSync(invariantsDir, { recursive: true });
@@ -220,6 +225,7 @@ async function runSmoke(): Promise<void> {
   {
     const repoRoot = mkFixture();
     mkdirSync(join(repoRoot, ".cairn"), { recursive: true });
+    writeFileSync(join(repoRoot, ".cairn", "config.yaml"), "cairn_version: 0.3.0\n", "utf8");
     const nested = join(repoRoot, "src", "deep", "nested");
     mkdirSync(nested, { recursive: true });
     const resolved = resolveRepoRoot(nested);
@@ -235,6 +241,7 @@ async function runSmoke(): Promise<void> {
   {
     const repoRoot = mkFixture();
     mkdirSync(join(repoRoot, ".cairn"), { recursive: true });
+    writeFileSync(join(repoRoot, ".cairn", "config.yaml"), "cairn_version: 0.3.0\n", "utf8");
     const result = await buildSessionStartContext({ repoRoot });
     assert(result.sectionsRendered.includes("header"), "Step 2: header missing");
     assert(result.sectionsRendered.includes("two_zone_reminder"), "Step 2: two_zone_reminder missing");
@@ -422,6 +429,7 @@ unbalanced: [
   {
     const repoRoot = mkFixture();
     mkdirSync(join(repoRoot, ".cairn"), { recursive: true });
+    writeFileSync(join(repoRoot, ".cairn", "config.yaml"), "cairn_version: 0.3.0\n", "utf8");
     const result = await buildSessionStartContext({ repoRoot });
     assert(
       !result.sectionsRendered.includes("brand_and_positioning"),

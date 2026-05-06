@@ -43413,7 +43413,8 @@ var TASK_BODY_CAP = 800;
 function resolveRepoRoot(cwd) {
   let dir = resolve12(cwd);
   for (let i2 = 0; i2 < 12; i2++) {
-    if (existsSync20(join19(dir, ".cairn")) && statSync5(join19(dir, ".cairn")).isDirectory()) {
+    const cairnDir = join19(dir, ".cairn");
+    if (existsSync20(cairnDir) && statSync5(cairnDir).isDirectory() && existsSync20(join19(cairnDir, "config.yaml"))) {
       return dir;
     }
     const parent = dirname9(dir);
@@ -70356,7 +70357,7 @@ async function runUserPromptSubmitHook() {
 // ../cairn-core/dist/index.js
 function readVersion() {
   if (true)
-    return "0.3.0";
+    return "0.3.1";
   const _here = dirname22(fileURLToPath3(import.meta.url));
   const _pkg = JSON.parse(readFileSync61(join75(_here, "..", "package.json"), "utf8"));
   return _pkg.version;

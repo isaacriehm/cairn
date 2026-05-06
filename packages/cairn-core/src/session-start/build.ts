@@ -79,14 +79,25 @@ const QUALITY_TAIL_CAP = 3;
 const TASK_BODY_CAP = 800;
 
 /**
- * Walk up from `cwd` looking for a `.cairn/` directory. Returns the
- * dir containing it (the repo root) or null if none found within 12
- * ancestors.
+ * Walk up from `cwd` looking for an *adopted* cairn project. Adoption
+ * is identified by `.cairn/config.yaml` — the file Phase 3b-seed
+ * writes. A bare `.cairn/` directory without `config.yaml` is template
+ * content (e.g. `cairn-core/templates/.cairn/`), NOT a real adopted
+ * project; we must skip it so hooks running against the cairn source
+ * tree don't false-positive on the template.
+ *
+ * Returns the dir containing the adopted `.cairn/` or null if none
+ * found within 12 ancestors.
  */
 export function resolveRepoRoot(cwd: string): string | null {
   let dir = resolve(cwd);
   for (let i = 0; i < 12; i++) {
-    if (existsSync(join(dir, ".cairn")) && statSync(join(dir, ".cairn")).isDirectory()) {
+    const cairnDir = join(dir, ".cairn");
+    if (
+      existsSync(cairnDir) &&
+      statSync(cairnDir).isDirectory() &&
+      existsSync(join(cairnDir, "config.yaml"))
+    ) {
       return dir;
     }
     const parent = dirname(dir);

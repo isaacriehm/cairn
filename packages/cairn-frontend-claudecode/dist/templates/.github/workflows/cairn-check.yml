@@ -20,12 +20,10 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Install Cairn CLI
         run: npm install -g @isaacriehm/cairn
 
-      - name: Run Cairn sensors against PR diff
-        run: |
-          base="${GITHUB_BASE_REF:-main}"
-          cairn sensor-run --diff "origin/${base}..HEAD" --strict
+      - name: Cairn doctor — verify ground state is healthy
+        run: cairn doctor

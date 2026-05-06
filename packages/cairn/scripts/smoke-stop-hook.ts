@@ -39,6 +39,11 @@ function cleanup(): void {
 function mkRepoRoot(sessionId: string): string {
   const dir = mkdtempSync(join(tmpdir(), "cairn-smoke-stop-"));
   cleanups.push(dir);
+  // `.cairn/config.yaml` — `resolveRepoRoot` requires it to
+  // distinguish a real adopted project from template content
+  // (`cairn-core/templates/.cairn/`).
+  mkdirSync(join(dir, ".cairn"), { recursive: true });
+  writeFileSync(join(dir, ".cairn", "config.yaml"), "cairn_version: 0.3.0\n", "utf8");
   // .cairn/sessions/<sessionId>/events-marker.json — pretend
   // SessionStart already armed the watch.
   const sessionDir = join(dir, ".cairn", "sessions", sessionId);
