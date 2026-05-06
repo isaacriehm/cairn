@@ -21,6 +21,7 @@ export const PHASE_IDS = [
   "3b-seed",
   "4-pilot",
   "5-brand",
+  "5b-topic-index",
   "6-docs-ingest",
   "7b-source-comments",
   "7c-rules-merge",

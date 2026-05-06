@@ -41,6 +41,7 @@ import {
   runPhase3bSeed,
   runPhase4Pilot,
   runPhase5Brand,
+  runPhase5bTopicIndex,
   runPhase6DocsIngest,
   runPhase7bSourceComments,
   runPhase7cRulesMerge,
@@ -90,6 +91,7 @@ const RUNNERS: Record<PhaseId, (s: PhaseState) => Promise<PhaseResult>> = {
   "3b-seed": runPhase3bSeed,
   "4-pilot": runPhase4Pilot,
   "5-brand": runPhase5Brand,
+  "5b-topic-index": runPhase5bTopicIndex,
   "6-docs-ingest": runPhase6DocsIngest,
   "7b-source-comments": runPhase7bSourceComments,
   "7c-rules-merge": runPhase7cRulesMerge,
@@ -284,6 +286,8 @@ function phaseDescription(id: PhaseId): string {
       return "Phase 4-pilot — operator picks the seed module from mapper's top candidates (1 question).";
     case "5-brand":
       return "Phase 5-brand — operator picks how to populate the brand DEC drafts: skip / auto-fill / manual (1 question).";
+    case "5b-topic-index":
+      return "Phase 5b-topic-index — cross-source dedup pre-pass. Walks docs/*.md + CLAUDE.md + AGENTS.md + .claude/rules/* and emits topic-index.yaml + anchor-map.yaml so phases 6/7b/7c can dedup-by-topic instead of one DEC per source.";
     case "6-docs-ingest":
       return "Phase 6-docs-ingest — Haiku batch over README + docs/ → DEC drafts + canonical-map topics. No operator input.";
     case "7b-source-comments":

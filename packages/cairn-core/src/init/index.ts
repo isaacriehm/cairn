@@ -196,6 +196,7 @@ export {
   runPhase3bSeed,
   runPhase4Pilot,
   runPhase5Brand,
+  runPhase5bTopicIndex,
   runPhase6DocsIngest,
   runPhase7bSourceComments,
   runPhase7cRulesMerge,
@@ -220,4 +221,23 @@ export type {
   ResumeReport,
   MapperResultPersisted,
   IngestSourceCommentsResultPersisted,
+  TopicIndexPhaseOutput,
 } from "./phases/index.js";
+
+export {
+  buildTopicIndex,
+  walkProseBlocks,
+  resolveTopics,
+  makeHaikuJudge,
+} from "./topic-index/index.js";
+export type {
+  BuildTopicIndexArgs,
+  BuildTopicIndexResult,
+  ProseBlock,
+  ProseBlockKind,
+  ResolveOptions,
+  ResolveResult,
+  SemanticJudge,
+  SemanticVerdict,
+  JudgeOptions,
+} from "./topic-index/index.js";

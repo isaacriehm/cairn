@@ -40,6 +40,8 @@ export { runPhase3Mapper } from "./3-mapper.js";
 export { runPhase3bSeed } from "./3b-seed.js";
 export { runPhase4Pilot } from "./4-pilot.js";
 export { runPhase5Brand } from "./5-brand.js";
+export { runPhase5bTopicIndex } from "./5b-topic-index.js";
+export type { TopicIndexPhaseOutput } from "./5b-topic-index.js";
 export { runPhase6DocsIngest } from "./6-docs-ingest.js";
 export { runPhase7bSourceComments } from "./7b-source-comments.js";
 export { runPhase7cRulesMerge } from "./7c-rules-merge.js";

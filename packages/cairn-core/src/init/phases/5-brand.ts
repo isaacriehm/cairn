@@ -81,7 +81,7 @@ export async function runPhase5Brand(state: PhaseState): Promise<PhaseResult> {
     };
     return {
       status: "complete",
-      nextPhase: "6-docs-ingest",
+      nextPhase: "5b-topic-index",
       state: advancePhase(next),
     };
   }

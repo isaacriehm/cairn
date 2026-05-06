@@ -68,7 +68,8 @@
     "smoke:init-progress-heartbeat": "tsx scripts/smoke-init-progress-heartbeat.ts",
     "smoke:stop-debounce": "tsx scripts/smoke-stop-debounce.ts",
     "smoke:id-content-addressed": "tsx scripts/smoke-id-content-addressed.ts",
-    "smoke:attention-serve": "tsx scripts/smoke-attention-serve.ts"
+    "smoke:attention-serve": "tsx scripts/smoke-attention-serve.ts",
+    "smoke:topic-index": "tsx scripts/smoke-topic-index.ts"
   },
   "dependencies": {
     "@isaacriehm/cairn-core": "workspace:*",

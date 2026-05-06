@@ -2020,7 +2020,7 @@ var require_thread_stream = __commonJS({
     var { version: version2 } = require_package();
     var { EventEmitter: EventEmitter2 } = __require("events");
     var { Worker } = __require("worker_threads");
-    var { join: join94 } = __require("path");
+    var { join: join95 } = __require("path");
     var { pathToFileURL } = __require("url");
     var { wait } = require_wait();
     var {
@@ -2056,7 +2056,7 @@ var require_thread_stream = __commonJS({
     function createWorker(stream, opts) {
       const { filename, workerData } = opts;
       const bundlerOverrides = "__bundlerPathsOverrides" in globalThis ? globalThis.__bundlerPathsOverrides : {};
-      const toExecute = bundlerOverrides["thread-stream-worker"] || join94(__dirname, "lib", "worker.js");
+      const toExecute = bundlerOverrides["thread-stream-worker"] || join95(__dirname, "lib", "worker.js");
       const worker = new Worker(toExecute, {
         ...opts.workerOpts,
         trackUnmanagedFds: false,
@@ -2445,9 +2445,9 @@ var require_transport = __commonJS({
   "../../node_modules/.pnpm/pino@10.3.1/node_modules/pino/lib/transport.js"(exports, module) {
     "use strict";
     var { createRequire } = __require("module");
-    var { existsSync: existsSync90 } = __require("node:fs");
+    var { existsSync: existsSync93 } = __require("node:fs");
     var getCallers = require_caller();
-    var { join: join94, isAbsolute: isAbsolute3, sep } = __require("node:path");
+    var { join: join95, isAbsolute: isAbsolute3, sep } = __require("node:path");
     var { fileURLToPath: fileURLToPath6 } = __require("node:url");
     var sleep3 = require_atomic_sleep();
     var onExit2 = require_on_exit_leak_free();
@@ -2519,7 +2519,7 @@ var require_transport = __commonJS({
           return false;
         }
       }
-      return isAbsolute3(path2) && !existsSync90(path2);
+      return isAbsolute3(path2) && !existsSync93(path2);
     }
     function stripQuotes(value) {
       const first2 = value[0];
@@ -2600,7 +2600,7 @@ var require_transport = __commonJS({
         throw new Error("only one of target or targets can be specified");
       }
       if (targets) {
-        target = bundlerOverrides["pino-worker"] || join94(__dirname, "worker.js");
+        target = bundlerOverrides["pino-worker"] || join95(__dirname, "worker.js");
         options.targets = targets.filter((dest) => dest.target).map((dest) => {
           return {
             ...dest,
@@ -2618,7 +2618,7 @@ var require_transport = __commonJS({
           });
         });
       } else if (pipeline) {
-        target = bundlerOverrides["pino-worker"] || join94(__dirname, "worker.js");
+        target = bundlerOverrides["pino-worker"] || join95(__dirname, "worker.js");
         options.pipelines = [pipeline.map((dest) => {
           return {
             ...dest,
@@ -2641,7 +2641,7 @@ var require_transport = __commonJS({
           return origin;
         }
         if (origin === "pino/file") {
-          return join94(__dirname, "..", "file.js");
+          return join95(__dirname, "..", "file.js");
         }
         let fixTarget2;
         for (const filePath of callers) {
@@ -2961,11 +2961,11 @@ var require_tools = __commonJS({
         }
       }
     }
-    function buildFormatters(level, bindings, log37) {
+    function buildFormatters(level, bindings, log40) {
       return {
         level,
         bindings,
-        log: log37
+        log: log40
       };
     }
     function normalizeDestFileDescriptor(destination) {
@@ -3346,11 +3346,11 @@ var require_proto = __commonJS({
         }
       } else instance[serializersSym] = serializers;
       if (options.hasOwnProperty("formatters")) {
-        const { level, bindings: chindings, log: log37 } = options.formatters;
+        const { level, bindings: chindings, log: log40 } = options.formatters;
         instance[formattersSym] = buildFormatters(
           level || formatters.level,
           chindings || resetChildingsFormatter,
-          log37 || formatters.log
+          log40 || formatters.log
         );
       } else {
         instance[formattersSym] = buildFormatters(
@@ -3621,7 +3621,7 @@ var require_safe_stable_stringify = __commonJS({
               return circularValue;
             }
             let res = "";
-            let join94 = ",";
+            let join95 = ",";
             const originalIndentation = indentation;
             if (Array.isArray(value)) {
               if (value.length === 0) {
@@ -3635,7 +3635,7 @@ var require_safe_stable_stringify = __commonJS({
                 indentation += spacer;
                 res += `
 ${indentation}`;
-                join94 = `,
+                join95 = `,
 ${indentation}`;
               }
               const maximumValuesToStringify = Math.min(value.length, maximumBreadth);
@@ -3643,13 +3643,13 @@ ${indentation}`;
               for (; i2 < maximumValuesToStringify - 1; i2++) {
                 const tmp2 = stringifyFnReplacer(String(i2), value, stack, replacer, spacer, indentation);
                 res += tmp2 !== void 0 ? tmp2 : "null";
-                res += join94;
+                res += join95;
               }
               const tmp = stringifyFnReplacer(String(i2), value, stack, replacer, spacer, indentation);
               res += tmp !== void 0 ? tmp : "null";
               if (value.length - 1 > maximumBreadth) {
                 const removedKeys = value.length - maximumBreadth - 1;
-                res += `${join94}"... ${getItemCount(removedKeys)} not stringified"`;
+                res += `${join95}"... ${getItemCount(removedKeys)} not stringified"`;
               }
               if (spacer !== "") {
                 res += `
@@ -3670,7 +3670,7 @@ ${originalIndentation}`;
             let separator = "";
             if (spacer !== "") {
               indentation += spacer;
-              join94 = `,
+              join95 = `,
 ${indentation}`;
               whitespace = " ";
             }
@@ -3684,13 +3684,13 @@ ${indentation}`;
               const tmp = stringifyFnReplacer(key2, value, stack, replacer, spacer, indentation);
               if (tmp !== void 0) {
                 res += `${separator}${strEscape(key2)}:${whitespace}${tmp}`;
-                separator = join94;
+                separator = join95;
               }
             }
             if (keyLength > maximumBreadth) {
               const removedKeys = keyLength - maximumBreadth;
               res += `${separator}"...":${whitespace}"${getItemCount(removedKeys)} not stringified"`;
-              separator = join94;
+              separator = join95;
             }
             if (spacer !== "" && separator.length > 1) {
               res = `
@@ -3731,7 +3731,7 @@ ${originalIndentation}`;
             }
             const originalIndentation = indentation;
             let res = "";
-            let join94 = ",";
+            let join95 = ",";
             if (Array.isArray(value)) {
               if (value.length === 0) {
                 return "[]";
@@ -3744,7 +3744,7 @@ ${originalIndentation}`;
                 indentation += spacer;
                 res += `
 ${indentation}`;
-                join94 = `,
+                join95 = `,
 ${indentation}`;
               }
               const maximumValuesToStringify = Math.min(value.length, maximumBreadth);
@@ -3752,13 +3752,13 @@ ${indentation}`;
               for (; i2 < maximumValuesToStringify - 1; i2++) {
                 const tmp2 = stringifyArrayReplacer(String(i2), value[i2], stack, replacer, spacer, indentation);
                 res += tmp2 !== void 0 ? tmp2 : "null";
-                res += join94;
+                res += join95;
               }
               const tmp = stringifyArrayReplacer(String(i2), value[i2], stack, replacer, spacer, indentation);
               res += tmp !== void 0 ? tmp : "null";
               if (value.length - 1 > maximumBreadth) {
                 const removedKeys = value.length - maximumBreadth - 1;
-                res += `${join94}"... ${getItemCount(removedKeys)} not stringified"`;
+                res += `${join95}"... ${getItemCount(removedKeys)} not stringified"`;
               }
               if (spacer !== "") {
                 res += `
@@ -3771,7 +3771,7 @@ ${originalIndentation}`;
             let whitespace = "";
             if (spacer !== "") {
               indentation += spacer;
-              join94 = `,
+              join95 = `,
 ${indentation}`;
               whitespace = " ";
             }
@@ -3780,7 +3780,7 @@ ${indentation}`;
               const tmp = stringifyArrayReplacer(key2, value[key2], stack, replacer, spacer, indentation);
               if (tmp !== void 0) {
                 res += `${separator}${strEscape(key2)}:${whitespace}${tmp}`;
-                separator = join94;
+                separator = join95;
               }
             }
             if (spacer !== "" && separator.length > 1) {
@@ -3838,20 +3838,20 @@ ${originalIndentation}`;
               indentation += spacer;
               let res2 = `
 ${indentation}`;
-              const join95 = `,
+              const join96 = `,
 ${indentation}`;
               const maximumValuesToStringify = Math.min(value.length, maximumBreadth);
               let i2 = 0;
               for (; i2 < maximumValuesToStringify - 1; i2++) {
                 const tmp2 = stringifyIndent(String(i2), value[i2], stack, spacer, indentation);
                 res2 += tmp2 !== void 0 ? tmp2 : "null";
-                res2 += join95;
+                res2 += join96;
               }
               const tmp = stringifyIndent(String(i2), value[i2], stack, spacer, indentation);
               res2 += tmp !== void 0 ? tmp : "null";
               if (value.length - 1 > maximumBreadth) {
                 const removedKeys = value.length - maximumBreadth - 1;
-                res2 += `${join95}"... ${getItemCount(removedKeys)} not stringified"`;
+                res2 += `${join96}"... ${getItemCount(removedKeys)} not stringified"`;
               }
               res2 += `
 ${originalIndentation}`;
@@ -3867,16 +3867,16 @@ ${originalIndentation}`;
               return '"[Object]"';
             }
             indentation += spacer;
-            const join94 = `,
+            const join95 = `,
 ${indentation}`;
             let res = "";
             let separator = "";
             let maximumPropertiesToStringify = Math.min(keyLength, maximumBreadth);
             if (isTypedArrayWithEntries(value)) {
-              res += stringifyTypedArray(value, join94, maximumBreadth);
+              res += stringifyTypedArray(value, join95, maximumBreadth);
               keys = keys.slice(value.length);
               maximumPropertiesToStringify -= value.length;
-              separator = join94;
+              separator = join95;
             }
             if (deterministic) {
               keys = sort(keys, comparator);
@@ -3887,13 +3887,13 @@ ${indentation}`;
               const tmp = stringifyIndent(key2, value[key2], stack, spacer, indentation);
               if (tmp !== void 0) {
                 res += `${separator}${strEscape(key2)}: ${tmp}`;
-                separator = join94;
+                separator = join95;
               }
             }
             if (keyLength > maximumBreadth) {
               const removedKeys = keyLength - maximumBreadth;
               res += `${separator}"...": "${getItemCount(removedKeys)} not stringified"`;
-              separator = join94;
+              separator = join95;
             }
             if (separator !== "") {
               res = `
@@ -6139,7 +6139,7 @@ var require_merge = __commonJS({
 var require_addPairToJSMap = __commonJS({
   "../../node_modules/.pnpm/yaml@2.8.4/node_modules/yaml/dist/nodes/addPairToJSMap.js"(exports) {
     "use strict";
-    var log37 = require_log();
+    var log40 = require_log();
     var merge2 = require_merge();
     var stringify = require_stringify();
     var identity = require_identity();
@@ -6188,7 +6188,7 @@ var require_addPairToJSMap = __commonJS({
           let jsonStr = JSON.stringify(strKey);
           if (jsonStr.length > 40)
             jsonStr = jsonStr.substring(0, 36) + '..."';
-          log37.warn(ctx.doc.options.logLevel, `Keys with collection values will be stringified due to JS Object restrictions: ${jsonStr}. Set mapAsMap: true to use object keys.`);
+          log40.warn(ctx.doc.options.logLevel, `Keys with collection values will be stringified due to JS Object restrictions: ${jsonStr}. Set mapAsMap: true to use object keys.`);
           ctx.mapKeyWarned = true;
         }
         return strKey;
@@ -11585,7 +11585,7 @@ var require_public_api = __commonJS({
     var composer = require_composer();
     var Document = require_Document();
     var errors = require_errors();
-    var log37 = require_log();
+    var log40 = require_log();
     var identity = require_identity();
     var lineCounter = require_line_counter();
     var parser4 = require_parser();
@@ -11637,7 +11637,7 @@ var require_public_api = __commonJS({
       const doc = parseDocument2(src, options);
       if (!doc)
         return null;
-      doc.warnings.forEach((warning2) => log37.warn(doc.options.logLevel, warning2));
+      doc.warnings.forEach((warning2) => log40.warn(doc.options.logLevel, warning2));
       if (doc.errors.length > 0) {
         if (doc.options.logLevel !== "silent")
           throw doc.errors[0];
@@ -12311,7 +12311,7 @@ var require_node = __commonJS({
     var tty3 = __require("tty");
     var util2 = __require("util");
     exports.init = init;
-    exports.log = log37;
+    exports.log = log40;
     exports.formatArgs = formatArgs;
     exports.save = save;
     exports.load = load2;
@@ -12446,7 +12446,7 @@ var require_node = __commonJS({
       }
       return (/* @__PURE__ */ new Date()).toISOString() + " ";
     }
-    function log37(...args) {
+    function log40(...args) {
       return process.stderr.write(util2.formatWithOptions(exports.inspectOpts, ...args) + "\n");
     }
     function save(namespaces) {
@@ -12500,27 +12500,27 @@ var require_src2 = __commonJS({
     Object.defineProperty(exports, "__esModule", { value: true });
     var fs_1 = __require("fs");
     var debug_1 = __importDefault(require_src());
-    var log37 = debug_1.default("@kwsites/file-exists");
+    var log40 = debug_1.default("@kwsites/file-exists");
     function check2(path2, isFile, isDirectory2) {
-      log37(`checking %s`, path2);
+      log40(`checking %s`, path2);
       try {
         const stat = fs_1.statSync(path2);
         if (stat.isFile() && isFile) {
-          log37(`[OK] path represents a file`);
+          log40(`[OK] path represents a file`);
           return true;
         }
         if (stat.isDirectory() && isDirectory2) {
-          log37(`[OK] path represents a directory`);
+          log40(`[OK] path represents a directory`);
           return true;
         }
-        log37(`[FAIL] path represents something other than a file or directory`);
+        log40(`[FAIL] path represents something other than a file or directory`);
         return false;
       } catch (e) {
         if (e.code === "ENOENT") {
-          log37(`[FAIL] path is not accessible: %o`, e);
+          log40(`[FAIL] path is not accessible: %o`, e);
           return false;
         }
-        log37(`[FATAL] %o`, e);
+        log40(`[FATAL] %o`, e);
         throw e;
       }
     }
@@ -17230,49 +17230,49 @@ var require_fast_uri = __commonJS({
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative15, options, skipNormalization) {
+    function resolveComponent(base, relative16, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse3(serialize(base, options), options);
-        relative15 = parse3(serialize(relative15, options), options);
+        relative16 = parse3(serialize(relative16, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative15.scheme) {
-        target.scheme = relative15.scheme;
-        target.userinfo = relative15.userinfo;
-        target.host = relative15.host;
-        target.port = relative15.port;
-        target.path = removeDotSegments(relative15.path || "");
-        target.query = relative15.query;
+      if (!options.tolerant && relative16.scheme) {
+        target.scheme = relative16.scheme;
+        target.userinfo = relative16.userinfo;
+        target.host = relative16.host;
+        target.port = relative16.port;
+        target.path = removeDotSegments(relative16.path || "");
+        target.query = relative16.query;
       } else {
-        if (relative15.userinfo !== void 0 || relative15.host !== void 0 || relative15.port !== void 0) {
-          target.userinfo = relative15.userinfo;
-          target.host = relative15.host;
-          target.port = relative15.port;
-          target.path = removeDotSegments(relative15.path || "");
-          target.query = relative15.query;
+        if (relative16.userinfo !== void 0 || relative16.host !== void 0 || relative16.port !== void 0) {
+          target.userinfo = relative16.userinfo;
+          target.host = relative16.host;
+          target.port = relative16.port;
+          target.path = removeDotSegments(relative16.path || "");
+          target.query = relative16.query;
         } else {
-          if (!relative15.path) {
+          if (!relative16.path) {
             target.path = base.path;
-            if (relative15.query !== void 0) {
-              target.query = relative15.query;
+            if (relative16.query !== void 0) {
+              target.query = relative16.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative15.path[0] === "/") {
-              target.path = removeDotSegments(relative15.path);
+            if (relative16.path[0] === "/") {
+              target.path = removeDotSegments(relative16.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative15.path;
+                target.path = "/" + relative16.path;
               } else if (!base.path) {
-                target.path = relative15.path;
+                target.path = relative16.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative15.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative16.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative15.query;
+            target.query = relative16.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -17280,7 +17280,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative15.fragment;
+      target.fragment = relative16.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -17953,11 +17953,11 @@ var require_core = __commonJS({
     Ajv2.ValidationError = validation_error_1.default;
     Ajv2.MissingRefError = ref_error_1.default;
     exports.default = Ajv2;
-    function checkOptions(checkOpts, options, msg, log37 = "error") {
+    function checkOptions(checkOpts, options, msg, log40 = "error") {
       for (const key in checkOpts) {
         const opt = key;
         if (opt in options)
-          this.logger[log37](`${msg}: option ${key}. ${checkOpts[opt]}`);
+          this.logger[log40](`${msg}: option ${key}. ${checkOpts[opt]}`);
       }
     }
     function getSchEnv(keyRef) {
@@ -20439,8 +20439,8 @@ var require_dist4 = __commonJS({
 });
 
 // ../cairn-core/dist/index.js
-import { readFileSync as readFileSync74 } from "node:fs";
-import { dirname as dirname29, join as join88 } from "node:path";
+import { readFileSync as readFileSync77 } from "node:fs";
+import { dirname as dirname31, join as join89 } from "node:path";
 import { fileURLToPath as fileURLToPath4 } from "node:url";
 
 // ../cairn-core/dist/logger.js
@@ -20720,6 +20720,12 @@ function invariantsLedgerPath(repoRoot) {
 }
 function qualityGradesPath(repoRoot) {
   return join2(groundDir(repoRoot), "quality-grades.yaml");
+}
+function topicIndexPath(repoRoot) {
+  return join2(groundDir(repoRoot), "topic-index.yaml");
+}
+function anchorMapPath(repoRoot) {
+  return join2(groundDir(repoRoot), "anchor-map.yaml");
 }
 function stalenessDir(repoRoot) {
   return join2(repoRoot, ".cairn", "staleness");
@@ -36346,7 +36352,9 @@ function atOrAbove(score, threshold) {
 // ../cairn-core/dist/attention/dedup.js
 import { existsSync as existsSync5, readFileSync as readFileSync6, readdirSync as readdirSync4, statSync as statSync2 } from "node:fs";
 import { join as join7 } from "node:path";
-var STOPWORDS = /* @__PURE__ */ new Set([
+
+// ../cairn-core/dist/text/jaccard.js
+var ENGLISH_STOPWORDS = /* @__PURE__ */ new Set([
   "the",
   "a",
   "an",
@@ -36420,7 +36428,32 @@ var STOPWORDS = /* @__PURE__ */ new Set([
   "only",
   "also"
 ]);
-var BODY_CHAR_WINDOW = 500;
+var CAIRN_DOMAIN_STOPWORDS = /* @__PURE__ */ new Set(["rationale", "decision"]);
+var CODE_STOPWORDS = /* @__PURE__ */ new Set([
+  "function",
+  "method",
+  "class",
+  "module",
+  "request",
+  "response",
+  "endpoint",
+  "param",
+  "user",
+  "data",
+  "value",
+  "result",
+  "input",
+  "output",
+  "type",
+  "interface",
+  "object",
+  "array",
+  "string",
+  "number",
+  "boolean",
+  "null",
+  "undefined"
+]);
 function stem(w) {
   if (w.length <= 4)
     return w;
@@ -36432,8 +36465,19 @@ function stem(w) {
     return w.slice(0, -1);
   return w;
 }
-function tokenize(text) {
-  return new Set(text.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).map(stem).filter((w) => w.length >= 3 && !STOPWORDS.has(w)));
+function tokenize(text, opts = {}) {
+  const stop = new Set(ENGLISH_STOPWORDS);
+  for (const w of CAIRN_DOMAIN_STOPWORDS)
+    stop.add(w);
+  if (opts.codeAware) {
+    for (const w of CODE_STOPWORDS)
+      stop.add(w);
+  }
+  if (opts.extraStopwords) {
+    for (const w of opts.extraStopwords)
+      stop.add(w);
+  }
+  return new Set(text.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).map(stem).filter((w) => w.length >= 3 && !stop.has(w)));
 }
 function jaccard(a, b2) {
   if (a.size === 0 && b2.size === 0)
@@ -36445,6 +36489,9 @@ function jaccard(a, b2) {
   const union2 = a.size + b2.size - inter;
   return union2 === 0 ? 0 : inter / union2;
 }
+
+// ../cairn-core/dist/attention/dedup.js
+var BODY_CHAR_WINDOW = 500;
 function parseMinimalFrontmatter(raw) {
   const m = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
   if (m === null || m[1] === void 0 || m[2] === void 0) {
@@ -37037,8 +37084,8 @@ async function buildState(ctx) {
       const title = stringField2(fm, "proposedTitle") ?? stringField2(fm, "title") ?? id;
       let mtimeMs = 0;
       try {
-        const { statSync: statSync27 } = await import("node:fs");
-        mtimeMs = statSync27(abs).mtimeMs;
+        const { statSync: statSync28 } = await import("node:fs");
+        mtimeMs = statSync28(abs).mtimeMs;
       } catch {
       }
       drafts.push({
@@ -37676,7 +37723,7 @@ async function runClaude(opts) {
 }
 
 // ../cairn-core/dist/context/handoff-builder.js
-import { existsSync as existsSync14, readFileSync as readFileSync15, readdirSync as readdirSync9 } from "node:fs";
+import { existsSync as existsSync16, readFileSync as readFileSync17, readdirSync as readdirSync9 } from "node:fs";
 import { join as join18 } from "node:path";
 
 // ../../node_modules/.pnpm/simple-git@3.36.0/node_modules/simple-git/dist/esm/index.js
@@ -39620,11 +39667,11 @@ function taskCallback(task, response, callback = NOOP) {
   response.then(onSuccess, onError2);
 }
 function addDeprecationNoticeToError(err) {
-  let log37 = (name) => {
+  let log40 = (name) => {
     console.warn(
       `simple-git deprecation notice: accessing GitResponseError.${name} should be GitResponseError.git.${name}, this will no longer be available in version 3`
     );
-    log37 = NOOP;
+    log40 = NOOP;
   };
   return Object.create(err, Object.getOwnPropertyNames(err.git).reduce(descriptorReducer, {}));
   function descriptorReducer(all, name) {
@@ -39635,7 +39682,7 @@ function addDeprecationNoticeToError(err) {
       enumerable: false,
       configurable: false,
       get() {
-        log37(name);
+        log40(name);
         return err.git[name];
       }
     };
@@ -43079,7 +43126,26 @@ var log13 = logger("ground.sot-bindings");
 
 // ../cairn-core/dist/ground/topic-index.js
 var import_yaml10 = __toESM(require_dist(), 1);
+import { existsSync as existsSync14, mkdirSync as mkdirSync14, readFileSync as readFileSync15, writeFileSync as writeFileSync13 } from "node:fs";
+import { dirname as dirname10 } from "node:path";
 var log14 = logger("ground.topic-index");
+function emptyTopicIndex() {
+  return { version: 1, generated: (/* @__PURE__ */ new Date()).toISOString(), topics: {} };
+}
+function writeTopicIndex(repoRoot, index) {
+  const path2 = topicIndexPath(repoRoot);
+  mkdirSync14(dirname10(path2), { recursive: true });
+  const next = { ...index, generated: (/* @__PURE__ */ new Date()).toISOString() };
+  writeFileSync13(path2, (0, import_yaml10.stringify)(next), "utf8");
+  log14.debug({ path: path2, topics: Object.keys(next.topics).length }, "wrote topic-index");
+  return path2;
+}
+function setTopic(index, slug, entry) {
+  return {
+    ...index,
+    topics: { ...index.topics, [slug]: entry }
+  };
+}
 
 // ../cairn-core/dist/ground/sot-cache.js
 var import_yaml11 = __toESM(require_dist(), 1);
@@ -43087,14 +43153,55 @@ var log15 = logger("ground.sot-cache");
 
 // ../cairn-core/dist/ground/anchor-map.js
 var import_yaml12 = __toESM(require_dist(), 1);
+import { existsSync as existsSync15, mkdirSync as mkdirSync15, readFileSync as readFileSync16, writeFileSync as writeFileSync14 } from "node:fs";
+import { dirname as dirname11 } from "node:path";
 var log16 = logger("ground.anchor-map");
+function emptyAnchorMap() {
+  return { version: 1, generated: (/* @__PURE__ */ new Date()).toISOString(), anchors: {} };
+}
+function writeAnchorMap(repoRoot, map2) {
+  const path2 = anchorMapPath(repoRoot);
+  mkdirSync15(dirname11(path2), { recursive: true });
+  const next = { ...map2, generated: (/* @__PURE__ */ new Date()).toISOString() };
+  writeFileSync14(path2, (0, import_yaml12.stringify)(next), "utf8");
+  log16.debug({ path: path2, anchors: Object.keys(next.anchors).length }, "wrote anchor-map");
+  return path2;
+}
+function setAnchor(map2, slug, entry) {
+  return { ...map2, anchors: { ...map2.anchors, [slug]: entry } };
+}
+
+// ../cairn-core/dist/ground/slug.js
+import { createHash as createHash3 } from "node:crypto";
+var NORMALIZE_PATTERNS = [
+  { pattern: /```[\s\S]*?```/g, replacement: " " },
+  { pattern: /`[^`]+`/g, replacement: " " },
+  { pattern: /\[([^\]]+)\]\([^)]*\)/g, replacement: "$1" },
+  { pattern: /^#{1,6}\s+/gm, replacement: "" },
+  { pattern: /^[\s>*\-+]+/gm, replacement: "" },
+  { pattern: /\s+/g, replacement: " " }
+];
+function normalizeBlock(input) {
+  let s = input;
+  for (const { pattern, replacement } of NORMALIZE_PATTERNS) {
+    s = s.replace(pattern, replacement);
+  }
+  return s.trim().toLowerCase();
+}
+function topicSlug(input) {
+  const normalized = normalizeBlock(input);
+  return createHash3("sha256").update(normalized, "utf8").digest("hex").slice(0, 12);
+}
+function bodyContentHash(body) {
+  return createHash3("sha256").update(body, "utf8").digest("hex");
+}
 
 // ../cairn-core/dist/context/handoff-builder.js
 var MAX_CHARS = 2400;
 var COMMIT_CAP = 20;
 async function buildHandoffBlock(repoRoot) {
   const activeDir = join18(repoRoot, ".cairn", "tasks", "active");
-  if (!existsSync14(activeDir))
+  if (!existsSync16(activeDir))
     return null;
   let dirents;
   try {
@@ -43108,11 +43215,11 @@ async function buildHandoffBlock(repoRoot) {
       continue;
     const taskDir2 = join18(activeDir, e.name);
     const statusPath = join18(taskDir2, "status.yaml");
-    if (!existsSync14(statusPath))
+    if (!existsSync16(statusPath))
       continue;
     let parsed;
     try {
-      parsed = (0, import_yaml13.parse)(readFileSync15(statusPath, "utf8"));
+      parsed = (0, import_yaml13.parse)(readFileSync17(statusPath, "utf8"));
     } catch {
       continue;
     }
@@ -43132,11 +43239,11 @@ async function buildHandoffBlock(repoRoot) {
   if (matched === null)
     return null;
   const metaPath = join18(repoRoot, ".cairn", "runs", "active", matched.runId, "meta.json");
-  if (!existsSync14(metaPath))
+  if (!existsSync16(metaPath))
     return null;
   let meta3;
   try {
-    const raw = JSON.parse(readFileSync15(metaPath, "utf8"));
+    const raw = JSON.parse(readFileSync17(metaPath, "utf8"));
     if (typeof raw !== "object" || raw === null)
       return null;
     meta3 = raw;
@@ -43150,10 +43257,10 @@ async function buildHandoffBlock(repoRoot) {
   const specPath = join18(taskDir, "spec.tightened.md");
   let taskTitle = matched.taskId;
   let checkpoints = [];
-  if (existsSync14(specPath)) {
+  if (existsSync16(specPath)) {
     let specText = "";
     try {
-      specText = readFileSync15(specPath, "utf8");
+      specText = readFileSync17(specPath, "utf8");
     } catch {
       specText = "";
     }
@@ -43211,9 +43318,9 @@ async function buildHandoffBlock(repoRoot) {
   }
   let notes = "";
   const notesPath = join18(taskDir, "notes.md");
-  if (existsSync14(notesPath)) {
+  if (existsSync16(notesPath)) {
     try {
-      notes = readFileSync15(notesPath, "utf8").trim();
+      notes = readFileSync17(notesPath, "utf8").trim();
     } catch {
       notes = "";
     }
@@ -43327,7 +43434,7 @@ var import_yaml14 = __toESM(require_dist(), 1);
 
 // ../cairn-core/dist/context/task-summary.js
 var import_yaml15 = __toESM(require_dist(), 1);
-import { existsSync as existsSync15, readFileSync as readFileSync16, readdirSync as readdirSync10 } from "node:fs";
+import { existsSync as existsSync17, readFileSync as readFileSync18, readdirSync as readdirSync10 } from "node:fs";
 import { join as join19 } from "node:path";
 var ACTIVE_PHASES = /* @__PURE__ */ new Set([
   "queued",
@@ -43353,7 +43460,7 @@ function mapPhase(phase) {
 }
 function readActiveTaskSummary(repoRoot) {
   const activeDir = join19(repoRoot, ".cairn", "tasks", "active");
-  if (!existsSync15(activeDir))
+  if (!existsSync17(activeDir))
     return null;
   let dirents;
   try {
@@ -43366,11 +43473,11 @@ function readActiveTaskSummary(repoRoot) {
       continue;
     const taskDir = join19(activeDir, e.name);
     const statusPath = join19(taskDir, "status.yaml");
-    if (!existsSync15(statusPath))
+    if (!existsSync17(statusPath))
       continue;
     let parsed;
     try {
-      parsed = (0, import_yaml15.parse)(readFileSync16(statusPath, "utf8"));
+      parsed = (0, import_yaml15.parse)(readFileSync18(statusPath, "utf8"));
     } catch {
       continue;
     }
@@ -43381,9 +43488,9 @@ function readActiveTaskSummary(repoRoot) {
       continue;
     let title = e.name;
     const specPath = join19(taskDir, "spec.tightened.md");
-    if (existsSync15(specPath)) {
+    if (existsSync17(specPath)) {
       try {
-        const specText = readFileSync16(specPath, "utf8");
+        const specText = readFileSync18(specPath, "utf8");
         const body = parseFrontmatter(specText).body;
         const m = body.match(/^#\s+(.+)$/m);
         if (m && m[1])
@@ -43401,8 +43508,8 @@ function readActiveTaskSummary(repoRoot) {
 }
 
 // ../cairn-core/dist/decision-capture/id.js
-import { createHash as createHash3 } from "node:crypto";
-import { existsSync as existsSync16, readdirSync as readdirSync11 } from "node:fs";
+import { createHash as createHash4 } from "node:crypto";
+import { existsSync as existsSync18, readdirSync as readdirSync11 } from "node:fs";
 import { join as join20 } from "node:path";
 var HASH_LEN = 7;
 var FILENAME_RE = /^DEC-([0-9a-f]{7,})(?:\.draft|\.rejected)?\.md$/;
@@ -43430,7 +43537,7 @@ function canonicalInvariant(input) {
   });
 }
 function computeDecisionId(input, existing) {
-  const digest = createHash3("sha256").update(canonicalDecision(input)).digest("hex");
+  const digest = createHash4("sha256").update(canonicalDecision(input)).digest("hex");
   for (let len = HASH_LEN; len <= digest.length; len++) {
     const candidate = `DEC-${digest.slice(0, len)}`;
     if (existing === void 0 || !existing.has(candidate))
@@ -43439,7 +43546,7 @@ function computeDecisionId(input, existing) {
   throw new Error("computeDecisionId: hash exhaustion (impossible at sha256)");
 }
 function computeInvariantId(input, existing) {
-  const digest = createHash3("sha256").update(canonicalInvariant(input)).digest("hex");
+  const digest = createHash4("sha256").update(canonicalInvariant(input)).digest("hex");
   for (let len = HASH_LEN; len <= digest.length; len++) {
     const candidate = `INV-${digest.slice(0, len)}`;
     if (existing === void 0 || !existing.has(candidate))
@@ -43452,7 +43559,7 @@ function scanExistingDecisionIds(repoRoot) {
   const inboxDir = join20(dir, "_inbox");
   const ids = /* @__PURE__ */ new Set();
   for (const candidateDir of [dir, inboxDir]) {
-    if (!existsSync16(candidateDir))
+    if (!existsSync18(candidateDir))
       continue;
     let entries2;
     try {
@@ -43472,7 +43579,7 @@ function scanExistingDecisionIds(repoRoot) {
 function scanExistingInvariantIds(repoRoot) {
   const dir = invariantsDir(repoRoot);
   const ids = /* @__PURE__ */ new Set();
-  if (!existsSync16(dir))
+  if (!existsSync18(dir))
     return ids;
   let entries2;
   try {
@@ -43491,7 +43598,7 @@ function scanExistingInvariantIds(repoRoot) {
 
 // ../cairn-core/dist/doctor/index.js
 var import_yaml16 = __toESM(require_dist(), 1);
-import { existsSync as existsSync17, readdirSync as readdirSync12, readFileSync as readFileSync17, statSync as statSync5 } from "node:fs";
+import { existsSync as existsSync19, readdirSync as readdirSync12, readFileSync as readFileSync19, statSync as statSync5 } from "node:fs";
 import { basename, delimiter, join as join22, resolve as resolvePath } from "node:path";
 
 // ../cairn-core/dist/paths/index.js
@@ -43541,7 +43648,7 @@ function runDoctor(opts) {
 }
 function checkCairnLayout(repoRoot) {
   const groundDir2 = join22(repoRoot, ".cairn", "ground");
-  if (!existsSync17(groundDir2)) {
+  if (!existsSync19(groundDir2)) {
     return {
       group: "core",
       label: ".cairn/",
@@ -43594,7 +43701,7 @@ function checkDecisions(repoRoot) {
     };
   }
   const inboxDir = join22(repoRoot, ".cairn", "ground", "decisions", "_inbox");
-  if (existsSync17(inboxDir)) {
+  if (existsSync19(inboxDir)) {
     try {
       const entries2 = readdirSync12(inboxDir, {
         withFileTypes: true,
@@ -43630,7 +43737,7 @@ function checkDecisions(repoRoot) {
 }
 function checkBrandOverview(repoRoot) {
   const path2 = join22(repoRoot, ".cairn", "ground", "brand", "overview.md");
-  if (!existsSync17(path2)) {
+  if (!existsSync19(path2)) {
     return {
       group: "ground",
       label: "brand/overview",
@@ -43649,7 +43756,7 @@ function checkBrandOverview(repoRoot) {
 }
 function checkScopeIndex(repoRoot) {
   const path2 = join22(repoRoot, ".cairn", "ground", "scope-index.yaml");
-  if (!existsSync17(path2)) {
+  if (!existsSync19(path2)) {
     return {
       group: "ground",
       label: "scope-index",
@@ -43660,7 +43767,7 @@ function checkScopeIndex(repoRoot) {
   }
   let count = 0;
   try {
-    const parsed = (0, import_yaml16.parse)(readFileSync17(path2, "utf8"));
+    const parsed = (0, import_yaml16.parse)(readFileSync19(path2, "utf8"));
     if (typeof parsed === "object" && parsed !== null) {
       const filesRaw = parsed["files"];
       if (typeof filesRaw === "object" && filesRaw !== null) {
@@ -43694,7 +43801,7 @@ function checkScopeIndex(repoRoot) {
 }
 function checkSensorAvailability(repoRoot) {
   const path2 = join22(repoRoot, ".cairn", "config", "sensors.yaml");
-  if (!existsSync17(path2)) {
+  if (!existsSync19(path2)) {
     return [
       {
         group: "sensors",
@@ -43707,7 +43814,7 @@ function checkSensorAvailability(repoRoot) {
   }
   let parsed;
   try {
-    parsed = (0, import_yaml16.parse)(readFileSync17(path2, "utf8"));
+    parsed = (0, import_yaml16.parse)(readFileSync19(path2, "utf8"));
   } catch {
     return [
       {
@@ -43783,7 +43890,7 @@ function which(binary) {
 }
 function readFrontmatterStatus(path2) {
   try {
-    const text = readFileSync17(path2, "utf8");
+    const text = readFileSync19(path2, "utf8");
     const m = text.match(/^---\n([\s\S]*?\n)---/);
     if (!m)
       return null;
@@ -43823,8 +43930,8 @@ async function runFix(opts) {
 }
 
 // ../cairn-core/dist/gc/apply.js
-import { mkdirSync as mkdirSync14, rmSync as rmSync6, writeFileSync as writeFileSync13 } from "node:fs";
-import { dirname as dirname10, resolve as resolve5 } from "node:path";
+import { mkdirSync as mkdirSync16, rmSync as rmSync6, writeFileSync as writeFileSync15 } from "node:fs";
+import { dirname as dirname12, resolve as resolve5 } from "node:path";
 async function applyCommit(opts) {
   const written = [];
   const deleted = [];
@@ -43837,8 +43944,8 @@ async function applyCommit(opts) {
       } catch {
       }
     } else {
-      mkdirSync14(dirname10(abs), { recursive: true });
-      writeFileSync13(abs, content, "utf8");
+      mkdirSync16(dirname12(abs), { recursive: true });
+      writeFileSync15(abs, content, "utf8");
       written.push(rel);
     }
   }
@@ -43859,7 +43966,7 @@ async function applyCommit(opts) {
 
 // ../cairn-core/dist/gc/canary.js
 var import_yaml17 = __toESM(require_dist(), 1);
-import { existsSync as existsSync18, readFileSync as readFileSync18 } from "node:fs";
+import { existsSync as existsSync20, readFileSync as readFileSync20 } from "node:fs";
 import { join as join23 } from "node:path";
 function verifyBatchCanary(opts) {
   const failures = [];
@@ -43874,12 +43981,12 @@ function verifyBatchCanary(opts) {
     failures.push(`manifest rebuild threw: ${err.message}`);
   }
   const workflowPath = join23(opts.repoRoot, ".cairn", "config", "workflow.md");
-  if (!existsSync18(workflowPath)) {
+  if (!existsSync20(workflowPath)) {
     failures.push("workflow.md not found at .cairn/config/workflow.md");
   } else {
     let body = "";
     try {
-      body = readFileSync18(workflowPath, "utf8");
+      body = readFileSync20(workflowPath, "utf8");
     } catch (err) {
       failures.push(`workflow.md unreadable post-batch: ${err.message}`);
     }
@@ -43908,7 +44015,7 @@ function verifyBatchCanary(opts) {
 
 // ../cairn-core/dist/gc/citation-integrity.js
 var import_yaml18 = __toESM(require_dist(), 1);
-import { existsSync as existsSync20, readFileSync as readFileSync19, statSync as statSync6 } from "node:fs";
+import { existsSync as existsSync22, readFileSync as readFileSync21, statSync as statSync6 } from "node:fs";
 import { join as join24 } from "node:path";
 
 // ../cairn-core/dist/hooks/post-tool-use/citation-scanner.js
@@ -43960,7 +44067,7 @@ function scanCitations(content) {
 }
 
 // ../cairn-core/dist/gc/walk-source.js
-import { existsSync as existsSync19, readdirSync as readdirSync13 } from "node:fs";
+import { existsSync as existsSync21, readdirSync as readdirSync13 } from "node:fs";
 import { relative as relative2, resolve as resolve6 } from "node:path";
 var SOURCE_TREE_SKIP_DIRS = /* @__PURE__ */ new Set([
   ".git",
@@ -43977,7 +44084,7 @@ var SOURCE_TREE_SKIP_DIRS = /* @__PURE__ */ new Set([
 ]);
 function walkSourceTree(repoRoot) {
   const out = [];
-  if (!existsSync19(repoRoot))
+  if (!existsSync21(repoRoot))
     return out;
   const stack = [repoRoot];
   while (stack.length > 0) {
@@ -44043,11 +44150,11 @@ function loadInvariants(repoRoot) {
   }
   const superseded = /* @__PURE__ */ new Map();
   const path2 = invariantsLedgerPath(repoRoot);
-  if (!existsSync20(path2))
+  if (!existsSync22(path2))
     return { active, superseded };
   let parsed;
   try {
-    parsed = (0, import_yaml18.parse)(readFileSync19(path2, "utf8"));
+    parsed = (0, import_yaml18.parse)(readFileSync21(path2, "utf8"));
   } catch {
     return { active, superseded };
   }
@@ -44072,11 +44179,11 @@ function loadDecisions(repoRoot) {
   }
   const superseded = /* @__PURE__ */ new Map();
   const path2 = decisionsLedgerPath(repoRoot);
-  if (!existsSync20(path2))
+  if (!existsSync22(path2))
     return { active, superseded };
   let parsed;
   try {
-    parsed = (0, import_yaml18.parse)(readFileSync19(path2, "utf8"));
+    parsed = (0, import_yaml18.parse)(readFileSync21(path2, "utf8"));
   } catch {
     return { active, superseded };
   }
@@ -44120,7 +44227,7 @@ function runCitationIntegrity(opts) {
       continue;
     let content;
     try {
-      content = readFileSync19(abs, "utf8");
+      content = readFileSync21(abs, "utf8");
     } catch {
       continue;
     }
@@ -44179,9 +44286,9 @@ function runCitationIntegrity(opts) {
       const taskId = m.id;
       const activeDir = join24(opts.repoRoot, ".cairn", "tasks", "active", taskId);
       const doneDir = join24(opts.repoRoot, ".cairn", "tasks", "done", taskId);
-      if (existsSync20(activeDir))
+      if (existsSync22(activeDir))
         continue;
-      if (existsSync20(doneDir))
+      if (existsSync22(doneDir))
         continue;
       findings.push({
         pass: PASS_ID,
@@ -44263,14 +44370,14 @@ function isCodePath(path2) {
 }
 
 // ../cairn-core/dist/gc/completion-integrity.js
-import { existsSync as existsSync21, readdirSync as readdirSync14, readFileSync as readFileSync20 } from "node:fs";
+import { existsSync as existsSync23, readdirSync as readdirSync14, readFileSync as readFileSync22 } from "node:fs";
 import { join as join25 } from "node:path";
 var import_yaml19 = __toESM(require_dist(), 1);
 var PASS_ID2 = "completion-integrity";
 async function runCompletionIntegrity(opts) {
   const findings = [];
   const doneDir = join25(opts.repoRoot, ".cairn", "tasks", "done");
-  if (!existsSync21(doneDir))
+  if (!existsSync23(doneDir))
     return { findings };
   let dirents;
   try {
@@ -44290,13 +44397,13 @@ async function runCompletionIntegrity(opts) {
     const taskId = entry.name;
     const taskDir = join25(doneDir, taskId);
     const statusPath = join25(taskDir, "status.yaml");
-    if (!existsSync21(statusPath)) {
+    if (!existsSync23(statusPath)) {
       findings.push(makeFinding(taskId, `tasks/done/${taskId}/status.yaml missing`));
       continue;
     }
     let statusParsed;
     try {
-      statusParsed = (0, import_yaml19.parse)(readFileSync20(statusPath, "utf8"));
+      statusParsed = (0, import_yaml19.parse)(readFileSync22(statusPath, "utf8"));
     } catch (err) {
       findings.push(makeFinding(taskId, `tasks/done/${taskId}/status.yaml unparseable: ${stringifyErr(err)}`));
       continue;
@@ -44319,22 +44426,22 @@ async function runCompletionIntegrity(opts) {
     const terminalDir = join25(opts.repoRoot, ".cairn", "runs", "terminal", runId);
     const activeDir = join25(opts.repoRoot, ".cairn", "runs", "active", runId);
     let runDir = null;
-    if (existsSync21(terminalDir))
+    if (existsSync23(terminalDir))
       runDir = terminalDir;
-    else if (existsSync21(activeDir))
+    else if (existsSync23(activeDir))
       runDir = activeDir;
     if (runDir === null) {
       findings.push(makeFinding(taskId, `linked run dir not found for ${runId} (checked runs/{active,terminal}/)`));
       continue;
     }
     const metaPath = join25(runDir, "meta.json");
-    if (!existsSync21(metaPath)) {
+    if (!existsSync23(metaPath)) {
       findings.push(makeFinding(taskId, `meta.json missing in ${relPathOf(opts.repoRoot, runDir)}`));
       continue;
     }
     let meta3;
     try {
-      const raw = JSON.parse(readFileSync20(metaPath, "utf8"));
+      const raw = JSON.parse(readFileSync22(metaPath, "utf8"));
       if (typeof raw !== "object" || raw === null) {
         findings.push(makeFinding(taskId, `meta.json malformed in ${relPathOf(opts.repoRoot, runDir)}`));
         continue;
@@ -44345,15 +44452,15 @@ async function runCompletionIntegrity(opts) {
       continue;
     }
     const attestationPath = join25(runDir, "attestation.yaml");
-    if (!existsSync21(attestationPath)) {
+    if (!existsSync23(attestationPath)) {
       findings.push(makeFinding(taskId, `attestation.yaml missing in ${relPathOf(opts.repoRoot, runDir)}`));
       continue;
     }
     const sensorResultsPath = join25(runDir, "sensor-results.yaml");
-    if (existsSync21(sensorResultsPath)) {
+    if (existsSync23(sensorResultsPath)) {
       let sensorParsed;
       try {
-        sensorParsed = (0, import_yaml19.parse)(readFileSync20(sensorResultsPath, "utf8"));
+        sensorParsed = (0, import_yaml19.parse)(readFileSync22(sensorResultsPath, "utf8"));
       } catch (err) {
         findings.push(makeFinding(taskId, `sensor-results.yaml unparseable in ${relPathOf(opts.repoRoot, runDir)}: ${stringifyErr(err)}`));
         continue;
@@ -44397,8 +44504,8 @@ function relPathOf(repoRoot, abs) {
 }
 
 // ../cairn-core/dist/gc/doc-gardening.js
-import { existsSync as existsSync22, readFileSync as readFileSync21, statSync as statSync7 } from "node:fs";
-import { dirname as dirname11, posix, resolve as resolve7 } from "node:path";
+import { existsSync as existsSync24, readFileSync as readFileSync23, statSync as statSync7 } from "node:fs";
+import { dirname as dirname13, posix, resolve as resolve7 } from "node:path";
 var PASS_ID3 = "doc-gardening";
 var ORPHAN_ROOT_EXCLUDES = [
   "AGENTS.md",
@@ -44419,7 +44526,7 @@ function runDocGardening(opts) {
     const abs = resolve7(opts.repoRoot, rel);
     let source;
     try {
-      source = readFileSync21(abs, "utf8");
+      source = readFileSync23(abs, "utf8");
     } catch {
       continue;
     }
@@ -44493,7 +44600,7 @@ function resolveLinkTarget(repoRoot, fromRel, url2) {
   if (cleanUrl.startsWith("/")) {
     return cleanUrl.replace(/^\/+/, "");
   }
-  const fromDir = dirname11(fromRel);
+  const fromDir = dirname13(fromRel);
   const joined = posix.normalize(posix.join(fromDir, cleanUrl));
   if (joined.startsWith(".."))
     return null;
@@ -44501,7 +44608,7 @@ function resolveLinkTarget(repoRoot, fromRel, url2) {
 }
 function fileExists(repoRoot, rel) {
   const abs = resolve7(repoRoot, rel);
-  if (!existsSync22(abs))
+  if (!existsSync24(abs))
     return false;
   try {
     return statSync7(abs).isFile() || statSync7(abs).isDirectory();
@@ -44519,7 +44626,7 @@ function lineOf(text, charIndex) {
 }
 
 // ../cairn-core/dist/gc/frontmatter.js
-import { readFileSync as readFileSync22 } from "node:fs";
+import { readFileSync as readFileSync24 } from "node:fs";
 import { resolve as resolve8 } from "node:path";
 var PASS_ID4 = "frontmatter-freshness";
 function runFrontmatterFreshness(opts) {
@@ -44533,7 +44640,7 @@ function runFrontmatterFreshness(opts) {
     if (!rel.endsWith(".md"))
       continue;
     const abs = resolve8(opts.repoRoot, rel);
-    const source = readFileSync22(abs, "utf8");
+    const source = readFileSync24(abs, "utf8");
     const parsed = parseFrontmatter(source);
     if (!parsed.frontmatter)
       continue;
@@ -44599,7 +44706,7 @@ ${body}`;
 }
 
 // ../cairn-core/dist/gc/generator-drift.js
-import { existsSync as existsSync23, readFileSync as readFileSync23 } from "node:fs";
+import { existsSync as existsSync25, readFileSync as readFileSync25 } from "node:fs";
 import { resolve as resolve9 } from "node:path";
 var PASS_ID5 = "generator-drift";
 async function runGeneratorDrift(opts) {
@@ -44610,7 +44717,7 @@ async function runGeneratorDrift(opts) {
     if (newContent === null)
       continue;
     const outAbs = resolve9(opts.repoRoot, extractor.outputRelPath);
-    const currentContent = existsSync23(outAbs) ? readFileSync23(outAbs, "utf8") : "";
+    const currentContent = existsSync25(outAbs) ? readFileSync25(outAbs, "utf8") : "";
     if (currentContent === newContent)
       continue;
     const finding = {
@@ -44639,7 +44746,7 @@ Auto-applied as safe-class (GC auto-merge policy).
 
 // ../cairn-core/dist/gc/quality-update.js
 var import_yaml20 = __toESM(require_dist(), 1);
-import { existsSync as existsSync24, readFileSync as readFileSync24 } from "node:fs";
+import { existsSync as existsSync26, readFileSync as readFileSync26 } from "node:fs";
 var PASS_ID6 = "quality-grades";
 function runQualityGradesUpdate(opts) {
   const findings = [];
@@ -44651,7 +44758,7 @@ function runQualityGradesUpdate(opts) {
   const newContent = (0, import_yaml20.stringify)(grades);
   const filePath = qualityGradesPath(opts.repoRoot);
   const relPath = ".cairn/ground/quality-grades.yaml";
-  const existing = existsSync24(filePath) ? readFileSync24(filePath, "utf8") : "";
+  const existing = existsSync26(filePath) ? readFileSync26(filePath, "utf8") : "";
   const existingModules = existing.length > 0 ? safeParseModules(existing) : [];
   const existingModulesJson = JSON.stringify(existingModules);
   const newModulesJson = JSON.stringify(grades.modules);
@@ -44693,7 +44800,7 @@ function safeParseModules(text) {
 }
 
 // ../cairn-core/dist/gc/scope-coverage.js
-import { existsSync as existsSync25 } from "node:fs";
+import { existsSync as existsSync27 } from "node:fs";
 import { join as join26 } from "node:path";
 var PASS_ID7 = "scope-coverage";
 var MAX_FINDINGS_PER_KIND = 50;
@@ -44732,7 +44839,7 @@ function runScopeCoverage(opts) {
     if (orphanCount >= MAX_FINDINGS_PER_KIND)
       break;
     const abs = join26(opts.repoRoot, path2);
-    if (!existsSync25(abs)) {
+    if (!existsSync27(abs)) {
       findings.push({
         pass: PASS_ID7,
         kind: "scope_drift_orphan",
@@ -44747,15 +44854,15 @@ function runScopeCoverage(opts) {
 }
 
 // ../cairn-core/dist/gc/stub-hits.js
-import { readFileSync as readFileSync26 } from "node:fs";
+import { readFileSync as readFileSync28 } from "node:fs";
 import { resolve as resolve10 } from "node:path";
 
 // ../cairn-core/dist/sensors/catalog.js
 var import_yaml21 = __toESM(require_dist(), 1);
-import { existsSync as existsSync26, readFileSync as readFileSync25 } from "node:fs";
-import { dirname as dirname12, join as join27 } from "node:path";
+import { existsSync as existsSync28, readFileSync as readFileSync27 } from "node:fs";
+import { dirname as dirname14, join as join27 } from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
-var HERE2 = dirname12(fileURLToPath2(import.meta.url));
+var HERE2 = dirname14(fileURLToPath2(import.meta.url));
 var TEMPLATES_PREFIX = true ? join27(HERE2, "templates") : join27(HERE2, "..", "..", "templates");
 var PKG_TEMPLATE_STUB = join27(TEMPLATES_PREFIX, ".cairn", "config", "stub-patterns.yaml");
 var PKG_TEMPLATE_SENSORS = join27(TEMPLATES_PREFIX, ".cairn", "config", "sensors.yaml");
@@ -44798,9 +44905,9 @@ function loadStubCatalog(repoRoot) {
   }
   candidates.push(PKG_TEMPLATE_STUB);
   for (const p2 of candidates) {
-    if (!existsSync26(p2))
+    if (!existsSync28(p2))
       continue;
-    return parseStubCatalog(readFileSync25(p2, "utf8"));
+    return parseStubCatalog(readFileSync27(p2, "utf8"));
   }
   throw new Error(`stub-patterns.yaml not found; checked: ${candidates.join(", ")}`);
 }
@@ -44811,9 +44918,9 @@ function loadSensorRegistry(repoRoot) {
   }
   candidates.push(PKG_TEMPLATE_SENSORS);
   for (const p2 of candidates) {
-    if (!existsSync26(p2))
+    if (!existsSync28(p2))
       continue;
-    const doc = (0, import_yaml21.parse)(readFileSync25(p2, "utf8"));
+    const doc = (0, import_yaml21.parse)(readFileSync27(p2, "utf8"));
     const version2 = typeof doc["version"] === "number" ? doc["version"] : 1;
     const sensors = [];
     for (const raw of doc["sensors"] ?? []) {
@@ -44953,7 +45060,7 @@ function runStubCatalogHits(opts) {
     const abs = resolve10(opts.repoRoot, rel);
     let content;
     try {
-      const buf = readFileSync26(abs);
+      const buf = readFileSync28(abs);
       if (buf.length > maxBytes)
         continue;
       content = buf.toString("utf8");
@@ -45180,19 +45287,19 @@ async function runGcBatch(opts) {
 }
 
 // ../cairn-core/dist/hooks/defer.js
-import { existsSync as existsSync27, mkdirSync as mkdirSync15, readFileSync as readFileSync27, rmSync as rmSync7, writeFileSync as writeFileSync14 } from "node:fs";
-import { dirname as dirname13, join as join28 } from "node:path";
+import { existsSync as existsSync29, mkdirSync as mkdirSync17, readFileSync as readFileSync29, rmSync as rmSync7, writeFileSync as writeFileSync16 } from "node:fs";
+import { dirname as dirname15, join as join28 } from "node:path";
 var DEFAULT_DEFER_HOURS = 24;
 function deferStatePath(repoRoot, kind) {
   return join28(repoRoot, ".cairn", `.${kind}-deferred-until`);
 }
 function readDeferState(repoRoot, kind) {
   const path2 = deferStatePath(repoRoot, kind);
-  if (!existsSync27(path2))
+  if (!existsSync29(path2))
     return null;
   let parsed;
   try {
-    parsed = JSON.parse(readFileSync27(path2, "utf8"));
+    parsed = JSON.parse(readFileSync29(path2, "utf8"));
   } catch {
     return null;
   }
@@ -45208,8 +45315,8 @@ function writeDeferState(repoRoot, kind, snapshot) {
     flagged_task_ids: [...snapshot.flagged_task_ids ?? []]
   };
   const path2 = deferStatePath(repoRoot, kind);
-  mkdirSync15(dirname13(path2), { recursive: true });
-  writeFileSync14(path2, JSON.stringify(state, null, 2), "utf8");
+  mkdirSync17(dirname15(path2), { recursive: true });
+  writeFileSync16(path2, JSON.stringify(state, null, 2), "utf8");
   return state;
 }
 function clearDeferState(repoRoot, kind) {
@@ -45243,7 +45350,7 @@ function isDeferState(x2) {
 import { relative as relative3 } from "node:path";
 
 // ../cairn-core/dist/hooks/runners/payload.js
-import { appendFileSync as appendFileSync3, existsSync as existsSync28, mkdirSync as mkdirSync16 } from "node:fs";
+import { appendFileSync as appendFileSync3, existsSync as existsSync30, mkdirSync as mkdirSync18 } from "node:fs";
 import { homedir as homedir2 } from "node:os";
 import { join as join29, resolve as resolve11 } from "node:path";
 var CAIRN_HOOK_VERSION = "0.2.0";
@@ -45291,8 +45398,8 @@ function recordHookTelemetry(row2) {
   };
   try {
     const dir = resolve11(homedir2(), ".local", "cairn", "state");
-    if (!existsSync28(dir))
-      mkdirSync16(dir, { recursive: true });
+    if (!existsSync30(dir))
+      mkdirSync18(dir, { recursive: true });
     const path2 = join29(dir, `${row2.hook}.jsonl`);
     appendFileSync3(path2, `${JSON.stringify(body)}
 `, "utf8");
@@ -45315,8 +45422,8 @@ function recordHookTelemetry(row2) {
 
 // ../cairn-core/dist/session-start/build.js
 var import_yaml22 = __toESM(require_dist(), 1);
-import { existsSync as existsSync29, readFileSync as readFileSync28, readdirSync as readdirSync15, statSync as statSync8 } from "node:fs";
-import { basename as basename2, dirname as dirname14, join as join30, resolve as resolve12 } from "node:path";
+import { existsSync as existsSync31, readFileSync as readFileSync30, readdirSync as readdirSync15, statSync as statSync8 } from "node:fs";
+import { basename as basename2, dirname as dirname16, join as join30, resolve as resolve12 } from "node:path";
 
 // ../cairn-core/dist/session-start/templates.js
 var TWO_ZONE_REMINDER_BASE = "## Two-zone reminder\n\nReads/grep/glob default to the canonical zone (AGENTS.md, CLAUDE.md, docs/**, .cairn/ground/**, .cairn/tasks/active/**). Historical content (.archive/, .cairn/tasks/done/) is excluded by cairn's walkers \u2014 call `cairn_query_history(scope, question)` when you need a summarized read.";
@@ -45334,10 +45441,10 @@ function resolveRepoRoot(cwd) {
   let dir = resolve12(cwd);
   for (let i2 = 0; i2 < 12; i2++) {
     const cairnDir = join30(dir, ".cairn");
-    if (existsSync29(cairnDir) && statSync8(cairnDir).isDirectory() && existsSync29(join30(cairnDir, "config.yaml"))) {
+    if (existsSync31(cairnDir) && statSync8(cairnDir).isDirectory() && existsSync31(join30(cairnDir, "config.yaml"))) {
       return dir;
     }
-    const parent = dirname14(dir);
+    const parent = dirname16(dir);
     if (parent === dir)
       return null;
     dir = parent;
@@ -45491,10 +45598,10 @@ function readBrandAndPositioning(repoRoot, warnings) {
     ["Brand overview", brandPath],
     ["Product positioning", positioningPath]
   ]) {
-    if (!existsSync29(path2))
+    if (!existsSync31(path2))
       continue;
     try {
-      const text = readFileSync28(path2, "utf8");
+      const text = readFileSync30(path2, "utf8");
       const parsed = parseFrontmatter(text);
       const fm = parsed.frontmatter ?? {};
       const status = typeof fm["status"] === "string" ? fm["status"] : null;
@@ -45618,7 +45725,7 @@ function renderInvariantsSection(invariants) {
 }
 function listActiveTasks(repoRoot) {
   const dir = join30(repoRoot, ".cairn", "tasks", "active");
-  if (!existsSync29(dir))
+  if (!existsSync31(dir))
     return [];
   let entries2;
   try {
@@ -45636,7 +45743,7 @@ function listActiveTasks(repoRoot) {
     ];
     let target = null;
     for (const c4 of candidates) {
-      if (existsSync29(c4)) {
+      if (existsSync31(c4)) {
         target = c4;
         break;
       }
@@ -45646,7 +45753,7 @@ function listActiveTasks(repoRoot) {
     let text = "";
     let mtime = 0;
     try {
-      text = readFileSync28(target, "utf8");
+      text = readFileSync30(target, "utf8");
       mtime = statSync8(target).mtimeMs;
     } catch {
       continue;
@@ -45701,11 +45808,11 @@ function renderCurrentTaskSection(_repoRoot, tasks) {
 }
 function readQualityGrades(repoRoot, warnings) {
   const path2 = join30(repoRoot, ".cairn", "ground", "quality-grades.yaml");
-  if (!existsSync29(path2))
+  if (!existsSync31(path2))
     return [];
   let parsed;
   try {
-    parsed = (0, import_yaml22.parse)(readFileSync28(path2, "utf8"));
+    parsed = (0, import_yaml22.parse)(readFileSync30(path2, "utf8"));
   } catch (err) {
     warnings.push(`quality-grades.yaml unparseable: ${err instanceof Error ? err.message : String(err)}`);
     return [];
@@ -45748,7 +45855,7 @@ function renderQualityGradesSection(grades) {
 }
 function listPendingDrafts(repoRoot, warnings) {
   const dir = join30(repoRoot, ".cairn", "ground", "decisions", "_inbox");
-  if (!existsSync29(dir))
+  if (!existsSync31(dir))
     return [];
   let entries2;
   try {
@@ -45765,7 +45872,7 @@ function listPendingDrafts(repoRoot, warnings) {
     const abs = join30(dir, e.name);
     let text;
     try {
-      text = readFileSync28(abs, "utf8");
+      text = readFileSync30(abs, "utf8");
     } catch (err) {
       warnings.push(`draft ${e.name} unreadable: ${err instanceof Error ? err.message : String(err)}`);
       continue;
@@ -45822,7 +45929,7 @@ function renderFirstSessionOnboarding(args) {
 }
 function readLatestBaselineAudit(repoRoot, warnings) {
   const dir = join30(repoRoot, ".cairn", "baseline");
-  if (!existsSync29(dir))
+  if (!existsSync31(dir))
     return null;
   let entries2;
   try {
@@ -45837,7 +45944,7 @@ function readLatestBaselineAudit(repoRoot, warnings) {
     return null;
   const abs = join30(dir, latest);
   try {
-    const parsed = (0, import_yaml22.parse)(readFileSync28(abs, "utf8"));
+    const parsed = (0, import_yaml22.parse)(readFileSync30(abs, "utf8"));
     const runAt = typeof parsed["run_at"] === "string" ? parsed["run_at"] : null;
     const totalFindings = typeof parsed["total_findings"] === "number" ? parsed["total_findings"] : 0;
     const filesScanned = typeof parsed["files_scanned"] === "number" ? parsed["files_scanned"] : 0;
@@ -45859,10 +45966,10 @@ function readActiveSensorIds(repoRoot, warnings) {
 }
 function readProjectSlug(repoRoot) {
   const path2 = join30(repoRoot, ".cairn", "config.yaml");
-  if (!existsSync29(path2))
+  if (!existsSync31(path2))
     return null;
   try {
-    const parsed = (0, import_yaml22.parse)(readFileSync28(path2, "utf8"));
+    const parsed = (0, import_yaml22.parse)(readFileSync30(path2, "utf8"));
     if (typeof parsed["slug"] === "string")
       return parsed["slug"];
     return null;
@@ -45915,8 +46022,8 @@ function renderPendingDraftsSection(drafts) {
 
 // ../cairn-core/dist/hooks/post-tool-use/ledger-cache.js
 var import_yaml23 = __toESM(require_dist(), 1);
-import { createHash as createHash4 } from "node:crypto";
-import { existsSync as existsSync30, openSync, readFileSync as readFileSync29, readSync, closeSync, statSync as statSync9 } from "node:fs";
+import { createHash as createHash5 } from "node:crypto";
+import { existsSync as existsSync32, openSync, readFileSync as readFileSync31, readSync, closeSync, statSync as statSync9 } from "node:fs";
 import { join as join31 } from "node:path";
 var SCOPE_INDEX_HASH_BYTES = 512;
 function hashFilePrefix(path2, bytes) {
@@ -45929,7 +46036,7 @@ function hashFilePrefix(path2, bytes) {
   try {
     const buf = Buffer.alloc(bytes);
     const read = readSync(fd, buf, 0, bytes, 0);
-    return createHash4("sha256").update(buf.subarray(0, read)).digest("hex");
+    return createHash5("sha256").update(buf.subarray(0, read)).digest("hex");
   } catch {
     return null;
   } finally {
@@ -45949,7 +46056,7 @@ function invariantsLedgerFile(repoRoot) {
 }
 function getInvariantsLedger(repoRoot) {
   const path2 = invariantsLedgerFile(repoRoot);
-  if (!existsSync30(path2))
+  if (!existsSync32(path2))
     return null;
   let mtimeMs;
   try {
@@ -45962,7 +46069,7 @@ function getInvariantsLedger(repoRoot) {
   }
   let parsed;
   try {
-    parsed = (0, import_yaml23.parse)(readFileSync29(path2, "utf8"));
+    parsed = (0, import_yaml23.parse)(readFileSync31(path2, "utf8"));
   } catch {
     return null;
   }
@@ -45995,7 +46102,7 @@ function decisionsLedgerFile(repoRoot) {
 }
 function getDecisionsLedger(repoRoot) {
   const path2 = decisionsLedgerFile(repoRoot);
-  if (!existsSync30(path2))
+  if (!existsSync32(path2))
     return null;
   let mtimeMs;
   try {
@@ -46008,7 +46115,7 @@ function getDecisionsLedger(repoRoot) {
   }
   let parsed;
   try {
-    parsed = (0, import_yaml23.parse)(readFileSync29(path2, "utf8"));
+    parsed = (0, import_yaml23.parse)(readFileSync31(path2, "utf8"));
   } catch {
     return null;
   }
@@ -46040,7 +46147,7 @@ function tasksScopeDir(repoRoot, scope) {
   return join31(repoRoot, ".cairn", "tasks", scope);
 }
 function readDirMtime(path2) {
-  if (!existsSync30(path2))
+  if (!existsSync32(path2))
     return null;
   try {
     return statSync9(path2).mtimeMs;
@@ -46054,10 +46161,10 @@ function extractTitle(taskDir) {
     join31(taskDir, "spec.md")
   ];
   for (const c4 of candidates) {
-    if (!existsSync30(c4))
+    if (!existsSync32(c4))
       continue;
     try {
-      const text = readFileSync29(c4, "utf8");
+      const text = readFileSync31(c4, "utf8");
       const m = text.match(/^#\s+(.+)$/m);
       if (m && typeof m[1] === "string")
         return m[1].trim();
@@ -46090,7 +46197,7 @@ function resolveCacheForScope(repoRoot, scope) {
 function lookupTask(repoRoot, taskId) {
   const activeDir = tasksScopeDir(repoRoot, "active");
   const activeTaskDir = join31(activeDir, taskId);
-  if (existsSync30(activeTaskDir)) {
+  if (existsSync32(activeTaskDir)) {
     const cache = resolveCacheForScope(repoRoot, "active");
     if (cache !== null) {
       let title2 = cache.titles.get(taskId);
@@ -46105,7 +46212,7 @@ function lookupTask(repoRoot, taskId) {
   }
   const doneDir = tasksScopeDir(repoRoot, "done");
   const doneTaskDir = join31(doneDir, taskId);
-  if (existsSync30(doneTaskDir)) {
+  if (existsSync32(doneTaskDir)) {
     const cache = resolveCacheForScope(repoRoot, "done");
     if (cache !== null) {
       let title2 = cache.titles.get(taskId);
@@ -46122,7 +46229,7 @@ function lookupTask(repoRoot, taskId) {
 }
 function getScopeIndexEntry(repoRoot, repoRelativePath) {
   const path2 = scopeIndexPath(repoRoot);
-  if (!existsSync30(path2))
+  if (!existsSync32(path2))
     return null;
   const contentHash = hashFilePrefix(path2, SCOPE_INDEX_HASH_BYTES);
   if (contentHash === null)
@@ -46401,12 +46508,12 @@ async function runReadEnricher() {
 
 // ../cairn-core/dist/hooks/post-tool-use/write-guardian.js
 import { spawnSync as spawnSync2 } from "node:child_process";
-import { existsSync as existsSync32, mkdirSync as mkdirSync17, readdirSync as readdirSync16, writeFileSync as writeFileSync15 } from "node:fs";
-import { basename as basename3, dirname as dirname15, join as join33, relative as relative4 } from "node:path";
+import { existsSync as existsSync34, mkdirSync as mkdirSync19, readdirSync as readdirSync16, writeFileSync as writeFileSync17 } from "node:fs";
+import { basename as basename3, dirname as dirname17, join as join33, relative as relative4 } from "node:path";
 
 // ../cairn-core/dist/hooks/post-tool-use/allowlist-reader.js
 var import_yaml24 = __toESM(require_dist(), 1);
-import { existsSync as existsSync31, readFileSync as readFileSync30 } from "node:fs";
+import { existsSync as existsSync33, readFileSync as readFileSync32 } from "node:fs";
 import { join as join32 } from "node:path";
 var DEFAULT = {
   enabled: true,
@@ -46440,11 +46547,11 @@ function asStringArray2(value) {
 }
 function readCopySafetyConfig(repoRoot) {
   const path2 = join32(repoRoot, ".cairn", "config", "sensors.yaml");
-  if (!existsSync31(path2))
+  if (!existsSync33(path2))
     return defaultsCopy();
   let parsed;
   try {
-    parsed = (0, import_yaml24.parse)(readFileSync30(path2, "utf8"));
+    parsed = (0, import_yaml24.parse)(readFileSync32(path2, "utf8"));
   } catch {
     return defaultsCopy();
   }
@@ -46686,21 +46793,21 @@ function bypassSentinelPath(repoRoot, sessionId) {
 }
 function bypassAlreadyWarned(repoRoot, sessionId) {
   const p2 = bypassSentinelPath(repoRoot, sessionId);
-  return p2 !== null && existsSync32(p2);
+  return p2 !== null && existsSync34(p2);
 }
 function markBypassWarned(repoRoot, sessionId) {
   const p2 = bypassSentinelPath(repoRoot, sessionId);
   if (p2 === null)
     return;
   try {
-    mkdirSync17(dirname15(p2), { recursive: true });
-    writeFileSync15(p2, (/* @__PURE__ */ new Date()).toISOString(), "utf8");
+    mkdirSync19(dirname17(p2), { recursive: true });
+    writeFileSync17(p2, (/* @__PURE__ */ new Date()).toISOString(), "utf8");
   } catch {
   }
 }
 function hasTightenedActiveTask(repoRoot) {
   const tasksDir = join33(repoRoot, ".cairn", "tasks", "active");
-  if (!existsSync32(tasksDir))
+  if (!existsSync34(tasksDir))
     return false;
   let entries2;
   try {
@@ -46712,7 +46819,7 @@ function hasTightenedActiveTask(repoRoot) {
     if (!entry.isDirectory())
       continue;
     const taskDir = join33(tasksDir, String(entry.name));
-    if (existsSync32(join33(taskDir, "spec.tightened.md")) && existsSync32(join33(taskDir, "status.yaml"))) {
+    if (existsSync34(join33(taskDir, "spec.tightened.md")) && existsSync34(join33(taskDir, "status.yaml"))) {
       return true;
     }
   }
@@ -46826,13 +46933,13 @@ async function runWriteGuardian() {
 }
 
 // ../cairn-core/dist/init/detect.js
-import { existsSync as existsSync33, readFileSync as readFileSync31, statSync as statSync10 } from "node:fs";
+import { existsSync as existsSync35, readFileSync as readFileSync33, statSync as statSync10 } from "node:fs";
 import { basename as basename4, join as join34 } from "node:path";
 function detectProjectSlug(args) {
   const pkgPath = join34(args.repoRoot, "package.json");
-  if (existsSync33(pkgPath)) {
+  if (existsSync35(pkgPath)) {
     try {
-      const pkg = JSON.parse(readFileSync31(pkgPath, "utf8"));
+      const pkg = JSON.parse(readFileSync33(pkgPath, "utf8"));
       if (typeof pkg.name === "string" && pkg.name.length > 0) {
         return normalizeProjectName(pkg.name);
       }
@@ -46847,7 +46954,7 @@ function detectProjectSlug(args) {
   return normalizeProjectName(basename4(args.repoRoot));
 }
 async function detectOriginUrl(repoRoot) {
-  if (!existsSync33(join34(repoRoot, ".git")))
+  if (!existsSync35(join34(repoRoot, ".git")))
     return null;
   try {
     const remotes = await simpleGit(repoRoot).getRemotes(true);
@@ -46860,7 +46967,7 @@ async function detectOriginUrl(repoRoot) {
 function detectStackSignatures(repoRoot) {
   const signatures = [];
   const flag = (kind, marker) => {
-    if (existsSync33(join34(repoRoot, marker))) {
+    if (existsSync35(join34(repoRoot, marker))) {
       signatures.push({ kind, marker });
     }
   };
@@ -46880,7 +46987,7 @@ function detectStackSignatures(repoRoot) {
 }
 function detectAvailableSensors(args) {
   const sensors = [];
-  const has = (path2) => existsSync33(join34(args.repoRoot, path2));
+  const has = (path2) => existsSync35(join34(args.repoRoot, path2));
   const hasAny = (paths) => paths.some(has);
   if (args.signatures.some((s) => s.kind === "typescript")) {
     if (has("tsconfig.json") || has("tsconfig.base.json")) {
@@ -46998,9 +47105,9 @@ function detectAvailableSensors(args) {
 function detectStartCommand(args) {
   if (args.signatures.some((s) => s.kind === "typescript")) {
     const pkgPath = join34(args.repoRoot, "package.json");
-    if (existsSync33(pkgPath)) {
+    if (existsSync35(pkgPath)) {
       try {
-        const pkg = JSON.parse(readFileSync31(pkgPath, "utf8"));
+        const pkg = JSON.parse(readFileSync33(pkgPath, "utf8"));
         const script = pkg.scripts?.["dev"] ?? pkg.scripts?.["start"];
         const scriptName = pkg.scripts?.["dev"] !== void 0 ? "dev" : "start";
         if (script !== void 0) {
@@ -47015,7 +47122,7 @@ function detectStartCommand(args) {
     }
   }
   if (args.signatures.some((s) => s.kind === "python")) {
-    if (existsSync33(join34(args.repoRoot, "manage.py"))) {
+    if (existsSync35(join34(args.repoRoot, "manage.py"))) {
       return {
         command: "python",
         args: ["manage.py", "runserver"],
@@ -47039,7 +47146,7 @@ function detectStartCommand(args) {
     }
   }
   if (args.signatures.some((s) => s.kind === "ruby")) {
-    if (existsSync33(join34(args.repoRoot, "bin", "rails"))) {
+    if (existsSync35(join34(args.repoRoot, "bin", "rails"))) {
       return {
         command: "bin/rails",
         args: ["server"],
@@ -47065,9 +47172,9 @@ function detectStartCommand(args) {
 }
 function detectHookCapability(repoRoot) {
   const claudeDir = join34(repoRoot, ".claude");
-  if (existsSync33(claudeDir) && isDirectory(claudeDir))
+  if (existsSync35(claudeDir) && isDirectory(claudeDir))
     return "claude-code";
-  if (existsSync33(join34(repoRoot, ".git")))
+  if (existsSync35(join34(repoRoot, ".git")))
     return "git-hooks";
   return "cli-only";
 }
@@ -47103,7 +47210,7 @@ async function detectAll(repoRoot) {
 }
 function readFileIfExists(path2) {
   try {
-    return readFileSync31(path2, "utf8");
+    return readFileSync33(path2, "utf8");
   } catch {
     return null;
   }
@@ -50693,7 +50800,7 @@ var c3 = {
 };
 
 // ../cairn-core/dist/init/brand-setup.js
-import { existsSync as existsSync34, readFileSync as readFileSync32, writeFileSync as writeFileSync16 } from "node:fs";
+import { existsSync as existsSync36, readFileSync as readFileSync34, writeFileSync as writeFileSync18 } from "node:fs";
 import { join as join35 } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
@@ -50776,13 +50883,13 @@ function applyBrandAnswers(repoRoot, answers) {
   return { updated, warnings };
 }
 function rewriteWithBody(abs, body, warnings, rel) {
-  if (!existsSync34(abs)) {
+  if (!existsSync36(abs)) {
     warnings.push(`brand-setup: ${rel} missing \u2014 skipping`);
     return false;
   }
   let text;
   try {
-    text = readFileSync32(abs, "utf8");
+    text = readFileSync34(abs, "utf8");
   } catch (err) {
     warnings.push(`brand-setup: ${rel} unreadable: ${stringifyErr2(err)}`);
     return false;
@@ -50790,7 +50897,7 @@ function rewriteWithBody(abs, body, warnings, rel) {
   const flipped = flipStatus(text);
   const out = replaceBodyAfterFrontmatter(flipped, body);
   try {
-    writeFileSync16(abs, out, "utf8");
+    writeFileSync18(abs, out, "utf8");
   } catch (err) {
     warnings.push(`brand-setup: ${rel} write failed: ${stringifyErr2(err)}`);
     return false;
@@ -50798,7 +50905,7 @@ function rewriteWithBody(abs, body, warnings, rel) {
   return true;
 }
 function rewritePersonas(abs, description, warnings, rel) {
-  if (!existsSync34(abs)) {
+  if (!existsSync36(abs)) {
     warnings.push(`brand-setup: ${rel} missing \u2014 skipping`);
     return false;
   }
@@ -50810,7 +50917,7 @@ personas:
     description: ${yamlSingleLine(description)}
 `;
   try {
-    writeFileSync16(abs, next, "utf8");
+    writeFileSync18(abs, next, "utf8");
   } catch (err) {
     warnings.push(`brand-setup: ${rel} write failed: ${stringifyErr2(err)}`);
     return false;
@@ -50818,13 +50925,13 @@ personas:
   return true;
 }
 function rewriteVoice(abs, body, avoid, warnings, rel) {
-  if (!existsSync34(abs)) {
+  if (!existsSync36(abs)) {
     warnings.push(`brand-setup: ${rel} missing \u2014 skipping`);
     return false;
   }
   let text;
   try {
-    text = readFileSync32(abs, "utf8");
+    text = readFileSync34(abs, "utf8");
   } catch (err) {
     warnings.push(`brand-setup: ${rel} unreadable: ${stringifyErr2(err)}`);
     return false;
@@ -50839,7 +50946,7 @@ ${avoid}
 ` : "";
   const out = replaceBodyAfterFrontmatter(flipped, `${main}${avoidBlock}`);
   try {
-    writeFileSync16(abs, out, "utf8");
+    writeFileSync18(abs, out, "utf8");
   } catch (err) {
     warnings.push(`brand-setup: ${rel} write failed: ${stringifyErr2(err)}`);
     return false;
@@ -50885,7 +50992,7 @@ function stringifyErr2(err) {
 }
 
 // ../cairn-core/dist/init/brand-derive.js
-import { existsSync as existsSync35, readFileSync as readFileSync33 } from "node:fs";
+import { existsSync as existsSync37, readFileSync as readFileSync35 } from "node:fs";
 import { join as join36 } from "node:path";
 var log18 = logger("init.brand-derive");
 var TIMEOUT_MS = 6e4;
@@ -50943,10 +51050,10 @@ var OUTPUT_SCHEMA = {
 };
 function readSignalFile(repoRoot, name, cap) {
   const path2 = join36(repoRoot, name);
-  if (!existsSync35(path2))
+  if (!existsSync37(path2))
     return null;
   try {
-    const raw = readFileSync33(path2, "utf8");
+    const raw = readFileSync35(path2, "utf8");
     return raw.length > cap ? raw.slice(0, cap) : raw;
   } catch {
     return null;
@@ -51044,8 +51151,8 @@ function derivedToBrandAnswers(d) {
 }
 
 // ../cairn-core/dist/init/baseline-audit.js
-import { existsSync as existsSync37, mkdirSync as mkdirSync18, readFileSync as readFileSync35, readdirSync as readdirSync18, statSync as statSync11, writeFileSync as writeFileSync17 } from "node:fs";
-import { dirname as dirname16, join as join38 } from "node:path";
+import { existsSync as existsSync39, mkdirSync as mkdirSync20, readFileSync as readFileSync37, readdirSync as readdirSync18, statSync as statSync11, writeFileSync as writeFileSync19 } from "node:fs";
+import { dirname as dirname18, join as join38 } from "node:path";
 var import_yaml26 = __toESM(require_dist(), 1);
 
 // ../cairn-core/dist/sensors/attestation.js
@@ -51220,11 +51327,11 @@ function lineOf4(text, charIndex) {
 }
 
 // ../cairn-core/dist/sensors/decisions.js
-import { existsSync as existsSync36, readdirSync as readdirSync17, readFileSync as readFileSync34 } from "node:fs";
+import { existsSync as existsSync38, readdirSync as readdirSync17, readFileSync as readFileSync36 } from "node:fs";
 import { join as join37 } from "node:path";
 function loadAcceptedDecisions(repoRoot) {
   const dir = decisionsDir(repoRoot);
-  if (!existsSync36(dir))
+  if (!existsSync38(dir))
     return [];
   let dirents;
   try {
@@ -51241,7 +51348,7 @@ function loadAcceptedDecisions(repoRoot) {
     if (d.name.startsWith("_"))
       continue;
     const abs = join37(dir, d.name);
-    const fm = parseFrontmatter(readFileSync34(abs, "utf8")).frontmatter;
+    const fm = parseFrontmatter(readFileSync36(abs, "utf8")).frontmatter;
     const parsed = DecisionFrontmatter.safeParse(fm);
     if (!parsed.success)
       continue;
@@ -51359,7 +51466,7 @@ function buildSyntheticDiff(repoRoot, paths) {
       continue;
     let text;
     try {
-      text = readFileSync35(abs, "utf8");
+      text = readFileSync37(abs, "utf8");
     } catch {
       continue;
     }
@@ -51538,10 +51645,10 @@ function toBaselineFinding(f) {
   };
 }
 function writeAudit(absPath, payload) {
-  const dir = dirname16(absPath);
-  if (!existsSync37(dir))
-    mkdirSync18(dir, { recursive: true });
-  writeFileSync17(absPath, (0, import_yaml26.stringify)(payload), "utf8");
+  const dir = dirname18(absPath);
+  if (!existsSync39(dir))
+    mkdirSync20(dir, { recursive: true });
+  writeFileSync19(absPath, (0, import_yaml26.stringify)(payload), "utf8");
 }
 function defaultBaselineLanguages(stackKinds) {
   if (stackKinds === void 0 || stackKinds.length === 0) {
@@ -51571,7 +51678,7 @@ function defaultBaselineLanguages(stackKinds) {
 
 // ../cairn-core/dist/init/ingest-docs.js
 var import_yaml27 = __toESM(require_dist(), 1);
-import { existsSync as existsSync38, mkdirSync as mkdirSync19, readFileSync as readFileSync36, readdirSync as readdirSync19, statSync as statSync12, writeFileSync as writeFileSync18 } from "node:fs";
+import { existsSync as existsSync40, mkdirSync as mkdirSync21, readFileSync as readFileSync38, readdirSync as readdirSync19, statSync as statSync12, writeFileSync as writeFileSync20 } from "node:fs";
 import { join as join39, relative as relative5 } from "node:path";
 var log21 = logger("init.ingest-docs");
 var MAX_DOCS = 20;
@@ -51605,7 +51712,7 @@ function discoverDocs(repoRoot) {
   const out = [];
   for (const f of DISCOVER_TOP_FILES) {
     const abs = join39(repoRoot, f);
-    if (!existsSync38(abs))
+    if (!existsSync40(abs))
       continue;
     try {
       const st = statSync12(abs);
@@ -51618,7 +51725,7 @@ function discoverDocs(repoRoot) {
   }
   for (const d of DISCOVER_DIRS) {
     const abs = join39(repoRoot, d);
-    if (!existsSync38(abs))
+    if (!existsSync40(abs))
       continue;
     let dirStat;
     try {
@@ -51758,7 +51865,7 @@ async function classifyAll(candidates, repoRoot, mockClassify) {
         continue;
       let body = "";
       try {
-        body = readFileSync36(join39(repoRoot, candidate.path), "utf8");
+        body = readFileSync38(join39(repoRoot, candidate.path), "utf8");
       } catch (err) {
         results[idx] = {
           candidate,
@@ -51792,7 +51899,7 @@ function emptyClassification() {
 function writeDecDraftFromDoc(args) {
   const dir = decisionsDir(args.repoRoot);
   const inboxDir = join39(dir, "_inbox");
-  mkdirSync19(inboxDir, { recursive: true });
+  mkdirSync21(inboxDir, { recursive: true });
   const filename = `${args.id}.draft.md`;
   const abs = join39(inboxDir, filename);
   const rel = `.cairn/ground/decisions/_inbox/${filename}`;
@@ -51828,17 +51935,17 @@ function writeDecDraftFromDoc(args) {
   lines.push("");
   lines.push("Status: draft. Cairn will surface this for accept / edit / reject during the next attention pass; until accepted it is not binding.");
   lines.push("");
-  writeFileSync18(abs, lines.join("\n"), "utf8");
+  writeFileSync20(abs, lines.join("\n"), "utf8");
   return { absPath: abs, relPath: rel };
 }
 function appendCanonicalTopics(args) {
   if (args.entries.length === 0)
     return { added: [] };
   const path2 = join39(args.repoRoot, ".cairn", "ground", "canonical-map", "topics.yaml");
-  if (!existsSync38(path2)) {
+  if (!existsSync40(path2)) {
     return { added: [] };
   }
-  const text = readFileSync36(path2, "utf8");
+  const text = readFileSync38(path2, "utf8");
   const existing = parseExistingTopicSlugs(text);
   const added = [];
   const lines = [];
@@ -51863,7 +51970,7 @@ function appendCanonicalTopics(args) {
   if (added.length === 0)
     return { added: [] };
   lines.push("");
-  writeFileSync18(path2, lines.join("\n"), "utf8");
+  writeFileSync20(path2, lines.join("\n"), "utf8");
   return { added };
 }
 function parseExistingTopicSlugs(text) {
@@ -51888,11 +51995,11 @@ function formatTopicEntry(entry) {
 }
 function maybeUpdateVoiceFromDoc(args) {
   const path2 = join39(args.repoRoot, ".cairn", "ground", "brand", "voice.md");
-  if (!existsSync38(path2))
+  if (!existsSync40(path2))
     return false;
   let text;
   try {
-    text = readFileSync36(path2, "utf8");
+    text = readFileSync38(path2, "utf8");
   } catch {
     return false;
   }
@@ -51922,12 +52029,12 @@ function maybeUpdateVoiceFromDoc(args) {
   out.push("");
   out.push(sourceBody.trim());
   out.push("");
-  writeFileSync18(path2, out.join("\n"), "utf8");
+  writeFileSync20(path2, out.join("\n"), "utf8");
   return true;
 }
 function readSourceBody(repoRoot, relPath) {
   try {
-    const text = readFileSync36(join39(repoRoot, relPath), "utf8");
+    const text = readFileSync38(join39(repoRoot, relPath), "utf8");
     const m = text.match(/^---\n[\s\S]*?\n---\n?([\s\S]*)$/);
     return m?.[1] ?? text;
   } catch {
@@ -52027,7 +52134,7 @@ function rollupGroupCounts(classifications, drafts) {
 
 // ../cairn-core/dist/init/source-comments/walker.js
 import { execFileSync as execFileSync3 } from "node:child_process";
-import { readFileSync as readFileSync37, readdirSync as readdirSync20 } from "node:fs";
+import { readFileSync as readFileSync39, readdirSync as readdirSync20 } from "node:fs";
 import { extname, join as join40, relative as relative6 } from "node:path";
 var SOURCE_EXTENSIONS = /* @__PURE__ */ new Set([
   ".ts",
@@ -52124,7 +52231,7 @@ function walkSourceComments(opts) {
     const abs = join40(repoRoot, rel);
     let body;
     try {
-      body = readFileSync37(abs, "utf8");
+      body = readFileSync39(abs, "utf8");
     } catch {
       continue;
     }
@@ -52992,8 +53099,8 @@ function buildBatchPrompt(batch) {
 
 // ../cairn-core/dist/init/source-comments/ingest.js
 var import_yaml28 = __toESM(require_dist(), 1);
-import { mkdirSync as mkdirSync20, writeFileSync as writeFileSync19 } from "node:fs";
-import { dirname as dirname17, join as join41 } from "node:path";
+import { mkdirSync as mkdirSync22, writeFileSync as writeFileSync21 } from "node:fs";
+import { dirname as dirname19, join as join41 } from "node:path";
 var log23 = logger("init.source-comments.ingest");
 async function runSourceCommentsIngestion(args) {
   const repoRoot = args.repoRoot;
@@ -53328,7 +53435,7 @@ function updateScopeIndexFromStripItems(repoRoot, items) {
 function writeDecDraft(args) {
   const dir = decisionsDir(args.repoRoot);
   const inboxDir = join41(dir, "_inbox");
-  mkdirSync20(inboxDir, { recursive: true });
+  mkdirSync22(inboxDir, { recursive: true });
   const filename = `${args.id}.draft.md`;
   const abs = join41(inboxDir, filename);
   const rel = `.cairn/ground/decisions/_inbox/${filename}`;
@@ -53366,12 +53473,12 @@ function writeDecDraft(args) {
   lines.push("");
   lines.push(args.block.prose);
   lines.push("");
-  writeFileSync19(abs, lines.join("\n"), "utf8");
+  writeFileSync21(abs, lines.join("\n"), "utf8");
   return { absPath: abs, relPath: rel };
 }
 function writeInvariantFile(args) {
   const dir = invariantsDir(args.repoRoot);
-  mkdirSync20(dir, { recursive: true });
+  mkdirSync22(dir, { recursive: true });
   const filename = `${args.id}.md`;
   const abs = join41(dir, filename);
   const rel = `.cairn/ground/invariants/${filename}`;
@@ -53407,22 +53514,22 @@ function writeInvariantFile(args) {
   lines.push(args.block.raw);
   lines.push("```");
   lines.push("");
-  writeFileSync19(abs, lines.join("\n"), "utf8");
+  writeFileSync21(abs, lines.join("\n"), "utf8");
   return { absPath: abs, relPath: rel };
 }
 function writeYaml(path2, payload) {
-  mkdirSync20(dirname17(path2), { recursive: true });
-  writeFileSync19(path2, (0, import_yaml28.stringify)(payload), "utf8");
+  mkdirSync22(dirname19(path2), { recursive: true });
+  writeFileSync21(path2, (0, import_yaml28.stringify)(payload), "utf8");
 }
 
 // ../cairn-core/dist/init/rules-merge/discover.js
-import { existsSync as existsSync39, readdirSync as readdirSync21, statSync as statSync13 } from "node:fs";
+import { existsSync as existsSync41, readdirSync as readdirSync21, statSync as statSync13 } from "node:fs";
 import { join as join42, relative as relative7 } from "node:path";
 function discoverRuleSources(repoRoot) {
   const out = [];
   const tryFile = (rel, kind) => {
     const abs = join42(repoRoot, rel);
-    if (!existsSync39(abs))
+    if (!existsSync41(abs))
       return;
     let st;
     try {
@@ -53438,7 +53545,7 @@ function discoverRuleSources(repoRoot) {
   tryFile("AGENTS.md", "agents-md-root");
   tryFile(join42(".claude", "CLAUDE.md"), "claude-md-claude-dir");
   const rulesDir = join42(repoRoot, ".claude", "rules");
-  if (existsSync39(rulesDir)) {
+  if (existsSync41(rulesDir)) {
     walkRules(rulesDir, repoRoot, out);
   }
   return out;
@@ -53568,8 +53675,8 @@ function rangeOverlapsKeep(startOffset, endOffset, keepBlocks) {
 
 // ../cairn-core/dist/init/rules-merge/ingest.js
 var import_yaml29 = __toESM(require_dist(), 1);
-import { mkdirSync as mkdirSync21, readFileSync as readFileSync38, writeFileSync as writeFileSync20 } from "node:fs";
-import { dirname as dirname18, join as join43 } from "node:path";
+import { mkdirSync as mkdirSync23, readFileSync as readFileSync40, writeFileSync as writeFileSync22 } from "node:fs";
+import { dirname as dirname20, join as join43 } from "node:path";
 var log24 = logger("init.rules-merge.ingest");
 var PER_SECTION_TIMEOUT_MS = 6e4;
 var SECTION_BODY_CAP = 4e3;
@@ -53614,7 +53721,7 @@ async function runRulesMerge(args) {
   for (const source of sources) {
     let body;
     try {
-      body = readFileSync38(source.absPath, "utf8");
+      body = readFileSync40(source.absPath, "utf8");
     } catch (err) {
       log24.warn({ source: source.path, err: err instanceof Error ? err.message : String(err) }, "rule source unreadable; skipping");
       continue;
@@ -53831,7 +53938,7 @@ function informational(args) {
 function writeDecDraft2(args) {
   const dir = decisionsDir(args.repoRoot);
   const inboxDir = join43(dir, "_inbox");
-  mkdirSync21(inboxDir, { recursive: true });
+  mkdirSync23(inboxDir, { recursive: true });
   const filename = `${args.id}.draft.md`;
   const abs = join43(inboxDir, filename);
   const rel = `.cairn/ground/decisions/_inbox/${filename}`;
@@ -53865,16 +53972,16 @@ function writeDecDraft2(args) {
   lines.push("");
   lines.push(args.classification.proposedRationale);
   lines.push("");
-  writeFileSync20(abs, lines.join("\n"), "utf8");
+  writeFileSync22(abs, lines.join("\n"), "utf8");
   return { absPath: abs, relPath: rel };
 }
 function writeYaml2(path2, payload) {
-  mkdirSync21(dirname18(path2), { recursive: true });
-  writeFileSync20(path2, (0, import_yaml29.stringify)(payload), "utf8");
+  mkdirSync23(dirname20(path2), { recursive: true });
+  writeFileSync22(path2, (0, import_yaml29.stringify)(payload), "utf8");
 }
 
 // ../cairn-core/dist/init/multi-dev/install.js
-import { existsSync as existsSync40, readFileSync as readFileSync39, writeFileSync as writeFileSync21 } from "node:fs";
+import { existsSync as existsSync42, readFileSync as readFileSync41, writeFileSync as writeFileSync23 } from "node:fs";
 import { join as join44 } from "node:path";
 function installMultiDev(args) {
   const repoRoot = args.repoRoot;
@@ -53882,28 +53989,28 @@ function installMultiDev(args) {
   const manualHints = [];
   const steps = [];
   const pkgJson = join44(repoRoot, "package.json");
-  if (existsSync40(pkgJson)) {
+  if (existsSync42(pkgJson)) {
     hostKinds.push("node-package-json");
     manualHints.push("package.json detected \u2014 Claude Code contributors get the SessionStart bootstrap banner; CLI-only contributors run `cairn join` once after `npm install`");
   }
   const pyproject = join44(repoRoot, "pyproject.toml");
-  if (existsSync40(pyproject)) {
+  if (existsSync42(pyproject)) {
     hostKinds.push("pyproject-toml");
     manualHints.push("pyproject.toml detected \u2014 add a hatch / poetry hook that runs `cairn join` after env install (no automatic patch)");
   }
-  if (existsSync40(join44(repoRoot, "Makefile"))) {
+  if (existsSync42(join44(repoRoot, "Makefile"))) {
     hostKinds.push("makefile");
     manualHints.push("Makefile detected \u2014 add `cairn join || true` to your `setup` / `install` target so contributors bootstrap on first build");
   }
-  if (existsSync40(join44(repoRoot, "justfile"))) {
+  if (existsSync42(join44(repoRoot, "justfile"))) {
     hostKinds.push("justfile");
     manualHints.push("justfile detected \u2014 add `cairn join || true` to your `setup` recipe");
   }
-  if (existsSync40(join44(repoRoot, "Cargo.toml"))) {
+  if (existsSync42(join44(repoRoot, "Cargo.toml"))) {
     hostKinds.push("cargo-toml");
     manualHints.push("Cargo.toml detected \u2014 Cargo has no install-time hook; rely on .cairn/JOIN.md for new contributors");
   }
-  if (existsSync40(join44(repoRoot, "go.mod"))) {
+  if (existsSync42(join44(repoRoot, "go.mod"))) {
     hostKinds.push("go-mod");
     manualHints.push("go.mod detected \u2014 Go has no install-time hook; rely on .cairn/JOIN.md for new contributors");
   }
@@ -53921,25 +54028,25 @@ function installMultiDev(args) {
 
 // ../cairn-core/dist/init/init.js
 var import_yaml32 = __toESM(require_dist(), 1);
-import { existsSync as existsSync48, mkdirSync as mkdirSync23, readFileSync as readFileSync46, readdirSync as readdirSync25, writeFileSync as writeFileSync24 } from "node:fs";
+import { existsSync as existsSync50, mkdirSync as mkdirSync25, readFileSync as readFileSync48, readdirSync as readdirSync25, writeFileSync as writeFileSync26 } from "node:fs";
 import { join as join52, relative as relative10 } from "node:path";
 import { homedir as homedir3 } from "node:os";
 
 // ../cairn-core/dist/init/preflight-guards.js
-import { existsSync as existsSync41, readFileSync as readFileSync40, statSync as statSync14 } from "node:fs";
-import { dirname as dirname19, join as join45 } from "node:path";
+import { existsSync as existsSync43, readFileSync as readFileSync42, statSync as statSync14 } from "node:fs";
+import { dirname as dirname21, join as join45 } from "node:path";
 function findGitRoot(startCwd) {
   let dir = startCwd;
   for (let i2 = 0; i2 < 24; i2++) {
     const probe = join45(dir, ".git");
-    if (existsSync41(probe)) {
+    if (existsSync43(probe)) {
       try {
         if (statSync14(probe).isDirectory())
           return dir;
       } catch {
       }
     }
-    const parent = dirname19(dir);
+    const parent = dirname21(dir);
     if (parent === dir)
       return null;
     dir = parent;
@@ -53951,7 +54058,7 @@ function detectMonorepoContext(startCwd, gitRoot) {
     return null;
   if (checkWorkspaceMarker(startCwd) !== null)
     return null;
-  let dir = dirname19(startCwd);
+  let dir = dirname21(startCwd);
   for (let i2 = 0; i2 < 24; i2++) {
     const marker = checkWorkspaceMarker(dir);
     if (marker !== null) {
@@ -53959,7 +54066,7 @@ function detectMonorepoContext(startCwd, gitRoot) {
     }
     if (dir === gitRoot)
       return null;
-    const parent = dirname19(dir);
+    const parent = dirname21(dir);
     if (parent === dir)
       return null;
     dir = parent;
@@ -53967,16 +54074,16 @@ function detectMonorepoContext(startCwd, gitRoot) {
   return null;
 }
 function checkWorkspaceMarker(dir) {
-  if (existsSync41(join45(dir, "pnpm-workspace.yaml"))) {
+  if (existsSync43(join45(dir, "pnpm-workspace.yaml"))) {
     return "pnpm-workspace.yaml";
   }
-  if (existsSync41(join45(dir, "lerna.json"))) {
+  if (existsSync43(join45(dir, "lerna.json"))) {
     return "lerna.json";
   }
   const pkgPath = join45(dir, "package.json");
-  if (existsSync41(pkgPath)) {
+  if (existsSync43(pkgPath)) {
     try {
-      const parsed = JSON.parse(readFileSync40(pkgPath, "utf8"));
+      const parsed = JSON.parse(readFileSync42(pkgPath, "utf8"));
       const workspaces = parsed["workspaces"];
       if (Array.isArray(workspaces) || typeof workspaces === "object" && workspaces !== null && Array.isArray(workspaces["packages"])) {
         return "package.json#workspaces";
@@ -53987,15 +54094,15 @@ function checkWorkspaceMarker(dir) {
   return null;
 }
 function isCairnSourceRepo(repoRoot) {
-  return existsSync41(join45(repoRoot, "cairn-build")) && existsSync41(join45(repoRoot, "packages", "cairn-core")) && existsSync41(join45(repoRoot, "pnpm-workspace.yaml"));
+  return existsSync43(join45(repoRoot, "cairn-build")) && existsSync43(join45(repoRoot, "packages", "cairn-core")) && existsSync43(join45(repoRoot, "pnpm-workspace.yaml"));
 }
 
 // ../cairn-core/dist/init/submodules.js
 import { spawn as spawn3 } from "node:child_process";
-import { existsSync as existsSync42 } from "node:fs";
+import { existsSync as existsSync44 } from "node:fs";
 import { join as join46 } from "node:path";
 async function scanSubmodules(repoRoot) {
-  const hasGitmodules = existsSync42(join46(repoRoot, ".gitmodules"));
+  const hasGitmodules = existsSync44(join46(repoRoot, ".gitmodules"));
   if (!hasGitmodules)
     return { hasGitmodules: false, submodules: [] };
   const output = await runGit(["submodule", "status"], repoRoot);
@@ -54110,7 +54217,7 @@ function runGit(args, cwd) {
 }
 
 // ../cairn-core/dist/init/mapper.js
-import { existsSync as existsSync45, readFileSync as readFileSync42 } from "node:fs";
+import { existsSync as existsSync47, readFileSync as readFileSync44 } from "node:fs";
 import { join as join49 } from "node:path";
 
 // ../cairn-core/dist/init/mapper-prompts.js
@@ -54672,14 +54779,14 @@ function buildMergeUserPrompt(args) {
 }
 
 // ../cairn-core/dist/init/glob-inference.js
-import { existsSync as existsSync43 } from "node:fs";
+import { existsSync as existsSync45 } from "node:fs";
 import { join as join47 } from "node:path";
 function inferGlobsFromDetection(detection, repoRoot) {
   const route_handler_globs = [];
   const dto_globs = [];
   const generator_source_globs = [];
   const sigs = detection.stack_signatures;
-  const has = (rel) => existsSync43(join47(repoRoot, rel));
+  const has = (rel) => existsSync45(join47(repoRoot, rel));
   if (has("nest-cli.json")) {
     route_handler_globs.push("**/*.controller.ts");
     dto_globs.push("**/*.dto.ts");
@@ -54735,10 +54842,10 @@ function inferGlobsFromDetection(detection, repoRoot) {
 }
 function hasGlob(repoRoot, ext) {
   if (ext === ".proto") {
-    return existsSync43(join47(repoRoot, "protos")) || existsSync43(join47(repoRoot, "proto")) || existsSync43(join47(repoRoot, "schema.proto")) || existsSync43(join47(repoRoot, "service.proto"));
+    return existsSync45(join47(repoRoot, "protos")) || existsSync45(join47(repoRoot, "proto")) || existsSync45(join47(repoRoot, "schema.proto")) || existsSync45(join47(repoRoot, "service.proto"));
   }
   if (ext === ".graphql" || ext === ".gql") {
-    return existsSync43(join47(repoRoot, "graphql")) || existsSync43(join47(repoRoot, "schema.graphql")) || existsSync43(join47(repoRoot, "schema.gql")) || existsSync43(join47(repoRoot, "graph"));
+    return existsSync45(join47(repoRoot, "graphql")) || existsSync45(join47(repoRoot, "schema.graphql")) || existsSync45(join47(repoRoot, "schema.gql")) || existsSync45(join47(repoRoot, "graph"));
   }
   return false;
 }
@@ -54746,7 +54853,7 @@ function hasGlob(repoRoot, ext) {
 // ../cairn-core/dist/init/module-slicer.js
 var import_yaml30 = __toESM(require_dist(), 1);
 import { execFileSync as execFileSync4 } from "node:child_process";
-import { existsSync as existsSync44, readFileSync as readFileSync41, readdirSync as readdirSync22, statSync as statSync15 } from "node:fs";
+import { existsSync as existsSync46, readFileSync as readFileSync43, readdirSync as readdirSync22, statSync as statSync15 } from "node:fs";
 import { basename as basename5, join as join48, relative as relative8 } from "node:path";
 var log27 = logger("init.module-slicer");
 var SOURCE_EXTS2 = /* @__PURE__ */ new Set([
@@ -54949,7 +55056,7 @@ function detectModuleRoots(repoRoot) {
   const found = /* @__PURE__ */ new Map();
   for (const path2 of readGitmodulePaths(repoRoot)) {
     const abs = join48(repoRoot, path2);
-    if (!existsSync44(abs))
+    if (!existsSync46(abs))
       continue;
     found.set(path2, { absPath: abs, relPath: path2, source: "submodule" });
   }
@@ -54957,7 +55064,7 @@ function detectModuleRoots(repoRoot) {
     if (found.has(path2))
       continue;
     const abs = join48(repoRoot, path2);
-    if (!existsSync44(abs) || !statSync15(abs).isDirectory())
+    if (!existsSync46(abs) || !statSync15(abs).isDirectory())
       continue;
     found.set(path2, { absPath: abs, relPath: path2, source: "workspace" });
   }
@@ -54977,10 +55084,10 @@ function detectModuleRoots(repoRoot) {
 }
 function readGitmodulePaths(repoRoot) {
   const path2 = join48(repoRoot, ".gitmodules");
-  if (!existsSync44(path2))
+  if (!existsSync46(path2))
     return [];
   try {
-    const text = readFileSync41(path2, "utf8");
+    const text = readFileSync43(path2, "utf8");
     const out = [];
     for (const line of text.split(/\r?\n/)) {
       const m = line.match(/^\s*path\s*=\s*(.+)\s*$/);
@@ -54995,9 +55102,9 @@ function readGitmodulePaths(repoRoot) {
 function readWorkspaceMembers(repoRoot) {
   const out = /* @__PURE__ */ new Set();
   const pnpm = join48(repoRoot, "pnpm-workspace.yaml");
-  if (existsSync44(pnpm)) {
+  if (existsSync46(pnpm)) {
     try {
-      const parsed = (0, import_yaml30.parse)(readFileSync41(pnpm, "utf8"));
+      const parsed = (0, import_yaml30.parse)(readFileSync43(pnpm, "utf8"));
       const pkgs = parsed["packages"];
       if (Array.isArray(pkgs)) {
         for (const glob of pkgs) {
@@ -55011,9 +55118,9 @@ function readWorkspaceMembers(repoRoot) {
     }
   }
   const rootPkg = join48(repoRoot, "package.json");
-  if (existsSync44(rootPkg)) {
+  if (existsSync46(rootPkg)) {
     try {
-      const parsed = JSON.parse(readFileSync41(rootPkg, "utf8"));
+      const parsed = JSON.parse(readFileSync43(rootPkg, "utf8"));
       const ws = parsed["workspaces"];
       const globs = Array.isArray(ws) ? ws.filter((s) => typeof s === "string") : typeof ws === "object" && ws !== null && Array.isArray(ws["packages"]) ? ws["packages"].filter((s) => typeof s === "string") : [];
       for (const g of globs) {
@@ -55024,9 +55131,9 @@ function readWorkspaceMembers(repoRoot) {
     }
   }
   const lerna = join48(repoRoot, "lerna.json");
-  if (existsSync44(lerna)) {
+  if (existsSync46(lerna)) {
     try {
-      const parsed = JSON.parse(readFileSync41(lerna, "utf8"));
+      const parsed = JSON.parse(readFileSync43(lerna, "utf8"));
       const pkgs = parsed["packages"];
       if (Array.isArray(pkgs)) {
         for (const g of pkgs) {
@@ -55045,7 +55152,7 @@ function expandWorkspaceGlob(repoRoot, glob) {
   const trimmed2 = glob.replace(/\/(\*\*?|\*)$/, "");
   const isWildcard = glob.endsWith("/*") || glob.endsWith("/**");
   const baseAbs = join48(repoRoot, trimmed2);
-  if (!existsSync44(baseAbs))
+  if (!existsSync46(baseAbs))
     return [];
   if (!isWildcard) {
     if (statSync15(baseAbs).isDirectory())
@@ -55090,7 +55197,7 @@ function readTopLevelPackages(repoRoot) {
     } catch {
       continue;
     }
-    if (existsSync44(join48(abs, "package.json")))
+    if (existsSync46(join48(abs, "package.json")))
       out.push(name);
   }
   return out;
@@ -55223,8 +55330,8 @@ function listModuleTree(repoRoot, moduleAbsPath) {
 function tryGitLsModule(repoRoot, moduleAbsPath) {
   const isRoot = moduleAbsPath === repoRoot;
   const cwdForGit = moduleAbsPath;
-  if (!existsSync44(join48(cwdForGit, ".git"))) {
-    if (!isRoot && existsSync44(join48(repoRoot, ".git"))) {
+  if (!existsSync46(join48(cwdForGit, ".git"))) {
+    if (!isRoot && existsSync46(join48(repoRoot, ".git"))) {
       try {
         const out = execFileSync4("git", [
           "-C",
@@ -55267,10 +55374,10 @@ function capLines(lines, cap) {
   return [...head, `\u2026 (${lines.length - cap} more files truncated)`].join("\n");
 }
 function readIfExists(path2) {
-  if (!existsSync44(path2))
+  if (!existsSync46(path2))
     return null;
   try {
-    return readFileSync41(path2, "utf8");
+    return readFileSync43(path2, "utf8");
   } catch {
     return null;
   }
@@ -55286,7 +55393,7 @@ function pickRepresentativeFiles(args) {
     let content = args.contentByPath.get(rel);
     if (content === void 0) {
       try {
-        content = readFileSync41(abs, "utf8");
+        content = readFileSync43(abs, "utf8");
       } catch {
         return false;
       }
@@ -55312,7 +55419,7 @@ function pickRepresentativeFiles(args) {
     for (const cand of ctrlServiceCandidates) {
       const abs = join48(args.moduleAbsPath, cand);
       try {
-        const text = readFileSync41(abs, "utf8");
+        const text = readFileSync43(abs, "utf8");
         args.contentByPath.set(cand, text);
         const lines = text.split("\n").length;
         if (best === null || lines > best.lines)
@@ -55360,7 +55467,7 @@ function approximateMostImported(args) {
     const abs = join48(args.moduleAbsPath, rel);
     let text;
     try {
-      text = readFileSync41(abs, "utf8");
+      text = readFileSync43(abs, "utf8");
     } catch {
       continue;
     }
@@ -55399,7 +55506,7 @@ function readLocalDocs(moduleAbsPath, relPaths) {
     const abs = join48(moduleAbsPath, rel);
     let content;
     try {
-      content = readFileSync41(abs, "utf8");
+      content = readFileSync43(abs, "utf8");
     } catch {
       continue;
     }
@@ -55478,10 +55585,10 @@ async function runMapper(args) {
   };
 }
 function readIfExists2(path2) {
-  if (!existsSync45(path2))
+  if (!existsSync47(path2))
     return null;
   try {
-    return readFileSync42(path2, "utf8");
+    return readFileSync44(path2, "utf8");
   } catch {
     return null;
   }
@@ -55489,7 +55596,7 @@ function readIfExists2(path2) {
 function readLedgerSafely(repoRoot, kind) {
   try {
     const groundDir2 = join49(repoRoot, ".cairn", "ground");
-    if (!existsSync45(groundDir2))
+    if (!existsSync47(groundDir2))
       return [];
     return kind === "decisions" ? buildDecisionsLedger({ repoRoot }) : buildInvariantsLedger({ repoRoot });
   } catch (err) {
@@ -56789,10 +56896,10 @@ function done(line) {
 }
 
 // ../cairn-core/dist/init/seed.js
-import { chmodSync, existsSync as existsSync46, mkdirSync as mkdirSync22, readFileSync as readFileSync43, readdirSync as readdirSync23, statSync as statSync16, writeFileSync as writeFileSync22 } from "node:fs";
-import { dirname as dirname20, join as join50, relative as relative9 } from "node:path";
+import { chmodSync, existsSync as existsSync48, mkdirSync as mkdirSync24, readFileSync as readFileSync45, readdirSync as readdirSync23, statSync as statSync16, writeFileSync as writeFileSync24 } from "node:fs";
+import { dirname as dirname22, join as join50, relative as relative9 } from "node:path";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
-var HERE3 = dirname20(fileURLToPath3(import.meta.url));
+var HERE3 = dirname22(fileURLToPath3(import.meta.url));
 var TEMPLATES_ROOT2 = true ? join50(HERE3, "templates") : join50(HERE3, "..", "..", "templates");
 var SEED_TOP_LEVEL_ALLOWLIST = /* @__PURE__ */ new Set([
   ".cairn",
@@ -56812,14 +56919,14 @@ function seedCairnLayout(opts) {
     walk(subRoot, (absSrc) => {
       const rel = relative9(TEMPLATES_ROOT2, absSrc);
       const absDst = join50(opts.repoRoot, rel);
-      if (existsSync46(absDst) && opts.force !== true) {
+      if (existsSync48(absDst) && opts.force !== true) {
         collisions.push(rel);
         return;
       }
-      mkdirSync22(dirname20(absDst), { recursive: true });
-      const raw = readFileSync43(absSrc, "utf8");
+      mkdirSync24(dirname22(absDst), { recursive: true });
+      const raw = readFileSync45(absSrc, "utf8");
       const out = applyPlaceholders({ content: raw, projectSlug: opts.projectSlug, relPath: rel });
-      writeFileSync22(absDst, out, "utf8");
+      writeFileSync24(absDst, out, "utf8");
       if (isExecutableTemplate(rel)) {
         try {
           chmodSync(absDst, 493);
@@ -56916,7 +57023,7 @@ function buildProjectOverlay(args) {
 
 // ../cairn-core/dist/init/walker.js
 import { execFileSync as execFileSync5 } from "node:child_process";
-import { existsSync as existsSync47, readFileSync as readFileSync44, readdirSync as readdirSync24, statSync as statSync17 } from "node:fs";
+import { existsSync as existsSync49, readFileSync as readFileSync46, readdirSync as readdirSync24, statSync as statSync17 } from "node:fs";
 import { extname as extname2, join as join51 } from "node:path";
 var DEFAULT_OFF_LIMITS_DIRS = /* @__PURE__ */ new Set([
   ".git",
@@ -57090,7 +57197,7 @@ function addAncestors(dirs, rel) {
   }
 }
 function tryGitLsFiles(root2) {
-  if (!existsSync47(join51(root2, ".git")))
+  if (!existsSync49(join51(root2, ".git")))
     return null;
   const tracked = runGitLsFiles(root2, [
     "--cached",
@@ -57295,7 +57402,7 @@ function collectNotableDirs(dirs) {
 }
 function readPreview(path2, maxLines) {
   try {
-    const text = readFileSync44(path2, "utf8");
+    const text = readFileSync46(path2, "utf8");
     return text.split("\n").slice(0, maxLines).join("\n");
   } catch {
     return "";
@@ -57427,10 +57534,10 @@ function escapeReg(s) {
 
 // ../cairn-core/dist/init/workflow-block.js
 var import_yaml31 = __toESM(require_dist(), 1);
-import { readFileSync as readFileSync45, writeFileSync as writeFileSync23 } from "node:fs";
+import { readFileSync as readFileSync47, writeFileSync as writeFileSync25 } from "node:fs";
 var FRONTMATTER_RE2 = /^---\r?\n([\s\S]*?)\r?\n---/;
 function updateWorkflowSlugBlock(args) {
-  const text = readFileSync45(args.workflowMdPath, "utf8");
+  const text = readFileSync47(args.workflowMdPath, "utf8");
   const fmMatch = FRONTMATTER_RE2.exec(text);
   if (fmMatch === null || fmMatch[1] === void 0) {
     throw new Error(`workflow.md missing YAML frontmatter at ${args.workflowMdPath}`);
@@ -57501,7 +57608,7 @@ function updateWorkflowSlugBlock(args) {
   }
   const out = `---
 ${stringifyDoc(doc)}---${body}`;
-  writeFileSync23(args.workflowMdPath, out, "utf8");
+  writeFileSync25(args.workflowMdPath, out, "utf8");
   return { applied_keys: applied, off_limits_added: offLimitsAdded };
 }
 function scalarValue(item) {
@@ -57542,7 +57649,7 @@ async function runInit(args = {}) {
   }
   const logFilePath = redirectInitLogs();
   header(`Cairn init \u2014 ${repoRoot}`);
-  if (!existsSync48(join52(repoRoot, ".git"))) {
+  if (!existsSync50(join52(repoRoot, ".git"))) {
     warnings.push("no .git directory \u2014 mirror init will be skipped; the cairn expects a git-tracked working tree");
   }
   const monorepoContext = await preflightMonorepoGuard({
@@ -57648,9 +57755,9 @@ async function runInit(args = {}) {
   }
   header("Writing .cairn/config.yaml");
   const configPath = join52(repoRoot, ".cairn", "config.yaml");
-  mkdirSync23(join52(repoRoot, ".cairn"), { recursive: true });
+  mkdirSync25(join52(repoRoot, ".cairn"), { recursive: true });
   let mapperAppliedToConfig = false;
-  if (existsSync48(configPath) && args.force !== true) {
+  if (existsSync50(configPath) && args.force !== true) {
     warnings.push(`.cairn/config.yaml already exists \u2014 kept existing (use --force to overwrite)`);
     done(`= .cairn/config.yaml (kept)`);
     if (mapperOutput !== null) {
@@ -57662,14 +57769,14 @@ async function runInit(args = {}) {
       decidedSlug,
       ...mapperOutput !== null ? { mapperOutput } : {}
     });
-    writeFileSync24(configPath, (0, import_yaml32.stringify)(config2), "utf8");
+    writeFileSync26(configPath, (0, import_yaml32.stringify)(config2), "utf8");
     done(`+ .cairn/config.yaml`);
     if (mapperOutput !== null)
       mapperAppliedToConfig = true;
   }
   header("Writing .cairn/ground/scope-index.yaml");
   const scopeIndexFile = scopeIndexPath(repoRoot);
-  if (existsSync48(scopeIndexFile) && args.force !== true) {
+  if (existsSync50(scopeIndexFile) && args.force !== true) {
     warnings.push(".cairn/ground/scope-index.yaml already exists \u2014 kept existing (use --force to overwrite)");
     done(`= .cairn/ground/scope-index.yaml (kept)`);
   } else {
@@ -58108,7 +58215,7 @@ function shortenHomePath(abs) {
 }
 function countGroundFiles(repoRoot) {
   const groundDir2 = join52(repoRoot, ".cairn", "ground");
-  if (!existsSync48(groundDir2))
+  if (!existsSync50(groundDir2))
     return 0;
   let count = 0;
   const stack = [groundDir2];
@@ -58137,10 +58244,10 @@ function countGroundFiles(repoRoot) {
 }
 function countSensorEntries(repoRoot) {
   const path2 = join52(repoRoot, ".cairn", "config", "sensors.yaml");
-  if (!existsSync48(path2))
+  if (!existsSync50(path2))
     return 0;
   try {
-    const parsed = (0, import_yaml32.parse)(readFileSync46(path2, "utf8"));
+    const parsed = (0, import_yaml32.parse)(readFileSync48(path2, "utf8"));
     if (typeof parsed !== "object" || parsed === null)
       return 0;
     const sensorsRaw = parsed["sensors"];
@@ -58155,14 +58262,14 @@ function describeScopeIndex(repoRoot, submodules, scanTruncated) {
   const path2 = join52(repoRoot, ".cairn", "ground", "scope-index.yaml");
   const submoduleNoteJustInitialized = submodules !== null && submodules.initialized && submodules.success;
   const truncationFollowUp = "Run cairn scope rebuild for full classification";
-  if (!existsSync48(path2)) {
+  if (!existsSync50(path2)) {
     return {
       line: "missing \u2014 run cairn scope rebuild",
       followUp: null
     };
   }
   try {
-    const parsed = (0, import_yaml32.parse)(readFileSync46(path2, "utf8"));
+    const parsed = (0, import_yaml32.parse)(readFileSync48(path2, "utf8"));
     if (typeof parsed !== "object" || parsed === null) {
       return {
         line: "empty \u2014 run cairn scope rebuild",
@@ -58220,7 +58327,7 @@ function describeBrandStatus(repoRoot) {
   let currentCount = 0;
   let total = 0;
   for (const p2 of all) {
-    if (!existsSync48(p2))
+    if (!existsSync50(p2))
       continue;
     total++;
     if (readFrontmatterStatus2(p2) === "current")
@@ -58236,7 +58343,7 @@ function describeBrandStatus(repoRoot) {
 }
 function readFrontmatterStatus2(path2) {
   try {
-    const text = readFileSync46(path2, "utf8");
+    const text = readFileSync48(path2, "utf8");
     const m = text.match(/^---\n([\s\S]*?\n)---/);
     if (!m)
       return null;
@@ -58249,10 +58356,10 @@ function readFrontmatterStatus2(path2) {
 }
 function describeMcpRegistration(repoRoot) {
   const path2 = join52(repoRoot, ".mcp.json");
-  if (!existsSync48(path2))
+  if (!existsSync50(path2))
     return ".mcp.json \xB7 missing entry";
   try {
-    const parsed = JSON.parse(readFileSync46(path2, "utf8"));
+    const parsed = JSON.parse(readFileSync48(path2, "utf8"));
     const servers = parsed["mcpServers"];
     if (typeof servers !== "object" || servers === null) {
       return ".mcp.json \xB7 missing cairn entry";
@@ -58426,25 +58533,25 @@ function remoteShorthand(url2) {
 }
 
 // ../cairn-core/dist/init/progress.js
-import { existsSync as existsSync49, mkdirSync as mkdirSync24, readFileSync as readFileSync47, unlinkSync as unlinkSync2, writeFileSync as writeFileSync25 } from "node:fs";
-import { dirname as dirname21, join as join53 } from "node:path";
+import { existsSync as existsSync51, mkdirSync as mkdirSync26, readFileSync as readFileSync49, unlinkSync as unlinkSync2, writeFileSync as writeFileSync27 } from "node:fs";
+import { dirname as dirname23, join as join53 } from "node:path";
 var PROGRESS_PATH = join53(".cairn", "init", "progress.json");
 function progressAbsPath(repoRoot) {
   return join53(repoRoot, PROGRESS_PATH);
 }
 function writeProgress(repoRoot, snap) {
   const path2 = progressAbsPath(repoRoot);
-  if (!existsSync49(dirname21(path2))) {
-    mkdirSync24(dirname21(path2), { recursive: true });
+  if (!existsSync51(dirname23(path2))) {
+    mkdirSync26(dirname23(path2), { recursive: true });
   }
   try {
-    writeFileSync25(path2, JSON.stringify(snap), "utf8");
+    writeFileSync27(path2, JSON.stringify(snap), "utf8");
   } catch {
   }
 }
 function clearProgress(repoRoot) {
   const path2 = progressAbsPath(repoRoot);
-  if (existsSync49(path2)) {
+  if (existsSync51(path2)) {
     try {
       unlinkSync2(path2);
     } catch {
@@ -58453,10 +58560,10 @@ function clearProgress(repoRoot) {
 }
 function readProgress(repoRoot) {
   const path2 = progressAbsPath(repoRoot);
-  if (!existsSync49(path2))
+  if (!existsSync51(path2))
     return null;
   try {
-    const raw = readFileSync47(path2, "utf8");
+    const raw = readFileSync49(path2, "utf8");
     const parsed = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null || typeof parsed.phase !== "string" || typeof parsed.batch !== "number" || typeof parsed.total !== "number" || typeof parsed.startedAt !== "number") {
       return null;
@@ -58475,6 +58582,7 @@ var PHASE_IDS = [
   "3b-seed",
   "4-pilot",
   "5-brand",
+  "5b-topic-index",
   "6-docs-ingest",
   "7b-source-comments",
   "7c-rules-merge",
@@ -58484,19 +58592,19 @@ var PHASE_IDS = [
 ];
 
 // ../cairn-core/dist/init/phases/state-io.js
-import { existsSync as existsSync50, mkdirSync as mkdirSync25, readFileSync as readFileSync48, renameSync as renameSync3, rmSync as rmSync8, writeFileSync as writeFileSync26 } from "node:fs";
-import { dirname as dirname22, join as join54 } from "node:path";
+import { existsSync as existsSync52, mkdirSync as mkdirSync27, readFileSync as readFileSync50, renameSync as renameSync3, rmSync as rmSync8, writeFileSync as writeFileSync28 } from "node:fs";
+import { dirname as dirname24, join as join54 } from "node:path";
 var INIT_STATE_PATH = join54(".cairn", "init-state.json");
 function phaseStateAbsPath(repoRoot) {
   return join54(repoRoot, INIT_STATE_PATH);
 }
 function readPhaseState(repoRoot) {
   const abs = phaseStateAbsPath(repoRoot);
-  if (!existsSync50(abs))
+  if (!existsSync52(abs))
     return null;
   let parsed;
   try {
-    parsed = JSON.parse(readFileSync48(abs, "utf8"));
+    parsed = JSON.parse(readFileSync50(abs, "utf8"));
   } catch {
     return null;
   }
@@ -58506,9 +58614,9 @@ function readPhaseState(repoRoot) {
 }
 function writePhaseState(state) {
   const abs = phaseStateAbsPath(state.repoRoot);
-  mkdirSync25(dirname22(abs), { recursive: true });
+  mkdirSync27(dirname24(abs), { recursive: true });
   const tmp = `${abs}.tmp`;
-  writeFileSync26(tmp, JSON.stringify(state, null, 2), "utf8");
+  writeFileSync28(tmp, JSON.stringify(state, null, 2), "utf8");
   renameSync3(tmp, abs);
   return abs;
 }
@@ -58538,26 +58646,26 @@ function isPhaseState(x2) {
 }
 
 // ../cairn-core/dist/init/phases/mapper-output-io.js
-import { existsSync as existsSync51, mkdirSync as mkdirSync26, readFileSync as readFileSync49, renameSync as renameSync4, writeFileSync as writeFileSync27 } from "node:fs";
-import { dirname as dirname23, join as join55 } from "node:path";
+import { existsSync as existsSync53, mkdirSync as mkdirSync28, readFileSync as readFileSync51, renameSync as renameSync4, writeFileSync as writeFileSync29 } from "node:fs";
+import { dirname as dirname25, join as join55 } from "node:path";
 var MAPPER_OUTPUT_PATH = join55(".cairn", "init", "mapper-output.json");
 function mapperOutputAbsPath(repoRoot) {
   return join55(repoRoot, MAPPER_OUTPUT_PATH);
 }
 function writeMapperOutputFile(repoRoot, full) {
   const abs = mapperOutputAbsPath(repoRoot);
-  mkdirSync26(dirname23(abs), { recursive: true });
+  mkdirSync28(dirname25(abs), { recursive: true });
   const tmp = `${abs}.tmp`;
-  writeFileSync27(tmp, JSON.stringify(full, null, 2), "utf8");
+  writeFileSync29(tmp, JSON.stringify(full, null, 2), "utf8");
   renameSync4(tmp, abs);
   return abs;
 }
 function readMapperOutputFile(repoRoot) {
   const abs = mapperOutputAbsPath(repoRoot);
-  if (!existsSync51(abs))
+  if (!existsSync53(abs))
     return null;
   try {
-    const parsed = JSON.parse(readFileSync49(abs, "utf8"));
+    const parsed = JSON.parse(readFileSync51(abs, "utf8"));
     return parsed;
   } catch {
     return null;
@@ -58730,22 +58838,22 @@ async function runPhase3Mapper(state) {
 
 // ../cairn-core/dist/init/phases/3b-seed.js
 var import_yaml33 = __toESM(require_dist(), 1);
-import { existsSync as existsSync53, mkdirSync as mkdirSync28, writeFileSync as writeFileSync29 } from "node:fs";
+import { existsSync as existsSync55, mkdirSync as mkdirSync30, writeFileSync as writeFileSync31 } from "node:fs";
 import { join as join57 } from "node:path";
 
 // ../cairn-core/dist/hooks/seed-attested.js
 import { execFileSync as execFileSync6 } from "node:child_process";
-import { existsSync as existsSync52, mkdirSync as mkdirSync27, writeFileSync as writeFileSync28 } from "node:fs";
+import { existsSync as existsSync54, mkdirSync as mkdirSync29, writeFileSync as writeFileSync30 } from "node:fs";
 import { join as join56 } from "node:path";
 function seedAttestedCommits(repoRoot, dryRun = false) {
   const path2 = join56(repoRoot, ".cairn", ".attested-commits");
-  if (existsSync52(path2)) {
+  if (existsSync54(path2)) {
     return {
       status: "skipped",
       detail: ".cairn/.attested-commits already exists \u2014 leaving as-is"
     };
   }
-  if (!existsSync52(join56(repoRoot, ".git"))) {
+  if (!existsSync54(join56(repoRoot, ".git"))) {
     return {
       status: "skipped",
       detail: "no .git/ \u2014 bypass detection is git-only, nothing to seed"
@@ -58780,8 +58888,8 @@ function seedAttestedCommits(repoRoot, dryRun = false) {
     };
   }
   try {
-    mkdirSync27(join56(repoRoot, ".cairn"), { recursive: true });
-    writeFileSync28(path2, `${shas.join("\n")}
+    mkdirSync29(join56(repoRoot, ".cairn"), { recursive: true });
+    writeFileSync30(path2, `${shas.join("\n")}
 `, "utf8");
   } catch (err) {
     return {
@@ -58839,17 +58947,17 @@ async function runPhase3bSeed(state) {
       }
     }
     const configPath = join57(state.repoRoot, ".cairn", "config.yaml");
-    mkdirSync28(join57(state.repoRoot, ".cairn"), { recursive: true });
-    if (!existsSync53(configPath)) {
+    mkdirSync30(join57(state.repoRoot, ".cairn"), { recursive: true });
+    if (!existsSync55(configPath)) {
       const config2 = buildProjectOverlay({
         detection,
         decidedSlug: projectSlug,
         ...mapperOutput !== void 0 ? { mapperOutput } : {}
       });
-      writeFileSync29(configPath, (0, import_yaml33.stringify)(config2), "utf8");
+      writeFileSync31(configPath, (0, import_yaml33.stringify)(config2), "utf8");
     }
     const scopeFile = scopeIndexPath(state.repoRoot);
-    if (!existsSync53(scopeFile)) {
+    if (!existsSync55(scopeFile)) {
       const seedFiles = {};
       const mapperFiles = mapperFull?.output.scope_index?.files ?? {};
       for (const [path2, e] of Object.entries(mapperFiles)) {
@@ -59028,7 +59136,7 @@ async function runPhase5Brand(state) {
     };
     return {
       status: "complete",
-      nextPhase: "6-docs-ingest",
+      nextPhase: "5b-topic-index",
       state: advancePhase(next)
     };
   }
@@ -59055,6 +59163,486 @@ async function runPhase5Brand(state) {
     default: "auto-fill"
   };
   return { status: "needs_input", question, state };
+}
+
+// ../cairn-core/dist/init/topic-index/judge.js
+var log30 = logger("init.topic-index.judge");
+var SYSTEM = "You decide whether two prose blocks describe the SAME decision/topic. Reply with exactly one word: same or different.";
+var VERDICT_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["verdict"],
+  properties: {
+    verdict: { type: "string", enum: ["same", "different"] }
+  }
+};
+var TIMEOUT_MS2 = 8e3;
+function makeHaikuJudge(opts = {}) {
+  return async ({ a, b: b2 }) => {
+    if (opts.offline === true)
+      return "different";
+    const prompt = [
+      "Block A:",
+      `from ${a.file} (${a.kind})`,
+      a.body,
+      "",
+      "Block B:",
+      `from ${b2.file} (${b2.kind})`,
+      b2.body,
+      "",
+      "Are these two blocks about the SAME decision/topic? Reply with one word."
+    ].join("\n");
+    try {
+      const result = await runClaude({
+        tier: "haiku",
+        system: SYSTEM,
+        prompt,
+        jsonSchema: VERDICT_SCHEMA,
+        timeoutMs: TIMEOUT_MS2,
+        isolateAmbientContext: true,
+        ...opts.repoRoot !== void 0 ? { repoRoot: opts.repoRoot, cacheable: true } : {}
+      });
+      const parsed = result.parsed;
+      if (typeof parsed !== "object" || parsed === null)
+        return "different";
+      const verdictRaw = parsed["verdict"];
+      const verdict = verdictRaw === "same" ? "same" : "different";
+      return verdict;
+    } catch (err) {
+      log30.warn({ err, a: a.file, b: b2.file }, "haiku judge failed; falling back to 'different'");
+      return "different";
+    }
+  };
+}
+
+// ../cairn-core/dist/init/topic-index/resolve.js
+var PRIORITY = {
+  doc: 0,
+  claudemd: 1,
+  agentsmd: 2,
+  rule: 3,
+  "source-comment": 4
+};
+async function resolveTopics(blocks, opts) {
+  const similarityThreshold = opts.similarityThreshold ?? 0.6;
+  const maxJudgeCalls = opts.maxJudgeCalls ?? 200;
+  const buckets = bucketBySlug(blocks);
+  const verbatimCollisions = countCollidingBuckets(buckets);
+  const candidateGroups = Object.values(buckets);
+  const tokenCache = /* @__PURE__ */ new Map();
+  const tokenizeCached = (slug, body) => {
+    const hit = tokenCache.get(slug);
+    if (hit !== void 0)
+      return hit;
+    const t2 = tokenize(body, { codeAware: true });
+    tokenCache.set(slug, t2);
+    return t2;
+  };
+  const reps = candidateGroups.map((g) => pickSotByPriority(g));
+  const repTokens = reps.map((r2) => tokenizeCached(r2.slug, r2.body));
+  const groupOf = /* @__PURE__ */ new Map();
+  candidateGroups.forEach((group, idx) => {
+    for (const block of group)
+      groupOf.set(block.slug, idx);
+  });
+  const merge2 = /* @__PURE__ */ new Map();
+  const find = (i2) => {
+    const parent = merge2.get(i2);
+    if (parent === void 0 || parent === i2)
+      return i2;
+    const root2 = find(parent);
+    merge2.set(i2, root2);
+    return root2;
+  };
+  const union2 = (i2, j2) => {
+    const ri = find(i2);
+    const rj = find(j2);
+    if (ri === rj)
+      return;
+    if (PRIORITY[reps[ri].kind] <= PRIORITY[reps[rj].kind]) {
+      merge2.set(rj, ri);
+    } else {
+      merge2.set(ri, rj);
+    }
+  };
+  let semanticCollisions = 0;
+  let judgeCalls = 0;
+  let unresolvedAmbiguous = 0;
+  for (let i2 = 0; i2 < reps.length && judgeCalls < maxJudgeCalls; i2 += 1) {
+    for (let j2 = i2 + 1; j2 < reps.length && judgeCalls < maxJudgeCalls; j2 += 1) {
+      const a = reps[i2];
+      const b2 = reps[j2];
+      if (a.kind === b2.kind && a.file === b2.file)
+        continue;
+      const score = jaccard(repTokens[i2], repTokens[j2]);
+      if (score < similarityThreshold)
+        continue;
+      semanticCollisions += 1;
+      let verdict;
+      try {
+        verdict = await opts.judge({ a, b: b2 });
+      } catch {
+        unresolvedAmbiguous += 1;
+        continue;
+      }
+      judgeCalls += 1;
+      if (verdict === "same")
+        union2(i2, j2);
+    }
+  }
+  let topicIndex = emptyTopicIndex();
+  let anchorMap = emptyAnchorMap();
+  const seenRoots = /* @__PURE__ */ new Set();
+  for (let i2 = 0; i2 < reps.length; i2 += 1) {
+    const root2 = find(i2);
+    if (seenRoots.has(root2))
+      continue;
+    seenRoots.add(root2);
+    const memberIdx = [];
+    for (let k2 = 0; k2 < reps.length; k2 += 1) {
+      if (find(k2) === root2)
+        memberIdx.push(k2);
+    }
+    const memberBlocks = [];
+    for (const idx of memberIdx) {
+      memberBlocks.push(...candidateGroups[idx]);
+    }
+    const sot = pickSotByPriority(memberBlocks);
+    const slug = sot.slug;
+    const entry = {
+      slug,
+      sot_source: sot.file,
+      candidates: memberBlocks.map((b2) => {
+        const candidate = {
+          file: b2.file,
+          kind: b2.kind,
+          line_range: b2.line_range
+        };
+        if (b2.anchor !== void 0)
+          candidate.anchor = b2.anchor;
+        return candidate;
+      }),
+      created_at: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    topicIndex = setTopic(topicIndex, slug, entry);
+    const sotAnchor = {
+      file: sot.file,
+      content_hash: sot.content_hash,
+      line_range: sot.line_range,
+      kind: sot.kind
+    };
+    if (sot.anchor !== void 0)
+      sotAnchor.current_anchor = sot.anchor;
+    anchorMap = setAnchor(anchorMap, slug, sotAnchor);
+  }
+  return {
+    topicIndex,
+    anchorMap,
+    verbatimCollisions,
+    semanticCollisions,
+    judgeCalls,
+    unresolvedAmbiguous
+  };
+}
+function bucketBySlug(blocks) {
+  const out = {};
+  for (const b2 of blocks) {
+    const bucket = out[b2.slug];
+    if (bucket === void 0) {
+      out[b2.slug] = [b2];
+    } else {
+      bucket.push(b2);
+    }
+  }
+  return out;
+}
+function countCollidingBuckets(buckets) {
+  let n = 0;
+  for (const arr of Object.values(buckets)) {
+    if (arr.length > 1)
+      n += 1;
+  }
+  return n;
+}
+function pickSotByPriority(blocks) {
+  const sorted2 = [...blocks].sort((x2, y2) => {
+    const p2 = PRIORITY[x2.kind] - PRIORITY[y2.kind];
+    if (p2 !== 0)
+      return p2;
+    return x2.file.localeCompare(y2.file);
+  });
+  return sorted2[0];
+}
+
+// ../cairn-core/dist/init/topic-index/walk.js
+import { existsSync as existsSync56, readFileSync as readFileSync52, readdirSync as readdirSync26, statSync as statSync18 } from "node:fs";
+import { join as join58, relative as relative11 } from "node:path";
+var MIN_BLOCK_CHARS = 80;
+var MIN_UNIQUE_TOKENS = 10;
+var SKIP_DIRS5 = /* @__PURE__ */ new Set([
+  "node_modules",
+  ".git",
+  ".cairn",
+  "dist",
+  "build",
+  "out",
+  ".next",
+  ".turbo",
+  ".cache",
+  "coverage",
+  ".archive"
+]);
+function walkProseBlocks(repoRoot) {
+  const blocks = [];
+  blocks.push(...walkDocs(repoRoot));
+  blocks.push(...walkRoot(repoRoot, "CLAUDE.md", "claudemd"));
+  blocks.push(...walkRoot(repoRoot, "AGENTS.md", "agentsmd"));
+  blocks.push(...walkRulesDir(repoRoot));
+  return blocks;
+}
+function walkDocs(repoRoot) {
+  const docsDir = join58(repoRoot, "docs");
+  if (!existsSync56(docsDir))
+    return [];
+  const out = [];
+  for (const file2 of listMarkdown2(docsDir)) {
+    const rel = relative11(repoRoot, file2);
+    out.push(...extractParagraphs(rel, file2, "doc"));
+  }
+  return out;
+}
+function walkRoot(repoRoot, name, kind) {
+  const file2 = join58(repoRoot, name);
+  if (!existsSync56(file2) || !statSync18(file2).isFile())
+    return [];
+  return extractSections(name, file2, kind);
+}
+function walkRulesDir(repoRoot) {
+  const dir = join58(repoRoot, ".claude", "rules");
+  if (!existsSync56(dir))
+    return [];
+  const out = [];
+  for (const file2 of listMarkdown2(dir)) {
+    const rel = relative11(repoRoot, file2);
+    out.push(...extractSections(rel, file2, "rule"));
+  }
+  return out;
+}
+function listMarkdown2(dir) {
+  const out = [];
+  let entries2;
+  try {
+    entries2 = readdirSync26(dir, { withFileTypes: true, encoding: "utf8" });
+  } catch {
+    return [];
+  }
+  for (const ent of entries2) {
+    if (SKIP_DIRS5.has(ent.name))
+      continue;
+    const full = join58(dir, ent.name);
+    if (ent.isDirectory()) {
+      out.push(...listMarkdown2(full));
+    } else if (ent.isFile() && ent.name.endsWith(".md")) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+function readBodyAndFrontmatter(file2) {
+  const raw = readFileSync52(file2, "utf8");
+  const m = raw.match(/^---\n([\s\S]*?)\n---\n?/);
+  if (m === null)
+    return { body: raw, offsetLines: 0 };
+  const offset = (m[0].match(/\n/g) ?? []).length;
+  return { body: raw.slice(m[0].length), offsetLines: offset };
+}
+function extractParagraphs(rel, file2, kind) {
+  const { body, offsetLines } = readBodyAndFrontmatter(file2);
+  const lines = body.split("\n");
+  const out = [];
+  let bufStart = null;
+  let buf = [];
+  const flush = (endLineZero) => {
+    if (bufStart === null || buf.length === 0)
+      return;
+    const startLine = bufStart + offsetLines + 1;
+    const endLine = endLineZero + offsetLines + 1;
+    const text = buf.join("\n").trim();
+    bufStart = null;
+    buf = [];
+    if (text.length === 0)
+      return;
+    if (!isMeaningfulBlock(text))
+      return;
+    const titleSource = text.split("\n")[0] ?? text;
+    const title = titleSource.replace(/^#+\s*/, "").trim().slice(0, 120) || "(untitled)";
+    const slug = topicSlug(text);
+    const block = {
+      file: rel,
+      kind,
+      title,
+      line_range: [startLine, endLine],
+      body: text,
+      content_hash: bodyContentHash(text),
+      slug
+    };
+    const anchor = headingToAnchor(titleSource);
+    if (anchor !== null)
+      block.anchor = anchor;
+    out.push(block);
+  };
+  for (let i2 = 0; i2 < lines.length; i2 += 1) {
+    const line = lines[i2] ?? "";
+    if (line.trim().length === 0) {
+      flush(i2 - 1);
+      continue;
+    }
+    if (bufStart === null)
+      bufStart = i2;
+    buf.push(line);
+  }
+  flush(lines.length - 1);
+  return out;
+}
+function extractSections(rel, file2, kind) {
+  const { body, offsetLines } = readBodyAndFrontmatter(file2);
+  const lines = body.split("\n");
+  const out = [];
+  let sectionStart = null;
+  let sectionTitle = "";
+  let sectionAnchor;
+  let sectionBuf = [];
+  const flush = (endLineZero) => {
+    if (sectionStart === null)
+      return;
+    const startLine = sectionStart + offsetLines + 1;
+    const endLine = endLineZero + offsetLines + 1;
+    const bodyText = sectionBuf.join("\n").trim();
+    const titleSnap = sectionTitle;
+    const anchorSnap = sectionAnchor;
+    sectionStart = null;
+    sectionTitle = "";
+    sectionAnchor = void 0;
+    sectionBuf = [];
+    if (bodyText.length === 0)
+      return;
+    if (!isMeaningfulBlock(bodyText))
+      return;
+    const slug = topicSlug(bodyText);
+    const block = {
+      file: rel,
+      kind,
+      title: titleSnap || "(untitled section)",
+      line_range: [startLine, endLine],
+      body: bodyText,
+      content_hash: bodyContentHash(bodyText),
+      slug
+    };
+    if (anchorSnap !== void 0)
+      block.anchor = anchorSnap;
+    out.push(block);
+  };
+  for (let i2 = 0; i2 < lines.length; i2 += 1) {
+    const line = lines[i2] ?? "";
+    const headingMatch = line.match(/^(#{2,3})\s+(.+?)\s*$/);
+    if (headingMatch !== null) {
+      flush(i2 - 1);
+      const titleText = headingMatch[2] ?? "";
+      sectionStart = i2;
+      sectionTitle = titleText;
+      const anchorComputed = headingToAnchor(line);
+      if (anchorComputed !== null)
+        sectionAnchor = anchorComputed;
+      continue;
+    }
+    if (sectionStart !== null)
+      sectionBuf.push(line);
+  }
+  flush(lines.length - 1);
+  return out;
+}
+function isMeaningfulBlock(text) {
+  if (text.length < MIN_BLOCK_CHARS)
+    return false;
+  const normalized = normalizeBlock(text);
+  const tokens = new Set(normalized.replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length >= 3));
+  return tokens.size >= MIN_UNIQUE_TOKENS;
+}
+function headingToAnchor(line) {
+  const m = line.match(/^#+\s+(.+?)\s*$/);
+  if (m === null || m[1] === void 0)
+    return null;
+  const slug = m[1].toLowerCase().replace(/[^a-z0-9\s-]/g, "").trim().replace(/\s+/g, "-");
+  return slug.length === 0 ? null : slug;
+}
+
+// ../cairn-core/dist/init/topic-index/index.js
+var log31 = logger("init.topic-index");
+async function buildTopicIndex(args) {
+  const blocks = args.blocks ?? walkProseBlocks(args.repoRoot);
+  const judge = args.judge ?? makeHaikuJudge({ repoRoot: args.repoRoot });
+  log31.debug({ blockCount: blocks.length }, "phase-5b walk complete");
+  const resolveOpts = { judge };
+  if (args.similarityThreshold !== void 0)
+    resolveOpts.similarityThreshold = args.similarityThreshold;
+  if (args.maxJudgeCalls !== void 0)
+    resolveOpts.maxJudgeCalls = args.maxJudgeCalls;
+  const result = await resolveTopics(blocks, resolveOpts);
+  const topicIndexPath2 = writeTopicIndex(args.repoRoot, result.topicIndex);
+  const anchorMapPath2 = writeAnchorMap(args.repoRoot, result.anchorMap);
+  log31.info({
+    blockCount: blocks.length,
+    verbatim: result.verbatimCollisions,
+    semantic: result.semanticCollisions,
+    judgeCalls: result.judgeCalls
+  }, "phase-5b topic-index built");
+  return {
+    ...result,
+    blockCount: blocks.length,
+    topicIndexPath: topicIndexPath2,
+    anchorMapPath: anchorMapPath2
+  };
+}
+
+// ../cairn-core/dist/init/phases/5b-topic-index.js
+var log32 = logger("init.phases.5b-topic-index");
+async function runPhase5bTopicIndex(state) {
+  try {
+    const result = await buildTopicIndex({ repoRoot: state.repoRoot });
+    const topicCount = Object.keys(result.topicIndex.topics).length;
+    const out = {
+      block_count: result.blockCount,
+      verbatim_collisions: result.verbatimCollisions,
+      semantic_collisions: result.semanticCollisions,
+      judge_calls: result.judgeCalls,
+      unresolved_ambiguous: result.unresolvedAmbiguous,
+      topic_count: topicCount,
+      topic_index_path: result.topicIndexPath,
+      anchor_map_path: result.anchorMapPath
+    };
+    const next = {
+      ...state,
+      outputs: { ...state.outputs, "5b-topic-index": out },
+      answer: void 0
+    };
+    log32.info(out, "phase 5b complete");
+    return {
+      status: "complete",
+      nextPhase: "6-docs-ingest",
+      state: advancePhase(next)
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    log32.warn({ err }, "phase 5b failed");
+    return {
+      status: "error",
+      error: {
+        code: "topic-index-failed",
+        message: `Phase 5b (topic-index) failed: ${message}`
+      },
+      state
+    };
+  }
 }
 
 // ../cairn-core/dist/init/phases/6-docs-ingest.js
@@ -59099,17 +59687,17 @@ async function runPhase6DocsIngest(state) {
 }
 
 // ../cairn-core/dist/init/phases/source-comments-output-io.js
-import { existsSync as existsSync54, mkdirSync as mkdirSync29, readFileSync as readFileSync50, renameSync as renameSync5, writeFileSync as writeFileSync30 } from "node:fs";
-import { dirname as dirname24, join as join58 } from "node:path";
-var SOURCE_COMMENTS_WALK_PATH = join58(".cairn", "init", "source-comments-walk.json");
+import { existsSync as existsSync57, mkdirSync as mkdirSync31, readFileSync as readFileSync53, renameSync as renameSync5, writeFileSync as writeFileSync32 } from "node:fs";
+import { dirname as dirname26, join as join59 } from "node:path";
+var SOURCE_COMMENTS_WALK_PATH = join59(".cairn", "init", "source-comments-walk.json");
 function sourceCommentsWalkAbsPath(repoRoot) {
-  return join58(repoRoot, SOURCE_COMMENTS_WALK_PATH);
+  return join59(repoRoot, SOURCE_COMMENTS_WALK_PATH);
 }
 function writeSourceCommentsWalkFile(repoRoot, full) {
   const abs = sourceCommentsWalkAbsPath(repoRoot);
-  mkdirSync29(dirname24(abs), { recursive: true });
+  mkdirSync31(dirname26(abs), { recursive: true });
   const tmp = `${abs}.tmp`;
-  writeFileSync30(tmp, JSON.stringify(full, null, 2), "utf8");
+  writeFileSync32(tmp, JSON.stringify(full, null, 2), "utf8");
   renameSync5(tmp, abs);
   return abs;
 }
@@ -59368,7 +59956,7 @@ async function runPhase12Multidev(state) {
 }
 
 // ../cairn-core/dist/init/phases/parallel-678.js
-var log30 = logger("init.phases.parallel-678");
+var log33 = logger("init.phases.parallel-678");
 async function runPhases678Parallel(state) {
   if (state.currentPhase !== "6-docs-ingest") {
     return {
@@ -59392,7 +59980,7 @@ async function runPhases678Parallel(state) {
   const pilotModule = typeof pilotOut?.picked === "string" && pilotOut.picked.length > 0 ? pilotOut.picked : void 0;
   const sharedDecIds = scanExistingDecisionIds(state.repoRoot);
   const sharedInvIds = scanExistingInvariantIds(state.repoRoot);
-  log30.info({
+  log33.info({
     preScannedDecIds: sharedDecIds.size,
     preScannedInvIds: sharedInvIds.size
   }, "parallel-678 starting");
@@ -59498,7 +60086,7 @@ async function runPhases678Parallel(state) {
       }
     }
   }
-  log30.info({
+  log33.info({
     durationMs,
     decsAfter: sharedDecIds.size,
     invsAfter: sharedInvIds.size
@@ -59513,9 +60101,9 @@ async function runPhases678Parallel(state) {
 // ../cairn-core/dist/join/index.js
 var import_yaml34 = __toESM(require_dist(), 1);
 import { execFileSync as execFileSync7 } from "node:child_process";
-import { chmodSync as chmodSync2, existsSync as existsSync55, mkdirSync as mkdirSync30, readFileSync as readFileSync51, statSync as statSync18, writeFileSync as writeFileSync31 } from "node:fs";
-import { dirname as dirname25, join as join59, resolve as resolve13 } from "node:path";
-var log31 = logger("join");
+import { chmodSync as chmodSync2, existsSync as existsSync58, mkdirSync as mkdirSync32, readFileSync as readFileSync54, statSync as statSync19, writeFileSync as writeFileSync33 } from "node:fs";
+import { dirname as dirname27, join as join60, resolve as resolve13 } from "node:path";
+var log34 = logger("join");
 var HOOK_FILES = ["pre-commit", "post-commit", "commit-msg"];
 function runJoin(args = {}) {
   const cwd = args.cwd ?? process.cwd();
@@ -59574,8 +60162,8 @@ function runJoin(args = {}) {
       cliVersion: VERSION
     };
   }
-  const hooksDir = join59(repoRoot, ".cairn", "git-hooks");
-  if (!existsSync55(hooksDir)) {
+  const hooksDir = join60(repoRoot, ".cairn", "git-hooks");
+  if (!existsSync58(hooksDir)) {
     steps.push({
       step: "set-hooks-path",
       status: "error",
@@ -59615,9 +60203,9 @@ function runJoin(args = {}) {
 function findCairnRoot(start) {
   let cur = resolve13(start);
   for (let i2 = 0; i2 < 80; i2++) {
-    if (existsSync55(join59(cur, ".cairn")))
+    if (existsSync58(join60(cur, ".cairn")))
       return cur;
-    const parent = dirname25(cur);
+    const parent = dirname27(cur);
     if (parent === cur)
       return null;
     cur = parent;
@@ -59625,20 +60213,20 @@ function findCairnRoot(start) {
   return null;
 }
 function readProjectVersion(repoRoot) {
-  const path2 = join59(repoRoot, ".cairn", "config.yaml");
-  if (!existsSync55(path2))
+  const path2 = join60(repoRoot, ".cairn", "config.yaml");
+  if (!existsSync58(path2))
     return null;
   try {
-    const parsed = (0, import_yaml34.parse)(readFileSync51(path2, "utf8"));
+    const parsed = (0, import_yaml34.parse)(readFileSync54(path2, "utf8"));
     const v = parsed?.["cairn_version"];
     return typeof v === "string" ? v : null;
   } catch (err) {
-    log31.warn({ err: err instanceof Error ? err.message : String(err) }, "config.yaml unreadable");
+    log34.warn({ err: err instanceof Error ? err.message : String(err) }, "config.yaml unreadable");
     return null;
   }
 }
 function setGitHooksPath(repoRoot) {
-  if (!existsSync55(join59(repoRoot, ".git"))) {
+  if (!existsSync58(join60(repoRoot, ".git"))) {
     return {
       step: "set-hooks-path",
       status: "warn",
@@ -59668,8 +60256,8 @@ function chmodHooks(hooksDir) {
   let okCount = 0;
   const failed = [];
   for (const name of HOOK_FILES) {
-    const abs = join59(hooksDir, name);
-    if (!existsSync55(abs))
+    const abs = join60(hooksDir, name);
+    if (!existsSync58(abs))
       continue;
     try {
       chmodSync2(abs, 493);
@@ -59702,10 +60290,10 @@ function writeCliPathFile(repoRoot) {
   }
   const isModule = /\.[mc]?js$/.test(cliArgv);
   const invocation = isModule ? `node ${cliArgv}` : cliArgv;
-  const path2 = join59(repoRoot, ".cairn", ".cli-path");
+  const path2 = join60(repoRoot, ".cairn", ".cli-path");
   try {
-    mkdirSync30(join59(repoRoot, ".cairn"), { recursive: true });
-    writeFileSync31(path2, `${invocation}
+    mkdirSync32(join60(repoRoot, ".cairn"), { recursive: true });
+    writeFileSync33(path2, `${invocation}
 `, "utf8");
   } catch (err) {
     return {
@@ -59721,13 +60309,13 @@ function writeCliPathFile(repoRoot) {
   };
 }
 function ensureSessionDir(repoRoot) {
-  const dir = join59(repoRoot, ".cairn", "sessions");
+  const dir = join60(repoRoot, ".cairn", "sessions");
   try {
-    if (!existsSync55(dir)) {
-      mkdirSync30(dir, { recursive: true });
+    if (!existsSync58(dir)) {
+      mkdirSync32(dir, { recursive: true });
       return { step: "ensure-sessions-dir", status: "ok", detail: `created ${dir}` };
     }
-    const st = statSync18(dir);
+    const st = statSync19(dir);
     if (!st.isDirectory()) {
       return {
         step: "ensure-sessions-dir",
@@ -59753,11 +60341,11 @@ function inspectJoinState(args) {
     hooksPathValue,
     projectCairnVersion,
     versionMatches: projectCairnVersion === VERSION,
-    sessionsDirReady: existsSync55(join59(repoRoot, ".cairn", "sessions"))
+    sessionsDirReady: existsSync58(join60(repoRoot, ".cairn", "sessions"))
   };
 }
 function readGitConfigValue(repoRoot, key) {
-  if (!existsSync55(join59(repoRoot, ".git")))
+  if (!existsSync58(join60(repoRoot, ".git")))
     return null;
   try {
     const out = execFileSync7("git", ["config", "--get", key], {
@@ -69350,13 +69938,13 @@ function asMcpResult(payload) {
 }
 
 // ../cairn-core/dist/mcp/telemetry.js
-import { appendFileSync as appendFileSync4, existsSync as existsSync56, mkdirSync as mkdirSync31 } from "node:fs";
-import { dirname as dirname26, join as join60 } from "node:path";
+import { appendFileSync as appendFileSync4, existsSync as existsSync59, mkdirSync as mkdirSync33 } from "node:fs";
+import { dirname as dirname28, join as join61 } from "node:path";
 function recordCall(ctx, row2) {
-  const path2 = ctx.runId !== void 0 ? join60(ctx.repoRoot, ".cairn", "runs", "active", ctx.runId, "mcp-calls.jsonl") : join60(ctx.repoRoot, ".cairn", "staleness", "mcp-calls.jsonl");
-  const dir = dirname26(path2);
-  if (!existsSync56(dir)) {
-    mkdirSync31(dir, { recursive: true });
+  const path2 = ctx.runId !== void 0 ? join61(ctx.repoRoot, ".cairn", "runs", "active", ctx.runId, "mcp-calls.jsonl") : join61(ctx.repoRoot, ".cairn", "staleness", "mcp-calls.jsonl");
+  const dir = dirname28(path2);
+  if (!existsSync59(dir)) {
+    mkdirSync33(dir, { recursive: true });
   }
   appendFileSync4(path2, `${JSON.stringify(row2)}
 `, "utf8");
@@ -69378,24 +69966,24 @@ function recordCall(ctx, row2) {
 }
 
 // ../cairn-core/dist/mcp/tools/archive.js
-import { existsSync as existsSync58, mkdirSync as mkdirSync32, renameSync as renameSync6, statSync as statSync19 } from "node:fs";
-import { dirname as dirname27, join as join62 } from "node:path";
+import { existsSync as existsSync61, mkdirSync as mkdirSync34, renameSync as renameSync6, statSync as statSync20 } from "node:fs";
+import { dirname as dirname29, join as join63 } from "node:path";
 
 // ../cairn-core/dist/mcp/bootstrap-guard.js
-import { existsSync as existsSync57 } from "node:fs";
-import { join as join61 } from "node:path";
-var log32 = logger("mcp.bootstrap-guard");
+import { existsSync as existsSync60 } from "node:fs";
+import { join as join62 } from "node:path";
+var log35 = logger("mcp.bootstrap-guard");
 function requireBootstrap(repoRoot) {
-  if (!existsSync57(join61(repoRoot, ".git")))
+  if (!existsSync60(join62(repoRoot, ".git")))
     return null;
-  if (!existsSync57(join61(repoRoot, ".cairn", "config.yaml")))
+  if (!existsSync60(join62(repoRoot, ".cairn", "config.yaml")))
     return null;
   const state = inspectJoinState({ repoRoot });
   if (state.hooksPathSet)
     return null;
   const joinResult = runJoin({ repoRoot });
   if (joinResult.bootstrapped) {
-    log32.info({ repoRoot, source: "lazy-mcp-bootstrap" }, "auto-ran cairn join from MCP write-tool guard");
+    log35.info({ repoRoot, source: "lazy-mcp-bootstrap" }, "auto-ran cairn join from MCP write-tool guard");
     return null;
   }
   const failedSteps = joinResult.steps.filter((s) => s.status === "error").map((s) => `${s.step}: ${s.detail}`);
@@ -69409,7 +69997,7 @@ function requireBootstrap(repoRoot) {
 }
 
 // ../cairn-core/dist/mcp/path-allowlist.js
-import { isAbsolute, normalize as normalize2, relative as relative11, resolve as resolve14 } from "node:path";
+import { isAbsolute, normalize as normalize2, relative as relative12, resolve as resolve14 } from "node:path";
 var ARCHIVE_DENY = [
   "AGENTS.md",
   "CLAUDE.md",
@@ -69425,14 +70013,14 @@ function safeJoin(repoRoot, rel) {
     return mcpError("PATH_OUTSIDE_REPO", `Absolute paths not accepted: ${rel}`);
   }
   const abs = resolve14(repoRoot, rel);
-  const back = relative11(repoRoot, abs);
+  const back = relative12(repoRoot, abs);
   if (back.startsWith("..") || isAbsolute(back)) {
     return mcpError("PATH_OUTSIDE_REPO", `Path resolves outside repo: ${rel}`);
   }
   return abs;
 }
 function relPosix(repoRoot, abs) {
-  return normalize2(relative11(repoRoot, abs)).replace(/\\/g, "/");
+  return normalize2(relative12(repoRoot, abs)).replace(/\\/g, "/");
 }
 function isArchiveDenied(repoRelPath) {
   return matchAnyGlob(repoRelPath, ARCHIVE_DENY);
@@ -69581,17 +70169,17 @@ async function handler(ctx, input) {
   if (rel.startsWith(".archive/")) {
     return { ok: true, idempotent: true, path: rel, note: "Already in .archive/" };
   }
-  if (!existsSync58(abs)) {
+  if (!existsSync61(abs)) {
     return mcpError("FILE_NOT_FOUND", `No file at ${rel}`);
   }
-  if (!statSync19(abs).isFile()) {
+  if (!statSync20(abs).isFile()) {
     return mcpError("NOT_ALLOWED", `Path is not a file: ${rel}`);
   }
   const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const bucket = input.archive_dir ?? today;
-  const target = join62(ctx.repoRoot, ".archive", bucket, rel);
+  const target = join63(ctx.repoRoot, ".archive", bucket, rel);
   return withWriteLock(ctx.repoRoot, () => {
-    mkdirSync32(dirname27(target), { recursive: true });
+    mkdirSync34(dirname29(target), { recursive: true });
     renameSync6(abs, target);
     recordDriftEvent(ctx.repoRoot, {
       ts: (/* @__PURE__ */ new Date()).toISOString(),
@@ -69714,8 +70302,8 @@ var attentionServeTool = {
 };
 
 // ../cairn-core/dist/mcp/tools/attention-wait.js
-import { existsSync as existsSync59, readFileSync as readFileSync52 } from "node:fs";
-import { join as join63 } from "node:path";
+import { existsSync as existsSync62, readFileSync as readFileSync55 } from "node:fs";
+import { join as join64 } from "node:path";
 var DEFAULT_TIMEOUT_SECONDS = 1800;
 var POLL_INTERVAL_MS = 1e3;
 var inputShape4 = {
@@ -69726,7 +70314,7 @@ async function handler3(ctx, input) {
   if (block !== null)
     return block;
   const timeoutMs = (input.timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS) * 1e3;
-  const sentinelPath = join63(ctx.repoRoot, ".cairn", "cache", "attention-done.json");
+  const sentinelPath = join64(ctx.repoRoot, ".cairn", "cache", "attention-done.json");
   const live = getActiveAttentionServer(ctx.repoRoot);
   if (live !== void 0) {
     const result = await Promise.race([
@@ -69744,9 +70332,9 @@ async function handler3(ctx, input) {
   }
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (existsSync59(sentinelPath)) {
+    if (existsSync62(sentinelPath)) {
       try {
-        const raw = readFileSync52(sentinelPath, "utf8");
+        const raw = readFileSync55(sentinelPath, "utf8");
         const state = JSON.parse(raw);
         return { ok: true, ...state };
       } catch {
@@ -69772,21 +70360,21 @@ var attentionWaitTool = {
 
 // ../cairn-core/dist/mcp/tools/bulk-accept-attention.js
 var import_yaml35 = __toESM(require_dist(), 1);
-import { existsSync as existsSync60, readFileSync as readFileSync53 } from "node:fs";
-import { join as join64 } from "node:path";
+import { existsSync as existsSync63, readFileSync as readFileSync56 } from "node:fs";
+import { join as join65 } from "node:path";
 var confidenceSchema = external_exports.enum(["high", "medium", "low"]);
 var inputShape5 = {
   threshold: confidenceSchema.optional(),
   dryRun: external_exports.boolean().optional()
 };
 function loadProjectGlobs(repoRoot) {
-  const configPath = join64(repoRoot, ".cairn", "config.yaml");
-  if (!existsSync60(configPath)) {
+  const configPath = join65(repoRoot, ".cairn", "config.yaml");
+  if (!existsSync63(configPath)) {
     return { globs: {} };
   }
   let parsed;
   try {
-    parsed = (0, import_yaml35.parse)(readFileSync53(configPath, "utf8"));
+    parsed = (0, import_yaml35.parse)(readFileSync56(configPath, "utf8"));
   } catch {
     return { globs: {} };
   }
@@ -69843,26 +70431,26 @@ var bulkAcceptAttentionTool = {
 
 // ../cairn-core/dist/mcp/tools/canonical-for-topic.js
 var import_yaml36 = __toESM(require_dist(), 1);
-import { createHash as createHash5 } from "node:crypto";
-import { existsSync as existsSync61, readFileSync as readFileSync54, statSync as statSync20 } from "node:fs";
-import { join as join65 } from "node:path";
+import { createHash as createHash6 } from "node:crypto";
+import { existsSync as existsSync64, readFileSync as readFileSync57, statSync as statSync21 } from "node:fs";
+import { join as join66 } from "node:path";
 async function handler4(ctx, input) {
-  const file2 = join65(groundDir(ctx.repoRoot), "canonical-map", "topics.yaml");
-  if (!existsSync61(file2)) {
+  const file2 = join66(groundDir(ctx.repoRoot), "canonical-map", "topics.yaml");
+  if (!existsSync64(file2)) {
     return mcpError("TOPIC_NOT_REGISTERED", `No canonical-map registered (topics.yaml not found at ${file2})`);
   }
-  const parsedFile = (0, import_yaml36.parse)(readFileSync54(file2, "utf8"));
+  const parsedFile = (0, import_yaml36.parse)(readFileSync57(file2, "utf8"));
   const list = parsedFile?.topics ?? [];
   const entry = list.find((t2) => t2.topic === input.topic);
   if (!entry) {
     return mcpError("TOPIC_NOT_REGISTERED", `Topic "${input.topic}" is not registered. Curated registry only \u2014 do NOT invent topics.`, { available: list.map((t2) => t2.topic) });
   }
-  const docPath = join65(ctx.repoRoot, entry.canonical_path.split("#")[0] ?? entry.canonical_path);
-  if (!existsSync61(docPath) || !statSync20(docPath).isFile()) {
+  const docPath = join66(ctx.repoRoot, entry.canonical_path.split("#")[0] ?? entry.canonical_path);
+  if (!existsSync64(docPath) || !statSync21(docPath).isFile()) {
     return mcpError("FILE_NOT_FOUND", `Topic registered, but canonical_path does not exist: ${entry.canonical_path}`);
   }
-  const buf = readFileSync54(docPath);
-  const sha256 = createHash5("sha256").update(buf).digest("hex");
+  const buf = readFileSync57(docPath);
+  const sha256 = createHash6("sha256").update(buf).digest("hex");
   const fm = parseFrontmatter(buf.toString("utf8")).frontmatter;
   return {
     topic: entry.topic,
@@ -69880,22 +70468,22 @@ var canonicalForTopicTool = {
 };
 
 // ../cairn-core/dist/mcp/tools/decision-get.js
-import { existsSync as existsSync62, readdirSync as readdirSync26, readFileSync as readFileSync55 } from "node:fs";
-import { join as join66 } from "node:path";
+import { existsSync as existsSync65, readdirSync as readdirSync27, readFileSync as readFileSync58 } from "node:fs";
+import { join as join67 } from "node:path";
 async function handler5(ctx, input) {
   const dir = decisionsDir(ctx.repoRoot);
-  if (!existsSync62(dir)) {
+  if (!existsSync65(dir)) {
     return mcpError("DECISION_NOT_FOUND", `No decisions directory at ${dir}`);
   }
-  const inboxDir = join66(dir, "_inbox");
-  const searchDirs = [dir, inboxDir].filter((d) => existsSync62(d));
+  const inboxDir = join67(dir, "_inbox");
+  const searchDirs = [dir, inboxDir].filter((d) => existsSync65(d));
   for (const searchDir of searchDirs) {
-    const files = readdirSync26(searchDir, { withFileTypes: true, encoding: "utf8" });
+    const files = readdirSync27(searchDir, { withFileTypes: true, encoding: "utf8" });
     for (const f of files) {
       if (!f.isFile() || !f.name.endsWith(".md"))
         continue;
-      const abs = join66(searchDir, f.name);
-      const parsed = parseFrontmatter(readFileSync55(abs, "utf8"));
+      const abs = join67(searchDir, f.name);
+      const parsed = parseFrontmatter(readFileSync58(abs, "utf8"));
       const fm = DecisionFrontmatter.safeParse(parsed.frontmatter);
       if (!fm.success)
         continue;
@@ -69926,18 +70514,18 @@ var decisionGetTool = {
 };
 
 // ../cairn-core/dist/mcp/tools/decisions-for-symbol.js
-import { existsSync as existsSync63, readdirSync as readdirSync27, readFileSync as readFileSync56 } from "node:fs";
-import { join as join67 } from "node:path";
+import { existsSync as existsSync66, readdirSync as readdirSync28, readFileSync as readFileSync59 } from "node:fs";
+import { join as join68 } from "node:path";
 async function handler6(ctx, input) {
   const dir = decisionsDir(ctx.repoRoot);
-  if (!existsSync63(dir))
+  if (!existsSync66(dir))
     return [];
   const out = [];
-  for (const entry of readdirSync27(dir, { withFileTypes: true, encoding: "utf8" })) {
+  for (const entry of readdirSync28(dir, { withFileTypes: true, encoding: "utf8" })) {
     if (!entry.isFile() || !entry.name.endsWith(".md"))
       continue;
-    const abs = join67(dir, entry.name);
-    const raw = readFileSync56(abs, "utf8");
+    const abs = join68(dir, entry.name);
+    const raw = readFileSync59(abs, "utf8");
     const parsed = parseFrontmatter(raw);
     const fm = DecisionFrontmatter.safeParse(parsed.frontmatter);
     if (!fm.success)
@@ -69966,12 +70554,12 @@ var decisionsForSymbolTool = {
 };
 
 // ../cairn-core/dist/mcp/tools/decisions-in-scope.js
-import { existsSync as existsSync64, readdirSync as readdirSync28, readFileSync as readFileSync57 } from "node:fs";
-import { join as join68 } from "node:path";
+import { existsSync as existsSync67, readdirSync as readdirSync29, readFileSync as readFileSync60 } from "node:fs";
+import { join as join69 } from "node:path";
 async function handler7(ctx, input) {
   const wantStatus = new Set(input.status ?? ["accepted"]);
   const dir = decisionsDir(ctx.repoRoot);
-  if (!existsSync64(dir))
+  if (!existsSync67(dir))
     return [];
   const scopeIndexHits = /* @__PURE__ */ new Set();
   const scopeIndex = readScopeIndex(ctx.repoRoot);
@@ -69987,11 +70575,11 @@ async function handler7(ctx, input) {
     }
   }
   const out = [];
-  for (const entry of readdirSync28(dir, { withFileTypes: true, encoding: "utf8" })) {
+  for (const entry of readdirSync29(dir, { withFileTypes: true, encoding: "utf8" })) {
     if (!entry.isFile() || !entry.name.endsWith(".md"))
       continue;
-    const abs = join68(dir, entry.name);
-    const parsed = parseFrontmatter(readFileSync57(abs, "utf8"));
+    const abs = join69(dir, entry.name);
+    const parsed = parseFrontmatter(readFileSync60(abs, "utf8"));
     const fm = DecisionFrontmatter.safeParse(parsed.frontmatter);
     if (!fm.success)
       continue;
@@ -70023,39 +70611,39 @@ var decisionsInScopeTool = {
 };
 
 // ../cairn-core/dist/mcp/tools/get-full.js
-import { existsSync as existsSync65, readFileSync as readFileSync58 } from "node:fs";
-import { join as join69 } from "node:path";
+import { existsSync as existsSync68, readFileSync as readFileSync61 } from "node:fs";
+import { join as join70 } from "node:path";
 async function handler8(ctx, input) {
   switch (input.kind) {
     case "decision": {
-      const path2 = join69(decisionsDir(ctx.repoRoot), `${input.id}.md`);
-      if (!existsSync65(path2)) {
+      const path2 = join70(decisionsDir(ctx.repoRoot), `${input.id}.md`);
+      if (!existsSync68(path2)) {
         return mcpError("DECISION_NOT_FOUND", `No decision file at ${path2}`);
       }
-      return { id: input.id, kind: input.kind, content: readFileSync58(path2, "utf8") };
+      return { id: input.id, kind: input.kind, content: readFileSync61(path2, "utf8") };
     }
     case "invariant": {
-      const path2 = join69(invariantsDir(ctx.repoRoot), `${input.id}.md`);
-      if (!existsSync65(path2)) {
+      const path2 = join70(invariantsDir(ctx.repoRoot), `${input.id}.md`);
+      if (!existsSync68(path2)) {
         return mcpError("INVARIANT_NOT_FOUND", `No invariant file at ${path2}`);
       }
-      return { id: input.id, kind: input.kind, content: readFileSync58(path2, "utf8") };
+      return { id: input.id, kind: input.kind, content: readFileSync61(path2, "utf8") };
     }
     case "task": {
-      const path2 = join69(ctx.repoRoot, ".cairn", "tasks", "active", input.id, "spec.tightened.md");
-      const fallback = join69(ctx.repoRoot, ".cairn", "tasks", "active", input.id, "spec.md");
-      const target = existsSync65(path2) ? path2 : existsSync65(fallback) ? fallback : null;
+      const path2 = join70(ctx.repoRoot, ".cairn", "tasks", "active", input.id, "spec.tightened.md");
+      const fallback = join70(ctx.repoRoot, ".cairn", "tasks", "active", input.id, "spec.md");
+      const target = existsSync68(path2) ? path2 : existsSync68(fallback) ? fallback : null;
       if (!target) {
         return mcpError("TASK_NOT_FOUND", `No active task ${input.id}`);
       }
-      return { id: input.id, kind: input.kind, content: readFileSync58(target, "utf8") };
+      return { id: input.id, kind: input.kind, content: readFileSync61(target, "utf8") };
     }
     case "run": {
-      const meta3 = join69(ctx.repoRoot, ".cairn", "runs", "active", input.id, "meta.json");
-      if (!existsSync65(meta3)) {
+      const meta3 = join70(ctx.repoRoot, ".cairn", "runs", "active", input.id, "meta.json");
+      if (!existsSync68(meta3)) {
         return mcpError("RUN_NOT_FOUND", `No active run ${input.id}`);
       }
-      return { id: input.id, kind: input.kind, content: readFileSync58(meta3, "utf8") };
+      return { id: input.id, kind: input.kind, content: readFileSync61(meta3, "utf8") };
     }
   }
 }
@@ -70067,49 +70655,49 @@ var getFullTool = {
 };
 
 // ../cairn-core/dist/mcp/tools/ground-get.js
-import { existsSync as existsSync66, readdirSync as readdirSync29, readFileSync as readFileSync59, statSync as statSync21 } from "node:fs";
-import { join as join70 } from "node:path";
+import { existsSync as existsSync69, readdirSync as readdirSync30, readFileSync as readFileSync62, statSync as statSync22 } from "node:fs";
+import { join as join71 } from "node:path";
 async function handler9(ctx, input) {
   const root2 = groundDir(ctx.repoRoot);
   switch (input.category) {
     case "manifest": {
       const path2 = manifestPath(ctx.repoRoot);
-      if (!existsSync66(path2)) {
+      if (!existsSync69(path2)) {
         return mcpError("FILE_NOT_FOUND", "manifest.yaml not present (init not run yet?)");
       }
-      return { path: ".cairn/ground/manifest.yaml", content: readFileSync59(path2, "utf8") };
+      return { path: ".cairn/ground/manifest.yaml", content: readFileSync62(path2, "utf8") };
     }
     case "quality_grades": {
       const path2 = qualityGradesPath(ctx.repoRoot);
-      if (!existsSync66(path2)) {
+      if (!existsSync69(path2)) {
         return mcpError("FILE_NOT_FOUND", "quality-grades.yaml not present (init not run yet?)");
       }
-      return { path: ".cairn/ground/quality-grades.yaml", content: readFileSync59(path2, "utf8") };
+      return { path: ".cairn/ground/quality-grades.yaml", content: readFileSync62(path2, "utf8") };
     }
     case "glossary": {
-      const path2 = join70(root2, "glossary.md");
-      if (!existsSync66(path2)) {
+      const path2 = join71(root2, "glossary.md");
+      if (!existsSync69(path2)) {
         return mcpError("FILE_NOT_FOUND", "glossary.md not present");
       }
-      return { path: ".cairn/ground/glossary.md", content: readFileSync59(path2, "utf8") };
+      return { path: ".cairn/ground/glossary.md", content: readFileSync62(path2, "utf8") };
     }
     case "schema":
     case "routes":
     case "events": {
-      const dir = join70(root2, input.category);
-      if (!existsSync66(dir) || !statSync21(dir).isDirectory()) {
+      const dir = join71(root2, input.category);
+      if (!existsSync69(dir) || !statSync22(dir).isDirectory()) {
         return mcpError("FILE_NOT_FOUND", `${input.category}/ extracts not present (no profile extractor for this stack?)`);
       }
       if (input.key !== void 0) {
-        const candidate = join70(dir, `${input.key}.md`);
-        const fallback = join70(dir, `${input.key}.yaml`);
-        const target = existsSync66(candidate) ? candidate : existsSync66(fallback) ? fallback : null;
+        const candidate = join71(dir, `${input.key}.md`);
+        const fallback = join71(dir, `${input.key}.yaml`);
+        const target = existsSync69(candidate) ? candidate : existsSync69(fallback) ? fallback : null;
         if (!target) {
           return mcpError("FILE_NOT_FOUND", `No ${input.category} entry for key "${input.key}"`);
         }
         return {
           path: `.cairn/ground/${input.category}/${input.key}${target.endsWith(".yaml") ? ".yaml" : ".md"}`,
-          content: readFileSync59(target, "utf8")
+          content: readFileSync62(target, "utf8")
         };
       }
       return {
@@ -70121,7 +70709,7 @@ async function handler9(ctx, input) {
 }
 function readDirShallow(dir) {
   try {
-    return readdirSync29(dir, { withFileTypes: true, encoding: "utf8" }).filter((d) => d.isFile()).map((d) => d.name);
+    return readdirSync30(dir, { withFileTypes: true, encoding: "utf8" }).filter((d) => d.isFile()).map((d) => d.name);
   } catch {
     return [];
   }
@@ -70160,6 +70748,7 @@ var RUNNERS = {
   "3b-seed": runPhase3bSeed,
   "4-pilot": runPhase4Pilot,
   "5-brand": runPhase5Brand,
+  "5b-topic-index": runPhase5bTopicIndex,
   "6-docs-ingest": runPhase6DocsIngest,
   "7b-source-comments": runPhase7bSourceComments,
   "7c-rules-merge": runPhase7cRulesMerge,
@@ -70263,6 +70852,8 @@ function phaseDescription(id) {
       return "Phase 4-pilot \u2014 operator picks the seed module from mapper's top candidates (1 question).";
     case "5-brand":
       return "Phase 5-brand \u2014 operator picks how to populate the brand DEC drafts: skip / auto-fill / manual (1 question).";
+    case "5b-topic-index":
+      return "Phase 5b-topic-index \u2014 cross-source dedup pre-pass. Walks docs/*.md + CLAUDE.md + AGENTS.md + .claude/rules/* and emits topic-index.yaml + anchor-map.yaml so phases 6/7b/7c can dedup-by-topic instead of one DEC per source.";
     case "6-docs-ingest":
       return "Phase 6-docs-ingest \u2014 Haiku batch over README + docs/ \u2192 DEC drafts + canonical-map topics. No operator input.";
     case "7b-source-comments":
@@ -70324,17 +70915,17 @@ var initParallel678Tool = makeParallel678Tool();
 var initResumeTool = makeResumeTool();
 
 // ../cairn-core/dist/mcp/tools/invariant-get.js
-import { existsSync as existsSync67, readdirSync as readdirSync30, readFileSync as readFileSync60 } from "node:fs";
-import { join as join71 } from "node:path";
+import { existsSync as existsSync70, readdirSync as readdirSync31, readFileSync as readFileSync63 } from "node:fs";
+import { join as join72 } from "node:path";
 async function handler10(ctx, input) {
   const dir = invariantsDir(ctx.repoRoot);
-  if (!existsSync67(dir)) {
+  if (!existsSync70(dir)) {
     return mcpError("INVARIANT_NOT_FOUND", `No invariants directory`);
   }
-  for (const entry of readdirSync30(dir, { withFileTypes: true, encoding: "utf8" })) {
+  for (const entry of readdirSync31(dir, { withFileTypes: true, encoding: "utf8" })) {
     if (!entry.isFile() || !entry.name.endsWith(".md"))
       continue;
-    const parsed = parseFrontmatter(readFileSync60(join71(dir, entry.name), "utf8"));
+    const parsed = parseFrontmatter(readFileSync63(join72(dir, entry.name), "utf8"));
     const fm = InvariantFrontmatter.safeParse(parsed.frontmatter);
     if (!fm.success)
       continue;
@@ -70364,17 +70955,17 @@ var invariantGetTool = {
 };
 
 // ../cairn-core/dist/mcp/tools/invariants-in-scope.js
-import { existsSync as existsSync68, readdirSync as readdirSync31, readFileSync as readFileSync61 } from "node:fs";
-import { join as join72 } from "node:path";
+import { existsSync as existsSync71, readdirSync as readdirSync32, readFileSync as readFileSync64 } from "node:fs";
+import { join as join73 } from "node:path";
 async function handler11(ctx, input) {
   const wantStatus = new Set(input.status ?? ["active"]);
   const decisionScopeById = /* @__PURE__ */ new Map();
   const dDir = decisionsDir(ctx.repoRoot);
-  if (existsSync68(dDir)) {
-    for (const entry of readdirSync31(dDir, { withFileTypes: true, encoding: "utf8" })) {
+  if (existsSync71(dDir)) {
+    for (const entry of readdirSync32(dDir, { withFileTypes: true, encoding: "utf8" })) {
       if (!entry.isFile() || !entry.name.endsWith(".md"))
         continue;
-      const parsed = parseFrontmatter(readFileSync61(join72(dDir, entry.name), "utf8"));
+      const parsed = parseFrontmatter(readFileSync64(join73(dDir, entry.name), "utf8"));
       const fm = DecisionFrontmatter.safeParse(parsed.frontmatter);
       if (!fm.success)
         continue;
@@ -70395,13 +70986,13 @@ async function handler11(ctx, input) {
     }
   }
   const iDir = invariantsDir(ctx.repoRoot);
-  if (!existsSync68(iDir))
+  if (!existsSync71(iDir))
     return [];
   const out = [];
-  for (const entry of readdirSync31(iDir, { withFileTypes: true, encoding: "utf8" })) {
+  for (const entry of readdirSync32(iDir, { withFileTypes: true, encoding: "utf8" })) {
     if (!entry.isFile() || !entry.name.endsWith(".md"))
       continue;
-    const parsed = parseFrontmatter(readFileSync61(join72(iDir, entry.name), "utf8"));
+    const parsed = parseFrontmatter(readFileSync64(join73(iDir, entry.name), "utf8"));
     const fm = InvariantFrontmatter.safeParse(parsed.frontmatter);
     if (!fm.success)
       continue;
@@ -70432,8 +71023,8 @@ var invariantsInScopeTool = {
 };
 
 // ../cairn-core/dist/mcp/history/summarizer.js
-import { existsSync as existsSync69 } from "node:fs";
-import { join as join74 } from "node:path";
+import { existsSync as existsSync72 } from "node:fs";
+import { join as join75 } from "node:path";
 
 // ../cairn-core/dist/mcp/history/prompt.js
 var CAIRN_HISTORY_SUMMARIZE_PROMPT_ID = "cairn.history_summarize.v1";
@@ -70554,8 +71145,8 @@ var HISTORY_SUMMARIZER_OUTPUT_SCHEMA = {
 };
 
 // ../cairn-core/dist/mcp/history/walker.js
-import { readdirSync as readdirSync32, readFileSync as readFileSync62, statSync as statSync22 } from "node:fs";
-import { basename as basename6, join as join73, relative as relative12 } from "node:path";
+import { readdirSync as readdirSync33, readFileSync as readFileSync65, statSync as statSync23 } from "node:fs";
+import { basename as basename6, join as join74, relative as relative13 } from "node:path";
 var DEFAULT_MAX_BYTES_PER_FILE = 32 * 1024;
 var DEFAULT_MAX_BYTES_TOTAL = 200 * 1024;
 var DEFAULT_MAX_FILES = 40;
@@ -70570,7 +71161,7 @@ var CONTENT_EXTENSIONS = /* @__PURE__ */ new Set([
 ]);
 var BUCKET_DATE_RE = /^(\d{4}-\d{2}-\d{2})/;
 function walkArchive(opts) {
-  const archiveRoot = join73(opts.repoRoot, ".archive");
+  const archiveRoot = join74(opts.repoRoot, ".archive");
   const maxBytesPerFile = opts.maxBytesPerFile ?? DEFAULT_MAX_BYTES_PER_FILE;
   const maxBytesTotal = opts.maxBytesTotal ?? DEFAULT_MAX_BYTES_TOTAL;
   const maxFiles = opts.maxFiles ?? DEFAULT_MAX_FILES;
@@ -70580,7 +71171,7 @@ function walkArchive(opts) {
   let capHit = false;
   let topEntries;
   try {
-    topEntries = readdirSync32(archiveRoot, { withFileTypes: true, encoding: "utf8" });
+    topEntries = readdirSync33(archiveRoot, { withFileTypes: true, encoding: "utf8" });
   } catch {
     return { files: [], capHit: false, totalBytes: 0, bucketsScanned: [] };
   }
@@ -70591,7 +71182,7 @@ function walkArchive(opts) {
   }
   bucketsScanned.sort();
   const stack = bucketsScanned.map((b2) => ({
-    absDir: join73(archiveRoot, b2),
+    absDir: join74(archiveRoot, b2),
     bucket: b2
   }));
   while (stack.length > 0 && files.length < maxFiles) {
@@ -70600,12 +71191,12 @@ function walkArchive(opts) {
       break;
     let entries2;
     try {
-      entries2 = readdirSync32(cur.absDir, { withFileTypes: true, encoding: "utf8" });
+      entries2 = readdirSync33(cur.absDir, { withFileTypes: true, encoding: "utf8" });
     } catch {
       continue;
     }
     for (const e of entries2) {
-      const abs = join73(cur.absDir, e.name);
+      const abs = join74(cur.absDir, e.name);
       if (e.isDirectory()) {
         stack.push({ absDir: abs, bucket: cur.bucket });
         continue;
@@ -70614,7 +71205,7 @@ function walkArchive(opts) {
         continue;
       if (!hasContentExtension(e.name))
         continue;
-      const rel = relative12(opts.repoRoot, abs).replace(/\\/g, "/");
+      const rel = relative13(opts.repoRoot, abs).replace(/\\/g, "/");
       if (opts.pathHint && opts.pathHint.length > 0) {
         if (!matchAnyGlob(rel, [opts.pathHint]))
           continue;
@@ -70624,7 +71215,7 @@ function walkArchive(opts) {
         continue;
       let buf;
       try {
-        buf = readFileSync62(abs);
+        buf = readFileSync65(abs);
       } catch {
         continue;
       }
@@ -70666,7 +71257,7 @@ function inferArchiveDate(bucket, absPath) {
   if (match?.[1])
     return `${match[1]}T00:00:00Z`;
   try {
-    return new Date(statSync22(absPath).mtimeMs).toISOString();
+    return new Date(statSync23(absPath).mtimeMs).toISOString();
   } catch {
     return (/* @__PURE__ */ new Date(0)).toISOString();
   }
@@ -70689,7 +71280,7 @@ function withinDateWindow(date5, since, until) {
 }
 
 // ../cairn-core/dist/mcp/history/summarizer.js
-var log33 = logger("mcp.history.summarizer");
+var log36 = logger("mcp.history.summarizer");
 var HISTORICAL_WARNING = "This claim is HISTORICAL. Verify against the canonical pointer before acting.";
 async function runQueryHistory(args) {
   const tier = args.tier ?? "haiku";
@@ -70724,7 +71315,7 @@ async function runQueryHistory(args) {
       entry.scope_globs = d.scope_globs;
     return entry;
   });
-  log33.info({
+  log36.info({
     repo: args.repoRoot,
     scope_preview: args.scope.slice(0, 80),
     files: walk2.files.length,
@@ -70847,8 +71438,8 @@ function resolveSupersededBy(proposed, acceptedById) {
   return acceptedById.has(proposed) ? proposed : null;
 }
 function canonicalPointerFor(repoRoot, decisionId) {
-  const path2 = join74(decisionsDir(repoRoot), `${decisionId}.md`);
-  if (!existsSync69(path2))
+  const path2 = join75(decisionsDir(repoRoot), `${decisionId}.md`);
+  if (!existsSync72(path2))
     return null;
   return `.cairn/ground/decisions/${decisionId}.md`;
 }
@@ -70891,14 +71482,14 @@ var queryHistoryTool = {
 
 // ../cairn-core/dist/mcp/tools/record-decision.js
 var import_yaml37 = __toESM(require_dist(), 1);
-import { mkdirSync as mkdirSync33, writeFileSync as writeFileSync32 } from "node:fs";
-import { join as join75 } from "node:path";
+import { mkdirSync as mkdirSync35, writeFileSync as writeFileSync34 } from "node:fs";
+import { join as join76 } from "node:path";
 async function handler13(ctx, input) {
   const block = requireBootstrap(ctx.repoRoot);
   if (block !== null)
     return block;
   const dir = decisionsDir(ctx.repoRoot);
-  const inboxDir = join75(dir, "_inbox");
+  const inboxDir = join76(dir, "_inbox");
   if (input.assertions !== void 0) {
     for (const a of input.assertions) {
       const result = DecisionAssertion.safeParse(a);
@@ -70933,7 +71524,7 @@ async function handler13(ctx, input) {
     }
     const target = input.target ?? "inbox";
     const outDir = target === "accepted" ? dir : inboxDir;
-    mkdirSync33(outDir, { recursive: true });
+    mkdirSync35(outDir, { recursive: true });
     const frontmatter = {
       id,
       title: input.title,
@@ -70955,12 +71546,12 @@ async function handler13(ctx, input) {
 ${input.summary}
 `;
     const filename = target === "accepted" ? `${id}.md` : `${id}.draft.md`;
-    const path2 = join75(outDir, filename);
+    const path2 = join76(outDir, filename);
     const content = `---
 ${(0, import_yaml37.stringify)(frontmatter)}---
 
 ${body}`;
-    writeFileSync32(path2, content, "utf8");
+    writeFileSync34(path2, content, "utf8");
     const relPath = target === "accepted" ? `.cairn/ground/decisions/${filename}` : `.cairn/ground/decisions/_inbox/${filename}`;
     try {
       writeInvalidationEvent(ctx.repoRoot, {
@@ -70985,9 +71576,9 @@ var recordDecisionTool = {
 };
 
 // ../cairn-core/dist/mcp/tools/resolve-attention.js
-import { appendFileSync as appendFileSync5, existsSync as existsSync70, mkdirSync as mkdirSync34, readFileSync as readFileSync63, renameSync as renameSync7, rmSync as rmSync9, statSync as statSync23, writeFileSync as writeFileSync33 } from "node:fs";
-import { dirname as dirname28, join as join76 } from "node:path";
-var log34 = logger("mcp.resolve-attention");
+import { appendFileSync as appendFileSync5, existsSync as existsSync73, mkdirSync as mkdirSync36, readFileSync as readFileSync66, renameSync as renameSync7, rmSync as rmSync9, statSync as statSync24, writeFileSync as writeFileSync35 } from "node:fs";
+import { dirname as dirname30, join as join77 } from "node:path";
+var log37 = logger("mcp.resolve-attention");
 async function handler14(ctx, input) {
   const block = requireBootstrap(ctx.repoRoot);
   if (block !== null)
@@ -71052,12 +71643,12 @@ async function resolveDecisionDraft(ctx, input) {
     return Promise.resolve(mcpError("VALIDATION_FAILED", `decision_draft item_id must match DEC-<hash7>, got ${input.item_id}`));
   }
   const decDir = decisionsDir(ctx.repoRoot);
-  const inboxPath = join76(decDir, "_inbox", `${input.item_id}.draft.md`);
-  const rejectedPath = join76(decDir, "_inbox", `${input.item_id}.rejected.md`);
-  const acceptedPath = join76(decDir, `${input.item_id}.md`);
+  const inboxPath = join77(decDir, "_inbox", `${input.item_id}.draft.md`);
+  const rejectedPath = join77(decDir, "_inbox", `${input.item_id}.rejected.md`);
+  const acceptedPath = join77(decDir, `${input.item_id}.md`);
   let autoRestoredFrom = null;
-  if (!existsSync70(inboxPath)) {
-    if (existsSync70(rejectedPath) || existsSync70(acceptedPath)) {
+  if (!existsSync73(inboxPath)) {
+    if (existsSync73(rejectedPath) || existsSync73(acceptedPath)) {
       const restored = await restoreDec({
         repoRoot: ctx.repoRoot,
         decId: input.item_id
@@ -71071,7 +71662,7 @@ async function resolveDecisionDraft(ctx, input) {
     }
   }
   if (input.choice === "c") {
-    const body = readFileSync63(inboxPath, "utf8");
+    const body = readFileSync66(inboxPath, "utf8");
     const editBase = {
       ok: true,
       resolved_kind: "decision_edit_pending",
@@ -71083,12 +71674,12 @@ async function resolveDecisionDraft(ctx, input) {
   }
   return withWriteLock(ctx.repoRoot, () => {
     if (input.choice === "a") {
-      const acceptedPath2 = join76(decDir, `${input.item_id}.md`);
-      mkdirSync34(dirname28(acceptedPath2), { recursive: true });
-      const draft = readFileSync63(inboxPath, "utf8");
+      const acceptedPath2 = join77(decDir, `${input.item_id}.md`);
+      mkdirSync36(dirname30(acceptedPath2), { recursive: true });
+      const draft = readFileSync66(inboxPath, "utf8");
       const draftMeta = parseDraftMeta(draft);
       const promoted = promoteDraftStatus(draft);
-      writeFileSync33(acceptedPath2, promoted, "utf8");
+      writeFileSync35(acceptedPath2, promoted, "utf8");
       try {
         rmSync9(inboxPath, { force: true });
       } catch {
@@ -71100,7 +71691,7 @@ async function resolveDecisionDraft(ctx, input) {
       try {
         writeDecisionsLedger({ repoRoot: ctx.repoRoot });
       } catch (err) {
-        log34.warn({ err: err instanceof Error ? err.message : String(err) }, "decisions ledger rebuild failed");
+        log37.warn({ err: err instanceof Error ? err.message : String(err) }, "decisions ledger rebuild failed");
       }
       let stripOutcome = null;
       if (draftMeta?.captureSource === "init-source-comments" && draftMeta.blockId !== null) {
@@ -71151,16 +71742,16 @@ function resolveBaselineFinding(ctx, input) {
     });
   }
   return withWriteLock(ctx.repoRoot, () => {
-    const suppressionsPath = join76(ctx.repoRoot, ".cairn", "baseline", "suppressions.yaml");
-    mkdirSync34(dirname28(suppressionsPath), { recursive: true });
-    let needsHeader = !existsSync70(suppressionsPath);
+    const suppressionsPath = join77(ctx.repoRoot, ".cairn", "baseline", "suppressions.yaml");
+    mkdirSync36(dirname30(suppressionsPath), { recursive: true });
+    let needsHeader = !existsSync73(suppressionsPath);
     if (!needsHeader) {
       try {
-        const sz = statSync23(suppressionsPath).size;
+        const sz = statSync24(suppressionsPath).size;
         if (sz === 0)
           needsHeader = true;
         else {
-          const head = readFileSync63(suppressionsPath, "utf8");
+          const head = readFileSync66(suppressionsPath, "utf8");
           if (!/^suppressions\s*:/m.test(head))
             needsHeader = true;
         }
@@ -71210,8 +71801,8 @@ var resolveAttentionTool = {
 };
 
 // ../cairn-core/dist/mcp/tools/search.js
-import { existsSync as existsSync71, readdirSync as readdirSync33, readFileSync as readFileSync64 } from "node:fs";
-import { join as join77, relative as relative13 } from "node:path";
+import { existsSync as existsSync74, readdirSync as readdirSync34, readFileSync as readFileSync67 } from "node:fs";
+import { join as join78, relative as relative14 } from "node:path";
 async function handler15(ctx, input) {
   const limit = Math.min(input.limit ?? 20, 50);
   const wantKinds = new Set(input.kinds ?? ["decision", "invariant", "task", "doc"]);
@@ -71219,12 +71810,12 @@ async function handler15(ctx, input) {
   const out = [];
   if (wantKinds.has("decision")) {
     const dir = decisionsDir(ctx.repoRoot);
-    if (existsSync71(dir)) {
-      for (const e of readdirSync33(dir, { withFileTypes: true, encoding: "utf8" })) {
+    if (existsSync74(dir)) {
+      for (const e of readdirSync34(dir, { withFileTypes: true, encoding: "utf8" })) {
         if (!e.isFile() || !e.name.endsWith(".md"))
           continue;
-        const path2 = join77(dir, e.name);
-        const raw = readFileSync64(path2, "utf8");
+        const path2 = join78(dir, e.name);
+        const raw = readFileSync67(path2, "utf8");
         const parsed = parseFrontmatter(raw);
         const fm = parsed.frontmatter;
         if (!fm?.id || !fm.title)
@@ -71237,7 +71828,7 @@ async function handler15(ctx, input) {
           id: fm.id,
           kind: "decision",
           title: fm.title,
-          path: relative13(ctx.repoRoot, path2).replace(/\\/g, "/"),
+          path: relative14(ctx.repoRoot, path2).replace(/\\/g, "/"),
           score: Math.min(1, 0.5 + (titleHit ? 0.25 : 0) + (bodyHit ? 0.25 : 0))
         });
       }
@@ -71245,12 +71836,12 @@ async function handler15(ctx, input) {
   }
   if (wantKinds.has("invariant")) {
     const dir = invariantsDir(ctx.repoRoot);
-    if (existsSync71(dir)) {
-      for (const e of readdirSync33(dir, { withFileTypes: true, encoding: "utf8" })) {
+    if (existsSync74(dir)) {
+      for (const e of readdirSync34(dir, { withFileTypes: true, encoding: "utf8" })) {
         if (!e.isFile() || !e.name.endsWith(".md"))
           continue;
-        const path2 = join77(dir, e.name);
-        const raw = readFileSync64(path2, "utf8");
+        const path2 = join78(dir, e.name);
+        const raw = readFileSync67(path2, "utf8");
         const parsed = parseFrontmatter(raw);
         const fm = parsed.frontmatter;
         if (!fm?.id || !fm.title)
@@ -71263,24 +71854,24 @@ async function handler15(ctx, input) {
           id: fm.id,
           kind: "invariant",
           title: fm.title,
-          path: relative13(ctx.repoRoot, path2).replace(/\\/g, "/"),
+          path: relative14(ctx.repoRoot, path2).replace(/\\/g, "/"),
           score: Math.min(1, 0.5 + (titleHit ? 0.25 : 0) + (bodyHit ? 0.25 : 0))
         });
       }
     }
   }
   if (wantKinds.has("task")) {
-    const tasksDir = join77(ctx.repoRoot, ".cairn", "tasks", "active");
-    if (existsSync71(tasksDir)) {
-      for (const e of readdirSync33(tasksDir, { withFileTypes: true, encoding: "utf8" })) {
+    const tasksDir = join78(ctx.repoRoot, ".cairn", "tasks", "active");
+    if (existsSync74(tasksDir)) {
+      for (const e of readdirSync34(tasksDir, { withFileTypes: true, encoding: "utf8" })) {
         if (!e.isDirectory())
           continue;
-        const spec = join77(tasksDir, e.name, "spec.tightened.md");
-        const fallback = join77(tasksDir, e.name, "spec.md");
-        const target = existsSync71(spec) ? spec : existsSync71(fallback) ? fallback : null;
+        const spec = join78(tasksDir, e.name, "spec.tightened.md");
+        const fallback = join78(tasksDir, e.name, "spec.md");
+        const target = existsSync74(spec) ? spec : existsSync74(fallback) ? fallback : null;
         if (!target)
           continue;
-        const raw = readFileSync64(target, "utf8");
+        const raw = readFileSync67(target, "utf8");
         const parsed = parseFrontmatter(raw);
         const fm = parsed.frontmatter;
         if (!fm?.id)
@@ -71294,27 +71885,27 @@ async function handler15(ctx, input) {
           id: fm.id,
           kind: "task",
           title: titleLine,
-          path: relative13(ctx.repoRoot, target).replace(/\\/g, "/"),
+          path: relative14(ctx.repoRoot, target).replace(/\\/g, "/"),
           score: Math.min(1, 0.5 + (titleHit ? 0.25 : 0) + (bodyHit ? 0.25 : 0))
         });
       }
     }
   }
   if (wantKinds.has("doc")) {
-    const docsRoot = join77(ctx.repoRoot, "docs");
-    if (existsSync71(docsRoot))
-      walkDocs(docsRoot, ctx.repoRoot, q2, out);
+    const docsRoot = join78(ctx.repoRoot, "docs");
+    if (existsSync74(docsRoot))
+      walkDocs2(docsRoot, ctx.repoRoot, q2, out);
   }
   if (wantKinds.has("manifest")) {
     const path2 = manifestPath(ctx.repoRoot);
-    if (existsSync71(path2)) {
-      const text = readFileSync64(path2, "utf8");
+    if (existsSync74(path2)) {
+      const text = readFileSync67(path2, "utf8");
       if (text.toLowerCase().includes(q2)) {
         out.push({
           id: "manifest",
           kind: "manifest",
           title: "ground/manifest.yaml",
-          path: relative13(ctx.repoRoot, path2).replace(/\\/g, "/"),
+          path: relative14(ctx.repoRoot, path2).replace(/\\/g, "/"),
           score: 0.5
         });
       }
@@ -71327,16 +71918,16 @@ async function handler15(ctx, input) {
   filtered.sort((a, b2) => b2.score - a.score);
   return filtered.slice(0, limit);
 }
-function walkDocs(dir, repoRoot, q2, out) {
-  for (const e of readdirSync33(dir, { withFileTypes: true, encoding: "utf8" })) {
-    const abs = join77(dir, e.name);
+function walkDocs2(dir, repoRoot, q2, out) {
+  for (const e of readdirSync34(dir, { withFileTypes: true, encoding: "utf8" })) {
+    const abs = join78(dir, e.name);
     if (e.isDirectory()) {
       if (e.name === "_research")
         continue;
-      walkDocs(abs, repoRoot, q2, out);
+      walkDocs2(abs, repoRoot, q2, out);
     } else if (e.isFile() && e.name.endsWith(".md")) {
       try {
-        const raw = readFileSync64(abs, "utf8");
+        const raw = readFileSync67(abs, "utf8");
         const parsed = parseFrontmatter(raw);
         const titleLine = parsed.body.match(/^#\s+(.+)$/m)?.[1] ?? e.name;
         const titleHit = titleLine.toLowerCase().includes(q2);
@@ -71344,10 +71935,10 @@ function walkDocs(dir, repoRoot, q2, out) {
         if (!titleHit && !bodyHit)
           continue;
         out.push({
-          id: relative13(repoRoot, abs).replace(/\\/g, "/"),
+          id: relative14(repoRoot, abs).replace(/\\/g, "/"),
           kind: "doc",
           title: titleLine,
-          path: relative13(repoRoot, abs).replace(/\\/g, "/"),
+          path: relative14(repoRoot, abs).replace(/\\/g, "/"),
           score: Math.min(1, 0.5 + (titleHit ? 0.25 : 0) + (bodyHit ? 0.25 : 0))
         });
       } catch {
@@ -71363,17 +71954,17 @@ var searchTool = {
 };
 
 // ../cairn-core/dist/mcp/tools/supersedes-chain.js
-import { existsSync as existsSync72, readdirSync as readdirSync34, readFileSync as readFileSync65 } from "node:fs";
-import { join as join78 } from "node:path";
+import { existsSync as existsSync75, readdirSync as readdirSync35, readFileSync as readFileSync68 } from "node:fs";
+import { join as join79 } from "node:path";
 async function handler16(ctx, input) {
   const dir = decisionsDir(ctx.repoRoot);
-  if (!existsSync72(dir))
+  if (!existsSync75(dir))
     return mcpError("DECISION_NOT_FOUND", `No decisions directory`);
   const all = /* @__PURE__ */ new Map();
-  for (const entry of readdirSync34(dir, { withFileTypes: true, encoding: "utf8" })) {
+  for (const entry of readdirSync35(dir, { withFileTypes: true, encoding: "utf8" })) {
     if (!entry.isFile() || !entry.name.endsWith(".md"))
       continue;
-    const parsed = parseFrontmatter(readFileSync65(join78(dir, entry.name), "utf8"));
+    const parsed = parseFrontmatter(readFileSync68(join79(dir, entry.name), "utf8"));
     const fm = DecisionFrontmatter.safeParse(parsed.frontmatter);
     if (!fm.success)
       continue;
@@ -71424,8 +72015,8 @@ var supersedesChainTool = {
 
 // ../cairn-core/dist/mcp/tools/task-create.js
 var import_yaml38 = __toESM(require_dist(), 1);
-import { existsSync as existsSync73, mkdirSync as mkdirSync35, writeFileSync as writeFileSync34 } from "node:fs";
-import { join as join79 } from "node:path";
+import { existsSync as existsSync76, mkdirSync as mkdirSync37, writeFileSync as writeFileSync36 } from "node:fs";
+import { join as join80 } from "node:path";
 function generateTaskId(slug) {
   const now = /* @__PURE__ */ new Date();
   const yyyy = String(now.getUTCFullYear());
@@ -71448,11 +72039,11 @@ async function handler17(ctx, input) {
   if (block !== null)
     return block;
   const taskId = generateTaskId(input.slug);
-  const taskDir = join79(ctx.repoRoot, ".cairn", "tasks", "active", taskId);
-  if (existsSync73(taskDir)) {
+  const taskDir = join80(ctx.repoRoot, ".cairn", "tasks", "active", taskId);
+  if (existsSync76(taskDir)) {
     return mcpError("TASK_DIR_EXISTS", `${taskDir} already exists \u2014 collision on millisecond suffix; retry`);
   }
-  mkdirSync35(taskDir, { recursive: true });
+  mkdirSync37(taskDir, { recursive: true });
   const generatedAt = (/* @__PURE__ */ new Date()).toISOString();
   const specFrontmatter = {
     id: taskId,
@@ -71486,8 +72077,8 @@ async function handler17(ctx, input) {
 ${(0, import_yaml38.stringify)(specFrontmatter)}---
 
 ${specBody}`;
-  const specPath = join79(taskDir, "spec.tightened.md");
-  writeFileSync34(specPath, specContent, "utf8");
+  const specPath = join80(taskDir, "spec.tightened.md");
+  writeFileSync36(specPath, specContent, "utf8");
   const statusContent = (0, import_yaml38.stringify)({
     id: taskId,
     phase: "running",
@@ -71495,8 +72086,8 @@ ${specBody}`;
     title: input.title,
     started_at: generatedAt
   });
-  const statusPath = join79(taskDir, "status.yaml");
-  writeFileSync34(statusPath, statusContent, "utf8");
+  const statusPath = join80(taskDir, "status.yaml");
+  writeFileSync36(statusPath, statusContent, "utf8");
   return {
     ok: true,
     task_id: taskId,
@@ -71514,19 +72105,19 @@ var taskCreateTool = {
 };
 
 // ../cairn-core/dist/mcp/tools/timeline.js
-import { existsSync as existsSync74, readdirSync as readdirSync35, readFileSync as readFileSync66 } from "node:fs";
-import { join as join80 } from "node:path";
+import { existsSync as existsSync77, readdirSync as readdirSync36, readFileSync as readFileSync69 } from "node:fs";
+import { join as join81 } from "node:path";
 async function handler18(ctx, input) {
   const out = [];
   const since = input.since ? Date.parse(input.since) : 0;
   const until = input.until ? Date.parse(input.until) : Number.POSITIVE_INFINITY;
   const wantKinds = input.kinds ? new Set(input.kinds) : null;
   const dir = runsTerminalDir(ctx.repoRoot);
-  if (existsSync74(dir)) {
-    for (const e of readdirSync35(dir, { withFileTypes: true, encoding: "utf8" })) {
+  if (existsSync77(dir)) {
+    for (const e of readdirSync36(dir, { withFileTypes: true, encoding: "utf8" })) {
       if (!e.isDirectory())
         continue;
-      const meta3 = readJson(join80(dir, e.name, "meta.json"));
+      const meta3 = readJson(join81(dir, e.name, "meta.json"));
       if (!meta3)
         continue;
       const ts = meta3.finished_at ?? meta3.started_at;
@@ -71555,10 +72146,10 @@ async function handler18(ctx, input) {
   return out;
 }
 function readJson(path2) {
-  if (!existsSync74(path2))
+  if (!existsSync77(path2))
     return null;
   try {
-    return JSON.parse(readFileSync66(path2, "utf8"));
+    return JSON.parse(readFileSync69(path2, "utf8"));
   } catch {
     return null;
   }
@@ -71605,7 +72196,7 @@ var allTools = [
 ];
 
 // ../cairn-core/dist/mcp/server.js
-var log35 = logger("mcp.server");
+var log38 = logger("mcp.server");
 async function startMcpServer(opts) {
   const { ctx } = opts;
   const server = new McpServer({ name: "cairn-mcp", version: VERSION });
@@ -71620,7 +72211,7 @@ async function startMcpServer(opts) {
         payload = await tool.handler(ctx, rawInput);
       } catch (err) {
         payload = mcpError("INTERNAL_ERROR", err instanceof Error ? err.message : "tool handler threw");
-        log35.error({ tool: tool.name, err: String(err) }, "tool handler threw");
+        log38.error({ tool: tool.name, err: String(err) }, "tool handler threw");
       }
       const durationMs = Number(process.hrtime.bigint() - start) / 1e6;
       const result = asMcpResult(payload);
@@ -71646,7 +72237,7 @@ async function startMcpServer(opts) {
   if (opts.noConnect !== true) {
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    log35.info({ tools: allTools.length, repoRoot: ctx.repoRoot }, "MCP server listening on stdio");
+    log38.info({ tools: allTools.length, repoRoot: ctx.repoRoot }, "MCP server listening on stdio");
   }
   return {
     server,
@@ -71667,18 +72258,18 @@ function createContext(opts) {
 }
 
 // ../cairn-core/dist/hooks/runners/session-start.js
-import { existsSync as existsSync80, mkdirSync as mkdirSync39, readdirSync as readdirSync38, writeFileSync as writeFileSync38 } from "node:fs";
+import { existsSync as existsSync83, mkdirSync as mkdirSync41, readdirSync as readdirSync39, writeFileSync as writeFileSync40 } from "node:fs";
 import { homedir as homedir4 } from "node:os";
-import { join as join86 } from "node:path";
+import { join as join87 } from "node:path";
 
 // ../cairn-core/dist/hooks/bypass-detection.js
 import { execFileSync as execFileSync8 } from "node:child_process";
-import { existsSync as existsSync75, readFileSync as readFileSync67 } from "node:fs";
-import { join as join81 } from "node:path";
+import { existsSync as existsSync78, readFileSync as readFileSync70 } from "node:fs";
+import { join as join82 } from "node:path";
 var HEAD_LOOKBACK = 5;
 var NUL = "\0";
 function scanBypassedCommits(repoRoot) {
-  if (!existsSync75(join81(repoRoot, ".git"))) {
+  if (!existsSync78(join82(repoRoot, ".git"))) {
     return { bypassed: [], inspected: 0, attestedFileExists: false };
   }
   const recent = readRecentHead(repoRoot);
@@ -71695,7 +72286,7 @@ function scanBypassedCommits(repoRoot) {
   return {
     bypassed,
     inspected: recent.length,
-    attestedFileExists: existsSync75(join81(repoRoot, ".cairn", ".attested-commits"))
+    attestedFileExists: existsSync78(join82(repoRoot, ".cairn", ".attested-commits"))
   };
 }
 function renderBypassHint(bypassed) {
@@ -71734,11 +72325,11 @@ function readRecentHead(repoRoot) {
   }
 }
 function readAttestedCommits(repoRoot) {
-  const path2 = join81(repoRoot, ".cairn", ".attested-commits");
-  if (!existsSync75(path2))
+  const path2 = join82(repoRoot, ".cairn", ".attested-commits");
+  if (!existsSync78(path2))
     return /* @__PURE__ */ new Set();
   try {
-    const body = readFileSync67(path2, "utf8");
+    const body = readFileSync70(path2, "utf8");
     const set2 = /* @__PURE__ */ new Set();
     for (const raw of body.split("\n")) {
       const line = raw.trim();
@@ -71753,9 +72344,9 @@ function readAttestedCommits(repoRoot) {
 }
 
 // ../cairn-core/dist/session/id.js
-import { existsSync as existsSync76, mkdirSync as mkdirSync36, readdirSync as readdirSync36, readFileSync as readFileSync68, rmSync as rmSync10, statSync as statSync24, writeFileSync as writeFileSync35 } from "node:fs";
+import { existsSync as existsSync79, mkdirSync as mkdirSync38, readdirSync as readdirSync37, readFileSync as readFileSync71, rmSync as rmSync10, statSync as statSync25, writeFileSync as writeFileSync37 } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { join as join82 } from "node:path";
+import { join as join83 } from "node:path";
 var MAX_STALE_AGE_MS = 24 * 60 * 60 * 1e3;
 function resolveSessionId(payload) {
   const candidate = payload?.session_id;
@@ -71765,12 +72356,12 @@ function resolveSessionId(payload) {
 }
 function ensureSessionDir2(args) {
   const dir = sessionStateDir(args.repoRoot, args.sessionId);
-  const metaPath = join82(dir, "meta.json");
-  const existed = existsSync76(dir);
+  const metaPath = join83(dir, "meta.json");
+  const existed = existsSync79(dir);
   let meta3;
-  if (existed && existsSync76(metaPath)) {
+  if (existed && existsSync79(metaPath)) {
     try {
-      const parsed = JSON.parse(readFileSync68(metaPath, "utf8"));
+      const parsed = JSON.parse(readFileSync71(metaPath, "utf8"));
       const startedAt = typeof parsed.started_at === "string" ? parsed.started_at : (/* @__PURE__ */ new Date()).toISOString();
       const pidVal = typeof parsed.pid === "number" ? parsed.pid : args.pid ?? process.pid;
       meta3 = {
@@ -71784,8 +72375,8 @@ function ensureSessionDir2(args) {
   } else {
     meta3 = freshMeta(args);
   }
-  mkdirSync36(dir, { recursive: true });
-  writeFileSync35(metaPath, `${JSON.stringify(meta3, null, 2)}
+  mkdirSync38(dir, { recursive: true });
+  writeFileSync37(metaPath, `${JSON.stringify(meta3, null, 2)}
 `, "utf8");
   return { dir, created: !existed, meta: meta3 };
 }
@@ -71798,7 +72389,7 @@ function freshMeta(args) {
 }
 function cleanupSession(repoRoot, sessionId) {
   const dir = sessionStateDir(repoRoot, sessionId);
-  if (!existsSync76(dir))
+  if (!existsSync79(dir))
     return false;
   rmSync10(dir, { recursive: true, force: true });
   return true;
@@ -71807,27 +72398,27 @@ function gcStaleSessions(args) {
   const root2 = sessionsDir(args.repoRoot);
   const removed = [];
   const kept = [];
-  if (!existsSync76(root2))
+  if (!existsSync79(root2))
     return { removed, kept };
   const maxAge = args.maxAgeMs ?? MAX_STALE_AGE_MS;
   const now = Date.now();
-  const entries2 = readdirSync36(root2, { withFileTypes: true, encoding: "utf8" });
+  const entries2 = readdirSync37(root2, { withFileTypes: true, encoding: "utf8" });
   for (const entry of entries2) {
     if (!entry.isDirectory())
       continue;
     const sessionId = entry.name;
-    const dir = join82(root2, sessionId);
-    const metaPath = join82(dir, "meta.json");
+    const dir = join83(root2, sessionId);
+    const metaPath = join83(dir, "meta.json");
     let meta3 = null;
     let mtime;
     try {
-      mtime = statSync24(dir).mtimeMs;
+      mtime = statSync25(dir).mtimeMs;
     } catch {
       mtime = 0;
     }
-    if (existsSync76(metaPath)) {
+    if (existsSync79(metaPath)) {
       try {
-        meta3 = JSON.parse(readFileSync68(metaPath, "utf8"));
+        meta3 = JSON.parse(readFileSync71(metaPath, "utf8"));
       } catch {
         meta3 = null;
       }
@@ -71868,18 +72459,18 @@ function isPidAlive(pid) {
 }
 
 // ../cairn-core/dist/session/events-marker.js
-import { existsSync as existsSync77, mkdirSync as mkdirSync37, readFileSync as readFileSync69, writeFileSync as writeFileSync36 } from "node:fs";
-import { join as join83 } from "node:path";
+import { existsSync as existsSync80, mkdirSync as mkdirSync39, readFileSync as readFileSync72, writeFileSync as writeFileSync38 } from "node:fs";
+import { join as join84 } from "node:path";
 var MARKER_FILE = "events-marker.json";
 function eventsMarkerPath(repoRoot, sessionId) {
-  return join83(sessionStateDir(repoRoot, sessionId), MARKER_FILE);
+  return join84(sessionStateDir(repoRoot, sessionId), MARKER_FILE);
 }
 function seedEventsMarker(args) {
   const dir = sessionStateDir(args.repoRoot, args.sessionId);
-  const path2 = join83(dir, MARKER_FILE);
-  if (existsSync77(path2)) {
+  const path2 = join84(dir, MARKER_FILE);
+  if (existsSync80(path2)) {
     try {
-      const parsed = JSON.parse(readFileSync69(path2, "utf8"));
+      const parsed = JSON.parse(readFileSync72(path2, "utf8"));
       if (typeof parsed?.ts === "number") {
         const last2 = typeof parsed.last_polled_ts === "number" ? parsed.last_polled_ts : parsed.ts;
         return { ts: parsed.ts, last_polled_ts: last2 };
@@ -71889,17 +72480,17 @@ function seedEventsMarker(args) {
   }
   const ts = args.ts ?? Date.now();
   const marker = { ts, last_polled_ts: ts };
-  mkdirSync37(dir, { recursive: true });
-  writeFileSync36(path2, `${JSON.stringify(marker, null, 2)}
+  mkdirSync39(dir, { recursive: true });
+  writeFileSync38(path2, `${JSON.stringify(marker, null, 2)}
 `, "utf8");
   return marker;
 }
 function readEventsMarker(repoRoot, sessionId) {
   const path2 = eventsMarkerPath(repoRoot, sessionId);
-  if (!existsSync77(path2))
+  if (!existsSync80(path2))
     return null;
   try {
-    const parsed = JSON.parse(readFileSync69(path2, "utf8"));
+    const parsed = JSON.parse(readFileSync72(path2, "utf8"));
     if (typeof parsed?.ts !== "number")
       return null;
     const last2 = typeof parsed.last_polled_ts === "number" ? parsed.last_polled_ts : parsed.ts;
@@ -71913,27 +72504,27 @@ function stampEventsPoll(args) {
   const baseTs = existing?.ts ?? args.ts;
   const marker = { ts: baseTs, last_polled_ts: args.ts };
   const dir = sessionStateDir(args.repoRoot, args.sessionId);
-  mkdirSync37(dir, { recursive: true });
-  writeFileSync36(eventsMarkerPath(args.repoRoot, args.sessionId), `${JSON.stringify(marker, null, 2)}
+  mkdirSync39(dir, { recursive: true });
+  writeFileSync38(eventsMarkerPath(args.repoRoot, args.sessionId), `${JSON.stringify(marker, null, 2)}
 `, "utf8");
   return marker;
 }
 
 // ../cairn-core/dist/status-line/writer.js
-import { existsSync as existsSync78, mkdirSync as mkdirSync38, readFileSync as readFileSync70, writeFileSync as writeFileSync37 } from "node:fs";
-import { join as join84 } from "node:path";
+import { existsSync as existsSync81, mkdirSync as mkdirSync40, readFileSync as readFileSync73, writeFileSync as writeFileSync39 } from "node:fs";
+import { join as join85 } from "node:path";
 function statusJsonPath(repoRoot, sessionId) {
-  return join84(sessionStateDir(repoRoot, sessionId), "status.json");
+  return join85(sessionStateDir(repoRoot, sessionId), "status.json");
 }
 function writeStatusJson(repoRoot, sessionId, patch) {
-  if (!existsSync78(join84(repoRoot, ".cairn")))
+  if (!existsSync81(join85(repoRoot, ".cairn")))
     return;
   const stateDir = sessionStateDir(repoRoot, sessionId);
-  const filePath = join84(stateDir, "status.json");
+  const filePath = join85(stateDir, "status.json");
   let existing = {};
-  if (existsSync78(filePath)) {
+  if (existsSync81(filePath)) {
     try {
-      const raw = readFileSync70(filePath, "utf8");
+      const raw = readFileSync73(filePath, "utf8");
       const parsed = JSON.parse(raw);
       if (parsed !== null && typeof parsed === "object") {
         existing = parsed;
@@ -71943,8 +72534,8 @@ function writeStatusJson(repoRoot, sessionId, patch) {
     }
   }
   const merged = { ...existing, ...patch };
-  mkdirSync38(stateDir, { recursive: true });
-  writeFileSync37(filePath, `${JSON.stringify(merged, null, 2)}
+  mkdirSync40(stateDir, { recursive: true });
+  writeFileSync39(filePath, `${JSON.stringify(merged, null, 2)}
 `, "utf8");
 }
 function defaultStatusJson() {
@@ -71968,8 +72559,8 @@ function defaultStatusJson() {
 }
 
 // ../cairn-core/dist/status-line/reader.js
-import { existsSync as existsSync79, readdirSync as readdirSync37, readFileSync as readFileSync71 } from "node:fs";
-import { join as join85 } from "node:path";
+import { existsSync as existsSync82, readdirSync as readdirSync38, readFileSync as readFileSync74 } from "node:fs";
+import { join as join86 } from "node:path";
 
 // ../cairn-core/dist/status-line/event-queue.js
 function activeEvent(status, nowMs = Date.now()) {
@@ -72138,18 +72729,18 @@ function normalizeStatusJson(partial2) {
   };
 }
 function groundStateFallback(repoRoot, ctx) {
-  const cairnDir = join85(repoRoot, ".cairn");
-  if (!existsSync79(cairnDir))
+  const cairnDir = join86(repoRoot, ".cairn");
+  if (!existsSync82(cairnDir))
     return "";
   const progress = readProgress(repoRoot);
   if (progress !== null) {
     return formatStatus(defaultStatusJson(), ctx, progress);
   }
   let drafts = 0;
-  const inboxDir = join85(cairnDir, "ground", "decisions", "_inbox");
-  if (existsSync79(inboxDir)) {
+  const inboxDir = join86(cairnDir, "ground", "decisions", "_inbox");
+  if (existsSync82(inboxDir)) {
     try {
-      drafts = readdirSync37(inboxDir, { encoding: "utf8" }).filter((f) => f.endsWith(".draft.md")).length;
+      drafts = readdirSync38(inboxDir, { encoding: "utf8" }).filter((f) => f.endsWith(".draft.md")).length;
     } catch {
       drafts = 0;
     }
@@ -72167,11 +72758,11 @@ function readStatusForCLI(repoRoot, sessionId, ctx) {
   if (sessionId === null || sessionId.length === 0)
     return groundStateFallback(repoRoot, ctx);
   const filePath = statusJsonPath(repoRoot, sessionId);
-  if (!existsSync79(filePath))
+  if (!existsSync82(filePath))
     return groundStateFallback(repoRoot, ctx);
   let raw;
   try {
-    raw = readFileSync71(filePath, "utf8");
+    raw = readFileSync74(filePath, "utf8");
   } catch {
     return groundStateFallback(repoRoot, ctx);
   }
@@ -72205,16 +72796,16 @@ function syncActiveVersionShim(warnings) {
   const pluginRoot = process.env["CLAUDE_PLUGIN_ROOT"];
   if (typeof pluginRoot !== "string" || pluginRoot.length === 0)
     return;
-  const bundlePath = join86(pluginRoot, "dist", "cli.mjs");
-  if (!existsSync80(bundlePath)) {
+  const bundlePath = join87(pluginRoot, "dist", "cli.mjs");
+  if (!existsSync83(bundlePath)) {
     warnings.push(`statusline_shim_skipped: bundle missing at ${bundlePath}`);
     return;
   }
-  const shimDir = join86(homedir4(), ".claude", "plugins", "cache", "isaacriehm-cairn");
-  const shimPath = join86(shimDir, ".active-version-path");
+  const shimDir = join87(homedir4(), ".claude", "plugins", "cache", "isaacriehm-cairn");
+  const shimPath = join87(shimDir, ".active-version-path");
   try {
-    mkdirSync39(shimDir, { recursive: true });
-    writeFileSync38(shimPath, `${bundlePath}
+    mkdirSync41(shimDir, { recursive: true });
+    writeFileSync40(shimPath, `${bundlePath}
 `, "utf8");
   } catch (err) {
     warnings.push(`statusline_shim_failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -72365,9 +72956,9 @@ ${result.additionalContext}`;
   });
 }
 function renderBootstrapBanner(repoRoot) {
-  if (!existsSync80(join86(repoRoot, ".git")))
+  if (!existsSync83(join87(repoRoot, ".git")))
     return null;
-  if (!existsSync80(join86(repoRoot, ".cairn", "config.yaml")))
+  if (!existsSync83(join87(repoRoot, ".cairn", "config.yaml")))
     return null;
   const state = inspectJoinState({ repoRoot });
   if (state.hooksPathSet)
@@ -72415,7 +73006,7 @@ var PROJECT_MARKERS = [
 ];
 function looksLikeProjectRoot(cwd) {
   for (const marker of PROJECT_MARKERS) {
-    if (existsSync80(join86(cwd, marker)))
+    if (existsSync83(join87(cwd, marker)))
       return true;
   }
   return false;
@@ -72423,7 +73014,7 @@ function looksLikeProjectRoot(cwd) {
 function findAdoptableChildren(cwd, max = 8) {
   let entries2;
   try {
-    entries2 = readdirSync38(cwd, { withFileTypes: true });
+    entries2 = readdirSync39(cwd, { withFileTypes: true });
   } catch {
     return [];
   }
@@ -72433,12 +73024,12 @@ function findAdoptableChildren(cwd, max = 8) {
       continue;
     if (entry.name.startsWith("."))
       continue;
-    const childPath = join86(cwd, String(entry.name));
+    const childPath = join87(cwd, String(entry.name));
     if (!looksLikeProjectRoot(childPath))
       continue;
-    if (existsSync80(join86(childPath, ".cairn")))
+    if (existsSync83(join87(childPath, ".cairn")))
       continue;
-    if (existsSync80(join86(childPath, ".cairn-skip")))
+    if (existsSync83(join87(childPath, ".cairn-skip")))
       continue;
     out.push(String(entry.name));
     if (out.length >= max)
@@ -72447,17 +73038,17 @@ function findAdoptableChildren(cwd, max = 8) {
   return out;
 }
 function renderAdoptionBanner(cwd) {
-  if (existsSync80(join86(cwd, ".cairn-skip")))
+  if (existsSync83(join87(cwd, ".cairn-skip")))
     return null;
   const cwdIsProject = looksLikeProjectRoot(cwd);
   if (cwdIsProject) {
     let dir = cwd;
     for (let i2 = 0; i2 < 40; i2++) {
-      if (existsSync80(join86(dir, ".cairn")))
+      if (existsSync83(join87(dir, ".cairn")))
         return null;
-      if (existsSync80(join86(dir, ".cairn-skip")))
+      if (existsSync83(join87(dir, ".cairn-skip")))
         return null;
-      const parent = join86(dir, "..");
+      const parent = join87(dir, "..");
       if (parent === dir)
         break;
       dir = parent;
@@ -72533,10 +73124,10 @@ async function runSessionEndHook() {
 }
 
 // ../cairn-core/dist/hooks/runners/stop.js
-import { existsSync as existsSync81, readdirSync as readdirSync39, readFileSync as readFileSync72, statSync as statSync25 } from "node:fs";
-import { join as join87 } from "node:path";
+import { existsSync as existsSync84, readdirSync as readdirSync40, readFileSync as readFileSync75, statSync as statSync26 } from "node:fs";
+import { join as join88 } from "node:path";
 function isInitInProgress(repoRoot) {
-  return existsSync81(join87(repoRoot, ".cairn", "init-state.json"));
+  return existsSync84(join88(repoRoot, ".cairn", "init-state.json"));
 }
 var MAX_REASON_CHARS = 4e3;
 function clampReason(body) {
@@ -72650,12 +73241,12 @@ ${hint}` : hint;
 }
 var REVIEW_READY_PHASES = /* @__PURE__ */ new Set(["ready_for_review", "awaiting_attestation"]);
 function readTaskPhase(taskDir) {
-  const statusPath = join87(taskDir, "status.yaml");
-  if (!existsSync81(statusPath))
+  const statusPath = join88(taskDir, "status.yaml");
+  if (!existsSync84(statusPath))
     return null;
   let raw;
   try {
-    raw = readFileSync72(statusPath, "utf8");
+    raw = readFileSync75(statusPath, "utf8");
   } catch {
     return null;
   }
@@ -72667,14 +73258,14 @@ function readTaskPhase(taskDir) {
   return null;
 }
 function scanPendingReviews(repoRoot) {
-  const activeDir = join87(repoRoot, ".cairn", "tasks", "active");
-  if (!existsSync81(activeDir))
+  const activeDir = join88(repoRoot, ".cairn", "tasks", "active");
+  if (!existsSync84(activeDir))
     return [];
   const out = [];
   const cutoffMs = Date.now() - 6 * 60 * 60 * 1e3;
   let entries2;
   try {
-    entries2 = readdirSync39(activeDir, { withFileTypes: true, encoding: "utf8" });
+    entries2 = readdirSync40(activeDir, { withFileTypes: true, encoding: "utf8" });
   } catch {
     return [];
   }
@@ -72682,19 +73273,19 @@ function scanPendingReviews(repoRoot) {
     if (!entry.isDirectory())
       continue;
     const taskId = entry.name;
-    const taskDir = join87(activeDir, taskId);
-    const tightenedSpec = join87(taskDir, "spec.tightened.md");
-    if (!existsSync81(tightenedSpec))
+    const taskDir = join88(activeDir, taskId);
+    const tightenedSpec = join88(taskDir, "spec.tightened.md");
+    if (!existsSync84(tightenedSpec))
       continue;
-    const attestation = join87(taskDir, "attestation.yaml");
-    if (existsSync81(attestation))
+    const attestation = join88(taskDir, "attestation.yaml");
+    if (existsSync84(attestation))
       continue;
     const phase = readTaskPhase(taskDir);
     if (phase !== null && !REVIEW_READY_PHASES.has(phase))
       continue;
     let mtime = 0;
     try {
-      mtime = statSync25(tightenedSpec).mtimeMs;
+      mtime = statSync26(tightenedSpec).mtimeMs;
     } catch {
       continue;
     }
@@ -72721,8 +73312,8 @@ function renderReviewerHint(pending) {
 }
 
 // ../cairn-core/dist/hooks/runners/user-prompt-submit.js
-import { existsSync as existsSync82, readFileSync as readFileSync73 } from "node:fs";
-import { isAbsolute as isAbsolute2, relative as relative14, resolve as resolve16 } from "node:path";
+import { existsSync as existsSync85, readFileSync as readFileSync76 } from "node:fs";
+import { isAbsolute as isAbsolute2, relative as relative15, resolve as resolve16 } from "node:path";
 var MAX_FILE_BYTES2 = 512e3;
 var AT_PATH_RE = /(?:^|\s)@([\w./-]+)/g;
 function parsePayload3(text) {
@@ -72756,10 +73347,10 @@ function extractAttachedPaths(prompt) {
   return out;
 }
 function safeRead(absPath) {
-  if (!existsSync82(absPath))
+  if (!existsSync85(absPath))
     return null;
   try {
-    const buf = readFileSync73(absPath, "utf8");
+    const buf = readFileSync76(absPath, "utf8");
     if (buf.length > MAX_FILE_BYTES2)
       return buf.slice(0, MAX_FILE_BYTES2);
     return buf;
@@ -72803,7 +73394,7 @@ async function runUserPromptSubmitHook() {
       if (!hit)
         continue;
       if (firstHitRel === null) {
-        const rel = relative14(repoRoot, abs);
+        const rel = relative15(repoRoot, abs);
         if (!rel.startsWith("..") && rel.length > 0) {
           firstHitRel = rel.replace(/\\/g, "/");
         }
@@ -72838,16 +73429,16 @@ async function runUserPromptSubmitHook() {
 function readVersion() {
   if (true)
     return "0.4.3";
-  const _here = dirname29(fileURLToPath4(import.meta.url));
-  const _pkg = JSON.parse(readFileSync74(join88(_here, "..", "package.json"), "utf8"));
+  const _here = dirname31(fileURLToPath4(import.meta.url));
+  const _pkg = JSON.parse(readFileSync77(join89(_here, "..", "package.json"), "utf8"));
   return _pkg.version;
 }
 var VERSION = readVersion();
 
 // ../cairn/dist/cli/attention.js
 var import_yaml39 = __toESM(require_dist(), 1);
-import { existsSync as existsSync83, readFileSync as readFileSync75, readdirSync as readdirSync40 } from "node:fs";
-import { join as join89, resolve as resolve17 } from "node:path";
+import { existsSync as existsSync86, readFileSync as readFileSync78, readdirSync as readdirSync41 } from "node:fs";
+import { join as join90, resolve as resolve17 } from "node:path";
 import { spawn as spawn5 } from "node:child_process";
 var FINDINGS_PER_SENSOR = 3;
 function parseRepoFlag(argv) {
@@ -72862,11 +73453,11 @@ function parseRepoFlag(argv) {
   return resolve17(candidate);
 }
 function ensureAdopted(repoRoot) {
-  if (!existsSync83(repoRoot)) {
+  if (!existsSync86(repoRoot)) {
     console.error(`cairn attention: repo root does not exist: ${repoRoot}`);
     process.exit(2);
   }
-  if (!existsSync83(`${repoRoot}/.cairn`)) {
+  if (!existsSync86(`${repoRoot}/.cairn`)) {
     console.error(`cairn attention: ${repoRoot} is not cairn-adopted (no .cairn/). Run \`cairn init\` first.`);
     process.exit(2);
   }
@@ -72883,12 +73474,12 @@ function readFrontmatter2(text) {
   }
 }
 function listDrafts(repoRoot) {
-  const dir = join89(repoRoot, ".cairn", "ground", "decisions", "_inbox");
-  if (!existsSync83(dir))
+  const dir = join90(repoRoot, ".cairn", "ground", "decisions", "_inbox");
+  if (!existsSync86(dir))
     return [];
   let entries2;
   try {
-    entries2 = readdirSync40(dir, { withFileTypes: true, encoding: "utf8" });
+    entries2 = readdirSync41(dir, { withFileTypes: true, encoding: "utf8" });
   } catch {
     return [];
   }
@@ -72896,10 +73487,10 @@ function listDrafts(repoRoot) {
   for (const e of entries2) {
     if (!e.isFile() || !e.name.endsWith(".draft.md"))
       continue;
-    const abs = join89(dir, e.name);
+    const abs = join90(dir, e.name);
     let text;
     try {
-      text = readFileSync75(abs, "utf8");
+      text = readFileSync78(abs, "utf8");
     } catch {
       continue;
     }
@@ -72915,12 +73506,12 @@ function listDrafts(repoRoot) {
   return out;
 }
 function readLatestBaseline(repoRoot) {
-  const dir = join89(repoRoot, ".cairn", "baseline");
-  if (!existsSync83(dir))
+  const dir = join90(repoRoot, ".cairn", "baseline");
+  if (!existsSync86(dir))
     return null;
   let entries2;
   try {
-    entries2 = readdirSync40(dir, { encoding: "utf8" });
+    entries2 = readdirSync41(dir, { encoding: "utf8" });
   } catch {
     return null;
   }
@@ -72928,10 +73519,10 @@ function readLatestBaseline(repoRoot) {
   const latest = matching.at(-1);
   if (latest === void 0)
     return null;
-  const abs = join89(dir, latest);
+  const abs = join90(dir, latest);
   let parsed;
   try {
-    parsed = (0, import_yaml39.parse)(readFileSync75(abs, "utf8"));
+    parsed = (0, import_yaml39.parse)(readFileSync78(abs, "utf8"));
   } catch {
     return null;
   }
@@ -73044,13 +73635,13 @@ function parseThresholdFlag(argv) {
   process.exit(2);
 }
 function loadProjectGlobs2(repoRoot) {
-  const configPath = join89(repoRoot, ".cairn", "config.yaml");
-  if (!existsSync83(configPath)) {
+  const configPath = join90(repoRoot, ".cairn", "config.yaml");
+  if (!existsSync86(configPath)) {
     return { globs: {} };
   }
   let parsed;
   try {
-    parsed = (0, import_yaml39.parse)(readFileSync75(configPath, "utf8"));
+    parsed = (0, import_yaml39.parse)(readFileSync78(configPath, "utf8"));
   } catch {
     return { globs: {} };
   }
@@ -73243,8 +73834,8 @@ async function attentionCli(argv) {
 
 // ../cairn/dist/cli/baseline.js
 var import_yaml40 = __toESM(require_dist(), 1);
-import { existsSync as existsSync84, readFileSync as readFileSync76 } from "node:fs";
-import { join as join90, resolve as resolve18 } from "node:path";
+import { existsSync as existsSync87, readFileSync as readFileSync79 } from "node:fs";
+import { join as join91, resolve as resolve18 } from "node:path";
 function parseRepoFlag2(argv) {
   const idx = argv.indexOf("--repo");
   if (idx === -1)
@@ -73257,11 +73848,11 @@ function parseRepoFlag2(argv) {
   return resolve18(candidate);
 }
 function ensureAdopted2(repoRoot) {
-  if (!existsSync84(repoRoot)) {
+  if (!existsSync87(repoRoot)) {
     console.error(`cairn baseline: repo root does not exist: ${repoRoot}`);
     process.exit(2);
   }
-  if (!existsSync84(join90(repoRoot, ".cairn"))) {
+  if (!existsSync87(join91(repoRoot, ".cairn"))) {
     console.error(`cairn baseline: ${repoRoot} is not cairn-adopted (no .cairn/). Run \`cairn init\` first.`);
     process.exit(2);
   }
@@ -73277,11 +73868,11 @@ function loadGlobsFromConfig(repoRoot) {
       off_limits: mapper.output.off_limits_globs
     };
   }
-  const cfgPath = join90(repoRoot, ".cairn", "config.yaml");
-  if (!existsSync84(cfgPath))
+  const cfgPath = join91(repoRoot, ".cairn", "config.yaml");
+  if (!existsSync87(cfgPath))
     return {};
   try {
-    const parsed = (0, import_yaml40.parse)(readFileSync76(cfgPath, "utf8"));
+    const parsed = (0, import_yaml40.parse)(readFileSync79(cfgPath, "utf8"));
     if (parsed === null || typeof parsed !== "object")
       return {};
     const cfg = parsed;
@@ -73347,7 +73938,7 @@ async function baselineCli(argv) {
 }
 
 // ../cairn/dist/cli/doctor.js
-import { existsSync as existsSync85 } from "node:fs";
+import { existsSync as existsSync88 } from "node:fs";
 import { resolve as resolve19 } from "node:path";
 function parseRepoFlag3(argv) {
   const idx = argv.indexOf("--repo");
@@ -73361,11 +73952,11 @@ function parseRepoFlag3(argv) {
   return resolve19(candidate);
 }
 function ensureAdopted3(repoRoot) {
-  if (!existsSync85(repoRoot)) {
+  if (!existsSync88(repoRoot)) {
     console.error(`cairn: repo root does not exist: ${repoRoot}`);
     process.exit(2);
   }
-  if (!existsSync85(`${repoRoot}/.cairn`)) {
+  if (!existsSync88(`${repoRoot}/.cairn`)) {
     console.error(`cairn: ${repoRoot} is not cairn-adopted (no .cairn/). Run \`cairn init\` first.`);
     process.exit(2);
   }
@@ -73465,8 +74056,8 @@ async function fixCli(argv) {
 // ../cairn/dist/cli/fix.js
 var import_yaml41 = __toESM(require_dist(), 1);
 import { execFileSync as execFileSync9 } from "node:child_process";
-import { existsSync as existsSync86, readFileSync as readFileSync77, readdirSync as readdirSync41, rmSync as rmSync11, writeFileSync as writeFileSync39 } from "node:fs";
-import { dirname as dirname30, join as join91, resolve as resolve20 } from "node:path";
+import { existsSync as existsSync89, readFileSync as readFileSync80, readdirSync as readdirSync42, rmSync as rmSync11, writeFileSync as writeFileSync41 } from "node:fs";
+import { dirname as dirname32, join as join92, resolve as resolve20 } from "node:path";
 import { fileURLToPath as fileURLToPath5 } from "node:url";
 function parseRepoFlag4(argv) {
   const idx = argv.indexOf("--repo");
@@ -73480,21 +74071,21 @@ function parseRepoFlag4(argv) {
   return resolve20(candidate);
 }
 function ensureAdopted4(repoRoot) {
-  if (!existsSync86(repoRoot)) {
+  if (!existsSync89(repoRoot)) {
     console.error(`cairn fix: repo root does not exist: ${repoRoot}`);
     process.exit(2);
   }
-  if (!existsSync86(join91(repoRoot, ".cairn"))) {
+  if (!existsSync89(join92(repoRoot, ".cairn"))) {
     console.error(`cairn fix: ${repoRoot} is not cairn-adopted (no .cairn/). Run \`cairn init\` first.`);
     process.exit(2);
   }
 }
 function readProjectSlug2(repoRoot) {
-  const cfgPath = join91(repoRoot, ".cairn", "config.yaml");
-  if (!existsSync86(cfgPath))
+  const cfgPath = join92(repoRoot, ".cairn", "config.yaml");
+  if (!existsSync89(cfgPath))
     return "this-project";
   try {
-    const parsed = (0, import_yaml41.parse)(readFileSync77(cfgPath, "utf8"));
+    const parsed = (0, import_yaml41.parse)(readFileSync80(cfgPath, "utf8"));
     if (parsed === null || typeof parsed !== "object")
       return "this-project";
     const slug = parsed["project_slug"];
@@ -73556,14 +74147,14 @@ async function fixBrand(repoRoot, dryRun) {
   process.exit(0);
 }
 async function fixDecStrip(repoRoot, dryRun) {
-  const decisionsDir2 = join91(repoRoot, ".cairn", "ground", "decisions");
-  if (!existsSync86(decisionsDir2)) {
+  const decisionsDir2 = join92(repoRoot, ".cairn", "ground", "decisions");
+  if (!existsSync89(decisionsDir2)) {
     console.error(`cairn fix dec-strip: no decisions dir at ${decisionsDir2}. Run \`cairn init\` first.`);
     process.exit(2);
   }
   let entries2;
   try {
-    entries2 = readdirSync41(decisionsDir2, { encoding: "utf8" });
+    entries2 = readdirSync42(decisionsDir2, { encoding: "utf8" });
   } catch (err) {
     console.error(`cairn fix dec-strip: cannot read decisions dir: ${err instanceof Error ? err.message : String(err)}`);
     process.exit(2);
@@ -73582,10 +74173,10 @@ async function fixDecStrip(repoRoot, dryRun) {
   const skipReasons = [];
   for (const name of decFiles) {
     scanned += 1;
-    const abs = join91(decisionsDir2, name);
+    const abs = join92(decisionsDir2, name);
     let body;
     try {
-      body = readFileSync77(abs, "utf8");
+      body = readFileSync80(abs, "utf8");
     } catch {
       continue;
     }
@@ -73645,27 +74236,27 @@ async function fixDecStrip(repoRoot, dryRun) {
 }
 async function fixClaudeRules(repoRoot, dryRun) {
   const targetRel = ".claude/rules/cairn.md";
-  const targetAbs = join91(repoRoot, targetRel);
-  const here = dirname30(fileURLToPath5(import.meta.url));
+  const targetAbs = join92(repoRoot, targetRel);
+  const here = dirname32(fileURLToPath5(import.meta.url));
   const candidates = [
-    join91(here, "..", "..", "..", "cairn-core", "templates", ".claude", "rules", "cairn.md"),
-    join91(here, "..", "..", "..", "..", "cairn-core", "templates", ".claude", "rules", "cairn.md"),
-    join91(here, "..", "..", "templates", ".claude", "rules", "cairn.md"),
-    join91(here, "..", "templates", ".claude", "rules", "cairn.md")
+    join92(here, "..", "..", "..", "cairn-core", "templates", ".claude", "rules", "cairn.md"),
+    join92(here, "..", "..", "..", "..", "cairn-core", "templates", ".claude", "rules", "cairn.md"),
+    join92(here, "..", "..", "templates", ".claude", "rules", "cairn.md"),
+    join92(here, "..", "templates", ".claude", "rules", "cairn.md")
   ];
-  const templatePath = candidates.find((p2) => existsSync86(p2));
+  const templatePath = candidates.find((p2) => existsSync89(p2));
   if (templatePath === void 0) {
     console.error(`cairn fix claude-rules: cannot locate bundled .claude/rules/cairn.md template (looked in ${candidates.join(", ")})`);
     process.exit(2);
   }
-  const templateContent = readFileSync77(templatePath, "utf8");
+  const templateContent = readFileSync80(templatePath, "utf8");
   process.stdout.write(`  \u2B21 cairn fix claude-rules${dryRun ? " --dry-run" : ""} \u2014 ${repoRoot}
     template: ${templatePath}
     target:   ${targetRel}
 
 `);
-  if (existsSync86(targetAbs)) {
-    const current = readFileSync77(targetAbs, "utf8");
+  if (existsSync89(targetAbs)) {
+    const current = readFileSync80(targetAbs, "utf8");
     if (current === templateContent) {
       process.stdout.write("  \xB7 already matches template (no-op)\n");
       process.exit(0);
@@ -73676,7 +74267,7 @@ async function fixClaudeRules(repoRoot, dryRun) {
 `);
       process.exit(0);
     }
-    writeFileSync39(targetAbs, templateContent, "utf8");
+    writeFileSync41(targetAbs, templateContent, "utf8");
     process.stdout.write(`  \u2713 ${targetRel} overwritten with current template
 `);
     process.exit(0);
@@ -73686,12 +74277,12 @@ async function fixClaudeRules(repoRoot, dryRun) {
 `);
     process.exit(0);
   }
-  const targetDir = dirname30(targetAbs);
-  if (!existsSync86(targetDir)) {
-    const { mkdirSync: mkdirSync40 } = await import("node:fs");
-    mkdirSync40(targetDir, { recursive: true });
+  const targetDir = dirname32(targetAbs);
+  if (!existsSync89(targetDir)) {
+    const { mkdirSync: mkdirSync42 } = await import("node:fs");
+    mkdirSync42(targetDir, { recursive: true });
   }
-  writeFileSync39(targetAbs, templateContent, "utf8");
+  writeFileSync41(targetAbs, templateContent, "utf8");
   process.stdout.write(`  \u2713 ${targetRel} written
 
   Teammates without the Cairn plugin will now see install
@@ -73702,8 +74293,8 @@ async function fixClaudeRules(repoRoot, dryRun) {
   process.exit(0);
 }
 async function fixScrubCache(repoRoot, dryRun) {
-  const cacheDir = join91(repoRoot, ".cairn", "cache", "haiku");
-  if (!existsSync86(cacheDir)) {
+  const cacheDir = join92(repoRoot, ".cairn", "cache", "haiku");
+  if (!existsSync89(cacheDir)) {
     process.stdout.write(`  \u2B21 cairn fix scrub-cache \u2014 ${repoRoot}
   \xB7 no cache at ${cacheDir} (nothing to scrub)
 `);
@@ -73711,7 +74302,7 @@ async function fixScrubCache(repoRoot, dryRun) {
   }
   let entries2;
   try {
-    entries2 = readdirSync41(cacheDir, { encoding: "utf8" });
+    entries2 = readdirSync42(cacheDir, { encoding: "utf8" });
   } catch (err) {
     console.error(`cairn fix scrub-cache: cannot read cache dir: ${err instanceof Error ? err.message : String(err)}`);
     process.exit(2);
@@ -73733,7 +74324,7 @@ async function fixScrubCache(repoRoot, dryRun) {
   let removed = 0;
   for (const name of cacheFiles) {
     try {
-      rmSync11(join91(cacheDir, name), { force: true });
+      rmSync11(join92(cacheDir, name), { force: true });
       removed += 1;
     } catch {
     }
@@ -73748,25 +74339,25 @@ async function fixScrubCache(repoRoot, dryRun) {
   process.exit(0);
 }
 async function fixGitignore(repoRoot, dryRun) {
-  const cairnGitignorePath = join91(repoRoot, ".cairn", ".gitignore");
-  if (!existsSync86(cairnGitignorePath)) {
+  const cairnGitignorePath = join92(repoRoot, ".cairn", ".gitignore");
+  if (!existsSync89(cairnGitignorePath)) {
     console.error(`cairn fix gitignore: missing ${cairnGitignorePath}. Re-run \`cairn init\`.`);
     process.exit(2);
   }
-  const here = dirname30(fileURLToPath5(import.meta.url));
+  const here = dirname32(fileURLToPath5(import.meta.url));
   const candidates = [
-    join91(here, "..", "..", "..", "cairn-core", "templates", ".cairn", ".gitignore"),
-    join91(here, "..", "..", "..", "..", "cairn-core", "templates", ".cairn", ".gitignore"),
-    join91(here, "..", "..", "templates", ".cairn", ".gitignore"),
-    join91(here, "..", "templates", ".cairn", ".gitignore")
+    join92(here, "..", "..", "..", "cairn-core", "templates", ".cairn", ".gitignore"),
+    join92(here, "..", "..", "..", "..", "cairn-core", "templates", ".cairn", ".gitignore"),
+    join92(here, "..", "..", "templates", ".cairn", ".gitignore"),
+    join92(here, "..", "templates", ".cairn", ".gitignore")
   ];
-  const templatePath = candidates.find((p2) => existsSync86(p2));
+  const templatePath = candidates.find((p2) => existsSync89(p2));
   if (templatePath === void 0) {
     console.error(`cairn fix gitignore: cannot locate bundled .cairn/.gitignore template (looked in ${candidates.join(", ")})`);
     process.exit(2);
   }
-  const templateContent = readFileSync77(templatePath, "utf8");
-  const currentContent = readFileSync77(cairnGitignorePath, "utf8");
+  const templateContent = readFileSync80(templatePath, "utf8");
+  const currentContent = readFileSync80(cairnGitignorePath, "utf8");
   process.stdout.write(`  \u2B21 cairn fix gitignore${dryRun ? " --dry-run" : ""} \u2014 ${repoRoot}
     template: ${templatePath}
 
@@ -73795,12 +74386,12 @@ async function fixGitignore(repoRoot, dryRun) {
     }
     process.exit(0);
   }
-  writeFileSync39(cairnGitignorePath, templateContent, "utf8");
+  writeFileSync41(cairnGitignorePath, templateContent, "utf8");
   process.stdout.write("\n  \u2713 .cairn/.gitignore rewritten from template\n");
   if (newlyIgnored.length === 0) {
     process.exit(0);
   }
-  const targets = newlyIgnored.map((e) => join91(".cairn", e));
+  const targets = newlyIgnored.map((e) => join92(".cairn", e));
   process.stdout.write(`
   Running \`git rm --cached -r --ignore-unmatch\` for ${targets.length} path(s)\u2026
 `);
@@ -74154,7 +74745,7 @@ async function joinCli(argv) {
 
 // ../cairn/dist/cli/mcp.js
 import { resolve as resolve24 } from "node:path";
-var log36 = logger("cli.mcp");
+var log39 = logger("cli.mcp");
 function parseArgs4(argv) {
   const positional = [];
   const flags = {};
@@ -74193,7 +74784,7 @@ async function mcpCli(argv) {
   });
   const { close } = await startMcpServer({ ctx });
   const shutdown = async (signal) => {
-    log36.info({ signal }, "shutdown signal received");
+    log39.info({ signal }, "shutdown signal received");
     await close();
     process.exit(0);
   };
@@ -74204,7 +74795,7 @@ async function mcpCli(argv) {
 }
 
 // ../cairn/dist/cli/scope.js
-import { existsSync as existsSync87 } from "node:fs";
+import { existsSync as existsSync90 } from "node:fs";
 import { resolve as resolve25 } from "node:path";
 function usage6() {
   console.error("Usage: cairn scope <subcommand>\n  rebuild       re-run mapper LLM and rewrite scope-index.yaml\n                (--repo <path>?   defaults to cwd)\n");
@@ -74223,11 +74814,11 @@ function parseRepoFlag5(argv) {
 }
 async function rebuildHandler(argv) {
   const repoRoot = parseRepoFlag5(argv);
-  if (!existsSync87(repoRoot)) {
+  if (!existsSync90(repoRoot)) {
     console.error(`cairn scope rebuild: repo root does not exist: ${repoRoot}`);
     process.exit(2);
   }
-  if (!existsSync87(`${repoRoot}/.cairn`)) {
+  if (!existsSync90(`${repoRoot}/.cairn`)) {
     console.error(`cairn scope rebuild: ${repoRoot} is not cairn-adopted (no .cairn/). Run \`cairn init\` first.`);
     process.exit(2);
   }
@@ -74259,12 +74850,12 @@ async function scopeCli(argv) {
 
 // ../cairn/dist/cli/sensor-run.js
 var import_yaml42 = __toESM(require_dist(), 1);
-import { existsSync as existsSync88, readFileSync as readFileSync78 } from "node:fs";
-import { join as join92, resolve as resolve26 } from "node:path";
+import { existsSync as existsSync91, readFileSync as readFileSync81 } from "node:fs";
+import { join as join93, resolve as resolve26 } from "node:path";
 function findRepoRoot(start) {
   let cur = resolve26(start);
   for (let i2 = 0; i2 < 80; i2++) {
-    if (existsSync88(join92(cur, ".cairn")))
+    if (existsSync91(join93(cur, ".cairn")))
       return cur;
     const parent = resolve26(cur, "..");
     if (parent === cur)
@@ -74274,11 +74865,11 @@ function findRepoRoot(start) {
   return null;
 }
 function loadSensors(repoRoot) {
-  const path2 = join92(repoRoot, ".cairn", "config", "sensors.yaml");
-  if (!existsSync88(path2))
+  const path2 = join93(repoRoot, ".cairn", "config", "sensors.yaml");
+  if (!existsSync91(path2))
     return null;
   try {
-    const parsed = (0, import_yaml42.parse)(readFileSync78(path2, "utf8"));
+    const parsed = (0, import_yaml42.parse)(readFileSync81(path2, "utf8"));
     return parsed;
   } catch {
     return null;
@@ -74330,8 +74921,8 @@ async function sensorRunCli(argv) {
 }
 
 // ../cairn/dist/cli/trace.js
-import { existsSync as existsSync89, readFileSync as readFileSync79, readdirSync as readdirSync42, statSync as statSync26 } from "node:fs";
-import { join as join93, resolve as resolve27 } from "node:path";
+import { existsSync as existsSync92, readFileSync as readFileSync82, readdirSync as readdirSync43, statSync as statSync27 } from "node:fs";
+import { join as join94, resolve as resolve27 } from "node:path";
 function parseArgs5(argv) {
   const positional = [];
   const flags = {};
@@ -74410,13 +75001,13 @@ function formatRow(ev, opts) {
 }
 function loadTraceFiles(daysBack) {
   const dir = traceDir();
-  if (!existsSync89(dir))
+  if (!existsSync92(dir))
     return [];
   const out = [];
-  for (const f of readdirSync42(dir)) {
+  for (const f of readdirSync43(dir)) {
     if (!f.startsWith("trace-") || !f.endsWith(".jsonl"))
       continue;
-    out.push(join93(dir, f));
+    out.push(join94(dir, f));
   }
   out.sort();
   return out.slice(-daysBack);
@@ -74426,7 +75017,7 @@ function readEvents(paths) {
   for (const p2 of paths) {
     let raw;
     try {
-      raw = readFileSync79(p2, "utf8");
+      raw = readFileSync82(p2, "utf8");
     } catch {
       continue;
     }
@@ -74472,7 +75063,7 @@ async function followTail(filterFlags, wide) {
   const path2 = loadTraceFiles(1)[0];
   if (path2 !== void 0) {
     try {
-      lastSize = statSync26(path2).size;
+      lastSize = statSync27(path2).size;
     } catch {
       lastSize = 0;
     }
@@ -74484,7 +75075,7 @@ async function followTail(filterFlags, wide) {
       continue;
     let st;
     try {
-      st = statSync26(todayPath);
+      st = statSync27(todayPath);
     } catch {
       continue;
     }
@@ -74493,7 +75084,7 @@ async function followTail(filterFlags, wide) {
     firstPass = false;
     let raw;
     try {
-      raw = readFileSync79(todayPath, "utf8");
+      raw = readFileSync82(todayPath, "utf8");
     } catch {
       continue;
     }

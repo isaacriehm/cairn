@@ -178,7 +178,10 @@ async function runSmoke(): Promise<void> {
     const done = await runPhase5Brand({ ...ask.state, answer: "skip" });
     assert(done.status === "complete", `Step 4: expected complete on skip, got ${done.status}`);
     if (done.status !== "complete") return;
-    assert(done.nextPhase === "6-docs-ingest", `Step 4: nextPhase should be 6-docs-ingest`);
+    assert(
+      done.nextPhase === "5b-topic-index",
+      `Step 4: nextPhase should be 5b-topic-index`,
+    );
     console.log("  ✓ Step 4 — phase 5-brand → skip path");
   }
 

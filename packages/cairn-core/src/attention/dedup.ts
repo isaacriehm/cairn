@@ -21,56 +21,10 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { decisionsDir } from "../ground/paths.js";
-
-/* -------------------------------------------------------------------------- */
-/* Tokenization                                                               */
-/* -------------------------------------------------------------------------- */
-
-/**
- * Stopwords. Hard-coded English set plus a handful of cairn-domain
- * terms that appear in nearly every draft and would otherwise dominate
- * Jaccard scores ("rationale", "decision").
- */
-const STOPWORDS = new Set([
-  "the", "a", "an", "and", "or", "of", "in", "on", "to", "for", "with",
-  "by", "from", "is", "are", "was", "were", "be", "been", "being", "has",
-  "have", "had", "do", "does", "did", "this", "that", "these", "those",
-  "it", "its", "as", "at", "but", "if", "than", "so", "use", "used",
-  "using", "via", "out", "off", "up", "our", "their", "one", "two",
-  "when", "where", "what", "how", "why", "who", "which", "can", "should",
-  "must", "will", "shall", "may", "not", "no", "any", "all", "some",
-  "few", "more", "most", "only", "also",
-]);
+import { jaccard, tokenize } from "../text/jaccard.js";
 
 /** Default char window of body to fold into the token bag. */
 const BODY_CHAR_WINDOW = 500;
-
-function stem(w: string): string {
-  if (w.length <= 4) return w;
-  if (w.endsWith("ing")) return w.slice(0, -3);
-  if (w.endsWith("ed")) return w.slice(0, -2);
-  if (w.endsWith("s") && !w.endsWith("ss")) return w.slice(0, -1);
-  return w;
-}
-
-function tokenize(text: string): Set<string> {
-  return new Set(
-    text
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, " ")
-      .split(/\s+/)
-      .map(stem)
-      .filter((w) => w.length >= 3 && !STOPWORDS.has(w)),
-  );
-}
-
-function jaccard(a: Set<string>, b: Set<string>): number {
-  if (a.size === 0 && b.size === 0) return 0;
-  let inter = 0;
-  for (const x of a) if (b.has(x)) inter += 1;
-  const union = a.size + b.size - inter;
-  return union === 0 ? 0 : inter / union;
-}
 
 /* -------------------------------------------------------------------------- */
 /* Frontmatter parse (lightweight; no yaml dep)                               */
