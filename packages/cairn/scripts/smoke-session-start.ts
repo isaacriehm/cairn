@@ -83,6 +83,9 @@ scope_globs:
 supersedes: null
 superseded_by: null
 assertions: []
+sot_kind: ledger
+sot_path: ledger
+sot_content_hash: "0000000000000000000000000000000000000000000000000000000000000000"
 ---
 
 # DEC-a3f7b2c — Drizzle for data layer
@@ -111,6 +114,9 @@ scope_globs:
 supersedes: null
 superseded_by: null
 assertions: []
+sot_kind: ledger
+sot_path: ledger
+sot_content_hash: "0000000000000000000000000000000000000000000000000000000000000000"
 ---
 
 # DEC-5e9d10a — Cross-tenant fixture
@@ -135,6 +141,9 @@ verified-at: 2026-05-04T00:00:00Z
 source_run: run-abc123
 source_decision: DEC-a3f7b2c
 sensor: scripts/check-inv0001-no-jsonb-userid.ts
+sot_kind: ledger
+sot_path: ledger
+sot_content_hash: "0000000000000000000000000000000000000000000000000000000000000000"
 ---
 
 # §INV-1111111
@@ -210,6 +219,9 @@ decided_at: '2026-05-04'
 decided_by: discord:operator
 capture_source: discord:slash:/direction
 capture_confidence: medium
+sot_kind: ledger
+sot_path: ledger
+sot_content_hash: "0000000000000000000000000000000000000000000000000000000000000000"
 ---
 
 # DEC-1234567 — pending

@@ -35418,9 +35418,9 @@ var DecisionFrontmatter = external_exports.object({
   assertions: external_exports.array(DecisionAssertion).optional(),
   human_review_hint: external_exports.string().optional(),
   related_invariants: external_exports.array(external_exports.string()).optional(),
-  sot_kind: SotKind.optional(),
-  sot_path: external_exports.string().min(1).optional(),
-  sot_content_hash: external_exports.string().length(64).optional(),
+  sot_kind: SotKind,
+  sot_path: external_exports.string().min(1),
+  sot_content_hash: external_exports.string().length(64),
   related: external_exports.string().nullish(),
   derived_from: external_exports.string().nullish()
 }).passthrough();
@@ -35439,9 +35439,9 @@ var InvariantFrontmatter = external_exports.object({
   e2e: external_exports.string().optional(),
   naming_convention: external_exports.string().optional(),
   superseded_by: external_exports.string().nullish(),
-  sot_kind: SotKind.optional(),
-  sot_path: external_exports.string().min(1).optional(),
-  sot_content_hash: external_exports.string().length(64).optional(),
+  sot_kind: SotKind,
+  sot_path: external_exports.string().min(1),
+  sot_content_hash: external_exports.string().length(64),
   related: external_exports.string().nullish(),
   derived_from: external_exports.string().nullish()
 }).passthrough();
@@ -74494,6 +74494,12 @@ async function handler14(ctx, input) {
     const target = input.target ?? "inbox";
     const outDir = target === "accepted" ? dir : inboxDir;
     mkdirSync36(outDir, { recursive: true });
+    const body = input.body_markdown ?? `# ${id} \u2014 ${input.title}
+
+## Summary
+
+${input.summary}
+`;
     const frontmatter = {
       id,
       title: input.title,
@@ -74504,16 +74510,13 @@ async function handler14(ctx, input) {
       "verified-at": (/* @__PURE__ */ new Date()).toISOString(),
       decided_at: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10),
       scope_globs: input.scope_globs,
+      sot_kind: "ledger",
+      sot_path: "ledger",
+      sot_content_hash: bodyContentHash(body),
       ...input.supersedes !== void 0 ? { supersedes: input.supersedes } : {},
       ...input.assertions !== void 0 ? { assertions: input.assertions } : {},
       ...input.human_review_hint !== void 0 ? { human_review_hint: input.human_review_hint } : {}
     };
-    const body = input.body_markdown ?? `# ${id} \u2014 ${input.title}
-
-## Summary
-
-${input.summary}
-`;
     const filename = target === "accepted" ? `${id}.md` : `${id}.draft.md`;
     const path2 = join87(outDir, filename);
     const content = `---
