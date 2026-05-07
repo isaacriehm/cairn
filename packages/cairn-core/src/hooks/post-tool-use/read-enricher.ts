@@ -18,7 +18,6 @@ import { appendTrace } from "../../trace/index.js";
 import { scanCitations } from "./citation-scanner.js";
 import {
   getDecisionsLedger,
-  getFileCandidateCount,
   getInvariantsLedger,
   getScopeIndexEntry,
   lookupTask,
@@ -201,10 +200,6 @@ export async function runReadEnricher(): Promise<void> {
         : null;
     const resolveTaskFn = (taskId: string): TaskLookupResult =>
       lookupTask(repoRoot, taskId);
-    // PR 2 / PHASE_6_REDESIGN §4.7 — O(1) lookup against the
-    // file-candidates-map. Stays at 0 (silent) on un-adopted projects
-    // and on files that aren't the SoT for any unpromoted candidate.
-    const unpromotedCandidates = getFileCandidateCount(repoRoot, relPath);
 
     const legend = buildLegend(
       matches,
@@ -212,7 +207,6 @@ export async function runReadEnricher(): Promise<void> {
       decisionsLedger,
       scopeHint,
       resolveTaskFn,
-      unpromotedCandidates,
     );
     if (legend === null) {
       outcome = {
@@ -221,7 +215,6 @@ export async function runReadEnricher(): Promise<void> {
         decisions_matched: matches.decisions.length,
         invariants_matched: matches.invariants.length,
         todos_matched: matches.todos.length,
-        unpromoted_candidates: unpromotedCandidates,
       };
       emitShapeB("");
       return;
@@ -233,7 +226,6 @@ export async function runReadEnricher(): Promise<void> {
       decisions_matched: matches.decisions.length,
       invariants_matched: matches.invariants.length,
       todos_matched: matches.todos.length,
-      unpromoted_candidates: unpromotedCandidates,
     };
     emitShapeB(legend);
   } catch (err) {

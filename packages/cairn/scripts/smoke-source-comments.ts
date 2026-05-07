@@ -191,7 +191,7 @@ async function main(): Promise<void> {
     "src/auth.ts",
     [
       "/**",
-      " * We MUST sign JWTs with HS512 not RS256 because the deployment topology",
+      " * We sign JWTs with HS512 not RS256 because the deployment topology",
       " * does not include a key rotation surface yet, and the token TTL is",
       " * 15 minutes which keeps replay risk low. Revisit when KMS arrives.",
       " * @returns string",
@@ -262,7 +262,7 @@ async function main(): Promise<void> {
   execFileSync("git", ["config", "user.name", "Smoke"], { cwd: citeRoot });
   // Source comment whose prose mirrors a paragraph already owned by docs/.
   const sharedProse = [
-    "We MUST sign JWTs with HS512 not RS256 because the deployment topology",
+    "We sign JWTs with HS512 not RS256 because the deployment topology",
     "does not include a key rotation surface yet, and the token TTL is",
     "15 minutes which keeps replay risk low. Revisit when KMS arrives.",
   ].join("\n");
@@ -317,111 +317,6 @@ async function main(): Promise<void> {
   assert(citedSource.includes(`// §${seededDecId}`), "source cites seeded DEC");
   assert(!citedSource.includes("HS512"), "original prose stripped");
   console.log("  ✓ Step 4b — topic-index lookup → cite existing DEC, no new DEC emitted");
-
-  step("Step 4c — phase 7b regex pre-filter: narrative essay → topic-index candidate only");
-  {
-    const narrativeRoot = mkRepoRoot();
-    execFileSync("git", ["init", "-q", "--initial-branch=main"], { cwd: narrativeRoot });
-    execFileSync("git", ["config", "user.email", "smoke@example.com"], { cwd: narrativeRoot });
-    execFileSync("git", ["config", "user.name", "Smoke"], { cwd: narrativeRoot });
-    // Pure narrative — explains what the class does, no MUST/SHALL/INVARIANT/marker.
-    writeFile(
-      narrativeRoot,
-      "src/svc.ts",
-      [
-        "/**",
-        " * This class handles the auth flow end to end.",
-        " * It coordinates token issuance with the upstream IDP",
-        " * and persists session metadata to Redis for fast revocation.",
-        " * Most consumers do not touch it directly.",
-        " */",
-        "export class AuthService {}",
-      ].join("\n") + "\n",
-    );
-    execFileSync("git", ["add", "."], { cwd: narrativeRoot });
-    execFileSync("git", ["commit", "-q", "-m", "init"], { cwd: narrativeRoot });
-
-    let mockCalls = 0;
-    const failingMock = (b: CommentBlock): CommentClassification => {
-      mockCalls += 1;
-      // If the regex pre-filter is broken, the classifier would see this
-      // narrative block — fail loudly so the smoke catches the regression.
-      throw new Error(`mockClassify must not be called on narrative blocks (block_id=${b.id})`);
-    };
-    const narrativeResult = await runSourceCommentsIngestion({
-      repoRoot: narrativeRoot,
-      mockClassify: failingMock,
-    });
-    assert(mockCalls === 0, `classifier must be skipped on narrative blocks (mockCalls=${mockCalls})`);
-    assert(narrativeResult.walk.blocks.length === 1, "one block detected by walker");
-    assert(narrativeResult.decsWritten.length === 0, "no DEC emitted from narrative");
-    assert(narrativeResult.invsWritten.length === 0, "no INV emitted from narrative");
-    assert(narrativeResult.citesEmitted.length === 0, "no cite emitted");
-    // Topic-index candidate IS registered so cairn_propose_decision can find it later.
-    const narrativeTi = parseYaml(
-      readFileSync(join(narrativeRoot, ".cairn/ground/topic-index.yaml"), "utf8"),
-    ) as Record<string, unknown>;
-    const narrativeTopics = narrativeTi["topics"] as Record<string, Record<string, unknown>>;
-    const narrativeSlugs = Object.keys(narrativeTopics);
-    assert(
-      narrativeSlugs.length === 1,
-      `expected exactly one topic-index candidate, got ${narrativeSlugs.length}`,
-    );
-    const narrativeEntry = narrativeTopics[narrativeSlugs[0]!]!;
-    assert(narrativeEntry["dec_id"] === undefined, "candidate has no dec_id (unpromoted)");
-    assert(
-      narrativeEntry["sot_source"] === "src/svc.ts",
-      `candidate sot_source = src/svc.ts (got ${String(narrativeEntry["sot_source"])})`,
-    );
-    // Source file untouched — strip-replace must not fire on candidate-only blocks.
-    const narrativeSrc = readFileSync(join(narrativeRoot, "src/svc.ts"), "utf8");
-    assert(narrativeSrc.includes("This class handles"), "narrative prose still in source");
-    assert(!narrativeSrc.includes("§DEC-"), "no DEC citation injected");
-  }
-  console.log("  ✓ Step 4c — narrative essay → no Haiku call, no DEC, topic-index candidate registered");
-
-  step("Step 4d — phase 7b marker override: @cairn:decision always emits, classifier bypassed");
-  {
-    const markerRoot = mkRepoRoot();
-    execFileSync("git", ["init", "-q", "--initial-branch=main"], { cwd: markerRoot });
-    execFileSync("git", ["config", "user.email", "smoke@example.com"], { cwd: markerRoot });
-    execFileSync("git", ["config", "user.name", "Smoke"], { cwd: markerRoot });
-    // Narrative prose, but with @cairn:decision marker — must always emit.
-    writeFile(
-      markerRoot,
-      "src/billing.ts",
-      [
-        "/**",
-        " * @cairn:decision",
-        " * Pricing rounds half-up to the nearest cent at invoice time.",
-        " * Stripe truncates by default which under-bills micro-charges.",
-        " * Keep the rounding inside the billing layer until the new",
-        " * pricing engine ships.",
-        " */",
-        "export function priceInvoice() {}",
-      ].join("\n") + "\n",
-    );
-    execFileSync("git", ["add", "."], { cwd: markerRoot });
-    execFileSync("git", ["commit", "-q", "-m", "init"], { cwd: markerRoot });
-
-    let markerMockCalls = 0;
-    const refusingMock = (b: CommentBlock): CommentClassification => {
-      markerMockCalls += 1;
-      throw new Error(`mockClassify must not be called on marker-tagged blocks (block_id=${b.id})`);
-    };
-    const markerResult = await runSourceCommentsIngestion({
-      repoRoot: markerRoot,
-      mockClassify: refusingMock,
-    });
-    assert(markerMockCalls === 0, `marker override must skip the classifier (markerMockCalls=${markerMockCalls})`);
-    assert(markerResult.decsWritten.length === 1, "marker-tagged block emits one DEC");
-    const markerDecId = markerResult.decsWritten[0]?.id;
-    assert(typeof markerDecId === "string" && /^DEC-[0-9a-f]{7,}$/.test(markerDecId ?? ""), "marker DEC id is hash form");
-    const markerSrc = readFileSync(join(markerRoot, "src/billing.ts"), "utf8");
-    assert(markerSrc.includes(`// §${markerDecId}`), "marker source now cites the new DEC");
-    assert(!markerSrc.includes("Pricing rounds"), "marker source had its prose stripped");
-  }
-  console.log("  ✓ Step 4d — @cairn:decision marker forces emit even without imperative keywords");
 
   step("Step 5 — strip-replace mechanical edit + backup");
   const repoRoot3 = mkRepoRoot();

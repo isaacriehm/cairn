@@ -37,7 +37,6 @@ export type {
 export {
   discoverDocs,
   runDocsIngestion,
-  runStage1FileFilter,
 } from "./ingest-docs.js";
 export {
   HEURISTIC as SOURCE_COMMENT_HEURISTIC,
@@ -104,7 +103,6 @@ export type {
   DocCandidate,
   DocClassification,
   DocClassificationKind,
-  FileFilterVerdict,
   IngestionResult,
   RunDocsIngestionArgs,
 } from "./ingest-docs.js";

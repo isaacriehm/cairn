@@ -142,38 +142,19 @@ export async function bulkAcceptObvious(
           const rationaleFm =
             stringField(fm, "proposedRationale") ?? extractSection(body, "Proposed rationale");
           const proseFromBody = extractSection(body, "Source comment");
-          // Phase 7b drafts emit verbatim essay bodies without a `## Source
-          // comment` heading, so `extractSection` returns "". Fall back to
-          // the full body so the scorer sees the actual prose — without this
-          // every draft scored low because DECISION_VERBS / INVARIANT_MODALS
-          // / REASON_MARKERS regexes matched nothing.
-          const proseFallback = body.trim();
-          const prose =
-            rationaleFm.length > 0
-              ? rationaleFm
-              : proseFromBody.length > 0
-                ? proseFromBody
-                : proseFallback;
-          const rawComment = proseFromBody.length > 0 ? proseFromBody : proseFallback;
+          const prose = rationaleFm.length > 0 ? rationaleFm : proseFromBody;
           const score = scoreDecDraft({
             sourceFile,
             prose,
             title: titleFm,
-            rawComment,
+            rawComment: proseFromBody,
             globs: args.globs,
             ...(args.pilotModule !== undefined ? { pilotModule: args.pilotModule } : {}),
           });
           decResult.decsByConfidence[score] += 1;
 
-          // Stamp confidence on the in-memory frontmatter. The actual write
-          // back to disk is gated below — we don't re-stamp drafts the
-          // operator already saw with a confidence value.
-          const prevConf = stringField(fm, "capture_confidence");
-          // Tight check: only valid enum values count as already-stamped.
-          // An empty string or hand-edited garbage is treated as unstamped
-          // so the scorer can re-stamp on next run.
-          const previouslyStamped =
-            prevConf === "high" || prevConf === "medium" || prevConf === "low";
+          // Always stamp the confidence so future passes (and the
+          // skill) can read it without re-scoring.
           const stampedFm = { ...fm, capture_confidence: score };
           if (atOrAbove(score, threshold)) {
             // Promote to accepted.
@@ -236,12 +217,10 @@ export async function bulkAcceptObvious(
             decResult.decsAccepted += 1;
             decResult.acceptedIds.push(id);
           } else {
-            // Stay in inbox. Only persist the stamp on first scoring —
-            // a re-run of bulk-accept (e.g. operator clicks "accept
-            // high-confidence" again with a different threshold) must
-            // not silently mutate drafts the operator already saw.
-            if (!dry && !previouslyStamped) {
-              const stampedDoc = renderDoc(stampedFm, body);
+            // Stay in inbox; persist confidence stamp so the skill
+            // can sort/show it.
+            const stampedDoc = renderDoc(stampedFm, body);
+            if (!dry) {
               writeFileSync(abs, stampedDoc, "utf8");
             }
           }
@@ -290,37 +269,19 @@ export async function bulkAcceptObvious(
           const titleFm = stringField(fm, "title") ?? "";
           const rawCommentBody = extractSection(body, "Source comment");
           const constraintBody = extractSection(body, "Constraint");
-          // Phase 7b invariants emit verbatim essay bodies — no `## Constraint`
-          // / `## Source comment` headings. Fall back to full body so the
-          // scorer's INVARIANT_MODALS / REASON_MARKERS regexes have signal.
-          const proseFallback = body.trim();
-          const prose =
-            constraintBody.length > 0
-              ? constraintBody
-              : rawCommentBody.length > 0
-                ? rawCommentBody
-                : proseFallback;
-          const rawComment = rawCommentBody.length > 0 ? rawCommentBody : proseFallback;
+          const prose = constraintBody.length > 0 ? constraintBody : titleFm;
           const score = scoreInvariant({
             sourceFile,
             prose,
             title: titleFm,
-            rawComment,
+            rawComment: rawCommentBody,
             globs: args.globs,
             ...(args.pilotModule !== undefined ? { pilotModule: args.pilotModule } : {}),
           });
           invResult.invariantsByConfidence[score] += 1;
-          const prevConf = stringField(fm, "capture_confidence");
-          // Tight check: only valid enum values count as already-stamped.
-          // An empty string or hand-edited garbage is treated as unstamped
-          // so the scorer can re-stamp on next run.
-          const previouslyStamped =
-            prevConf === "high" || prevConf === "medium" || prevConf === "low";
-          if (!previouslyStamped) {
-            const stamped = { ...fm, capture_confidence: score };
-            const stampedDoc = renderDoc(stamped, body);
-            writeFileSync(abs, stampedDoc, "utf8");
-          }
+          const stamped = { ...fm, capture_confidence: score };
+          const stampedDoc = renderDoc(stamped, body);
+          writeFileSync(abs, stampedDoc, "utf8");
         }
       });
     } else if (invFiles.length > 0 && dry) {
@@ -339,19 +300,12 @@ export async function bulkAcceptObvious(
         const titleFm = stringField(fm, "title") ?? "";
         const rawCommentBody = extractSection(body, "Source comment");
         const constraintBody = extractSection(body, "Constraint");
-        const proseFallback = body.trim();
-        const prose =
-          constraintBody.length > 0
-            ? constraintBody
-            : rawCommentBody.length > 0
-              ? rawCommentBody
-              : proseFallback;
-        const rawComment = rawCommentBody.length > 0 ? rawCommentBody : proseFallback;
+        const prose = constraintBody.length > 0 ? constraintBody : titleFm;
         const score = scoreInvariant({
           sourceFile,
           prose,
           title: titleFm,
-          rawComment,
+          rawComment: rawCommentBody,
           globs: args.globs,
           ...(args.pilotModule !== undefined ? { pilotModule: args.pilotModule } : {}),
         });

@@ -27,22 +27,12 @@ function row(content: string): string {
   return `${SIDE} ${content}`;
 }
 
-/**
- * `unpromotedCandidates` — count of topic-index entries whose
- * `sot_source` is the file the agent just Read and whose `dec_id` is
- * still null. Sourced via O(1) lookup against
- * `.cairn/ground/file-candidates-map.yaml` per PHASE_6_REDESIGN §4.7.
- * When > 0 the legend prepends a curator hint so the agent knows it
- * can call `cairn_propose_decision({ slug })` to surface a passage
- * the operator has clearly committed to as a rule.
- */
 export function buildLegend(
   matches: ScannedCitations,
   invariantsLedger: LedgerSnapshot | null,
   decisionsLedger: DecisionsLedgerSnapshot | null,
   scopeHint: ScopeIndexHint | null,
   resolveTask: (taskId: string) => TaskLookupResult,
-  unpromotedCandidates = 0,
 ): string | null {
   const hasScopeHint =
     scopeHint !== null &&
@@ -51,36 +41,10 @@ export function buildLegend(
     matches.invariants.length > 0 ||
     matches.todos.length > 0 ||
     matches.decisions.length > 0;
-  const hasCandidates = unpromotedCandidates >= 1;
 
-  if (!hasScopeHint && !hasCitations && !hasCandidates) return null;
+  if (!hasScopeHint && !hasCitations) return null;
 
   const lines: string[] = [];
-
-  if (hasCandidates) {
-    // The candidate hint sits ABOVE the boxed citation legend so the
-    // curator prompt is the first thing the agent sees on the file.
-    // PR 2 §4.7 wording — locked in spec.
-    const noun = unpromotedCandidates === 1 ? "candidate" : "candidates";
-    lines.push(
-      `⚠ This file has ${unpromotedCandidates} unpromoted topic-index ${noun}.`,
-    );
-    lines.push(
-      "  If a passage states an active rule the operator has committed to,",
-    );
-    lines.push(
-      "  call cairn_propose_decision({ slug }) to surface it for operator review.",
-    );
-    lines.push(
-      "  Do NOT propose for narrative, plans, or status content.",
-    );
-    if (hasScopeHint || hasCitations) lines.push("");
-  }
-
-  if (!hasScopeHint && !hasCitations) {
-    return lines.join("\n");
-  }
-
   lines.push(TOP_BORDER);
 
   if (

@@ -48,10 +48,8 @@ import {
 } from "./baseline-audit.js";
 import {
   runDocsIngestion,
-  type DocClassification,
   type IngestionResult,
 } from "./ingest-docs.js";
-import type { TopicIndexEntry } from "../ground/index.js";
 import { buildTopicIndex, type SemanticJudge } from "./topic-index/index.js";
 import {
   runSourceCommentsIngestion,
@@ -212,17 +210,6 @@ export interface RunInitArgs {
    * trip the Jaccard similarity threshold.
    */
   mockTopicIndexJudge?: SemanticJudge;
-  /**
-   * Test override for the phase 6 docs-ingestion classifier. When set,
-   * Stages 1 + 2 (file filter + section classify) are bypassed; every
-   * non-marker topic-index doc candidate flows through this synchronous
-   * mock instead of Haiku. Mirrors {@link RunDocsIngestionArgs.mockClassify}
-   * so smokes can exercise the Stage 4 draft-emit path end-to-end.
-   */
-  mockIngestionClassify?: (
-    entry: TopicIndexEntry,
-    body: string,
-  ) => DocClassification;
 }
 
 export interface InitResult {
@@ -277,7 +264,6 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   const cwd = process.cwd();
   const mode: PromptMode = args.mode ?? "interactive";
   const warnings: string[] = [];
-  const initStartMs = Date.now();
 
   // ── Phase -1: self-adoption hard stop ──────────────────────────────
   // If repoRoot or cwd looks like the Cairn source repo itself, refuse —
@@ -571,24 +557,14 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   // runs every runnable sensor against the full codebase to surface pre-
   // Cairn debt. Both pieces are best-effort; failures degrade to empty
   // result, never block the init.
-  const phase6Args: PhaseSixArgs = {
+  const phase6 = await runPhaseSix({
     repoRoot,
     decidedSlug,
     detection,
     mapperOutput,
-    // Auto mode skips Haiku-backed ingestion by default. Smokes that
-    // need to exercise the phase-6 emit path (e2e-adoption,
-    // ingestion-baseline) provide `mockIngestionClassify` so the
-    // pipeline runs end-to-end without burning Haiku.
-    skip:
-      args.skipIngestion === true ||
-      (mode === "auto" && args.mockIngestionClassify === undefined),
+    skip: args.skipIngestion === true || mode === "auto",
     warnings,
-  };
-  if (args.mockIngestionClassify !== undefined) {
-    phase6Args.mockClassify = args.mockIngestionClassify;
-  }
-  const phase6 = await runPhaseSix(phase6Args);
+  });
 
   // ── Phase 7b: source-comment ingestion ─────────────────────────────
   // Walks every source file, batches block-comments through Haiku, files
@@ -711,15 +687,21 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   // SessionStart in any clone seeds the per-session file with the
   // current attention_count derived from drafts + baseline findings.
 
-  // ── Step 6: completion summary (terse, per PHASE_6_REDESIGN §4.9) ──
+  // ── Step 6: completion summary (structured) ────────────────────────
   printCompletionSummary({
     projectName: decidedSlug,
     repoRoot,
+    seededFiles: seed.written_files,
+    brandSetup,
+    submodules: submoduleSummary,
+    scanTruncated:
+      repoSummary.truncated_at_file_cap ||
+      repoSummary.truncated_at_depth_cap,
     mapperFallbackSlugs,
+    ingestion: phase6.ingestion,
     baselineAudit: phase6.baselineAudit,
     logFilePath,
     warnings,
-    durationMs: Date.now() - initStartMs,
   });
 
   log.info(
@@ -1114,49 +1096,38 @@ async function preflightSubmodules(
 interface CompletionSummaryArgs {
   projectName: string;
   repoRoot: string;
+  seededFiles: string[];
+  brandSetup: { answered: number; updated_files: string[] } | null;
+  submodules: SubmoduleSummary | null;
+  /** True when the Phase-1 walker hit a file or depth cap. */
+  scanTruncated: boolean;
   /** Module slugs that used the heuristic fallback path; empty when none. */
   mapperFallbackSlugs: string[];
-  /** Phase 6 baseline audit outcome — drives the `<N> active rules` line. */
+  /** Phase 6 ingestion outcome — null when ingestion was skipped. */
+  ingestion: IngestionResult | null;
+  /** Phase 6 baseline audit outcome — null when ingestion was skipped. */
   baselineAudit: BaselineAuditResult | null;
   logFilePath: string | null;
   warnings: string[];
-  /** Total wall-clock time spent inside `runInit`. */
-  durationMs: number;
 }
 
-/**
- * Cold-start summary, locked wording from PHASE_6_REDESIGN §4.9.
- *
- *   Adopted <project> in <duration>.
- *   - <N> active rules baseline verified.
- *   - <M> new decision drafts found.
- *   - <K> unpromoted candidates indexed.
- *
- *   Run `cairn attention` to review drafts and commit them to the ledger.
- *
- * No auto-wizard. No statusline drumbeat. Operator drives the next
- * step. Warnings (if any) tail the locked block. Rich operational
- * status moved to `cairn doctor`.
- */
 function printCompletionSummary(args: CompletionSummaryArgs): void {
-  const N = describeActiveRulesVerified(args.baselineAudit);
-  const M = countInboxDrafts(args.repoRoot);
-  const K = countUnpromotedCandidates(args.repoRoot);
-  const duration = formatDuration(args.durationMs);
+  const groundCount = countGroundFiles(args.repoRoot);
+  const sensorCount = countSensorEntries(args.repoRoot);
+  const scopeReport = describeScopeIndex(
+    args.repoRoot,
+    args.submodules,
+    args.scanTruncated,
+  );
+  const brandReport = describeBrandStatus(args.repoRoot);
+  const mcpReport = describeMcpRegistration(args.repoRoot);
 
   info("");
-  info(`  Adopted ${args.projectName} in ${duration}.`);
-  info(`  - ${N} active rules baseline verified.`);
-  info(`  - ${M} new decision drafts found.`);
-  info(`  - ${K} unpromoted candidates indexed.`);
+  info(`  ✓ Cairn ready — ${args.projectName}`);
   info("");
-  info("  Run `cairn attention` to review drafts and commit them to the ledger.");
-
-  if (args.logFilePath !== null) {
-    info("");
-    info(`  Log               ${shortenHomePath(args.logFilePath)}`);
-  }
-
+  info(`  Ground state      .cairn/ground/ (${groundCount} files)`);
+  info(`  MCP server        ${mcpReport}`);
+  info(`  Sensors           ${sensorCount} active`);
   if (args.mapperFallbackSlugs.length > 0) {
     const head = args.mapperFallbackSlugs.slice(0, 3).join(", ");
     const more =
@@ -1164,9 +1135,46 @@ function printCompletionSummary(args: CompletionSummaryArgs): void {
         ? ` +${args.mapperFallbackSlugs.length - 3} more`
         : "";
     info(
-      `  Mapper fallback   ${head}${more} — rerun cairn scope rebuild`,
+      `                    ${head}${more} used fallback — rerun cairn scope rebuild`,
     );
   }
+  info(`  Brand             ${brandReport}`);
+  info(`  Scope index       ${scopeReport.line}`);
+  if (scopeReport.followUp !== null) {
+    info(`                    ${scopeReport.followUp}`);
+  }
+  if (args.logFilePath !== null) {
+    info(`  Log               ${shortenHomePath(args.logFilePath)}`);
+  }
+
+  // Project brain populated from existing codebase.
+  const ingestionReport = describeIngestion(args.ingestion);
+  const canonicalReport = describeCanonical(args.ingestion);
+  const baselineReport = describeBaseline(args.baselineAudit);
+  if (
+    ingestionReport !== null ||
+    canonicalReport !== null ||
+    baselineReport !== null
+  ) {
+    info("");
+    info("  Project brain populated from existing codebase:");
+    if (ingestionReport !== null) {
+      info(`    DEC drafts        ${ingestionReport}`);
+    }
+    if (canonicalReport !== null) {
+      info(`    Canonical map     ${canonicalReport}`);
+    }
+    if (baselineReport !== null) {
+      info(`    Baseline debt     ${baselineReport}`);
+    }
+  }
+
+  info("");
+  info("  Open Claude Code in this directory. Cairn is live immediately.");
+  info("");
+  info("  Next: cairn attention        see pending items");
+  info("        cairn doctor           verify everything is working");
+  info("        cairn configure brand  fill in brand guidelines");
 
   if (args.warnings.length > 0) {
     info("");
@@ -1175,65 +1183,184 @@ function printCompletionSummary(args: CompletionSummaryArgs): void {
   }
 }
 
-function describeActiveRulesVerified(audit: BaselineAuditResult | null): number {
-  // "Active rules baseline verified" = sensors that ran clean against
-  // the existing codebase. A clean sensor means the project already
-  // satisfies the rule it enforces — that's the baseline. Skipped
-  // sensors and sensors with findings don't count.
-  if (audit === null) return 0;
-  return audit.cleanSensorIds.length;
-}
-
-function countInboxDrafts(repoRoot: string): number {
-  const inbox = join(repoRoot, ".cairn", "ground", "decisions", "_inbox");
-  if (!existsSync(inbox)) return 0;
-  let entries: Dirent[];
-  try {
-    entries = readdirSync(inbox, { withFileTypes: true, encoding: "utf8" });
-  } catch {
-    return 0;
-  }
-  let n = 0;
-  for (const e of entries) {
-    if (!e.isFile()) continue;
-    if (e.name.endsWith(".draft.md")) n += 1;
-  }
-  return n;
-}
-
-function countUnpromotedCandidates(repoRoot: string): number {
-  const path = join(repoRoot, ".cairn", "ground", "topic-index.yaml");
-  if (!existsSync(path)) return 0;
-  let parsed: unknown;
-  try {
-    parsed = parseYaml(readFileSync(path, "utf8")) as unknown;
-  } catch {
-    return 0;
-  }
-  if (typeof parsed !== "object" || parsed === null) return 0;
-  const topics = (parsed as Record<string, unknown>)["topics"];
-  if (typeof topics !== "object" || topics === null) return 0;
-  let n = 0;
-  for (const entry of Object.values(topics as Record<string, unknown>)) {
-    if (typeof entry !== "object" || entry === null) continue;
-    if ((entry as Record<string, unknown>)["dec_id"] === undefined) n += 1;
-  }
-  return n;
-}
-
-function formatDuration(ms: number): string {
-  if (ms < 1_000) return `${ms}ms`;
-  const seconds = ms / 1_000;
-  if (seconds < 60) return `${seconds.toFixed(1)}s`;
-  const minutes = Math.floor(seconds / 60);
-  const remSeconds = Math.round(seconds - minutes * 60);
-  return `${minutes}m ${remSeconds}s`;
-}
-
 function shortenHomePath(abs: string): string {
   const home = homedir();
   if (abs.startsWith(home)) return `~${abs.slice(home.length)}`;
   return abs;
+}
+
+function countGroundFiles(repoRoot: string): number {
+  const groundDir = join(repoRoot, ".cairn", "ground");
+  if (!existsSync(groundDir)) return 0;
+  let count = 0;
+  const stack: string[] = [groundDir];
+  while (stack.length > 0) {
+    const dir = stack.pop();
+    if (dir === undefined) break;
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(dir, { withFileTypes: true, encoding: "utf8" });
+    } catch {
+      continue;
+    }
+    for (const e of entries) {
+      const abs = join(dir, e.name);
+      if (e.isDirectory()) {
+        if (e.name === "_inbox") continue;
+        stack.push(abs);
+      } else if (e.isFile()) {
+        count++;
+      }
+    }
+  }
+  return count;
+}
+
+function countSensorEntries(repoRoot: string): number {
+  const path = join(repoRoot, ".cairn", "config", "sensors.yaml");
+  if (!existsSync(path)) return 0;
+  try {
+    const parsed = parseYaml(readFileSync(path, "utf8")) as unknown;
+    if (typeof parsed !== "object" || parsed === null) return 0;
+    const sensorsRaw = (parsed as Record<string, unknown>)["sensors"];
+    if (!Array.isArray(sensorsRaw)) return 0;
+    return sensorsRaw.length;
+  } catch {
+    return 0;
+  }
+}
+
+interface ScopeReport {
+  line: string;
+  followUp: string | null;
+}
+
+function describeScopeIndex(
+  repoRoot: string,
+  submodules: SubmoduleSummary | null,
+  scanTruncated: boolean,
+): ScopeReport {
+  const path = join(repoRoot, ".cairn", "ground", "scope-index.yaml");
+  const submoduleNoteJustInitialized =
+    submodules !== null &&
+    submodules.initialized &&
+    submodules.success;
+  const truncationFollowUp =
+    "Run cairn scope rebuild for full classification";
+
+  if (!existsSync(path)) {
+    return {
+      line: "missing — run cairn scope rebuild",
+      followUp: null,
+    };
+  }
+  try {
+    const parsed = parseYaml(readFileSync(path, "utf8")) as unknown;
+    if (typeof parsed !== "object" || parsed === null) {
+      return {
+        line: "empty — run cairn scope rebuild",
+        followUp: null,
+      };
+    }
+    const filesRaw = (parsed as Record<string, unknown>)["files"];
+    if (typeof filesRaw !== "object" || filesRaw === null) {
+      return {
+        line: "empty — run cairn scope rebuild",
+        followUp: null,
+      };
+    }
+    const count = Object.keys(filesRaw as Record<string, unknown>).length;
+    if (count === 0) {
+      if (scanTruncated) {
+        return {
+          line: "empty — analysis was truncated during init",
+          followUp: truncationFollowUp,
+        };
+      }
+      return {
+        line: submoduleNoteJustInitialized
+          ? "empty — submodules now initialized, run cairn scope rebuild"
+          : "empty — run cairn scope rebuild",
+        followUp: null,
+      };
+    }
+    if (scanTruncated) {
+      return {
+        line: "partial — analysis was truncated during init",
+        followUp: truncationFollowUp,
+      };
+    }
+    if (submoduleNoteJustInitialized) {
+      return {
+        line: `partial — ${count} file${count === 1 ? "" : "s"} classified (submodules now initialized)`,
+        followUp: truncationFollowUp,
+      };
+    }
+    return {
+      line: `ready (${count} file${count === 1 ? "" : "s"} classified)`,
+      followUp: null,
+    };
+  } catch {
+    return {
+      line: "unreadable — run cairn scope rebuild",
+      followUp: null,
+    };
+  }
+}
+
+function describeBrandStatus(repoRoot: string): string {
+  const overview = join(repoRoot, ".cairn", "ground", "brand", "overview.md");
+  const positioning = join(
+    repoRoot,
+    ".cairn",
+    "ground",
+    "product",
+    "positioning.md",
+  );
+  const voice = join(repoRoot, ".cairn", "ground", "brand", "voice.md");
+  const all = [overview, positioning, voice];
+  let currentCount = 0;
+  let total = 0;
+  for (const p of all) {
+    if (!existsSync(p)) continue;
+    total++;
+    if (readFrontmatterStatus(p) === "current") currentCount++;
+  }
+  if (total === 0) return "missing — re-run cairn init";
+  if (currentCount === total) return "ready";
+  if (currentCount === 0) return "draft — run cairn configure brand";
+  return `partial (${currentCount}/${total} current) — run cairn configure brand`;
+}
+
+function readFrontmatterStatus(path: string): string | null {
+  try {
+    const text = readFileSync(path, "utf8");
+    const m = text.match(/^---\n([\s\S]*?\n)---/);
+    if (!m) return null;
+    const fm = m[1] ?? "";
+    const sm = fm.match(/^status:\s*(\S+)\s*$/m);
+    return sm && sm[1] ? sm[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+function describeMcpRegistration(repoRoot: string): string {
+  const path = join(repoRoot, ".mcp.json");
+  if (!existsSync(path)) return ".mcp.json · missing entry";
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+    const servers = parsed["mcpServers"];
+    if (typeof servers !== "object" || servers === null) {
+      return ".mcp.json · missing cairn entry";
+    }
+    if ((servers as Record<string, unknown>)["cairn"] !== undefined) {
+      return ".mcp.json · ready";
+    }
+    return ".mcp.json · missing cairn entry";
+  } catch {
+    return ".mcp.json · unreadable";
+  }
 }
 
 function printDiscovery(
@@ -1327,11 +1454,6 @@ interface PhaseSixArgs {
   mapperOutput: MapperOutput | null;
   skip: boolean;
   warnings: string[];
-  /** Smoke override — bypass Haiku in Stages 1+2 when set. */
-  mockClassify?: (
-    entry: TopicIndexEntry,
-    body: string,
-  ) => DocClassification;
 }
 
 interface PhaseSixResult {
@@ -1349,31 +1471,23 @@ async function runPhaseSix(args: PhaseSixArgs): Promise<PhaseSixResult> {
     `  ${visualC.bold("Phase 6")} — ingesting existing project knowledge…\n`,
   );
 
-  // ── 6.1 — docs ingestion (staged: marker → file-filter → section) ──
+  // ── 6.1 — docs ingestion (Haiku per doc; cap 20 largest) ───────────
   let ingestion: IngestionResult | null = null;
   try {
-    let lastStage: "file-filter" | "section-classify" | null = null;
-    const ingestionArgs: Parameters<typeof runDocsIngestion>[0] = {
+    let lastTotal = 0;
+    let processedCount = 0;
+    ingestion = await runDocsIngestion({
       repoRoot: args.repoRoot,
-      onChunkProgress: (row) => {
-        // Print one trailer line per stage so the operator sees the
-        // staged pipeline land — Stage 1 (file filter) finishes first
-        // and is usually the smaller batch; Stage 2 (section classify)
-        // follows once authoritative files are known.
-        if (row.chunksDone === row.totalChunks && row.stage !== lastStage) {
-          lastStage = row.stage;
-          const label =
-            row.stage === "file-filter"
-              ? "stage 1 file filter"
-              : "stage 2 section classify";
+      onEntryProgress: (row) => {
+        processedCount += 1;
+        lastTotal = row.total;
+        if (processedCount === row.total) {
           process.stdout.write(
-            `    ${label.padEnd(28)} ✓  ${row.entriesDone}/${row.totalEntries} in ${row.totalChunks} batches\n`,
+            `    ${"docs".padEnd(20)} ✓  ${processedCount}/${lastTotal} entries processed\n`,
           );
         }
       },
-    };
-    if (args.mockClassify !== undefined) ingestionArgs.mockClassify = args.mockClassify;
-    ingestion = await runDocsIngestion(ingestionArgs);
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     args.warnings.push(`docs ingestion failed: ${msg}`);
@@ -1429,6 +1543,38 @@ async function runPhaseSix(args: PhaseSixArgs): Promise<PhaseSixResult> {
   }
 
   return { ingestion, baselineAudit };
+}
+
+function describeIngestion(ingestion: IngestionResult | null): string | null {
+  if (ingestion === null) return null;
+  const decCount = ingestion.decsWritten.length;
+  if (decCount === 0) {
+    if (ingestion.scannedEntries === 0) {
+      return `0 emitted  (no docs/* paragraphs in topic-index)`;
+    }
+    return `0 emitted  (${ingestion.scannedEntries} entries scanned, none classified as decision/domain-rule)`;
+  }
+  return `${decCount} DEC${decCount === 1 ? "" : "s"} written verbatim from docs/* (auto-promoted)`;
+}
+
+function describeCanonical(_ingestion: IngestionResult | null): string | null {
+  // canonical-map seeding moved out of phase 6 in v0.5.0 — handled by
+  // the standalone topic-index pipeline instead.
+  return null;
+}
+
+function describeBaseline(audit: BaselineAuditResult | null): string | null {
+  if (audit === null) return null;
+  const fileNote = audit.truncatedAtFileCap
+    ? `${audit.filesScanned}/${audit.filesAvailable} files — sample mode`
+    : `${audit.filesScanned} files`;
+  if (audit.totalFindings === 0) {
+    if (audit.skippedSensorIds.length > 0 && audit.cleanSensorIds.length === 0) {
+      return null;
+    }
+    return `0 findings  (run on ${fileNote})`;
+  }
+  return `${audit.totalFindings} existing sensor finding${audit.totalFindings === 1 ? "" : "s"}  (run cairn attention; ${fileNote})`;
 }
 
 function remoteShorthand(url: string): string {

@@ -231,7 +231,7 @@ export async function emitFromTopicIndex(args: EmitArgs): Promise<EmitResult> {
 /* Body lookup                                                                */
 /* -------------------------------------------------------------------------- */
 
-export function readSotBody(
+function readSotBody(
   repoRoot: string,
   entry: TopicIndexEntry,
   anchorMap: AnchorMap,
@@ -265,52 +265,9 @@ function entryToSotPath(entry: TopicIndexEntry): string {
   return entry.sot_source;
 }
 
-/**
- * Derive a fallback title from the first prose-bearing line of the body.
- *
- * Source bodies arrive verbatim from `readSotBody`, so the walker's
- * language-specific marker stripping (C-style, JSDoc, Python docstring,
- * Ruby block comment, hash clusters, etc.) doesn't apply here — we
- * have to handle every comment syntax the source-comment walker
- * accepts. Mirrors the language coverage of
- * `init/source-comments/walker.ts` (C-family, Python, Ruby, Rust, Go,
- * shell, Lua, …) plus markdown headings.
- *
- * Strategy: walk lines until one yields real prose. Per line: strip
- * leading whitespace, then strip every leading comment marker we
- * recognize, then trim. Skip lines that are empty after stripping,
- * pure separators, JSDoc-style `@tag` annotations, or block-comment
- * boundary markers (`"""`, `=begin`, `--[[`, `{-`, `(*`, etc.).
- *
- * Exported so phase 6 (docs) and phase 7b (source-comments) share one
- * implementation — there used to be a divergent copy in ingest-docs.ts.
- */
-export function firstLineFallback(body: string): string {
-  // Block-comment boundary markers we should skip outright. These
-  // never carry prose content — they're always the open/close of a
-  // multi-line comment block in their respective languages.
-  const PURE_MARKER_LINE = /^("""|'''|=begin\b.*|=end\b.*|--\[\[|--\]\]|\{-|-\}|\(\*|\*\))$/;
-
-  for (const raw of body.split("\n")) {
-    const cleaned = raw
-      .replace(/^\s+/, "")                // leading whitespace
-      .replace(/\*+\/\s*$/, "")           // trailing `*/`
-      .replace(/^\/\*+\s*/, "")           // leading `/**` or `/*`
-      .replace(/^\/\/+\s*/, "")           // leading `//` (C-family, Rust, Go, Swift, Kotlin)
-      .replace(/^\*+\s*/, "")             // leading `*` (JSDoc continuation)
-      .replace(/^("""|''')\s*/, "")       // leading Python triple-quote on a content line
-      .replace(/\s*("""|''')\s*$/, "")    // trailing Python triple-quote on a content line
-      .replace(/^#+\s*/, "")              // markdown heading marker (also Python/Ruby/shell `#`)
-      .replace(/^[─━–—=*~_-]{2,}\s*/, "") // leading separator dashes (incl. ASCII `-`)
-      .replace(/\s*[─━–—=*~_-]{2,}\s*$/, "") // trailing separator dashes
-      .trim();
-    if (cleaned.length === 0) continue;                       // marker-only line
-    if (PURE_MARKER_LINE.test(cleaned)) continue;             // block-comment boundary
-    if (cleaned.startsWith("@")) continue;                    // JSDoc / language annotation
-    if (/^[─━–—=*~_-]+$/.test(cleaned)) continue;             // pure separator
-    return cleaned.slice(0, 120);
-  }
-  return "(untitled)";
+function firstLineFallback(body: string): string {
+  const first = body.split("\n").find((l) => l.trim().length > 0) ?? "";
+  return first.replace(/^#+\s*/, "").trim().slice(0, 120) || "(untitled)";
 }
 
 /* -------------------------------------------------------------------------- */

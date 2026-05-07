@@ -1,15 +1,10 @@
 /**
- * Phase 6-docs-ingest — staged docs ingestion (PHASE_6_REDESIGN §4.1).
+ * Phase 6-docs-ingest — emit verbatim DECs for topic-index entries
+ * whose SoT lives under `docs/*`.
  *
  * Wraps `runDocsIngestion`; no operator input. The skill driver
- * surfaces the resulting `decsWritten.length` (drafts in `_inbox/`) in
- * the post-init summary so the operator sees how many docs-source
- * decision drafts landed for triage.
- *
- * Heartbeat: stamps the staged phase id so the statusline can
- * distinguish "still on Stage-1 file filter" from "now on Stage-2
- * section classify". Stage 1 is fast (~37s on gcb-platform); Stage 2
- * is the larger window (~36s in the redesigned path).
+ * surfaces the resulting `decsWritten.length` in the post-init summary
+ * so the operator sees how many doc-paragraph DECs landed.
  */
 
 import { runDocsIngestion, type IngestionResult } from "../ingest-docs.js";
@@ -19,14 +14,16 @@ import type { PhaseResult, PhaseState } from "./types.js";
 
 export async function runPhase6DocsIngest(state: PhaseState): Promise<PhaseResult> {
   const startedAt = Date.now();
+  let completed = 0;
   try {
     const result: IngestionResult = await runDocsIngestion({
       repoRoot: state.repoRoot,
-      onChunkProgress: (row) => {
+      onEntryProgress: (row) => {
+        completed += 1;
         writeProgress(state.repoRoot, {
-          phase: `6-docs-ingest:${row.stage}`,
-          batch: row.entriesDone,
-          total: row.totalEntries,
+          phase: "6-docs-ingest",
+          batch: completed,
+          total: row.total,
           startedAt,
         });
       },

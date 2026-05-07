@@ -8,7 +8,7 @@
  * carries detected stack + sensors, mirror init skipped (no remote in
  * smoke). Pure mechanical, no claude burn.
  *
- * Steps:
+ * Six steps:
  *   1. Detection on a TS+ESLint repo flags both sensors.
  *   2. Detection on an empty repo returns stack=[unknown] + 0 sensors.
  *   3. runInit with --no-prompt + --skip-mirror seeds templates,
@@ -18,11 +18,6 @@
  *   5. Re-running without --force preserves existing files (collisions
  *      reported, no overwrite).
  *   6. Slug override flag wins over auto-derived slug.
- *   7. PHASE_6_REDESIGN §4.9 cold-start CLI summary lands a 4-line
- *      terse block — `Adopted <slug> in <duration>.`, three counter
- *      bullets, and the `cairn attention` follow-up — and never the
- *      legacy verbose discovery dump (no "Mirror init", "Adoption
- *      audit", or per-section breakdown lines).
  */
 
 import {
@@ -208,63 +203,6 @@ async function main(): Promise<void> {
   const wf6 = readFileSync(join(root6, ".cairn/config/workflow.md"), "utf8");
   assert(wf6.includes("custom_slug:"), "workflow.md should reflect override slug");
   console.log(`  slug override propagated to workflow.md`);
-
-  // ── Step 7: cold-start CLI summary (PHASE_6_REDESIGN §4.9).
-  header("Step 7: cold-start summary is the locked 4-line block");
-  const root7 = makeTsRepo();
-  const captured: string[] = [];
-  const origWrite = process.stdout.write.bind(process.stdout);
-  process.stdout.write = ((chunk: unknown, ...rest: unknown[]): boolean => {
-    if (typeof chunk === "string") captured.push(chunk);
-    else if (chunk instanceof Uint8Array) captured.push(Buffer.from(chunk).toString("utf8"));
-    return origWrite(chunk as never, ...(rest as never[]));
-  }) as typeof process.stdout.write;
-  try {
-    await runInit({ repoRoot: root7, mode: "auto", autoProceed: "a" });
-  } finally {
-    process.stdout.write = origWrite;
-  }
-  const stdout = captured.join("");
-
-  assert(
-    /Adopted demo_app in \d+(?:\.\d+)?(?:ms|s)\b/.test(stdout) ||
-      /Adopted demo_app in \d+m \d+s\b/.test(stdout),
-    `Step 7: missing "Adopted <slug> in <duration>." — got:\n${stdout}`,
-  );
-  assert(
-    /- \d+ active rules baseline verified\./.test(stdout),
-    `Step 7: missing "<N> active rules baseline verified." line`,
-  );
-  assert(
-    /- \d+ new decision drafts found\./.test(stdout),
-    `Step 7: missing "<M> new decision drafts found." line`,
-  );
-  assert(
-    /- \d+ unpromoted candidates indexed\./.test(stdout),
-    `Step 7: missing "<K> unpromoted candidates indexed." line`,
-  );
-  assert(
-    /Run `cairn attention` to review drafts and commit them to the ledger\./.test(stdout),
-    `Step 7: missing follow-up "Run \`cairn attention\`…" line`,
-  );
-
-  // Negative checks — none of the legacy verbose-completion artifacts
-  // should leak through. These were the headers / labels the old
-  // printCompletionSummary emitted; the new locked format strips them.
-  for (const phrase of [
-    "Adoption audit",
-    "Discovery summary",
-    "Ground state seeded",
-    "Sensors registered",
-    "Canonical map",
-    "First-session onboarding",
-  ]) {
-    assert(
-      !stdout.includes(phrase),
-      `Step 7: legacy summary phrase "${phrase}" leaked into cold-start output`,
-    );
-  }
-  console.log("  ✓ cold-start summary matches §4.9 4-line contract");
 
   header("Cleanup");
   cleanup();

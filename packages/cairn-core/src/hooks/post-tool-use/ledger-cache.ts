@@ -9,8 +9,6 @@ import { createHash } from "node:crypto";
 import { existsSync, openSync, readFileSync, readSync, closeSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import { fileCandidatesMapPath } from "../../ground/paths.js";
-import { FileCandidatesMap } from "../../ground/schemas.js";
 import {
   lookupScope,
   readScopeIndex,
@@ -67,13 +65,6 @@ interface ScopeIndexCacheEntry {
   index: ScopeIndex;
 }
 
-interface FileCandidatesCacheEntry {
-  repoRoot: string;
-  mtimeMs: number;
-  /** repo-relative path → unpromoted-candidate count (only files with ≥1). */
-  counts: Map<string, number>;
-}
-
 const SCOPE_INDEX_HASH_BYTES = 512;
 
 /**
@@ -111,7 +102,6 @@ let decisionsCache: DecisionsCacheEntry | null = null;
 let activeTasksCache: TasksDirCacheEntry | null = null;
 let doneTasksCache: TasksDirCacheEntry | null = null;
 let scopeIndexCache: ScopeIndexCacheEntry | null = null;
-let fileCandidatesCache: FileCandidatesCacheEntry | null = null;
 
 function invariantsLedgerFile(repoRoot: string): string {
   return join(
@@ -382,50 +372,4 @@ export function getScopeIndexEntry(
   if (entry.unscoped === true) return null;
   if (entry.decisions.length === 0 && entry.invariants.length === 0) return null;
   return entry;
-}
-
-/**
- * Cached `file-candidates-map.yaml` reader. mtime-keyed; the read-enrich
- * hook hits this once per Read so the cache pays off after the second
- * read of any file in the same session. Returns 0 when the file is
- * missing (no walks have happened yet — typical for a fresh clone) so
- * the candidate-count hint stays silent on un-adopted projects.
- *
- * Spec: PHASE_6_REDESIGN §4.7. The map is regenerated every time
- * phase 5b walks the repo and every time phase 6 / `cairn_propose_decision`
- * stamps a new `dec_id` on a topic-index entry. The mtime invalidation
- * picks up both refresh paths.
- */
-export function getFileCandidateCount(
-  repoRoot: string,
-  repoRelativePath: string,
-): number {
-  const path = fileCandidatesMapPath(repoRoot);
-  if (!existsSync(path)) return 0;
-  let mtimeMs: number;
-  try {
-    mtimeMs = statSync(path).mtimeMs;
-  } catch {
-    return 0;
-  }
-  if (
-    fileCandidatesCache === null ||
-    fileCandidatesCache.repoRoot !== repoRoot ||
-    fileCandidatesCache.mtimeMs !== mtimeMs
-  ) {
-    let parsed: unknown;
-    try {
-      parsed = parseYaml(readFileSync(path, "utf8"));
-    } catch {
-      return 0;
-    }
-    const result = FileCandidatesMap.safeParse(parsed);
-    if (!result.success) return 0;
-    const counts = new Map<string, number>();
-    for (const [file, count] of Object.entries(result.data.file_candidates)) {
-      if (typeof count === "number" && count > 0) counts.set(file, count);
-    }
-    fileCandidatesCache = { repoRoot, mtimeMs, counts };
-  }
-  return fileCandidatesCache.counts.get(repoRelativePath) ?? 0;
 }

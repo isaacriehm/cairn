@@ -234,7 +234,6 @@ descriptions:
 | `3b-seed` | seed `.cairn/` skeleton + grandfather commits | <1s |
 | `4-pilot` | pick seed module | operator |
 | `5-brand` | brand auto-fill (Haiku) | operator + ~30s |
-| `5b-topic-index` | cross-source dedup pre-pass (Haiku judges semantically-similar pairs) | ~30s / 2-10min |
 | `6-docs-ingest` | Haiku ingest of README + docs/ → DEC drafts | ~15-30s / 1-3min |
 | `7b-source-comments` | Haiku classify essay-class JSDoc → DEC + invariant drafts | ~30s / **5-20min** |
 | `7c-rules-merge` | Haiku per H2 in CLAUDE.md / AGENTS.md / .claude/rules/* | ~30-90s / 1-3min |
@@ -250,15 +249,13 @@ row; do NOT improvise:
 | `<id>` | context line |
 |---|---|
 | `3-mapper` | `Sonnet runs per detected module slice in parallel rounds of 4 (cap: 50 slices). Scales with module count.` |
-| `5b-topic-index` | `Walker collects markdown paragraphs; Haiku judges every cross-file pair above the Jaccard threshold (5-way parallel, hard cap 200). Watch the `⏳` indicator on your statusline for live `X/Y pairs (P%) ~Nm` updates.` |
 | `6-docs-ingest` | `Haiku batch over README + docs/. Scales with doc file count and length.` |
 | `7b-source-comments` | `Haiku classifies every essay-class block comment in scoped source files (4-way parallel). On busy monorepos this is the longest phase — expect minutes, not seconds. /exit is safe; SessionStart resumes. Watch the `⏳` indicator on your statusline for live `phase X/Y (P%) ~Nm` updates.` |
 | `7c-rules-merge` | `Haiku per H2 section across CLAUDE.md / AGENTS.md / .claude/rules/*. Scales with section count.` |
 
-**Live progress**: phases `3-mapper`, `5b-topic-index`, `6-docs-ingest`,
-`7b-source-comments`, and `7c-rules-merge` write
-`.cairn/init/progress.json` after every batch / pair / module / doc /
-section. The Cairn statusline reads it and renders
+**Live progress**: phases `3-mapper`, `6-docs-ingest`, `7b-source-comments`,
+and `7c-rules-merge` write `.cairn/init/progress.json` after every batch /
+module / doc / section. The Cairn statusline reads it and renders
 `⬡ cairn ⏳ adopt <phase> X/Y (P%) ~Nm` in real time so the operator
 isn't staring at a frozen turn for minutes. Step 1.5 wires this if it
 isn't already.

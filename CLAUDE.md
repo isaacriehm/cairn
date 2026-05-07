@@ -17,29 +17,29 @@ bootstrap and debug entrypoint. There is no separate orchestration runtime
 
 ## Document index
 
-| What                                                                 | Where                                                        |
-| -------------------------------------------------------------------- | ------------------------------------------------------------ |
-| Quick start + concepts                                               | [`README.md`](README.md)                                     |
-| Layered architecture (locked)                                        | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)               |
+| What | Where |
+|------|-------|
+| Quick start + concepts | [`README.md`](README.md) |
+| Layered architecture (locked) | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | Plugin spec — adoption phases, hooks, multi-dev enforcement (locked) | [`docs/PLUGIN_ARCHITECTURE.md`](docs/PLUGIN_ARCHITECTURE.md) |
-| MCP tool surface — tool-by-tool reference                            | [`docs/MCP_SURFACE.md`](docs/MCP_SURFACE.md)                 |
-| `.cairn/` directory contract                                         | [`docs/FILESYSTEM_LAYOUT.md`](docs/FILESYSTEM_LAYOUT.md)     |
-| License                                                              | [`LICENSE`](LICENSE)                                         |
+| MCP tool surface — tool-by-tool reference | [`docs/MCP_SURFACE.md`](docs/MCP_SURFACE.md) |
+| `.cairn/` directory contract | [`docs/FILESYSTEM_LAYOUT.md`](docs/FILESYSTEM_LAYOUT.md) |
+| License | [`LICENSE`](LICENSE) |
 
 ## Operator profile (apply when communicating with the operator)
 
-| Trait              | Behavior                                                                                                                       |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
-| Communication      | Terse-direct. Lead with answer or action. No filler.                                                                           |
-| Decisions          | Fast-intuitive. Don't present options unless explicitly asked. When the operator states a decision, treat it as final.         |
-| Explanations       | Concise. Root cause in 1-2 sentences then the fix.                                                                             |
-| UX philosophy      | Design-conscious. UX is equal in importance to functional correctness.                                                         |
-| Vendor choices     | Opinionated. Do not suggest alternative libraries / frameworks unless they avoid a real risk.                                  |
-| Env vars           | The operator hates env vars. Hardcode model IDs and paths in code.                                                             |
-| Tests              | "Tests are shitware. Only E2E with real DB matters." Sensors + E2E smokes only — no unit-test framing.                         |
-| Backward compat    | The operator hates backward-compat shims. Hard cutovers only.                                                                  |
-| Mobile mode        | When the operator is on mobile, `AskUserQuestion` options get truncated; switch to chat-mode A/B/C with concise option labels. |
-| Caveman ultra mode | Active for chat replies. Documents stay in full English.                                                                       |
+| Trait | Behavior |
+|-------|----------|
+| Communication | Terse-direct. Lead with answer or action. No filler. |
+| Decisions | Fast-intuitive. Don't present options unless explicitly asked. When the operator states a decision, treat it as final. |
+| Explanations | Concise. Root cause in 1-2 sentences then the fix. |
+| UX philosophy | Design-conscious. UX is equal in importance to functional correctness. |
+| Vendor choices | Opinionated. Do not suggest alternative libraries / frameworks unless they avoid a real risk. |
+| Env vars | The operator hates env vars. Hardcode model IDs and paths in code. |
+| Tests | "Tests are shitware. Only E2E with real DB matters." Sensors + E2E smokes only — no unit-test framing. |
+| Backward compat | The operator hates backward-compat shims. Hard cutovers only. |
+| Mobile mode | When the operator is on mobile, `AskUserQuestion` options get truncated; switch to chat-mode A/B/C with concise option labels. |
+| Caveman ultra mode | Active for chat replies. Documents stay in full English. |
 
 ## Hard rules
 
@@ -71,32 +71,13 @@ pnpm install
 pnpm -r build
 for s in plugin-layout resolve-attention stop-hook events session-state \
          status-line session-start handoff scope-index read-enrich init \
-         ingestion-baseline gc lock source-comments rules-merge join \
+         ingestion-baseline tier0 gc lock source-comments rules-merge join \
          bypass-detection bootstrap-guard e2e-adoption e2e-daily-flow; do
   pnpm --filter @isaacriehm/cairn "smoke:$s"
 done
 ```
 
 22 smokes; all should pass on a clean tree.
-
-### Opt-in: real-LLM regression smoke
-
-`smoke:llm-prompt-eval` runs the Phase 6 Stage-1 file-purpose filter
-prompt against three inline fixtures (one ADR, one UAT log, one research
-scratchpad) using **real Haiku** — it burns operator quota and is
-**not** part of the standard 22-smoke gate above. Run it only when:
-
-- touching the Stage-1 system prompt
-  (`packages/cairn-core/src/init/ingest-docs.ts` → `FILE_FILTER_SYSTEM`),
-  or
-- upgrading the Haiku model alias used by `runClaude`.
-
-```bash
-pnpm --filter @isaacriehm/cairn smoke:llm-prompt-eval
-```
-
-If a fixture flips, surface the failure — do not silently weaken the
-assertions. The locked prompt is in `docs/PHASE_6_REDESIGN.md` §4.1.
 
 ## Starting fresh
 

@@ -13,7 +13,6 @@
  */
 
 import { runClaude } from "../../claude/index.js";
-import { ClaudeError } from "../../claude/error.js";
 import { logger } from "../../logger.js";
 import type { SemanticJudge, SemanticVerdict } from "./resolve.js";
 
@@ -30,12 +29,7 @@ const VERDICT_SCHEMA = {
   },
 } as const;
 
-// Per-call wall budget. Sized for `claude --print` cold-start + Haiku
-// JSON-schema reply at the upper end of normal latency. Shorter budgets
-// (e.g. 8s) trip on every cold subprocess and surface as exit 143
-// timeout storms; the resolver's circuit breaker bails the whole phase
-// on repeated timeouts so this generous per-call budget can't compound.
-const TIMEOUT_MS = 45_000;
+const TIMEOUT_MS = 8_000;
 
 export interface JudgeOptions {
   repoRoot?: string;
@@ -73,12 +67,6 @@ export function makeHaikuJudge(opts: JudgeOptions = {}): SemanticJudge {
       const verdict: SemanticVerdict = verdictRaw === "same" ? "same" : "different";
       return verdict;
     } catch (err) {
-      // Surface ClaudeError (timeout / rate_limit / overloaded / auth) to
-      // the resolver so it can trip its circuit breaker and stop calling
-      // the judge instead of burning wall-time on doomed retries.
-      // Non-Claude errors (parse glitches, schema mismatch) are local to
-      // a single pair — log + fall back to "different".
-      if (err instanceof ClaudeError) throw err;
       log.warn({ err, a: a.file, b: b.file }, "haiku judge failed; falling back to 'different'");
       return "different";
     }

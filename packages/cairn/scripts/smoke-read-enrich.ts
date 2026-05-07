@@ -10,14 +10,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   buildLegend,
-  emptyTopicIndex,
-  getFileCandidateCount,
   getInvariantsLedger,
   getScopeIndexEntry,
   lookupTask,
   scanCitations,
-  setTopic,
-  writeFileCandidatesMap,
   writeScopeIndex,
   type ScopeIndexHint,
 } from "@isaacriehm/cairn-core";
@@ -139,117 +135,10 @@ const x = 1;
     console.log("  ✓ Step 4 — scope-index legend integration");
   }
 
-  // ── Step 5 — candidate-count hint (PHASE_6_REDESIGN §4.7) ─────────
-  // PR 2: file-candidates-map.yaml feeds the read-enricher hint via
-  // O(1) lookup. When a file is the SoT for ≥1 unpromoted candidate
-  // the legend prepends a curator prompt for the AI agent.
-  {
-    const repoRoot = mkFixture();
-    mkdirSync(join(repoRoot, ".cairn", "ground"), { recursive: true });
-    // Seed a topic-index with two unpromoted candidates anchored at
-    // docs/auth.md so the file-candidates-map writer counts 2.
-    let ti = emptyTopicIndex();
-    for (const slug of ["topic-a", "topic-b"]) {
-      ti = setTopic(ti, slug, {
-        slug,
-        sot_source: "docs/auth.md",
-        candidates: [
-          {
-            file: "docs/auth.md",
-            kind: "doc",
-            line_range: [1, 10],
-          },
-        ],
-        created_at: "2026-05-04T03:00:00Z",
-      });
-    }
-    // Plus one promoted candidate that should NOT be counted.
-    ti = setTopic(ti, "topic-c", {
-      slug: "topic-c",
-      sot_source: "docs/tokens.md",
-      candidates: [
-        {
-          file: "docs/tokens.md",
-          kind: "doc",
-          line_range: [1, 10],
-        },
-      ],
-      created_at: "2026-05-04T03:00:00Z",
-      dec_id: "DEC-1234567",
-    });
-    writeFileCandidatesMap(repoRoot, ti);
-
-    // Step 5a — getFileCandidateCount returns the per-file count.
-    const authCount = getFileCandidateCount(repoRoot, "docs/auth.md");
-    assert(
-      authCount === 2,
-      `Step 5a: expected 2 candidates for docs/auth.md, got ${authCount}`,
-    );
-    const tokensCount = getFileCandidateCount(repoRoot, "docs/tokens.md");
-    assert(
-      tokensCount === 0,
-      `Step 5a: docs/tokens.md should be 0 (its candidate is promoted), got ${tokensCount}`,
-    );
-    const missingCount = getFileCandidateCount(repoRoot, "docs/missing.md");
-    assert(
-      missingCount === 0,
-      `Step 5a: missing file should report 0, got ${missingCount}`,
-    );
-
-    // Step 5b — buildLegend with no citations + no scope BUT
-    // candidates=N produces a curator-hint-only legend.
-    const empty = scanCitations("");
-    const legend = buildLegend(
-      empty,
-      null,
-      null,
-      null,
-      () => ({ found: "not_found" }),
-      authCount,
-    );
-    assert(legend !== null, "Step 5b: candidate hint alone should produce a legend");
-    if (legend === null) return;
-    assert(
-      legend.includes("2 unpromoted topic-index candidates"),
-      `Step 5b: legend should report the count, got ${legend}`,
-    );
-    assert(
-      legend.includes("cairn_propose_decision"),
-      `Step 5b: legend should mention the propose tool, got ${legend}`,
-    );
-    assert(
-      legend.includes("Do NOT propose for narrative"),
-      `Step 5b: legend should include the "Do NOT propose for narrative" guardrail, got ${legend}`,
-    );
-
-    // Step 5c — when count=0, no hint is added (stays silent).
-    const silent = buildLegend(empty, null, null, null, () => ({ found: "not_found" }), 0);
-    assert(
-      silent === null,
-      `Step 5c: count=0 + no citations + no scope should remain null, got ${silent}`,
-    );
-
-    // Step 5d — when both candidate hint + citations exist, both
-    // appear in the same output, with the curator hint above the box.
-    const withCitations = scanCitations("// §INV-2323232 cited");
-    const combined = buildLegend(
-      withCitations,
-      null,
-      null,
-      null,
-      () => ({ found: "not_found" }),
-      authCount,
-    );
-    assert(combined !== null, "Step 5d: candidate hint + citation should combine");
-    if (combined === null) return;
-    const hintIdx = combined.indexOf("2 unpromoted");
-    const boxIdx = combined.indexOf("cairn citations");
-    assert(
-      hintIdx >= 0 && boxIdx >= 0 && hintIdx < boxIdx,
-      `Step 5d: candidate hint should sit above the citation box. hintIdx=${hintIdx} boxIdx=${boxIdx}`,
-    );
-    console.log("  ✓ Step 5 — candidate-count hint via file-candidates-map.yaml");
-  }
+  // ── Step 5 — large content cap is just a documentation hint ──────
+  // (The runReadEnricher entry point enforces the 512KB cap via stdin parsing;
+  // the building blocks themselves don't enforce it. We don't smoke the stdin
+  // path here — that requires shelling out. Skip.)
 
   console.log("smoke-read-enrich — pass");
 }

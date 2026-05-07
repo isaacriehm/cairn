@@ -98,48 +98,6 @@ import type { CommentBlock, WalkOptions, WalkResult } from "./walker.js";
 const log = logger("init.source-comments.ingest");
 const CAPTURE_SOURCE = "init-source-comments";
 
-/**
- * Phase 7b regex pre-filter (PHASE_6_REDESIGN §4.3).
- *
- * Essay-class block comments only fall through to the Haiku batch
- * classifier when their prose matches imperative documentation
- * conventions. Code uses rigid conventions, so this regex is safe in a
- * way it would not be on arbitrary natural-language prose.
- *
- * Accepted false-negative: passive-voice invariants like
- *   "Token expiry is enforced via …"
- * miss the regex and remain topic-index candidates only. The operator
- * (or any AI agent reading the file) can promote them later via
- * `cairn_propose_decision` from the candidate surface introduced in PR 2.
- */
-const PHASE_7B_DECISION_REGEX =
-  /(MUST|MUST NOT|SHALL|NEVER|ALWAYS|REQUIRED|FORBIDDEN|INVARIANT|@invariant|@rule|@decision|@cairn:decision|@cairn:rule)/i;
-
-/** Marker override — always emits regardless of regex match. */
-const PHASE_7B_MARKER_REGEX = /@cairn:(decision|rule)/i;
-
-type BlockDisposition =
-  | { kind: "license" }
-  | { kind: "marker"; markerKind: "decision" | "rule" }
-  | { kind: "classify" }
-  | { kind: "candidate-only" };
-
-function dispositionForBlock(block: CommentBlock): BlockDisposition {
-  if (block.kind === "license") return { kind: "license" };
-  // Markers (`@cairn:decision` / `@cairn:rule`) live on JSDoc-tag lines that
-  // the walker strips from `block.prose`. Match the raw text so the override
-  // works in JSDoc as naturally as in plain block comments.
-  const m = block.raw.match(PHASE_7B_MARKER_REGEX);
-  if (m !== null) {
-    const kw = (m[1] ?? "").toLowerCase();
-    return { kind: "marker", markerKind: kw === "rule" ? "rule" : "decision" };
-  }
-  if (PHASE_7B_DECISION_REGEX.test(block.prose)) {
-    return { kind: "classify" };
-  }
-  return { kind: "candidate-only" };
-}
-
 export interface IngestSourceCommentsArgs {
   repoRoot: string;
   /** Forwarded to walker — typically left undefined for full-repo walks. */
@@ -253,55 +211,15 @@ export async function runSourceCommentsIngestion(
   }
   const walk = walkSourceComments(walkOpts);
 
-  // ── 2a. Phase 7b regex pre-filter ────────────────────────────────
-  const dispositions: BlockDisposition[] = walk.blocks.map(dispositionForBlock);
-  const classifyTargets: CommentBlock[] = [];
-  const classifyTargetIndices: number[] = [];
-  for (let i = 0; i < walk.blocks.length; i += 1) {
-    if (dispositions[i]?.kind === "classify") {
-      classifyTargets.push(walk.blocks[i]!);
-      classifyTargetIndices.push(i);
-    }
-  }
-
-  // ── 2b. Classify (kind only) — only blocks that passed the regex ─
+  // ── 2. Classify (kind only) ─────────────────────────────────────
   const classifyResult = await classifyBlocks({
-    blocks: classifyTargets,
+    blocks: walk.blocks,
     repoRoot,
     ...(args.mockClassify !== undefined ? { mockClassify: args.mockClassify } : {}),
     ...(args.onBatchProgress !== undefined
       ? { onBatchProgress: args.onBatchProgress }
       : {}),
   });
-
-  // Re-align classifications back to walk.blocks index space. Marker-override
-  // blocks get a synthetic classification so the resolution loop emits them.
-  // Candidate-only blocks (and license blocks) get a synthetic "other" so
-  // the resolution loop branches into the candidate-registration path.
-  const classifications: CommentClassification[] = new Array(walk.blocks.length);
-  for (let i = 0; i < walk.blocks.length; i += 1) {
-    const block = walk.blocks[i]!;
-    classifications[i] = { blockId: block.id, kind: "other", failed: false };
-  }
-  for (let j = 0; j < classifyTargets.length; j += 1) {
-    const blockIdx = classifyTargetIndices[j]!;
-    const real = classifyResult.classifications[j];
-    if (real !== undefined) classifications[blockIdx] = real;
-  }
-  for (let i = 0; i < walk.blocks.length; i += 1) {
-    const block = walk.blocks[i]!;
-    const d = dispositions[i]!;
-    if (d.kind === "marker") {
-      classifications[i] = {
-        blockId: block.id,
-        kind: d.markerKind === "rule" ? "constraint" : "rationale",
-        failed: false,
-      };
-    } else if (d.kind === "license") {
-      classifications[i] = { blockId: block.id, kind: "license", failed: false };
-    }
-    // candidate-only and classify dispositions retain their existing assignment.
-  }
 
   const kindCounts: Record<CommentClassKind, number> = {
     rationale: 0,
@@ -310,7 +228,7 @@ export async function runSourceCommentsIngestion(
     license: 0,
     other: 0,
   };
-  for (const c of classifications) {
+  for (const c of classifyResult.classifications) {
     if (c === undefined) continue;
     kindCounts[c.kind] = (kindCounts[c.kind] ?? 0) + 1;
   }
@@ -331,34 +249,8 @@ export async function runSourceCommentsIngestion(
 
   for (let i = 0; i < walk.blocks.length; i += 1) {
     const block = walk.blocks[i];
-    const cls = classifications[i];
-    const disposition = dispositions[i];
-    if (block === undefined || cls === undefined || disposition === undefined) continue;
-    if (disposition.kind === "candidate-only") {
-      // Phase 7b regex pre-filter: surface in topic-index as a candidate
-      // (no dec_id) so AI agents reading the file can promote later via
-      // cairn_propose_decision. No DEC emit, no strip-replace.
-      const slug = topicSlug(block.prose);
-      if (topicIndex.topics[slug] === undefined) {
-        const lineRange: [number, number] = [block.startLine, block.endLine];
-        topicIndex = setTopic(topicIndex, slug, {
-          slug,
-          sot_source: block.file,
-          candidates: [
-            { file: block.file, kind: "source-comment", line_range: lineRange },
-          ],
-          created_at: nowIso,
-        });
-        anchorMap = setAnchor(anchorMap, slug, {
-          file: block.file,
-          content_hash: bodyContentHash(block.prose),
-          line_range: lineRange,
-          kind: "source-comment",
-        });
-      }
-      skipped.push({ blockId: block.id, reason: "phase-7b regex pre-filter: no imperative keyword" });
-      continue;
-    }
+    const cls = classifyResult.classifications[i];
+    if (block === undefined || cls === undefined) continue;
     if (cls.kind !== "rationale" && cls.kind !== "constraint") {
       skipped.push({ blockId: block.id, reason: `kind=${cls.kind}` });
       continue;
@@ -633,8 +525,7 @@ export async function runSourceCommentsIngestion(
         start_offset: b.startOffset,
         end_offset: b.endOffset,
         raw: b.raw,
-        disposition: dispositions[idx]?.kind ?? null,
-        classification: classifications[idx] ?? null,
+        classification: classifyResult.classifications[idx] ?? null,
         resolution: serializeResolution(resolutionByBlockId.get(b.id)),
       })),
     });
@@ -658,7 +549,7 @@ export async function runSourceCommentsIngestion(
 
   return {
     walk,
-    classifications,
+    classifications: classifyResult.classifications,
     decsWritten,
     invsWritten,
     citesEmitted,

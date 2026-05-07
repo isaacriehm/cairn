@@ -103,21 +103,15 @@ export async function runPhases678Parallel(
   const t0 = performance.now();
   const startedAt = Date.now();
 
-  // Phase 6 now runs the staged ingest pipeline (PHASE_6_REDESIGN §4.1):
-  // Stage 3 marker scan (0 Haiku) → Stage 1 file-purpose binary filter
-  // (batch=30, concurrency=5) → Stage 2 section-level batch classifier
-  // (batch=30, concurrency=5) → Stage 4 emit drafts to `_inbox/`. Each
-  // completed batch fires `onChunkProgress` with the active stage label
-  // so the statusline can render the right ETA window.
   const docsRes = await runPhaseSafely("docs-ingest-failed", async () =>
     runDocsIngestion({
       repoRoot: state.repoRoot,
       existingDecIds: sharedDecIds,
-      onChunkProgress: (row) =>
+      onEntryProgress: (row) =>
         writeProgress(state.repoRoot, {
-          phase: `6-docs-ingest:${row.stage}`,
-          batch: row.entriesDone,
-          total: row.totalEntries,
+          phase: "6-docs-ingest",
+          batch: row.total > 0 ? row.total : 1,
+          total: row.total,
           startedAt,
         }),
     }),

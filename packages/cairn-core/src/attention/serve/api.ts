@@ -67,17 +67,12 @@ export async function handleApi(
     if (url === "/api/bulk-accept" && req.method === "POST") {
       const body = await readJsonBody(req);
       const threshold = parseThreshold(body?.threshold);
-      const dryRun = body?.dryRun === true;
       const result = await bulkAcceptObvious({
         repoRoot: ctx.repoRoot,
         globs: loadGlobs(ctx.repoRoot),
         threshold,
-        dryRun,
       });
-      // Counters track committed accepts only — dry-run previews must
-      // not bump them or the toolbar count drifts after a cancelled
-      // confirmation dialog.
-      if (!dryRun) ctx.counters.accepted += result.decsAccepted;
+      ctx.counters.accepted += result.decsAccepted;
       return sendJson(res, 200, { ok: true, ...result });
     }
     if (url === "/api/cluster/merge" && req.method === "POST") {

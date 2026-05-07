@@ -301,52 +301,15 @@ async function mergeCluster() {
 }
 
 async function bulkAcceptHigh() {
-  // Dry-run first so the operator sees the distribution before any
-  // writes hit disk. Without this the button silently mutated drafts
-  // even when zero met the high threshold.
-  setStatus("scoring drafts (dry run)…");
-  const preview = await api("/api/bulk-accept", {
-    method: "POST",
-    body: { threshold: "high", dryRun: true },
-  });
-  if (!preview.ok) {
-    setStatus("bulk-accept preview failed");
-    return;
-  }
-  const dist = preview.decsByConfidence ?? { high: 0, medium: 0, low: 0 };
-  const invDist = preview.invariantsByConfidence ?? { high: 0, medium: 0, low: 0 };
-  const wouldPromote = preview.decsAccepted ?? 0;
-  const summary =
-    `Score preview\n` +
-    `  drafts: ${dist.high} high · ${dist.medium} medium · ${dist.low} low\n` +
-    `  invariants: ${invDist.high} high · ${invDist.medium} medium · ${invDist.low} low\n\n` +
-    `${wouldPromote} draft${wouldPromote === 1 ? "" : "s"} would be promoted to accepted.\n` +
-    `${dist.medium + dist.low} medium/low draft${dist.medium + dist.low === 1 ? "" : "s"} would stay in inbox (newly stamped only if not already scored).\n\n` +
-    `Continue?`;
-  if (wouldPromote === 0) {
-    setStatus(
-      `0 drafts meet 'high' threshold — nothing to promote (${dist.high}/${dist.medium}/${dist.low} h/m/l). Cancelled.`,
-    );
-    return;
-  }
-  if (!window.confirm(summary)) {
-    setStatus("bulk-accept cancelled");
-    return;
-  }
-  setStatus("bulk-accepting…");
+  setStatus("bulk-accepting high-confidence drafts…");
   const r = await api("/api/bulk-accept", {
     method: "POST",
     body: { threshold: "high" },
   });
   if (r.ok) {
-    const accepted = r.decsAccepted ?? 0;
-    const finalDist = r.decsByConfidence ?? dist;
-    setStatus(
-      `bulk-accepted ${accepted} draft${accepted === 1 ? "" : "s"}. ` +
-        `${finalDist.medium + finalDist.low} remain in inbox.`,
-    );
+    setStatus(`bulk-accepted ${r.decsAccepted} drafts`);
   } else {
-    setStatus("bulk-accept failed");
+    setStatus(`bulk-accept failed`);
   }
   await refresh();
 }

@@ -89,7 +89,7 @@ async function runSmoke(): Promise<void> {
     `# AGENTS.md\n\nThis project follows the Cairn adoption protocol.\n`,
   );
 
-  // ── Step 1 — phase 5b builds topic-index, phase 6 emits drafts to _inbox/
+  // ── Step 1 — phase 5b builds topic-index, phase 6 emits verbatim DECs
   {
     // Phase 5b — build topic-index from the docs we just wrote.
     const judge: SemanticJudge = async () => "different";
@@ -101,8 +101,7 @@ async function runSmoke(): Promise<void> {
       }`,
     );
 
-    // Phase 6 — emit DEC drafts for docs/* topic entries via mockClassify.
-    // Per PHASE_6_REDESIGN §4.1, drafts land in `_inbox/`, not `decisions/`.
+    // Phase 6 — emit DECs for docs/* topic entries via mockClassify.
     const result = await runDocsIngestion({
       repoRoot,
       mockClassify: (entry) => {
@@ -121,63 +120,51 @@ async function runSmoke(): Promise<void> {
 
     assert(
       result.decsWritten.length === 1,
-      `Step 1: expected 1 draft, got ${result.decsWritten.length}`,
+      `Step 1: expected 1 DEC, got ${result.decsWritten.length}`,
     );
     const dec = result.decsWritten[0];
     assert(dec !== undefined, "Step 1: dec entry undefined");
     if (dec === undefined) return;
     assert(
       existsSync(join(repoRoot, dec.path)),
-      `Step 1: draft file missing on disk: ${dec.path}`,
+      `Step 1: dec file missing on disk: ${dec.path}`,
     );
     assert(
       dec.id.startsWith("DEC-"),
       `Step 1: dec id malformed: ${dec.id}`,
     );
     assert(
-      dec.path === `.cairn/ground/decisions/_inbox/${dec.id}.draft.md`,
-      `Step 1: draft path should be _inbox/<id>.draft.md, got ${dec.path}`,
+      dec.path === `.cairn/ground/decisions/${dec.id}.md`,
+      `Step 1: dec path should be ground/decisions/, got ${dec.path}`,
     );
 
     const decBody = readFileSync(join(repoRoot, dec.path), "utf8");
     assert(
-      decBody.includes("status: draft"),
-      "Step 1: emitted draft should carry status: draft (PHASE_6_REDESIGN §4.1)",
-    );
-    assert(
-      decBody.includes("capture_source: init-docs-ingest"),
-      "Step 1: emitted draft should carry capture_source: init-docs-ingest",
-    );
-    assert(
-      decBody.includes("decided_by: cairn-init"),
-      "Step 1: emitted draft should carry decided_by: cairn-init",
+      decBody.includes("status: accepted"),
+      "Step 1: emitted DEC should be auto-promoted to status: accepted",
     );
     assert(
       decBody.includes("sot_kind: path"),
-      "Step 1: emitted draft missing sot_kind: path",
+      "Step 1: emitted DEC missing sot_kind: path",
     );
     assert(
       decBody.includes("sot_path: docs/decisions.md"),
-      "Step 1: emitted draft missing sot_path docs/decisions.md",
+      "Step 1: emitted DEC missing sot_path docs/decisions.md",
     );
     assert(
       decBody.includes("never store API keys"),
-      "Step 1: emitted draft body should be verbatim source paragraph",
+      "Step 1: emitted DEC body should be verbatim source paragraph",
     );
 
-    // Drafts in `_inbox/` are pre-promotion: sot-bindings + sot-cache
-    // stay untouched until `cairn attention` accepts the draft. The
-    // file may or may not exist depending on what other phases wrote;
-    // when it does exist, it must NOT yet contain this draft id.
-    const bindingsPath = join(repoRoot, ".cairn", "ground", "sot-bindings.yaml");
-    if (existsSync(bindingsPath)) {
-      const bindings = readFileSync(bindingsPath, "utf8");
-      assert(
-        !bindings.includes(dec.id),
-        "Step 1: sot-bindings.yaml must NOT carry draft DEC ids",
-      );
-    }
-    console.log("  ✓ Step 1 — DEC draft emitted to _inbox/ with status=draft, no sot-bindings touch");
+    const bindings = readFileSync(
+      join(repoRoot, ".cairn", "ground", "sot-bindings.yaml"),
+      "utf8",
+    );
+    assert(
+      bindings.includes(dec.id) && bindings.includes("docs/decisions.md"),
+      "Step 1: sot-bindings.yaml should contain the new DEC id and its path",
+    );
+    console.log("  ✓ Step 1 — verbatim DEC emitted via topic-index + sot-bindings written");
   }
 
   // ── Step 2 — runBaselineAudit emits audit yaml ──────────────────────
@@ -252,46 +239,19 @@ async function runSmoke(): Promise<void> {
     console.log("  ✓ Step 3 — onboarding injected on fresh repo");
   }
 
-  // ── Step 4 — drafts in _inbox/ do NOT suppress onboarding ─────────
-  // Per PHASE_6_REDESIGN §4.1, phase 6 emits drafts only — operator
-  // hasn't accepted anything yet, so onboarding stays. Suppression
-  // fires only after `cairn attention` promotes a draft to a real
-  // accepted DEC.
+  // ── Step 4 — onboarding suppressed once a DEC is accepted ─────────
   {
-    const ctxAfterDrafts = await buildSessionStartContext({
+    // Step 1 already emitted an accepted DEC into this repoRoot; the
+    // onboarding suppressor should pick that up and stay quiet.
+    const ctx = await buildSessionStartContext({
       repoRoot,
       source: "startup",
     });
     assert(
-      ctxAfterDrafts.sectionsRendered.includes("first_session_onboarding"),
-      `Step 4: onboarding should still fire when only drafts exist — rendered: ${ctxAfterDrafts.sectionsRendered.join(",")}`,
+      !ctx.sectionsRendered.includes("first_session_onboarding"),
+      `Step 4: onboarding should be gone — rendered: ${ctx.sectionsRendered.join(",")}`,
     );
-
-    // Simulate `cairn attention` accepting the draft: move
-    // `_inbox/<id>.draft.md` → `<id>.md` with status=accepted.
-    const inboxDir = join(repoRoot, ".cairn", "ground", "decisions", "_inbox");
-    const draftFiles = readFileSync.length > 0
-      ? execSync("ls", { cwd: inboxDir }).toString().trim().split("\n")
-      : [];
-    assert(draftFiles.length === 1, `Step 4: expected 1 draft, got ${draftFiles.length}`);
-    const draftName = draftFiles[0]!;
-    const acceptedName = draftName.replace(/\.draft\.md$/, ".md");
-    const draftBody = readFileSync(join(inboxDir, draftName), "utf8").replace(
-      "status: draft",
-      "status: accepted",
-    );
-    writeFileSync(join(repoRoot, ".cairn", "ground", "decisions", acceptedName), draftBody, "utf8");
-    rmSync(join(inboxDir, draftName));
-
-    const ctxAfterAccept = await buildSessionStartContext({
-      repoRoot,
-      source: "startup",
-    });
-    assert(
-      !ctxAfterAccept.sectionsRendered.includes("first_session_onboarding"),
-      `Step 4: onboarding should be gone after accept — rendered: ${ctxAfterAccept.sectionsRendered.join(",")}`,
-    );
-    console.log("  ✓ Step 4 — onboarding stays for drafts, suppressed after first accept");
+    console.log("  ✓ Step 4 — onboarding suppressed after first DEC");
   }
 
   console.log("smoke-ingestion-baseline — pass");

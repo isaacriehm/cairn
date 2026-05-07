@@ -230,18 +230,6 @@ export type QualityGrades = z.infer<typeof QualityGrades>;
  * priority order (docs/* > CLAUDE.md > AGENTS.md > source comments).
  * `candidates` lists every place the same prose appears (one becomes the
  * SoT, the rest become §DEC-<id> cites).
- *
- * `marker_kind` is stamped at walk-time when the SoT block sits under a
- * `cairn:` frontmatter key (file-level) or has a `<!-- cairn:decision -->`
- * / `<!-- cairn:rule -->` HTML comment within 3 lines of its heading
- * (block-level). Phase 6 Stage 3 reads this field directly off the
- * topic-index and bypasses Stages 1+2 (file-purpose + section batch
- * classifiers) for marked entries — the operator has already declared
- * the block authoritative, so Haiku adds no signal.
- *
- * `content_hash` mirrors the SoT block's body hash at walk-time. Used by
- * `cairn_propose_decision` (PR 2) and the alignment hooks to detect
- * source drift before promoting a candidate to a draft.
  */
 export const TopicIndexEntry = z.object({
   slug: z.string(),
@@ -256,8 +244,6 @@ export const TopicIndexEntry = z.object({
     }),
   ),
   created_at: z.string(),
-  marker_kind: z.enum(["decision", "rule"]).optional(),
-  content_hash: z.string().length(64).optional(),
 });
 export type TopicIndexEntry = z.infer<typeof TopicIndexEntry>;
 
@@ -379,49 +365,3 @@ export const PreCommitDriftLogEntry = z.object({
   candidates: z.array(PreCommitDriftCandidate),
 });
 export type PreCommitDriftLogEntry = z.infer<typeof PreCommitDriftLogEntry>;
-
-/**
- * Rejected-candidate ledger entry (`.cairn/ground/_rejected.yaml`).
- *
- * Records topic-index slugs the operator (or `ai-curator`) decided are
- * *not* canonical — false positives, research notes, planning prose,
- * etc. The drift sensor reads this file and suppresses any candidate
- * whose slug appears here; phase 6 / `cairn ingest` skip rejected slugs
- * on the next pass instead of re-proposing them.
- *
- * Dedup is by slug. First writer wins the `reason` string; subsequent
- * writes only refresh `rejected_at`. Phase 5b GC drops entries whose
- * slug is no longer present in the freshly-built topic-index.
- */
-export const RejectedEntry = z.object({
-  slug: z.string(),
-  rejected_at: z.string(),
-  rejected_by: z.enum(["operator", "ai-curator", "cairn-init"]),
-  reason: z.string(),
-  sot_source: z.string(),
-  line_range: z.tuple([z.number().int(), z.number().int()]).optional(),
-});
-export type RejectedEntry = z.infer<typeof RejectedEntry>;
-
-export const RejectedYaml = z.object({
-  version: z.literal(1),
-  generated: z.string(),
-  rejected: z.array(RejectedEntry),
-});
-export type RejectedYaml = z.infer<typeof RejectedYaml>;
-
-/**
- * `.cairn/ground/file-candidates-map.yaml` — per-file count of
- * topic-index entries with `dec_id IS NULL`. Built at the end of phase
- * 5b (and refreshed whenever `dec_id` is stamped — phase 6, the PR 2
- * `cairn_propose_decision` tool, etc.). The read-enrich hook consults
- * this map to inject a candidate-count warning when an AI agent reads a
- * file with unpromoted candidates, without scanning the whole topic
- * index per Read.
- */
-export const FileCandidatesMap = z.object({
-  version: z.literal(1),
-  generated: z.string(),
-  file_candidates: z.record(z.string(), z.number().int().nonnegative()),
-});
-export type FileCandidatesMap = z.infer<typeof FileCandidatesMap>;

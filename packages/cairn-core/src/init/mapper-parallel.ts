@@ -219,14 +219,6 @@ async function mapOneSlice(
       system: MODULE_SYSTEM_PROMPT,
       jsonSchema: MODULE_OUTPUT_SCHEMA as object,
       timeoutMs: PER_MODULE_TIMEOUT_MS,
-      // Isolate ambient context — without this every per-module Sonnet
-      // call ingests the operator's user-level CLAUDE.md, the project
-      // CLAUDE.md hierarchy, all plugin slash commands, and every MCP
-      // tool definition. On a 50-slice repo that's the ambient context
-      // multiplied 50x against the operator's coding-plan quota for
-      // zero benefit — the mapper only needs the caller-supplied
-      // module slice + ledger excerpt.
-      isolateAmbientContext: true,
     });
     proposal = parseModuleProposal(slice, result.parsed, Date.now() - startedAt);
   } catch (err) {

@@ -19,13 +19,10 @@ import {
 } from "./init-phases.js";
 import { invariantGetTool } from "./invariant-get.js";
 import { invariantsInScopeTool } from "./invariants-in-scope.js";
-import { proposeDecisionTool } from "./propose-decision.js";
 import { queryHistoryTool } from "./query-history.js";
 import { recordDecisionTool } from "./record-decision.js";
-import { rejectCandidateTool } from "./reject-candidate.js";
 import { resolveAttentionTool } from "./resolve-attention.js";
 import { searchTool } from "./search.js";
-import { searchCandidatesTool } from "./search-candidates.js";
 import { supersedesChainTool } from "./supersedes-chain.js";
 import { taskCreateTool } from "./task-create.js";
 import { timelineTool } from "./timeline.js";
@@ -46,15 +43,10 @@ export const allTools: ToolDef<never>[] = [
   getFullTool,
   // Read — historical (gated)
   queryHistoryTool,
-  // Read — phase 6 candidate surface (PR 2 / PHASE_6_REDESIGN §4.6)
-  searchCandidatesTool,
   // Write
   recordDecisionTool,
   taskCreateTool,
   archiveTool,
-  // Write — phase 6 candidate surface (PR 2 / PHASE_6_REDESIGN §4.6)
-  proposeDecisionTool,
-  rejectCandidateTool,
   // Write — plugin-era
   resolveAttentionTool,
   bulkAcceptAttentionTool,

@@ -32,11 +32,9 @@ import {
   runJoin,
   type CommentBlock,
   type CommentClassification,
-  type DocClassification,
   type RuleClassification,
   type RuleSection,
   type RuleSourceFile,
-  type TopicIndexEntry,
 } from "@isaacriehm/cairn-core";
 
 const cleanups: string[] = [];
@@ -106,10 +104,9 @@ async function main(): Promise<void> {
       " */",
       "",
       "/**",
-      " * Tokens MUST be signed with HS512 because deployment topology lacks key",
-      " * rotation and the 15-minute TTL keeps replay risk low. Revisit when KMS",
-      " * arrives; see thread for the original rationale and constraints driving",
-      " * this.",
+      " * We sign JWTs with HS512 because deployment topology lacks key rotation",
+      " * and the 15-minute TTL keeps replay risk low. Revisit when KMS arrives;",
+      " * see thread for the original rationale and constraints driving this.",
       " * @returns string",
       " */",
       "export function sign(): string {",
@@ -151,27 +148,15 @@ async function main(): Promise<void> {
     "# Agents\n\n## Locations\n\nSee docs/.\n",
   );
 
-  // docs/ paragraph that phase 5b will index and phase 6 will turn
-  // into a draft DEC. Sized above the walker's 80-char / 10-unique-
-  // token floor so it reaches the topic-index. The matching
-  // mockIngestionClassify below classifies it as a `decision` so we
-  // can assert the new `_inbox/`-emit contract end-to-end.
-  writeFile(
-    repoRoot,
-    "docs/decisions.md",
-    `# Decisions\n\n## Token storage policy\n\nWe store auth tokens in the OS keychain instead of localStorage because the desktop client must survive browser-vendor changes to local storage policy and we want OS-level encryption at rest.\n`,
-  );
-
   // Seed initial commit so SHA-based machinery works downstream.
   execFileSync("git", ["add", "."], { cwd: repoRoot });
   execFileSync("git", ["commit", "-q", "-m", "init"], { cwd: repoRoot });
 
   console.log(`  fixture at ${repoRoot}`);
 
-  step("Run runInit with mocks (auto mode + Phase 6/7b/7c/12)");
+  step("Run runInit with mocks (auto mode + Phase 7b/7c/12)");
   let phase7bDecCount = 0;
   let phase7cNetNewCount = 0;
-  let phase6DraftCount = 0;
   const result = await runInit({
     repoRoot,
     mode: "auto",
@@ -183,19 +168,8 @@ async function main(): Promise<void> {
     skipSelfAdoptionGuard: true,
     skipMapper: true,
     skipGuidedSetup: true,
-    // Phase 6: stub the docs classifier so Stages 1+2 are bypassed.
-    // Any docs/ paragraph mentioning "keychain"/"token" lands as a
-    // decision draft; the rest fall through as `other`.
-    mockIngestionClassify: (
-      entry: TopicIndexEntry,
-      body: string,
-    ): DocClassification => {
-      if (/keychain|token storage/i.test(body)) {
-        phase6DraftCount += 1;
-        return { kind: "decision", proposedTitle: entry.slug };
-      }
-      return { kind: "other", proposedTitle: "" };
-    },
+    // Force ingestion path on (auto mode normally skips it).
+    skipIngestion: false,
     // Phase 7b: any rationale-shaped block gets marked rationale.
     mockSourceCommentClassify: (block: CommentBlock): CommentClassification => {
       if (block.kind === "license") {
@@ -352,58 +326,7 @@ async function main(): Promise<void> {
   assert(gitignore.includes(".attested-commits"), "attested-commits gitignored");
   console.log("  ✓ Step 7 — hooks 0755 + .attested-commits gitignored");
 
-  step("Step 8 — Phase 6: docs ingestion emits drafts to _inbox/");
-  // PHASE_6_REDESIGN §4.1 — phase 6 no longer writes accepted DECs
-  // straight into `decisions/`. It emits `status: draft` files to
-  // `_inbox/` for operator review via `cairn attention`.
-  assert(result.ingestion !== null, "phase 6 ingestion result populated");
-  assert(
-    result.ingestion!.decsWritten.length === phase6DraftCount,
-    `expected ${phase6DraftCount} phase 6 drafts, got ${result.ingestion!.decsWritten.length}`,
-  );
-  assert(phase6DraftCount >= 1, "fixture should have triggered at least one draft");
-
-  const inboxDir = join(repoRoot, ".cairn/ground/decisions/_inbox");
-  assert(existsSync(inboxDir), "_inbox/ directory must exist after phase 6");
-
-  for (const dec of result.ingestion!.decsWritten) {
-    assert(
-      dec.path.startsWith(".cairn/ground/decisions/_inbox/"),
-      `phase 6 draft must land in _inbox/, got ${dec.path}`,
-    );
-    assert(
-      dec.path.endsWith(".draft.md"),
-      `phase 6 draft must use .draft.md extension, got ${dec.path}`,
-    );
-    const body = readFileSync(join(repoRoot, dec.path), "utf8");
-    assert(
-      body.includes("status: draft"),
-      `phase 6 draft must carry status: draft, got: ${body.slice(0, 200)}`,
-    );
-    assert(
-      body.includes("capture_source: init-docs-ingest"),
-      `phase 6 draft must carry capture_source: init-docs-ingest`,
-    );
-    assert(
-      body.includes("decided_by: cairn-init"),
-      `phase 6 draft must carry decided_by: cairn-init`,
-    );
-    // Drafts must NOT update sot-bindings — that's gated on operator
-    // promotion via PR 2's `cairn_propose_decision`.
-    const bindings = readFileSync(
-      join(repoRoot, ".cairn/ground/sot-bindings.yaml"),
-      "utf8",
-    );
-    assert(
-      !bindings.includes(dec.id),
-      `phase 6 draft id ${dec.id} must NOT appear in sot-bindings.yaml`,
-    );
-  }
-  console.log(
-    `  ✓ Step 8 — ${result.ingestion!.decsWritten.length} draft(s) in _inbox/, sot-bindings clean`,
-  );
-
-  step("Step 9 — adopted clone is unbootstrapped → cairn join works");
+  step("Step 8 — adopted clone is unbootstrapped → cairn join works");
   // Pre-bootstrap: inspectJoinState reports hooks NOT set.
   const pre = inspectJoinState({ repoRoot });
   assert(pre.hooksPathSet === false, "hooks not yet set pre-join");
@@ -413,7 +336,7 @@ async function main(): Promise<void> {
   const post = inspectJoinState({ repoRoot });
   assert(post.hooksPathSet === true, "hooks set after join");
   assert(post.versionMatches === true, "cairn_version matches CLI VERSION");
-  console.log("  ✓ Step 9 — cairn join successful + state consistent");
+  console.log("  ✓ Step 8 — cairn join successful + state consistent");
 
   step("Cleanup");
   cleanup();

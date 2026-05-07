@@ -33,32 +33,12 @@ import {
   setAnchor,
   setTopic,
 } from "../../ground/index.js";
-import { ClaudeError, isQuotaKind } from "../../claude/error.js";
-import { logger } from "../../logger.js";
 import { jaccard, tokenize } from "../../text/jaccard.js";
 import type { ProseBlock, ProseBlockKind } from "./walk.js";
-
-const log = logger("init.topic-index.resolve");
-
-/**
- * Bail the rest of phase 5b after this many consecutive judge timeouts —
- * once the Haiku subprocess starts timing out, every subsequent call is
- * very likely to time out too (env / quota / network), and continuing
- * would burn TIMEOUT_MS × pair-count of wall-time. Quota / auth errors
- * trip the breaker on the first occurrence.
- */
-const CONSECUTIVE_TIMEOUT_BAIL = 5;
 
 export type SemanticVerdict = "same" | "different";
 
 export type SemanticJudge = (args: { a: ProseBlock; b: ProseBlock }) => Promise<SemanticVerdict>;
-
-export interface JudgeProgress {
-  /** Judge calls dispatched so far (counts attempts, not just successes). */
-  judgeCalls: number;
-  /** Total candidate pairs above the similarity threshold. */
-  totalPairs: number;
-}
 
 export interface ResolveOptions {
   judge: SemanticJudge;
@@ -66,19 +46,6 @@ export interface ResolveOptions {
   similarityThreshold?: number;
   /** Hard cap on judge calls — guard against pathological cross-source collisions. */
   maxJudgeCalls?: number;
-  /**
-   * Max concurrent judge calls. Defaults to 5. Each call spawns a
-   * `claude --print` subprocess; concurrency trades subprocess RAM for
-   * wall-clock speedup. Operator's coding-plan quota is unchanged —
-   * total Haiku spend is identical to sequential.
-   */
-  judgeConcurrency?: number;
-  /**
-   * Fired after each judge call resolves (success or failure). Used by
-   * phase 5b to write `.cairn/init/progress.json` so the statusline can
-   * render `phase-5b X/Y pairs` while the phase runs.
-   */
-  onProgress?: (snap: JudgeProgress) => void;
 }
 
 export interface ResolveResult {
@@ -150,87 +117,29 @@ export async function resolveTopics(
     }
   };
 
-  // Pass 1 — collect every candidate pair (i,j) above threshold.
-  // Pure CPU/memory work, no subprocess. Building the pair list up
-  // front gives us an honest `totalPairs` for progress reporting and
-  // lets pass 2 dispatch a flat worker pool instead of nested loops.
-  type CandidatePair = { i: number; j: number; a: ProseBlock; b: ProseBlock };
-  const pairs: CandidatePair[] = [];
-  for (let i = 0; i < reps.length; i += 1) {
-    for (let j = i + 1; j < reps.length; j += 1) {
+  let semanticCollisions = 0;
+  let judgeCalls = 0;
+  let unresolvedAmbiguous = 0;
+
+  for (let i = 0; i < reps.length && judgeCalls < maxJudgeCalls; i += 1) {
+    for (let j = i + 1; j < reps.length && judgeCalls < maxJudgeCalls; j += 1) {
       const a = reps[i]!;
       const b = reps[j]!;
       if (a.kind === b.kind && a.file === b.file) continue;
       const score = jaccard(repTokens[i]!, repTokens[j]!);
       if (score < similarityThreshold) continue;
-      pairs.push({ i, j, a, b });
+      semanticCollisions += 1;
+      let verdict: SemanticVerdict;
+      try {
+        verdict = await opts.judge({ a, b });
+      } catch {
+        unresolvedAmbiguous += 1;
+        continue;
+      }
+      judgeCalls += 1;
+      if (verdict === "same") union(i, j);
     }
   }
-  const semanticCollisions = pairs.length;
-
-  // Pass 2 — bounded-concurrency judge pool. Each worker drains the
-  // shared `nextIdx` cursor and races a Haiku verdict per pair.
-  const concurrency = Math.max(1, opts.judgeConcurrency ?? 5);
-  let judgeCalls = 0;
-  let unresolvedAmbiguous = 0;
-  let consecutiveTimeouts = 0;
-  let judgeBroken = false;
-  let nextIdx = 0;
-  const sameVerdicts: { i: number; j: number }[] = [];
-
-  const worker = async (): Promise<void> => {
-    for (;;) {
-      if (judgeBroken) return;
-      // Cap counts dispatched attempts, not successes — otherwise a
-      // timeout storm could blow past it. The `judgeCalls += 1` claim
-      // happens before `await`, so the cap is honored even with
-      // concurrent workers (small over-shoot bounded by `concurrency`).
-      if (judgeCalls >= maxJudgeCalls) return;
-      const idx = nextIdx;
-      nextIdx += 1;
-      if (idx >= pairs.length) return;
-      const pair = pairs[idx]!;
-      judgeCalls += 1;
-      try {
-        const verdict = await opts.judge({ a: pair.a, b: pair.b });
-        consecutiveTimeouts = 0;
-        if (verdict === "same") sameVerdicts.push({ i: pair.i, j: pair.j });
-      } catch (err) {
-        unresolvedAmbiguous += 1;
-        if (err instanceof ClaudeError) {
-          if (err.kind === "auth" || isQuotaKind(err.kind)) {
-            log.warn({ kind: err.kind }, "phase 5b judge bailed on quota/auth error");
-            judgeBroken = true;
-          } else if (err.kind === "timeout") {
-            consecutiveTimeouts += 1;
-            if (consecutiveTimeouts >= CONSECUTIVE_TIMEOUT_BAIL) {
-              log.warn(
-                { consecutiveTimeouts },
-                "phase 5b judge bailed after consecutive timeouts; remaining pairs treated as different",
-              );
-              judgeBroken = true;
-            }
-          }
-        }
-      }
-      if (opts.onProgress !== undefined) {
-        opts.onProgress({ judgeCalls, totalPairs: pairs.length });
-      }
-    }
-  };
-
-  await Promise.all(Array.from({ length: concurrency }, () => worker()));
-
-  // Apply union-find merges from successful "same" verdicts. Done after
-  // all workers finish so concurrent verdicts can't race the merge map.
-  // Order doesn't affect the final equivalence classes — union is
-  // commutative for this PRIORITY-tie-break scheme.
-  for (const v of sameVerdicts) union(v.i, v.j);
-
-  // Pairs that the breaker / cap skipped never got a verdict — preserve
-  // the old contract by counting them as unresolved.
-  const skipped = Math.max(0, pairs.length - judgeCalls);
-  unresolvedAmbiguous += skipped;
 
   let topicIndex: TopicIndex = emptyTopicIndex();
   let anchorMap: AnchorMap = emptyAnchorMap();
@@ -251,14 +160,6 @@ export async function resolveTopics(
     }
     const sot = pickSotByPriority(memberBlocks);
     const slug = sot.slug;
-    // Marker resolution: SoT wins, but if the SoT has no marker we
-    // surface any candidate's marker so an operator's opt-in inside
-    // a lower-priority source isn't lost just because docs/* won the
-    // tie-break. "decision" beats "rule" when both kinds appear in
-    // the same equivalence class — phase 6 only acts on this for
-    // `kind="decision"|"rule"` so the choice doesn't matter for
-    // emit semantics, but it keeps the field deterministic.
-    const entryMarker = resolveMarker(sot, memberBlocks);
     const entry: TopicIndexEntry = {
       slug,
       sot_source: sot.file,
@@ -272,9 +173,7 @@ export async function resolveTopics(
         return candidate;
       }),
       created_at: new Date().toISOString(),
-      content_hash: sot.content_hash,
     };
-    if (entryMarker !== undefined) entry.marker_kind = entryMarker;
     topicIndex = setTopic(topicIndex, slug, entry);
 
     const sotAnchor: AnchorMapEntry = {
@@ -329,18 +228,4 @@ function pickSotByPriority(blocks: ProseBlock[]): ProseBlock {
     return x.file.localeCompare(y.file);
   });
   return sorted[0]!;
-}
-
-function resolveMarker(
-  sot: ProseBlock,
-  members: ProseBlock[],
-): ProseBlock["marker_kind"] | undefined {
-  if (sot.marker_kind !== undefined) return sot.marker_kind;
-  // Prefer "decision" if any candidate flags it; otherwise "rule".
-  let sawRule = false;
-  for (const b of members) {
-    if (b.marker_kind === "decision") return "decision";
-    if (b.marker_kind === "rule") sawRule = true;
-  }
-  return sawRule ? "rule" : undefined;
 }

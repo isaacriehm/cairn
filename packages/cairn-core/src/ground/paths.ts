@@ -59,14 +59,6 @@ export function topicIndexPath(repoRoot: string): string {
   return join(groundDir(repoRoot), "topic-index.yaml");
 }
 
-export function rejectedYamlPath(repoRoot: string): string {
-  return join(groundDir(repoRoot), "_rejected.yaml");
-}
-
-export function fileCandidatesMapPath(repoRoot: string): string {
-  return join(groundDir(repoRoot), "file-candidates-map.yaml");
-}
-
 export function sotBindingsPath(repoRoot: string): string {
   return join(groundDir(repoRoot), "sot-bindings.yaml");
 }

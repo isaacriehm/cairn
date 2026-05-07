@@ -12,7 +12,6 @@ import { joinCli } from "./join.js";
 import { mcpCli } from "./mcp.js";
 import { scopeCli } from "./scope.js";
 import { sensorRunCli } from "./sensor-run.js";
-import { tagCli } from "./tag.js";
 import { traceCli } from "./trace.js";
 
 interface StatusLinePayload {
@@ -103,9 +102,6 @@ switch (subcommand) {
   case "sensor-run":
     await sensorRunCli(rest);
     break;
-  case "tag":
-    await tagCli(rest);
-    break;
   case "trace":
     await traceCli(rest);
     break;
@@ -168,10 +164,6 @@ switch (subcommand) {
         "  hook       Claude Code hook runner (stdin = hook payload JSON)\n" +
         "             (subcommands: session-start | read-enrich | write-guard)\n" +
         "  sensor-run git-hook sensor sweep (--staged | --commit-msg <path>)\n" +
-        "  tag        operator-driven retro-tagging — insert <!-- cairn:decision -->\n" +
-        "             markers after lines matching a regex pattern\n" +
-        "             (--insert-marker <pattern> <file-or-dir>\n" +
-        "              [--force] [--force-pattern] [--repo <path>])\n" +
         "  trace      pretty-print the unified live-session trace log\n" +
         "             (--tail | --session <id> | --repo <path> | --source <name> |\n" +
         "              --kind <substr> | --errors-only | --wide | --json)\n" +

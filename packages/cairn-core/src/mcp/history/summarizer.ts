@@ -218,11 +218,6 @@ export async function runHistorySummarizer(
     system: HISTORY_SUMMARIZER_SYSTEM_PROMPT,
     jsonSchema: HISTORY_SUMMARIZER_OUTPUT_SCHEMA as object,
     timeoutMs: input.timeoutMs,
-    // Summarizer only needs the walker-collected archive files and the
-    // accepted-decisions ledger that buildHistorySummarizerUserPrompt
-    // already serialized into the prompt. Ambient project context
-    // would be redundant + expensive.
-    isolateAmbientContext: true,
   });
   if (!isSummarizerOutput(result.parsed)) {
     throw new Error(

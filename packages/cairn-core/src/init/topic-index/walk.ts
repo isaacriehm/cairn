@@ -25,39 +25,9 @@
 
 import { type Dirent, existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
-import { parse as parseYaml } from "yaml";
 import { bodyContentHash, normalizeBlock, topicSlug } from "../../ground/slug.js";
 
 export type ProseBlockKind = "doc" | "claudemd" | "agentsmd" | "rule" | "source-comment";
-
-/**
- * Operator-supplied marker that promotes a block straight to phase 6
- * Stage 4 emit (no Haiku judgement). Two surfaces:
- *
- *   1. File-level frontmatter:
- *        ---
- *        cairn:
- *          kind: decision   # or: rule
- *        ---
- *      Every block in the file inherits the kind. Use for ADRs,
- *      rulebooks, formal invariant lists.
- *
- *   2. Block-level HTML comment within 3 lines after the heading:
- *        ## Some heading
- *
- *        <!-- cairn:decision -->
- *        Body text here…
- *      The 3-line lookahead handles blank lines + author-style spacing
- *      between heading and marker.
- *
- *  Block-level wins over file-level when both are present (operator
- *  flagged a single section to override a coarser file-level kind).
- */
-export type MarkerKind = "decision" | "rule";
-
-const MARKER_LOOKAHEAD_LINES = 3;
-const BLOCK_MARKER_DECISION = /<!--\s*cairn:decision\s*-->/;
-const BLOCK_MARKER_RULE = /<!--\s*cairn:rule\s*-->/;
 
 export interface ProseBlock {
   /** Repo-relative source path (e.g. `docs/auth.md`). */
@@ -75,14 +45,6 @@ export interface ProseBlock {
   content_hash: string;
   /** sha256(normalize(body)).slice(0,12) — content-fingerprint. */
   slug: string;
-  /**
-   * Operator-flagged marker — `"decision"` / `"rule"` when frontmatter
-   * `cairn.kind` is set or a `<!-- cairn:decision -->` /
-   * `<!-- cairn:rule -->` comment sits within
-   * {@link MARKER_LOOKAHEAD_LINES} of the heading. Phase 6 Stage 3
-   * emits these directly to `_inbox/` without Haiku.
-   */
-  marker_kind?: MarkerKind;
 }
 
 const MIN_BLOCK_CHARS = 80;
@@ -91,13 +53,6 @@ const SKIP_DIRS = new Set([
   "node_modules",
   ".git",
   ".cairn",
-  // `.claude` is Claude Code's config + agent-worktree dir. Contents
-  // (worktrees/, skills/, commands/, hooks/, agents/) are tooling state,
-  // not operator docs. Walked separately by `walkRulesDir` for the
-  // `.claude/rules/` subtree only — everything else here would create
-  // pathological N² semantic-dedup pairs (agent worktrees mirror real
-  // docs char-for-char, blowing up phase 5b).
-  ".claude",
   "dist",
   "build",
   "out",
@@ -221,56 +176,16 @@ function listMarkdown(dir: string): string[] {
   return out;
 }
 
-function readBodyAndFrontmatter(file: string): {
-  body: string;
-  offsetLines: number;
-  /** File-level marker stamped on every block when frontmatter `cairn.kind` is set. */
-  fileMarker: MarkerKind | undefined;
-} {
+function readBodyAndFrontmatter(file: string): { body: string; offsetLines: number } {
   const raw = readFileSync(file, "utf8");
   const m = raw.match(/^---\n([\s\S]*?)\n---\n?/);
-  if (m === null) return { body: raw, offsetLines: 0, fileMarker: undefined };
+  if (m === null) return { body: raw, offsetLines: 0 };
   const offset = (m[0].match(/\n/g) ?? []).length;
-  const frontmatterText = m[1] ?? "";
-  return {
-    body: raw.slice(m[0].length),
-    offsetLines: offset,
-    fileMarker: extractFileMarker(frontmatterText),
-  };
-}
-
-function extractFileMarker(frontmatterText: string): MarkerKind | undefined {
-  if (frontmatterText.length === 0) return undefined;
-  let parsed: unknown;
-  try {
-    parsed = parseYaml(frontmatterText);
-  } catch {
-    return undefined;
-  }
-  if (typeof parsed !== "object" || parsed === null) return undefined;
-  const cairn = (parsed as Record<string, unknown>)["cairn"];
-  if (typeof cairn !== "object" || cairn === null) return undefined;
-  const kind = (cairn as Record<string, unknown>)["kind"];
-  if (kind === "decision" || kind === "rule") return kind;
-  return undefined;
-}
-
-/**
- * Scan the first `MARKER_LOOKAHEAD_LINES` lines of `bodyLines` for an
- * inline `<!-- cairn:decision -->` / `<!-- cairn:rule -->` comment.
- * Returns the marker kind, or `undefined` if none found. The
- * lookahead handles authors who put a blank line between heading and
- * marker (or extend the marker into a multi-line HTML comment block).
- */
-function scanBlockMarker(bodyLines: string[]): MarkerKind | undefined {
-  const window = bodyLines.slice(0, MARKER_LOOKAHEAD_LINES).join("\n");
-  if (BLOCK_MARKER_DECISION.test(window)) return "decision";
-  if (BLOCK_MARKER_RULE.test(window)) return "rule";
-  return undefined;
+  return { body: raw.slice(m[0].length), offsetLines: offset };
 }
 
 function extractParagraphs(rel: string, file: string, kind: ProseBlockKind): ProseBlock[] {
-  const { body, offsetLines, fileMarker } = readBodyAndFrontmatter(file);
+  const { body, offsetLines } = readBodyAndFrontmatter(file);
   const lines = body.split("\n");
   const out: ProseBlock[] = [];
   let bufStart: number | null = null;
@@ -281,7 +196,6 @@ function extractParagraphs(rel: string, file: string, kind: ProseBlockKind): Pro
     const startLine = bufStart + offsetLines + 1;
     const endLine = endLineZero + offsetLines + 1;
     const text = buf.join("\n").trim();
-    const localBuf = [...buf];
     bufStart = null;
     buf = [];
     if (text.length === 0) return;
@@ -289,11 +203,6 @@ function extractParagraphs(rel: string, file: string, kind: ProseBlockKind): Pro
     const titleSource = text.split("\n")[0] ?? text;
     const title = titleSource.replace(/^#+\s*/, "").trim().slice(0, 120) || "(untitled)";
     const slug = topicSlug(text);
-    // Block-level marker takes precedence: scan within the first
-    // MARKER_LOOKAHEAD_LINES of the buffer (heading line + body) for
-    // the HTML-comment marker. Falls back to the file-level
-    // frontmatter marker when no block marker is found.
-    const marker = scanBlockMarker(localBuf) ?? fileMarker;
     const block: ProseBlock = {
       file: rel,
       kind,
@@ -305,7 +214,6 @@ function extractParagraphs(rel: string, file: string, kind: ProseBlockKind): Pro
     };
     const anchor = headingToAnchor(titleSource);
     if (anchor !== null) block.anchor = anchor;
-    if (marker !== undefined) block.marker_kind = marker;
     out.push(block);
   };
 
@@ -324,7 +232,7 @@ function extractParagraphs(rel: string, file: string, kind: ProseBlockKind): Pro
 }
 
 function extractSections(rel: string, file: string, kind: ProseBlockKind): ProseBlock[] {
-  const { body, offsetLines, fileMarker } = readBodyAndFrontmatter(file);
+  const { body, offsetLines } = readBodyAndFrontmatter(file);
   const lines = body.split("\n");
   const out: ProseBlock[] = [];
 
@@ -340,7 +248,6 @@ function extractSections(rel: string, file: string, kind: ProseBlockKind): Prose
     const bodyText = sectionBuf.join("\n").trim();
     const titleSnap = sectionTitle;
     const anchorSnap = sectionAnchor;
-    const localBuf = [...sectionBuf];
     sectionStart = null;
     sectionTitle = "";
     sectionAnchor = undefined;
@@ -348,10 +255,6 @@ function extractSections(rel: string, file: string, kind: ProseBlockKind): Prose
     if (bodyText.length === 0) return;
     if (!isMeaningfulBlock(bodyText)) return;
     const slug = topicSlug(bodyText);
-    // Block-level marker scans the first lines AFTER the heading —
-    // sectionBuf holds the post-heading lines only. Fallback to
-    // file-level frontmatter marker.
-    const marker = scanBlockMarker(localBuf) ?? fileMarker;
     const block: ProseBlock = {
       file: rel,
       kind,
@@ -362,7 +265,6 @@ function extractSections(rel: string, file: string, kind: ProseBlockKind): Prose
       slug,
     };
     if (anchorSnap !== undefined) block.anchor = anchorSnap;
-    if (marker !== undefined) block.marker_kind = marker;
     out.push(block);
   };
 
