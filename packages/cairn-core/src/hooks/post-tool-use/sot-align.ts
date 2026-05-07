@@ -179,6 +179,22 @@ export interface AlignFileArgs {
     file: string;
     line: number;
   }) => Promise<CreationVerdict>;
+  /**
+   * Override the per-call Pass-1 Haiku cap. Default 5 — appropriate
+   * for live PostToolUse Writes where the cost has to stay tight.
+   * Layer D (`cairn fix align`) sets this much higher (e.g. 200) so a
+   * single-file sweep can fully judge every block.
+   */
+  pass1Cap?: number;
+  /** Override the per-call Pass-2 Haiku cap. Default 2. */
+  pass2Cap?: number;
+  /**
+   * When true, suppress the Tier 3 creation pipeline entirely — Tier 1
+   * + Tier 2 dedup still run. Layer D's `--no-creation` flag sets this
+   * so a sweep only consolidates duplicates without proposing fresh
+   * DECs from prose that doesn't match anything in the ledger yet.
+   */
+  skipCreation?: boolean;
 }
 
 type DedupVerdictPass1 = "same" | "different" | "ambiguous";
@@ -265,6 +281,9 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
   let pass1Calls = 0;
   let pass2Calls = 0;
   let auxiliaryCalls = 0; // delta extraction + classification
+  const pass1Cap = args.pass1Cap ?? HAIKU_PASS1_CAP;
+  const pass2Cap = args.pass2Cap ?? HAIKU_PASS2_CAP;
+  const skipCreation = args.skipCreation === true;
 
   const fileSource = readFileMaybe(repoRoot, filePath);
 
@@ -343,7 +362,7 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
         } else {
           // Cap check fires only when we'd actually make a fresh call —
           // cache hits at cap still return their cached verdict (free).
-          if (pass1Calls >= HAIKU_PASS1_CAP) {
+          if (pass1Calls >= pass1Cap) {
             tier2Outcome = { kind: "deferred-cap" };
             break;
           }
@@ -372,7 +391,7 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
         ) {
           p2 = cachedP2;
         } else {
-          if (pass2Calls >= HAIKU_PASS2_CAP) {
+          if (pass2Calls >= pass2Cap) {
             tier2Outcome = { kind: "deferred-cap" };
             break;
           }
@@ -512,6 +531,13 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
     }
 
     // Tier 3 — creation judge, two-pass.
+    if (skipCreation) {
+      // `cairn fix align --no-creation` — the operator wants
+      // duplicate consolidation only, not fresh DEC creation. Treat
+      // the block as descriptive without invoking Haiku.
+      result.descriptive += 1;
+      continue;
+    }
     const cachedT3P1 = readVerdictCache(repoRoot, "create-p1", block.prose, "creation");
     let creationP1: CreationVerdict;
     if (
@@ -522,7 +548,7 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
     ) {
       creationP1 = cachedT3P1;
     } else {
-      if (pass1Calls >= HAIKU_PASS1_CAP) {
+      if (pass1Calls >= pass1Cap) {
         deferToStaleness(repoRoot, block, "tier3-cap-exceeded");
         result.deferredToStaleness += 1;
         continue;
@@ -549,7 +575,7 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
       ) {
         creationP2 = cachedT3P2;
       } else {
-        if (pass2Calls >= HAIKU_PASS2_CAP) {
+        if (pass2Calls >= pass2Cap) {
           deferToStaleness(repoRoot, block, "tier3-pass2-cap-exceeded");
           result.deferredToStaleness += 1;
           continue;

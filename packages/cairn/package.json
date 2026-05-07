@@ -73,7 +73,8 @@
     "smoke:conflicts-queue": "tsx scripts/smoke-conflicts-queue.ts",
     "smoke:sot-align": "tsx scripts/smoke-sot-align.ts",
     "smoke:layer-b-precommit": "tsx scripts/smoke-layer-b-precommit.ts",
-    "smoke:layer-c-sessionstart-drain": "tsx scripts/smoke-layer-c-sessionstart-drain.ts"
+    "smoke:layer-c-sessionstart-drain": "tsx scripts/smoke-layer-c-sessionstart-drain.ts",
+    "smoke:fix-align": "tsx scripts/smoke-fix-align.ts"
   },
   "dependencies": {
     "@isaacriehm/cairn-core": "workspace:*",

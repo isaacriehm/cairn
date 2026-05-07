@@ -48,6 +48,7 @@ export {
 } from "./hooks/defer.js";
 export type { DeferKind, DeferState } from "./hooks/defer.js";
 export * from "./drain/index.js";
+export * from "./fix-align/index.js";
 export * from "./hooks/post-tool-use/index.js";
 export * from "./hooks/pre-commit/index.js";
 export * from "./init/index.js";

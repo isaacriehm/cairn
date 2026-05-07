@@ -48,7 +48,10 @@ import {
   parseDraftMeta,
   readMapperOutputFile,
   runDecSourceStrip,
+  runFixAlign,
   type BrandAnswers,
+  type FixAlignArgs,
+  type FixAlignResult,
 } from "@isaacriehm/cairn-core";
 import { fixCli as doctorFixCli } from "./doctor.js";
 
@@ -467,6 +470,7 @@ async function fixGitignore(repoRoot: string, dryRun: boolean): Promise<void> {
 }
 
 const RETROACTIVE_SUBCOMMANDS = new Set([
+  "align",
   "brand",
   "dec-strip",
   "gitignore",
@@ -476,12 +480,160 @@ const RETROACTIVE_SUBCOMMANDS = new Set([
   "duration_ms",
 ]);
 
+function parseAlignFlags(argv: string[]): {
+  dryRun: boolean;
+  maxCost: number | null;
+  include: string[];
+  exclude: string[];
+  skipCreation: boolean;
+} {
+  const flags = {
+    dryRun: false,
+    maxCost: null as number | null,
+    include: [] as string[],
+    exclude: [] as string[],
+    skipCreation: false,
+  };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--dry-run") {
+      flags.dryRun = true;
+    } else if (a === "--no-creation") {
+      flags.skipCreation = true;
+    } else if (a === "--max-cost") {
+      const v = argv[i + 1];
+      if (v === undefined) {
+        console.error("--max-cost requires a token value");
+        process.exit(2);
+      }
+      const n = Number.parseInt(v, 10);
+      if (!Number.isFinite(n) || n < 0) {
+        console.error(`--max-cost invalid: ${v}`);
+        process.exit(2);
+      }
+      flags.maxCost = n;
+      i += 1;
+    } else if (a === "--include") {
+      const v = argv[i + 1];
+      if (v === undefined) {
+        console.error("--include requires a glob");
+        process.exit(2);
+      }
+      flags.include.push(v);
+      i += 1;
+    } else if (a === "--exclude") {
+      const v = argv[i + 1];
+      if (v === undefined) {
+        console.error("--exclude requires a glob");
+        process.exit(2);
+      }
+      flags.exclude.push(v);
+      i += 1;
+    } else if (a === "--repo") {
+      // Consumed by parseRepoFlag earlier; skip its value too.
+      i += 1;
+    } else {
+      console.error(`cairn fix align: unknown flag "${a}"`);
+      process.exit(2);
+    }
+  }
+  return flags;
+}
+
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return `${n}`;
+}
+
+function renderPreflight(result: FixAlignResult): string {
+  const p = result.preflight;
+  const lines: string[] = [];
+  lines.push(`    files scanned:                ${p.filesScanned}`);
+  lines.push(`    blocks considered:            ${p.blocksConsidered}`);
+  lines.push(`    short / sub-floor blocks:     ${p.shortBlocks}`);
+  lines.push(`    blocks w/ Tier 1 candidates:  ${p.blocksWithTier1Candidates}`);
+  lines.push(`    blocks w/o candidates:        ${p.blocksWithoutCandidates}`);
+  lines.push(`    Pass-1 Haiku calls (est):     ${p.estimatedPass1Calls}`);
+  lines.push(`    Pass-2 Haiku calls (est):     ${p.estimatedPass2Calls}`);
+  lines.push(`    Tier 3 creation calls (est):  ${p.estimatedCreationCalls}`);
+  lines.push(`    total tokens (est):           ~${formatTokens(p.estimatedTokens)}`);
+  return lines.join("\n");
+}
+
+function renderApply(result: FixAlignResult): string {
+  if (result.apply === null) return "    (apply phase did not run)";
+  const a = result.apply;
+  const lines: string[] = [];
+  lines.push(`    files aligned:                ${a.filesAligned}`);
+  lines.push(`    Tier 1 deterministic cites:   ${a.tier1Aligned}`);
+  lines.push(`    Tier 2 Haiku-confirmed cites: ${a.tier2Aligned}`);
+  lines.push(`    fresh DECs created:           ${a.decsCreated}`);
+  lines.push(`    fresh INVs created:           ${a.invsCreated}`);
+  lines.push(`    augments DECs:                ${a.augmentsDecs}`);
+  lines.push(`    augments INVs:                ${a.augmentsInvs}`);
+  lines.push(`    descriptive (no-op):          ${a.descriptive}`);
+  lines.push(`    alignment-pending queued:     ${a.pending}`);
+  lines.push(`    deferred to staleness:        ${a.deferredToStaleness}`);
+  lines.push(`    skipped (length / token):     ${a.skipped}`);
+  lines.push(`    Pass-1 Haiku calls (actual):  ${a.haikuPass1Calls}`);
+  lines.push(`    Pass-2 Haiku calls (actual):  ${a.haikuPass2Calls}`);
+  lines.push(`    total Haiku calls:            ${a.haikuCalls}`);
+  return lines.join("\n");
+}
+
+async function fixAlign(repoRoot: string, argv: string[]): Promise<void> {
+  const flags = parseAlignFlags(argv);
+  process.stdout.write(
+    `  ⬡ cairn fix align${flags.dryRun ? " --dry-run" : ""} — ${repoRoot}\n\n` +
+      `  pre-flight…\n`,
+  );
+  const args: FixAlignArgs = { repoRoot };
+  if (flags.dryRun) args.dryRun = true;
+  if (flags.maxCost !== null) args.maxCost = flags.maxCost;
+  if (flags.include.length > 0) args.include = flags.include;
+  if (flags.exclude.length > 0) args.exclude = flags.exclude;
+  if (flags.skipCreation) args.skipCreation = true;
+
+  const result = await runFixAlign(args);
+  process.stdout.write(`${renderPreflight(result)}\n`);
+
+  if (result.abortedOverBudget) {
+    process.stdout.write(
+      `\n  ✗ aborted — estimated tokens (${formatTokens(result.preflight.estimatedTokens)})` +
+        ` exceeds --max-cost (${formatTokens(args.maxCost ?? 500_000)}).\n` +
+        `  Re-run with a higher --max-cost or scope via --include / --exclude.\n`,
+    );
+    process.exit(2);
+  }
+
+  if (flags.dryRun) {
+    process.stdout.write(
+      `\n  Dry-run complete. Re-run without --dry-run to apply.\n`,
+    );
+    process.exit(0);
+  }
+
+  process.stdout.write(`\n  apply…\n${renderApply(result)}\n`);
+  process.exit(0);
+}
+
 export async function fixCli(argv: string[]): Promise<void> {
   if (argv[0] === "--help" || argv[0] === "-h") {
     process.stdout.write(
       "Usage: cairn fix [<subcommand>] [--repo <path>] [--dry-run]\n" +
         "  No subcommand: runs the doctor auto-fix pass (rebuild ledgers,\n" +
         "                 scope-index, etc.).\n" +
+        "  Subcommands:\n" +
+        "    align           Layer D — full-repo Haiku-judge sweep over every\n" +
+        "                    prose block × every DEC. Use --dry-run for the\n" +
+        "                    pre-flight cost estimate; re-run without --dry-run\n" +
+        "                    to apply. Flags:\n" +
+        "                      --max-cost <tokens>    abort if estimate exceeds\n" +
+        "                                             budget (default 500k).\n" +
+        "                      --include <glob>       repeatable — scope the sweep.\n" +
+        "                      --exclude <glob>       repeatable — atop defaults.\n" +
+        "                      --no-creation          skip Tier 3; consolidate only.\n" +
         "  Subcommands (retroactive — for projects adopted on older versions):\n" +
         "    brand           re-run the Haiku brand-derive call against the\n" +
         "                    mapper output already on disk; rewrite the 4 brand\n" +
@@ -525,6 +677,9 @@ export async function fixCli(argv: string[]): Promise<void> {
   ensureAdopted(repoRoot);
   const dryRun = rest.includes("--dry-run");
   switch (sub) {
+    case "align":
+      await fixAlign(repoRoot, rest);
+      return;
     case "brand":
       await fixBrand(repoRoot, dryRun);
       return;
