@@ -79,6 +79,25 @@ done
 
 22 smokes; all should pass on a clean tree.
 
+### Opt-in: real-LLM regression smoke
+
+`smoke:llm-prompt-eval` runs the Phase 6 Stage-1 file-purpose filter
+prompt against three inline fixtures (one ADR, one UAT log, one research
+scratchpad) using **real Haiku** — it burns operator quota and is
+**not** part of the standard 22-smoke gate above. Run it only when:
+
+- touching the Stage-1 system prompt
+  (`packages/cairn-core/src/init/ingest-docs.ts` → `FILE_FILTER_SYSTEM`),
+  or
+- upgrading the Haiku model alias used by `runClaude`.
+
+```bash
+pnpm --filter @isaacriehm/cairn smoke:llm-prompt-eval
+```
+
+If a fixture flips, surface the failure — do not silently weaken the
+assertions. The locked prompt is in `docs/PHASE_6_REDESIGN.md` §4.1.
+
 ## Starting fresh
 
 1. Read [`README.md`](README.md) end-to-end.

@@ -290,7 +290,7 @@ interface FileFilterInput {
   toc: string;
 }
 
-interface FileFilterVerdict {
+export interface FileFilterVerdict {
   is_authoritative: boolean;
   reason: string;
 }
@@ -685,7 +685,7 @@ export async function runDocsIngestion(
 /* Stage runners                                                              */
 /* -------------------------------------------------------------------------- */
 
-async function runStage1FileFilter(args: {
+export async function runStage1FileFilter(args: {
   repoRoot: string;
   files: string[];
   onChunkProgress?: (row: ChunkProgressRow) => void;
