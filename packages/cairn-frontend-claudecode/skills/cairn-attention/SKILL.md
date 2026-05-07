@@ -173,11 +173,20 @@ files.
    `cairn_decision_get({id: "DEC-NNNN"})` — the tool resolves both
    accepted decisions and `_inbox/` drafts. The response carries
    `id`, `title`, `status`, plus the body markdown.
-3. Latest baseline audit (path only):
+3. **Conflicts** — list pending contradictions written by phase 7c:
+   `Bash: ls .cairn/ground/conflicts/*.md 2>/dev/null`. Each
+   filename has the shape `<a-id>__<b-id>.md` where both ids match
+   `(DEC|INV)-<hash7>`. Read each conflict file directly via the
+   `Read` tool — these files are NOT in the ledger and have no MCP
+   getter. Parse the YAML frontmatter to capture `a_id`, `b_id`,
+   `a_source`, `b_sot_path`, `reasoning`. Treat the rendered prose
+   blocks (`## DEC-<a> ...`, `## DEC-<b> ...`) as the verbatim
+   sides to surface.
+4. Latest baseline audit (path only):
    `Bash: ls -1t .cairn/baseline/sensor-audit-*.yaml | head -1`
-4. Drift events: `cairn_search({query: "drift"})` against the
+5. Drift events: `cairn_search({query: "drift"})` against the
    staleness log if any.
-5. Recent invalidation events: read the per-session events marker,
+6. Recent invalidation events: read the per-session events marker,
    then list `.cairn/events/*.json` newer than `last_polled_ts`.
 
 **Rejected DECs are not in the queue.** Reject is a final operator
@@ -229,6 +238,9 @@ truncate):
 **DEC draft:** `accept` / `reject` / `edit first`
 **Baseline finding:** `triage now` / `suppress` / `defer`
 **Invalidation event:** `refresh in scope` / `continue under old` / `abort`
+**Conflict:** `keep A side` / `keep B side` / `merge both` / `archive both`
+  — see Step 3b for the side-by-side prose render that MUST appear
+    on the same turn before the question lands.
 
 The tool returns answers as a parallel array (one answer per
 question, in the order they were sent). Loop through the answers
@@ -249,6 +261,69 @@ originating source comment and replaces it with a bare `§DEC-NNNN`
 symbol (matching the `§INV-NNNN` invariant convention; Cairn Lens
 resolves title + body from the ledger) when the DEC came from
 `init-source-comments`.
+
+## Step 3b — `kind: conflict` side-by-side render (REQUIRED)
+
+Plan §5.4.1 — when a conflict item is in the batch, the operator
+must see both verbatim sides AND the Haiku judge's reasoning before
+they pick. AskUserQuestion's option labels alone don't carry that
+prose. Render a chat message on the SAME turn as the
+`AskUserQuestion`, BEFORE the tool call lands:
+
+````markdown
+**Conflict** — `<a-id>` (`<a_source>`) vs `<b-id>` (`<b_sot_path>`)
+
+**`<a-id>` says:**
+
+```
+<verbatim prose A from the conflict file>
+```
+
+**`<b-id>` says:**
+
+```
+<verbatim prose B from the conflict file>
+```
+
+**Difference:** <one-line excerpt from `reasoning` frontmatter>
+````
+
+Then the AskUserQuestion `[a]` / `[b]` / `[c]` / `[d]` lands as
+described in Step 3. The tool dispatches to:
+
+```
+cairn_resolve_attention({
+  kind: "conflict",
+  item_id: "<a-id>__<b-id>",     // filename minus .md
+  choice: "a" | "b" | "c" | "d",
+  rationale: "<optional operator note>"
+})
+```
+
+Resolution outcomes (plan §5.4.1 — **never rewrite source files**):
+
+- `[a]` keep A → B gets `status: superseded`, `superseded_by: <a-id>`;
+  A gets `supersedes: <b-id>`. Conflict file deleted.
+- `[b]` keep B → mirror of [a].
+- `[c]` merge → fresh DEC carries both sides + operator's `rationale`
+  as a third "Merge rationale" section. Both old DECs/INVs get
+  `status: superseded`, `superseded_by: <merged-id>`. Conflict file
+  deleted. (Mixed DEC/INV merges produce a DEC; pure INV/INV merges
+  stay INV.)
+- `[d]` archive both → both sides flip `status: archived`. Conflict
+  file moves to `.cairn/ground/conflicts/_archived/`. Reopen later
+  by restoring it manually.
+
+After the resolve call, render a one-line outcome to chat:
+
+```
+✓ Conflict resolved — <verb> (<winner-id> stands · <loser-id> superseded).
+```
+
+**Hard rule** — losing-side prose stays in the source file. CLAUDE.md /
+AGENTS.md / `.claude/rules/*` are operator-curated narrative; cairn
+never silently rewrites them. The next phase 5b pass will re-cite
+or surface the orphan; the operator can manually clean up the doc.
 
 ## Step 3a — `edit first` inline edit flow
 

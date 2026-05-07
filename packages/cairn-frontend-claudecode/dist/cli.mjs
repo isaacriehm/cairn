@@ -20736,6 +20736,9 @@ function anchorMapPath(repoRoot) {
 function conflictsDir(repoRoot) {
   return join2(groundDir(repoRoot), "conflicts");
 }
+function archivedConflictsDir(repoRoot) {
+  return join2(conflictsDir(repoRoot), "_archived");
+}
 function stalenessDir(repoRoot) {
   return join2(repoRoot, ".cairn", "staleness");
 }
@@ -35403,7 +35406,7 @@ var InvariantFrontmatter = external_exports.object({
   id: external_exports.string().regex(/^INV-[0-9a-f]{7,}$/, "invariant id must match INV-<hash7>"),
   title: external_exports.string(),
   type: external_exports.literal("invariant").optional(),
-  status: external_exports.enum(["active", "superseded"]).optional(),
+  status: external_exports.enum(["active", "superseded", "archived"]).optional(),
   audience: Audience.optional(),
   generated: external_exports.string().optional(),
   "verified-at": external_exports.string().optional(),
@@ -70390,19 +70393,29 @@ var resolveAttentionInput = {
    *
    * For kind=bypass, item_id is the full SHA of the FIRST flagged commit
    * (the rest go in flagged_items). For kind=review, item_id is the
-   * task_id of the FIRST pending review.
+   * task_id of the FIRST pending review. For kind=conflict, item_id is
+   * the conflict filename slug `<a-id>__<b-id>` (without `.md`).
    */
   item_id: external_exports.string().min(1),
-  /** Operator's pick from the inline A/B/C. */
-  choice: external_exports.enum(["a", "b", "c"]),
+  /**
+   * Operator's pick from the inline A/B/C/D. The fourth slot is only
+   * meaningful for `conflict` kind (archive-both per plan §5.4.1); other
+   * kinds reject `d`.
+   */
+  choice: external_exports.enum(["a", "b", "c", "d"]),
   /**
    * Item kind — narrows the resolution path. The skill knows the kind
    * from the item it surfaced.
    *
-   * `bypass`  — Stop hook surfaced N commits not in `.attested-commits`.
-   *             choice=a record-bypass (DEC), b accept-as-noted, c defer.
-   * `review`  — Stop hook surfaced N pending reviewer attestations.
-   *             choice=a spawn-now, b skip, c defer.
+   * `bypass`   — Stop hook surfaced N commits not in `.attested-commits`.
+   *              choice=a record-bypass (DEC), b accept-as-noted, c defer.
+   * `review`   — Stop hook surfaced N pending reviewer attestations.
+   *              choice=a spawn-now, b skip, c defer.
+   * `conflict` — Phase 7c contradiction judge wrote a conflict file.
+   *              choice=a keep A (supersede B), b keep B (supersede A),
+   *              c merge into a fresh DEC (both old superseded),
+   *              d archive both (move conflict file to _archived/).
+   *              Plan §5.4.1 — never rewrites source files.
    */
   kind: external_exports.enum([
     "decision_draft",
@@ -70410,7 +70423,8 @@ var resolveAttentionInput = {
     "invalidation_event",
     "drift",
     "bypass",
-    "review"
+    "review",
+    "conflict"
   ]),
   /**
    * Full SHA / task_id list for the bypass / review snapshot. Used
@@ -71846,13 +71860,18 @@ var recordDecisionTool = {
 };
 
 // ../cairn-core/dist/mcp/tools/resolve-attention.js
-import { appendFileSync as appendFileSync5, existsSync as existsSync76, mkdirSync as mkdirSync38, readFileSync as readFileSync68, renameSync as renameSync7, rmSync as rmSync9, statSync as statSync23, writeFileSync as writeFileSync37 } from "node:fs";
+var import_yaml38 = __toESM(require_dist(), 1);
+import { appendFileSync as appendFileSync5, existsSync as existsSync76, mkdirSync as mkdirSync38, readFileSync as readFileSync68, readdirSync as readdirSync33, renameSync as renameSync7, rmSync as rmSync9, statSync as statSync23, writeFileSync as writeFileSync37 } from "node:fs";
 import { dirname as dirname32, join as join77 } from "node:path";
+import { createHash as createHash7 } from "node:crypto";
 var log38 = logger("mcp.resolve-attention");
 async function handler14(ctx, input) {
   const block = requireBootstrap(ctx.repoRoot);
   if (block !== null)
     return block;
+  if (input.choice === "d" && input.kind !== "conflict") {
+    return mcpError("VALIDATION_FAILED", `choice "d" is only valid for kind=conflict, got kind=${input.kind}`);
+  }
   switch (input.kind) {
     case "decision_draft":
       return resolveDecisionDraft(ctx, input);
@@ -71870,6 +71889,8 @@ async function handler14(ctx, input) {
       return resolveBypass(ctx, input);
     case "review":
       return resolveReview(ctx, input);
+    case "conflict":
+      return resolveConflict(ctx, input);
   }
 }
 function resolveBypass(ctx, input) {
@@ -72043,11 +72064,338 @@ function resolveBaselineFinding(ctx, input) {
     };
   });
 }
+var CONFLICT_ID_RE = /^(DEC|INV)-[0-9a-f]{7,}$/;
+var CONFLICT_PAIR_RE = /^((DEC|INV)-[0-9a-f]{7,})__((DEC|INV)-[0-9a-f]{7,})$/;
+function entityRefFor(repoRoot, id) {
+  if (id.startsWith("INV-")) {
+    const abs2 = join77(invariantsDir(repoRoot), `${id}.md`);
+    return { id, kind: "INV", abs: abs2, rel: `.cairn/ground/invariants/${id}.md` };
+  }
+  const abs = join77(decisionsDir(repoRoot), `${id}.md`);
+  return { id, kind: "DEC", abs, rel: `.cairn/ground/decisions/${id}.md` };
+}
+function parseConflictFile(repoRoot, itemId) {
+  if (!CONFLICT_PAIR_RE.test(itemId))
+    return null;
+  const dir = conflictsDir(repoRoot);
+  const filename = `${itemId}.md`;
+  const abs = join77(dir, filename);
+  if (!existsSync76(abs))
+    return null;
+  let raw;
+  try {
+    raw = readFileSync68(abs, "utf8");
+  } catch {
+    return null;
+  }
+  const fmMatch = raw.match(/^---\n([\s\S]*?)\n---\n?/);
+  let fm = {};
+  if (fmMatch !== null && fmMatch[1] !== void 0) {
+    try {
+      const parsed = (0, import_yaml38.parse)(fmMatch[1]);
+      if (typeof parsed === "object" && parsed !== null) {
+        fm = parsed;
+      }
+    } catch {
+    }
+  }
+  const body = fmMatch !== null ? raw.slice(fmMatch[0].length) : raw;
+  const aId = String(fm["a_id"] ?? itemId.split("__")[0] ?? "");
+  const bId = String(fm["b_id"] ?? itemId.split("__")[1] ?? "");
+  if (!CONFLICT_ID_RE.test(aId) || !CONFLICT_ID_RE.test(bId))
+    return null;
+  return {
+    abs,
+    rel: `.cairn/ground/conflicts/${filename}`,
+    filename,
+    aRef: entityRefFor(repoRoot, aId),
+    bRef: entityRefFor(repoRoot, bId),
+    fm,
+    body
+  };
+}
+function readEntity(ref) {
+  if (!existsSync76(ref.abs))
+    return null;
+  let raw;
+  try {
+    raw = readFileSync68(ref.abs, "utf8");
+  } catch {
+    return null;
+  }
+  const fmMatch = raw.match(/^---\n([\s\S]*?)\n---\n?/);
+  let fm = {};
+  if (fmMatch !== null && fmMatch[1] !== void 0) {
+    try {
+      const parsed = (0, import_yaml38.parse)(fmMatch[1]);
+      if (typeof parsed === "object" && parsed !== null) {
+        fm = parsed;
+      }
+    } catch {
+    }
+  }
+  const body = fmMatch !== null ? raw.slice(fmMatch[0].length) : raw;
+  return { fm, body, raw };
+}
+function writeEntity(ref, fm, body) {
+  const content = `---
+${(0, import_yaml38.stringify)(fm).trimEnd()}
+---
+${body.startsWith("\n") ? body : `
+${body}`}`;
+  writeFileSync37(ref.abs, content, "utf8");
+}
+function setSupersededBy(repoRoot, loser, winnerId, status) {
+  const parsed = readEntity(loser);
+  if (parsed === null)
+    return false;
+  parsed.fm["status"] = status;
+  if (status === "superseded")
+    parsed.fm["superseded_by"] = winnerId;
+  parsed.fm["verified-at"] = (/* @__PURE__ */ new Date()).toISOString();
+  writeEntity(loser, parsed.fm, parsed.body);
+  return true;
+}
+function setSupersedes(loser, winner) {
+  const parsed = readEntity(winner);
+  if (parsed === null)
+    return false;
+  parsed.fm["supersedes"] = loser.id;
+  parsed.fm["verified-at"] = (/* @__PURE__ */ new Date()).toISOString();
+  writeEntity(winner, parsed.fm, parsed.body);
+  return true;
+}
+function moveConflictToArchive(repoRoot, conflict) {
+  const archDir = archivedConflictsDir(repoRoot);
+  mkdirSync38(archDir, { recursive: true });
+  const archAbs = join77(archDir, conflict.filename);
+  renameSync7(conflict.abs, archAbs);
+  return `.cairn/ground/conflicts/_archived/${conflict.filename}`;
+}
+function deleteConflictFile(conflict) {
+  try {
+    rmSync9(conflict.abs, { force: true });
+  } catch {
+  }
+}
+function rebuildLedgers(repoRoot) {
+  try {
+    writeDecisionsLedger({ repoRoot });
+  } catch (err) {
+    log38.warn({ err: err instanceof Error ? err.message : String(err) }, "decisions ledger rebuild failed after conflict resolution");
+  }
+  try {
+    writeInvariantsLedger({ repoRoot });
+  } catch (err) {
+    log38.warn({ err: err instanceof Error ? err.message : String(err) }, "invariants ledger rebuild failed after conflict resolution");
+  }
+}
+async function resolveConflict(ctx, input) {
+  const conflict = parseConflictFile(ctx.repoRoot, input.item_id);
+  if (conflict === null) {
+    return mcpError("FILE_NOT_FOUND", `no conflict file for item_id=${input.item_id} (expected .cairn/ground/conflicts/${input.item_id}.md)`);
+  }
+  return withWriteLock(ctx.repoRoot, () => {
+    const winner = input.choice === "a" ? conflict.aRef : conflict.bRef;
+    const loser = input.choice === "a" ? conflict.bRef : conflict.aRef;
+    if (input.choice === "a" || input.choice === "b") {
+      const winnerOk = setSupersedes(loser, winner);
+      const loserOk = setSupersededBy(ctx.repoRoot, loser, winner.id, "superseded");
+      if (!winnerOk || !loserOk) {
+        return mcpError("VALIDATION_FAILED", `conflict resolution failed: missing entity (winner=${winnerOk ? "ok" : "missing"}, loser=${loserOk ? "ok" : "missing"})`);
+      }
+      deleteConflictFile(conflict);
+      rebuildLedgers(ctx.repoRoot);
+      try {
+        writeInvalidationEvent(ctx.repoRoot, {
+          kind: "conflict_resolved_supersede",
+          refs: [
+            { kind: winner.kind === "DEC" ? "decision" : "invariant", id: winner.id },
+            { kind: loser.kind === "DEC" ? "decision" : "invariant", id: loser.id }
+          ],
+          path: winner.rel,
+          source: { session_id: ctx.sessionId ?? null, tool: "cairn_resolve_attention" }
+        });
+      } catch {
+      }
+      return {
+        ok: true,
+        resolved_kind: "conflict_supersede",
+        item_id: input.item_id,
+        winner_id: winner.id,
+        loser_id: loser.id,
+        winner_path: winner.rel,
+        loser_path: loser.rel,
+        ...input.rationale !== void 0 ? { rationale: input.rationale } : {}
+      };
+    }
+    if (input.choice === "c") {
+      const merge2 = mergeConflict(ctx.repoRoot, conflict, input.rationale);
+      if ("error" in merge2)
+        return merge2.error;
+      deleteConflictFile(conflict);
+      rebuildLedgers(ctx.repoRoot);
+      try {
+        writeInvalidationEvent(ctx.repoRoot, {
+          kind: "conflict_resolved_merge",
+          refs: [
+            { kind: "decision", id: merge2.mergedId },
+            {
+              kind: conflict.aRef.kind === "DEC" ? "decision" : "invariant",
+              id: conflict.aRef.id
+            },
+            {
+              kind: conflict.bRef.kind === "DEC" ? "decision" : "invariant",
+              id: conflict.bRef.id
+            }
+          ],
+          path: merge2.mergedRel,
+          source: { session_id: ctx.sessionId ?? null, tool: "cairn_resolve_attention" }
+        });
+      } catch {
+      }
+      return {
+        ok: true,
+        resolved_kind: "conflict_merge",
+        item_id: input.item_id,
+        merged_id: merge2.mergedId,
+        merged_path: merge2.mergedRel,
+        superseded_a: conflict.aRef.id,
+        superseded_b: conflict.bRef.id,
+        ...input.rationale !== void 0 ? { rationale: input.rationale } : {}
+      };
+    }
+    const aOk = setSupersededBy(ctx.repoRoot, conflict.aRef, conflict.bRef.id, "archived");
+    const bOk = setSupersededBy(ctx.repoRoot, conflict.bRef, conflict.aRef.id, "archived");
+    const archivedRel = moveConflictToArchive(ctx.repoRoot, conflict);
+    rebuildLedgers(ctx.repoRoot);
+    try {
+      writeInvalidationEvent(ctx.repoRoot, {
+        kind: "conflict_resolved_archive",
+        refs: [
+          {
+            kind: conflict.aRef.kind === "DEC" ? "decision" : "invariant",
+            id: conflict.aRef.id
+          },
+          {
+            kind: conflict.bRef.kind === "DEC" ? "decision" : "invariant",
+            id: conflict.bRef.id
+          }
+        ],
+        path: archivedRel,
+        source: { session_id: ctx.sessionId ?? null, tool: "cairn_resolve_attention" }
+      });
+    } catch {
+    }
+    if (!aOk || !bOk) {
+      log38.warn({ aOk, bOk, item_id: input.item_id }, "archive-both: one or both entities missing on disk");
+    }
+    return {
+      ok: true,
+      resolved_kind: "conflict_archive",
+      item_id: input.item_id,
+      a_id: conflict.aRef.id,
+      b_id: conflict.bRef.id,
+      archived_path: archivedRel,
+      ...input.rationale !== void 0 ? { rationale: input.rationale } : {}
+    };
+  });
+}
+function mergeConflict(repoRoot, conflict, rationale) {
+  const a = readEntity(conflict.aRef);
+  const b2 = readEntity(conflict.bRef);
+  if (a === null || b2 === null) {
+    return {
+      error: mcpError("VALIDATION_FAILED", `merge requires both entities present on disk (a=${a !== null}, b=${b2 !== null})`)
+    };
+  }
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  const mergedKind = conflict.aRef.kind === "INV" && conflict.bRef.kind === "INV" ? "INV" : "DEC";
+  const mergedId = synthesizeMergedId(repoRoot, mergedKind);
+  const mergedRel = mergedKind === "DEC" ? `.cairn/ground/decisions/${mergedId}.md` : `.cairn/ground/invariants/${mergedId}.md`;
+  const mergedAbs = join77(repoRoot, mergedRel);
+  const titleA = String(a.fm["title"] ?? conflict.aRef.id);
+  const titleB = String(b2.fm["title"] ?? conflict.bRef.id);
+  const mergedTitle = `Merged: ${titleA} + ${titleB}`;
+  const mergedBody = [
+    "",
+    `# ${mergedId} \u2014 ${mergedTitle}`,
+    "",
+    `## ${conflict.aRef.id} (one side of the merge)`,
+    "",
+    a.body.trim(),
+    "",
+    `## ${conflict.bRef.id} (other side of the merge)`,
+    "",
+    b2.body.trim(),
+    "",
+    "## Merge rationale",
+    "",
+    rationale !== void 0 && rationale.trim().length > 0 ? rationale.trim() : "(operator merged both sides via cairn-attention conflict resolution)",
+    ""
+  ].join("\n");
+  const mergedFm = {
+    id: mergedId,
+    title: mergedTitle,
+    type: mergedKind === "DEC" ? "adr" : "invariant",
+    status: mergedKind === "DEC" ? "accepted" : "active",
+    audience: "dual",
+    generated: now,
+    "verified-at": now,
+    sot_kind: "ledger",
+    sot_path: "ledger",
+    sot_content_hash: bodyContentHash(mergedBody),
+    capture_source: "conflict-merge",
+    related: `${conflict.aRef.id},${conflict.bRef.id}`
+  };
+  if (mergedKind === "DEC") {
+    mergedFm["decided_at"] = now;
+    mergedFm["decided_by"] = "cairn-conflict-merge";
+  }
+  mkdirSync38(dirname32(mergedAbs), { recursive: true });
+  writeFileSync37(mergedAbs, `---
+${(0, import_yaml38.stringify)(mergedFm).trimEnd()}
+---
+${mergedBody}`, "utf8");
+  setSupersededBy(repoRoot, conflict.aRef, mergedId, "superseded");
+  setSupersededBy(repoRoot, conflict.bRef, mergedId, "superseded");
+  return { mergedId, mergedRel };
+}
+function synthesizeMergedId(repoRoot, kind) {
+  const dir = kind === "DEC" ? decisionsDir(repoRoot) : invariantsDir(repoRoot);
+  const existing = /* @__PURE__ */ new Set();
+  if (existsSync76(dir)) {
+    try {
+      for (const e of readdirSync33(dir, { withFileTypes: true })) {
+        if (e.isFile() && e.name.endsWith(".md")) {
+          existing.add(e.name.replace(/\.md$/, ""));
+        }
+      }
+    } catch {
+    }
+  }
+  const seed = `merge-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+  let candidate = `${kind}-${hashHex(seed).slice(0, 7)}`;
+  let suffix = 0;
+  while (existing.has(candidate)) {
+    suffix += 1;
+    candidate = `${kind}-${hashHex(`${seed}-${suffix}`).slice(0, 7)}`;
+  }
+  return candidate;
+}
+function hashHex(input) {
+  return createHash7("sha256").update(input, "utf8").digest("hex");
+}
 function resolveInvalidationEvent(_ctx, input) {
-  const map2 = { a: "refresh", b: "continue_under_old", c: "abort" };
+  const map2 = {
+    a: "refresh",
+    b: "continue_under_old",
+    c: "abort"
+  };
+  const choice = input.choice;
   return Promise.resolve({
     ok: true,
-    resolved_kind: `invalidation_${map2[input.choice]}`,
+    resolved_kind: `invalidation_${map2[choice]}`,
     item_id: input.item_id,
     ...input.rationale !== void 0 ? { rationale: input.rationale } : {}
   });
@@ -72071,7 +72419,7 @@ var resolveAttentionTool = {
 };
 
 // ../cairn-core/dist/mcp/tools/search.js
-import { existsSync as existsSync77, readdirSync as readdirSync33, readFileSync as readFileSync69 } from "node:fs";
+import { existsSync as existsSync77, readdirSync as readdirSync34, readFileSync as readFileSync69 } from "node:fs";
 import { join as join78, relative as relative13 } from "node:path";
 async function handler15(ctx, input) {
   const limit = Math.min(input.limit ?? 20, 50);
@@ -72081,7 +72429,7 @@ async function handler15(ctx, input) {
   if (wantKinds.has("decision")) {
     const dir = decisionsDir(ctx.repoRoot);
     if (existsSync77(dir)) {
-      for (const e of readdirSync33(dir, { withFileTypes: true, encoding: "utf8" })) {
+      for (const e of readdirSync34(dir, { withFileTypes: true, encoding: "utf8" })) {
         if (!e.isFile() || !e.name.endsWith(".md"))
           continue;
         const path2 = join78(dir, e.name);
@@ -72107,7 +72455,7 @@ async function handler15(ctx, input) {
   if (wantKinds.has("invariant")) {
     const dir = invariantsDir(ctx.repoRoot);
     if (existsSync77(dir)) {
-      for (const e of readdirSync33(dir, { withFileTypes: true, encoding: "utf8" })) {
+      for (const e of readdirSync34(dir, { withFileTypes: true, encoding: "utf8" })) {
         if (!e.isFile() || !e.name.endsWith(".md"))
           continue;
         const path2 = join78(dir, e.name);
@@ -72133,7 +72481,7 @@ async function handler15(ctx, input) {
   if (wantKinds.has("task")) {
     const tasksDir = join78(ctx.repoRoot, ".cairn", "tasks", "active");
     if (existsSync77(tasksDir)) {
-      for (const e of readdirSync33(tasksDir, { withFileTypes: true, encoding: "utf8" })) {
+      for (const e of readdirSync34(tasksDir, { withFileTypes: true, encoding: "utf8" })) {
         if (!e.isDirectory())
           continue;
         const spec = join78(tasksDir, e.name, "spec.tightened.md");
@@ -72189,7 +72537,7 @@ async function handler15(ctx, input) {
   return filtered.slice(0, limit);
 }
 function walkDocs2(dir, repoRoot, q2, out) {
-  for (const e of readdirSync33(dir, { withFileTypes: true, encoding: "utf8" })) {
+  for (const e of readdirSync34(dir, { withFileTypes: true, encoding: "utf8" })) {
     const abs = join78(dir, e.name);
     if (e.isDirectory()) {
       if (e.name === "_research")
@@ -72224,14 +72572,14 @@ var searchTool = {
 };
 
 // ../cairn-core/dist/mcp/tools/supersedes-chain.js
-import { existsSync as existsSync78, readdirSync as readdirSync34, readFileSync as readFileSync70 } from "node:fs";
+import { existsSync as existsSync78, readdirSync as readdirSync35, readFileSync as readFileSync70 } from "node:fs";
 import { join as join79 } from "node:path";
 async function handler16(ctx, input) {
   const dir = decisionsDir(ctx.repoRoot);
   if (!existsSync78(dir))
     return mcpError("DECISION_NOT_FOUND", `No decisions directory`);
   const all = /* @__PURE__ */ new Map();
-  for (const entry of readdirSync34(dir, { withFileTypes: true, encoding: "utf8" })) {
+  for (const entry of readdirSync35(dir, { withFileTypes: true, encoding: "utf8" })) {
     if (!entry.isFile() || !entry.name.endsWith(".md"))
       continue;
     const parsed = parseFrontmatter(readFileSync70(join79(dir, entry.name), "utf8"));
@@ -72284,7 +72632,7 @@ var supersedesChainTool = {
 };
 
 // ../cairn-core/dist/mcp/tools/task-create.js
-var import_yaml38 = __toESM(require_dist(), 1);
+var import_yaml39 = __toESM(require_dist(), 1);
 import { existsSync as existsSync79, mkdirSync as mkdirSync39, writeFileSync as writeFileSync38 } from "node:fs";
 import { join as join80 } from "node:path";
 function generateTaskId(slug) {
@@ -72344,12 +72692,12 @@ async function handler17(ctx, input) {
     renderBulletList(input.acceptance, "(implementation passes the operator's spot check)")
   ].join("\n");
   const specContent = `---
-${(0, import_yaml38.stringify)(specFrontmatter)}---
+${(0, import_yaml39.stringify)(specFrontmatter)}---
 
 ${specBody}`;
   const specPath = join80(taskDir, "spec.tightened.md");
   writeFileSync38(specPath, specContent, "utf8");
-  const statusContent = (0, import_yaml38.stringify)({
+  const statusContent = (0, import_yaml39.stringify)({
     id: taskId,
     phase: "running",
     module: input.module ?? input.target_path_globs[0]?.split("/")[0] ?? ".",
@@ -72375,7 +72723,7 @@ var taskCreateTool = {
 };
 
 // ../cairn-core/dist/mcp/tools/timeline.js
-import { existsSync as existsSync80, readdirSync as readdirSync35, readFileSync as readFileSync71 } from "node:fs";
+import { existsSync as existsSync80, readdirSync as readdirSync36, readFileSync as readFileSync71 } from "node:fs";
 import { join as join81 } from "node:path";
 async function handler18(ctx, input) {
   const out = [];
@@ -72384,7 +72732,7 @@ async function handler18(ctx, input) {
   const wantKinds = input.kinds ? new Set(input.kinds) : null;
   const dir = runsTerminalDir(ctx.repoRoot);
   if (existsSync80(dir)) {
-    for (const e of readdirSync35(dir, { withFileTypes: true, encoding: "utf8" })) {
+    for (const e of readdirSync36(dir, { withFileTypes: true, encoding: "utf8" })) {
       if (!e.isDirectory())
         continue;
       const meta3 = readJson(join81(dir, e.name, "meta.json"));
@@ -72528,7 +72876,7 @@ function createContext(opts) {
 }
 
 // ../cairn-core/dist/hooks/runners/session-start.js
-import { existsSync as existsSync86, mkdirSync as mkdirSync43, readdirSync as readdirSync38, writeFileSync as writeFileSync42 } from "node:fs";
+import { existsSync as existsSync86, mkdirSync as mkdirSync43, readdirSync as readdirSync39, writeFileSync as writeFileSync42 } from "node:fs";
 import { homedir as homedir4 } from "node:os";
 import { join as join87 } from "node:path";
 
@@ -72614,7 +72962,7 @@ function readAttestedCommits(repoRoot) {
 }
 
 // ../cairn-core/dist/session/id.js
-import { existsSync as existsSync82, mkdirSync as mkdirSync40, readdirSync as readdirSync36, readFileSync as readFileSync73, rmSync as rmSync10, statSync as statSync24, writeFileSync as writeFileSync39 } from "node:fs";
+import { existsSync as existsSync82, mkdirSync as mkdirSync40, readdirSync as readdirSync37, readFileSync as readFileSync73, rmSync as rmSync10, statSync as statSync24, writeFileSync as writeFileSync39 } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { join as join83 } from "node:path";
 var MAX_STALE_AGE_MS = 24 * 60 * 60 * 1e3;
@@ -72672,7 +73020,7 @@ function gcStaleSessions(args) {
     return { removed, kept };
   const maxAge = args.maxAgeMs ?? MAX_STALE_AGE_MS;
   const now = Date.now();
-  const entries2 = readdirSync36(root2, { withFileTypes: true, encoding: "utf8" });
+  const entries2 = readdirSync37(root2, { withFileTypes: true, encoding: "utf8" });
   for (const entry of entries2) {
     if (!entry.isDirectory())
       continue;
@@ -72829,7 +73177,7 @@ function defaultStatusJson() {
 }
 
 // ../cairn-core/dist/status-line/reader.js
-import { existsSync as existsSync85, readdirSync as readdirSync37, readFileSync as readFileSync76 } from "node:fs";
+import { existsSync as existsSync85, readdirSync as readdirSync38, readFileSync as readFileSync76 } from "node:fs";
 import { join as join86 } from "node:path";
 
 // ../cairn-core/dist/status-line/event-queue.js
@@ -73010,7 +73358,7 @@ function groundStateFallback(repoRoot, ctx) {
   const inboxDir = join86(cairnDir, "ground", "decisions", "_inbox");
   if (existsSync85(inboxDir)) {
     try {
-      drafts = readdirSync37(inboxDir, { encoding: "utf8" }).filter((f) => f.endsWith(".draft.md")).length;
+      drafts = readdirSync38(inboxDir, { encoding: "utf8" }).filter((f) => f.endsWith(".draft.md")).length;
     } catch {
       drafts = 0;
     }
@@ -73284,7 +73632,7 @@ function looksLikeProjectRoot(cwd) {
 function findAdoptableChildren(cwd, max = 8) {
   let entries2;
   try {
-    entries2 = readdirSync38(cwd, { withFileTypes: true });
+    entries2 = readdirSync39(cwd, { withFileTypes: true });
   } catch {
     return [];
   }
@@ -73394,7 +73742,7 @@ async function runSessionEndHook() {
 }
 
 // ../cairn-core/dist/hooks/runners/stop.js
-import { existsSync as existsSync87, readdirSync as readdirSync39, readFileSync as readFileSync77, statSync as statSync25 } from "node:fs";
+import { existsSync as existsSync87, readdirSync as readdirSync40, readFileSync as readFileSync77, statSync as statSync25 } from "node:fs";
 import { join as join88 } from "node:path";
 function isInitInProgress(repoRoot) {
   return existsSync87(join88(repoRoot, ".cairn", "init-state.json"));
@@ -73535,7 +73883,7 @@ function scanPendingReviews(repoRoot) {
   const cutoffMs = Date.now() - 6 * 60 * 60 * 1e3;
   let entries2;
   try {
-    entries2 = readdirSync39(activeDir, { withFileTypes: true, encoding: "utf8" });
+    entries2 = readdirSync40(activeDir, { withFileTypes: true, encoding: "utf8" });
   } catch {
     return [];
   }
@@ -73706,8 +74054,8 @@ function readVersion() {
 var VERSION = readVersion();
 
 // ../cairn/dist/cli/attention.js
-var import_yaml39 = __toESM(require_dist(), 1);
-import { existsSync as existsSync89, readFileSync as readFileSync80, readdirSync as readdirSync40 } from "node:fs";
+var import_yaml40 = __toESM(require_dist(), 1);
+import { existsSync as existsSync89, readFileSync as readFileSync80, readdirSync as readdirSync41 } from "node:fs";
 import { join as join90, resolve as resolve17 } from "node:path";
 import { spawn as spawn5 } from "node:child_process";
 var FINDINGS_PER_SENSOR = 3;
@@ -73737,7 +74085,7 @@ function readFrontmatter2(text) {
   if (!m || m[1] === void 0)
     return {};
   try {
-    const parsed = (0, import_yaml39.parse)(m[1]);
+    const parsed = (0, import_yaml40.parse)(m[1]);
     return typeof parsed === "object" && parsed !== null ? parsed : {};
   } catch {
     return {};
@@ -73749,7 +74097,7 @@ function listDrafts(repoRoot) {
     return [];
   let entries2;
   try {
-    entries2 = readdirSync40(dir, { withFileTypes: true, encoding: "utf8" });
+    entries2 = readdirSync41(dir, { withFileTypes: true, encoding: "utf8" });
   } catch {
     return [];
   }
@@ -73781,7 +74129,7 @@ function readLatestBaseline(repoRoot) {
     return null;
   let entries2;
   try {
-    entries2 = readdirSync40(dir, { encoding: "utf8" });
+    entries2 = readdirSync41(dir, { encoding: "utf8" });
   } catch {
     return null;
   }
@@ -73792,7 +74140,7 @@ function readLatestBaseline(repoRoot) {
   const abs = join90(dir, latest);
   let parsed;
   try {
-    parsed = (0, import_yaml39.parse)(readFileSync80(abs, "utf8"));
+    parsed = (0, import_yaml40.parse)(readFileSync80(abs, "utf8"));
   } catch {
     return null;
   }
@@ -73911,7 +74259,7 @@ function loadProjectGlobs2(repoRoot) {
   }
   let parsed;
   try {
-    parsed = (0, import_yaml39.parse)(readFileSync80(configPath, "utf8"));
+    parsed = (0, import_yaml40.parse)(readFileSync80(configPath, "utf8"));
   } catch {
     return { globs: {} };
   }
@@ -74103,7 +74451,7 @@ async function attentionCli(argv) {
 }
 
 // ../cairn/dist/cli/baseline.js
-var import_yaml40 = __toESM(require_dist(), 1);
+var import_yaml41 = __toESM(require_dist(), 1);
 import { existsSync as existsSync90, readFileSync as readFileSync81 } from "node:fs";
 import { join as join91, resolve as resolve18 } from "node:path";
 function parseRepoFlag2(argv) {
@@ -74142,7 +74490,7 @@ function loadGlobsFromConfig(repoRoot) {
   if (!existsSync90(cfgPath))
     return {};
   try {
-    const parsed = (0, import_yaml40.parse)(readFileSync81(cfgPath, "utf8"));
+    const parsed = (0, import_yaml41.parse)(readFileSync81(cfgPath, "utf8"));
     if (parsed === null || typeof parsed !== "object")
       return {};
     const cfg = parsed;
@@ -74324,9 +74672,9 @@ async function fixCli(argv) {
 }
 
 // ../cairn/dist/cli/fix.js
-var import_yaml41 = __toESM(require_dist(), 1);
+var import_yaml42 = __toESM(require_dist(), 1);
 import { execFileSync as execFileSync9 } from "node:child_process";
-import { existsSync as existsSync92, readFileSync as readFileSync82, readdirSync as readdirSync41, rmSync as rmSync11, writeFileSync as writeFileSync43 } from "node:fs";
+import { existsSync as existsSync92, readFileSync as readFileSync82, readdirSync as readdirSync42, rmSync as rmSync11, writeFileSync as writeFileSync43 } from "node:fs";
 import { dirname as dirname34, join as join92, resolve as resolve20 } from "node:path";
 import { fileURLToPath as fileURLToPath5 } from "node:url";
 function parseRepoFlag4(argv) {
@@ -74355,7 +74703,7 @@ function readProjectSlug2(repoRoot) {
   if (!existsSync92(cfgPath))
     return "this-project";
   try {
-    const parsed = (0, import_yaml41.parse)(readFileSync82(cfgPath, "utf8"));
+    const parsed = (0, import_yaml42.parse)(readFileSync82(cfgPath, "utf8"));
     if (parsed === null || typeof parsed !== "object")
       return "this-project";
     const slug = parsed["project_slug"];
@@ -74424,7 +74772,7 @@ async function fixDecStrip(repoRoot, dryRun) {
   }
   let entries2;
   try {
-    entries2 = readdirSync41(decisionsDir2, { encoding: "utf8" });
+    entries2 = readdirSync42(decisionsDir2, { encoding: "utf8" });
   } catch (err) {
     console.error(`cairn fix dec-strip: cannot read decisions dir: ${err instanceof Error ? err.message : String(err)}`);
     process.exit(2);
@@ -74572,7 +74920,7 @@ async function fixScrubCache(repoRoot, dryRun) {
   }
   let entries2;
   try {
-    entries2 = readdirSync41(cacheDir, { encoding: "utf8" });
+    entries2 = readdirSync42(cacheDir, { encoding: "utf8" });
   } catch (err) {
     console.error(`cairn fix scrub-cache: cannot read cache dir: ${err instanceof Error ? err.message : String(err)}`);
     process.exit(2);
@@ -75119,7 +75467,7 @@ async function scopeCli(argv) {
 }
 
 // ../cairn/dist/cli/sensor-run.js
-var import_yaml42 = __toESM(require_dist(), 1);
+var import_yaml43 = __toESM(require_dist(), 1);
 import { existsSync as existsSync94, readFileSync as readFileSync83 } from "node:fs";
 import { join as join93, resolve as resolve26 } from "node:path";
 function findRepoRoot(start) {
@@ -75139,7 +75487,7 @@ function loadSensors(repoRoot) {
   if (!existsSync94(path2))
     return null;
   try {
-    const parsed = (0, import_yaml42.parse)(readFileSync83(path2, "utf8"));
+    const parsed = (0, import_yaml43.parse)(readFileSync83(path2, "utf8"));
     return parsed;
   } catch {
     return null;
@@ -75191,7 +75539,7 @@ async function sensorRunCli(argv) {
 }
 
 // ../cairn/dist/cli/trace.js
-import { existsSync as existsSync95, readFileSync as readFileSync84, readdirSync as readdirSync42, statSync as statSync26 } from "node:fs";
+import { existsSync as existsSync95, readFileSync as readFileSync84, readdirSync as readdirSync43, statSync as statSync26 } from "node:fs";
 import { join as join94, resolve as resolve27 } from "node:path";
 function parseArgs5(argv) {
   const positional = [];
@@ -75274,7 +75622,7 @@ function loadTraceFiles(daysBack) {
   if (!existsSync95(dir))
     return [];
   const out = [];
-  for (const f of readdirSync42(dir)) {
+  for (const f of readdirSync43(dir)) {
     if (!f.startsWith("trace-") || !f.endsWith(".jsonl"))
       continue;
     out.push(join94(dir, f));

@@ -132,19 +132,29 @@ export const resolveAttentionInput = {
    *
    * For kind=bypass, item_id is the full SHA of the FIRST flagged commit
    * (the rest go in flagged_items). For kind=review, item_id is the
-   * task_id of the FIRST pending review.
+   * task_id of the FIRST pending review. For kind=conflict, item_id is
+   * the conflict filename slug `<a-id>__<b-id>` (without `.md`).
    */
   item_id: z.string().min(1),
-  /** Operator's pick from the inline A/B/C. */
-  choice: z.enum(["a", "b", "c"]),
+  /**
+   * Operator's pick from the inline A/B/C/D. The fourth slot is only
+   * meaningful for `conflict` kind (archive-both per plan §5.4.1); other
+   * kinds reject `d`.
+   */
+  choice: z.enum(["a", "b", "c", "d"]),
   /**
    * Item kind — narrows the resolution path. The skill knows the kind
    * from the item it surfaced.
    *
-   * `bypass`  — Stop hook surfaced N commits not in `.attested-commits`.
-   *             choice=a record-bypass (DEC), b accept-as-noted, c defer.
-   * `review`  — Stop hook surfaced N pending reviewer attestations.
-   *             choice=a spawn-now, b skip, c defer.
+   * `bypass`   — Stop hook surfaced N commits not in `.attested-commits`.
+   *              choice=a record-bypass (DEC), b accept-as-noted, c defer.
+   * `review`   — Stop hook surfaced N pending reviewer attestations.
+   *              choice=a spawn-now, b skip, c defer.
+   * `conflict` — Phase 7c contradiction judge wrote a conflict file.
+   *              choice=a keep A (supersede B), b keep B (supersede A),
+   *              c merge into a fresh DEC (both old superseded),
+   *              d archive both (move conflict file to _archived/).
+   *              Plan §5.4.1 — never rewrites source files.
    */
   kind: z.enum([
     "decision_draft",
@@ -153,6 +163,7 @@ export const resolveAttentionInput = {
     "drift",
     "bypass",
     "review",
+    "conflict",
   ]),
   /**
    * Full SHA / task_id list for the bypass / review snapshot. Used

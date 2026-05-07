@@ -168,7 +168,7 @@ export const InvariantFrontmatter = z
     id: z.string().regex(/^INV-[0-9a-f]{7,}$/, "invariant id must match INV-<hash7>"),
     title: z.string(),
     type: z.literal("invariant").optional(),
-    status: z.enum(["active", "superseded"]).optional(),
+    status: z.enum(["active", "superseded", "archived"]).optional(),
     audience: Audience.optional(),
     generated: z.string().optional(),
     "verified-at": z.string().optional(),
