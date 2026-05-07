@@ -118,7 +118,9 @@ async function main(): Promise<void> {
     ].join("\n") + "\n",
   );
 
-  // CLAUDE.md with H2 sections + operator keep block.
+  // CLAUDE.md with H2 sections + operator keep block. Section bodies
+  // are sized above the phase-5b walker's 80-char + 10-unique-token
+  // floor so they actually land in the topic-index.
   writeFile(
     repoRoot,
     "CLAUDE.md",
@@ -127,11 +129,11 @@ async function main(): Promise<void> {
       "",
       "## Brand voice",
       "",
-      "Always write in active voice. Avoid filler. Lead with the answer.",
+      "Always write copy in active voice. Avoid filler words. Lead each paragraph with the verb so readers see the action before the qualification.",
       "",
       "## Architecture overview",
       "",
-      "TOC pointing at docs/.",
+      "Table of contents pointing at the docs directory. Skim the layered architecture spec before reading any feature code.",
       "",
       KEEP_START_MARKER,
       "Operator hand-written ops note — never overwrite this paragraph.",
@@ -180,7 +182,7 @@ async function main(): Promise<void> {
       }
       return { blockId: block.id, kind: "other", failed: false };
     },
-    // Phase 7c: "Brand voice" section becomes a net-new rule.
+    // Phase 7c: "Brand voice" section becomes a net-new decision.
     mockRulesMergeClassify: (
       section: RuleSection,
       source: RuleSourceFile,
@@ -192,10 +194,8 @@ async function main(): Promise<void> {
           level: section.level,
           title: section.title,
           startOffset: section.startOffset,
-          kind: "rule-net-new",
-          proposedDecTitle: "Always write in active voice",
-          proposedRationale: "Active voice keeps copy direct.",
-          conflictsWith: "",
+          slug: "",
+          kind: "decision",
           failed: false,
         };
       }
@@ -204,10 +204,8 @@ async function main(): Promise<void> {
         level: section.level,
         title: section.title,
         startOffset: section.startOffset,
+        slug: "",
         kind: "informational",
-        proposedDecTitle: "",
-        proposedRationale: "",
-        conflictsWith: "",
         failed: false,
       };
     },
@@ -256,15 +254,15 @@ async function main(): Promise<void> {
     `  ✓ Step 3 — ${result.source_comments!.decsWritten.length} DEC(s); audit at ${result.source_comments!.auditRelPath}`,
   );
 
-  step("Step 4 — Phase 7c: rules-merge audit + DEC drafts written");
+  step("Step 4 — Phase 7c: rules-merge audit + verbatim DECs written");
   assert(result.rules_merge !== null, "rules_merge result populated");
   assert(
-    result.rules_merge!.kindCounts["rule-net-new"] === phase7cNetNewCount,
-    `expected ${phase7cNetNewCount} rule-net-new`,
+    result.rules_merge!.kindCounts["decision"] === phase7cNetNewCount,
+    `expected ${phase7cNetNewCount} decisions classified`,
   );
   assert(
-    result.rules_merge!.decDraftsWritten.length === phase7cNetNewCount,
-    "rule-net-new DEC drafts persisted",
+    result.rules_merge!.decsWritten.length === phase7cNetNewCount,
+    "phase 7c DECs persisted to ground state",
   );
   assert(
     existsSync(join(repoRoot, result.rules_merge!.auditRelPath)),
@@ -276,7 +274,7 @@ async function main(): Promise<void> {
     "operator-keep section auto-tagged",
   );
   console.log(
-    `  ✓ Step 4 — ${result.rules_merge!.decDraftsWritten.length} DEC draft(s); operator-keep ${result.rules_merge!.kindCounts["operator-keep"]}`,
+    `  ✓ Step 4 — ${result.rules_merge!.decsWritten.length} DEC(s); operator-keep ${result.rules_merge!.kindCounts["operator-keep"]}`,
   );
 
   step("Step 5 — Phase 7b DEC body landed in ground state");

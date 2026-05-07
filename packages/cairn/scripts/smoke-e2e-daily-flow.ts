@@ -198,9 +198,6 @@ async function adoptFixture(repoRoot: string): Promise<void> {
     mockSourceCommentClassify: (block: CommentBlock): CommentClassification => ({
       blockId: block.id,
       kind: block.kind === "license" ? "license" : "other",
-      suggestedDecDraft: "",
-      suggestedInvariant: "",
-      suggestedCanonicalTopic: "",
       failed: false,
     }),
     mockRulesMergeClassify: (
@@ -211,10 +208,8 @@ async function adoptFixture(repoRoot: string): Promise<void> {
       level: section.level,
       title: section.title,
       startOffset: section.startOffset,
+      slug: "",
       kind: "informational",
-      proposedDecTitle: "",
-      proposedRationale: "",
-      conflictsWith: "",
       failed: false,
     }),
   });

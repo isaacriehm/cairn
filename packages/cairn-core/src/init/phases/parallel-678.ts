@@ -1,24 +1,21 @@
 /**
- * Phases 6 / 7b / 7c parallel orchestrator.
+ * Phases 6 / 7b / 7c sequential orchestrator.
  *
  * The three post-pilot ingestion phases (docs-ingest, source-comments,
- * rules-merge) are each I/O-bound on Haiku; running them sequentially
- * adds the smaller two phases' wall-clock to the long 7b run for no
- * good reason. This runner fires all three concurrently inside a single
- * MCP call.
+ * rules-merge) all read + write the same v0.5.0 ground-state files —
+ * `topic-index.yaml`, `anchor-map.yaml`, `sot-bindings.yaml`,
+ * `sot-cache.yaml`. Concurrent execution races on those writes: each
+ * phase reads at start, mutates in memory, writes at end → last writer
+ * wipes the others. The v0.4.x parallel orchestrator was safe because
+ * only DEC/INV files (uniquely named per id) were on the write path.
  *
- * Concurrency-safety:
- *   - DEC + INV id allocators race-free via shared `Set<string>` threads
- *     (each phase's allocation loop is sync within JS turn boundaries,
- *     so mutations to the shared Set are atomic per turn). The pre-scan
- *     happens once, here; phases mutate the Set as they allocate.
- *   - Filesystem mutations are non-overlapping by design: phase 6 writes
- *     to `decisions/_inbox/`, phase 7b writes to `decisions/_inbox/` +
- *     `invariants/` + applies strip-replace to source, phase 7c writes
- *     to `decisions/_inbox/`. Different filenames per phase (DEC ids
- *     are unique across the shared Set), so no race.
- *   - Ledger rebuilds: only 7b rebuilds the invariants ledger; the
- *     decisions ledger is rebuilt later by `bulkAcceptObvious`. Safe.
+ * v0.5.0 fix: run the phases sequentially in canonical order
+ * (6 → 7b → 7c). Each phase still uses Haiku internally (with its own
+ * concurrency for batching + per-section workers), so the wall-clock
+ * cost vs. the v0.4.x parallel pipeline is bounded by the longest
+ * phase plus the smaller two — historically <5s combined for the
+ * smaller phases. Heartbeats fire per phase so the operator sees
+ * motion across all three.
  *
  * State machine:
  *   - The runner enters expecting `currentPhase === "6-docs-ingest"` and
@@ -99,14 +96,14 @@ export async function runPhases678Parallel(
     "parallel-678 starting",
   );
 
-  // Fire all three phases. Each phase's loop is synchronous between
-  // await points, so shared-Set mutations stay atomic per JS turn.
-  // The 7b heartbeat dominates statusline output (it runs longest), but
-  // 6 and 7c also write progress so the operator sees motion across
-  // all three.
+  // Run the three phases sequentially. v0.5.0 ground-state files
+  // (topic-index, anchor-map, sot-bindings, sot-cache) are the shared
+  // mutable surface; serializing 6 → 7b → 7c removes the last-writer-
+  // wins race that Promise.allSettled had under v0.4.x.
   const t0 = performance.now();
   const startedAt = Date.now();
-  const settled = await Promise.allSettled([
+
+  const docsRes = await runPhaseSafely("docs-ingest-failed", async () =>
     runDocsIngestion({
       repoRoot: state.repoRoot,
       existingDecIds: sharedDecIds,
@@ -118,6 +115,13 @@ export async function runPhases678Parallel(
           startedAt,
         }),
     }),
+  );
+  if ("error" in docsRes) {
+    clearProgress(state.repoRoot);
+    return { status: "error", error: docsRes.error, state };
+  }
+
+  const srcRes = await runPhaseSafely("source-comments-failed", async () =>
     runSourceCommentsIngestion({
       repoRoot: state.repoRoot,
       globs,
@@ -134,9 +138,17 @@ export async function runPhases678Parallel(
           startedAt,
         }),
     }),
+  );
+  if ("error" in srcRes) {
+    clearProgress(state.repoRoot);
+    return { status: "error", error: srcRes.error, state };
+  }
+
+  const rulesRes = await runPhaseSafely("rules-merge-failed", async () =>
     runRulesMerge({
       repoRoot: state.repoRoot,
       existingDecIds: sharedDecIds,
+      existingInvIds: sharedInvIds,
       onSectionProgress: (row) =>
         writeProgress(state.repoRoot, {
           phase: "7c-rules-merge",
@@ -145,56 +157,13 @@ export async function runPhases678Parallel(
           startedAt,
         }),
     }),
-  ]);
+  );
+  if ("error" in rulesRes) {
+    clearProgress(state.repoRoot);
+    return { status: "error", error: rulesRes.error, state };
+  }
   const durationMs = Math.round(performance.now() - t0);
   clearProgress(state.repoRoot);
-
-  const [docsRes, srcRes, rulesRes] = settled;
-
-  // Any phase failure = whole-block failure. Surface the first error so
-  // the operator knows which Haiku batch died and can `/exit` + resume.
-  if (docsRes.status !== "fulfilled") {
-    return {
-      status: "error",
-      error: {
-        code: "docs-ingest-failed",
-        message: "Docs ingestion failed in parallel pipeline",
-        detail:
-          docsRes.reason instanceof Error
-            ? docsRes.reason.stack ?? docsRes.reason.message
-            : String(docsRes.reason),
-      },
-      state,
-    };
-  }
-  if (srcRes.status !== "fulfilled") {
-    return {
-      status: "error",
-      error: {
-        code: "source-comments-failed",
-        message: "Source-comment ingestion failed in parallel pipeline",
-        detail:
-          srcRes.reason instanceof Error
-            ? srcRes.reason.stack ?? srcRes.reason.message
-            : String(srcRes.reason),
-      },
-      state,
-    };
-  }
-  if (rulesRes.status !== "fulfilled") {
-    return {
-      status: "error",
-      error: {
-        code: "rules-merge-failed",
-        message: "Rules merge failed in parallel pipeline",
-        detail:
-          rulesRes.reason instanceof Error
-            ? rulesRes.reason.stack ?? rulesRes.reason.message
-            : String(rulesRes.reason),
-      },
-      state,
-    };
-  }
 
   writeSourceCommentsWalkFile(state.repoRoot, srcRes.value);
   const persistedSrc = to7bResultPersisted(srcRes.value);
@@ -247,4 +216,29 @@ export async function runPhases678Parallel(
     nextPhase: next.currentPhase,
     state: next,
   };
+}
+
+interface PhaseError {
+  code: string;
+  message: string;
+  detail?: string;
+}
+
+async function runPhaseSafely<T>(
+  code: string,
+  fn: () => Promise<T>,
+): Promise<{ value: T } | { error: PhaseError }> {
+  try {
+    return { value: await fn() };
+  } catch (err) {
+    const detail =
+      err instanceof Error ? err.stack ?? err.message : String(err);
+    const message =
+      code === "docs-ingest-failed"
+        ? "Docs ingestion failed"
+        : code === "source-comments-failed"
+          ? "Source-comment ingestion failed"
+          : "Rules merge failed";
+    return { error: { code, message, detail } };
+  }
 }
