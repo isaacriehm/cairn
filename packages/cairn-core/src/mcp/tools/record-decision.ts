@@ -7,7 +7,7 @@ import {
 } from "../../decision-capture/index.js";
 import type { McpContext } from "../context.js";
 import { writeInvalidationEvent } from "../../events/index.js";
-import { decisionsDir } from "../../ground/index.js";
+import { bodyContentHash, decisionsDir } from "../../ground/index.js";
 import { DecisionAssertion } from "../../ground/index.js";
 import { withWriteLock } from "../../lock.js";
 import { requireBootstrap } from "../bootstrap-guard.js";
@@ -86,6 +86,8 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     const outDir = target === "accepted" ? dir : inboxDir;
     mkdirSync(outDir, { recursive: true });
 
+    const body =
+      input.body_markdown ?? `# ${id} — ${input.title}\n\n## Summary\n\n${input.summary}\n`;
     const frontmatter = {
       id,
       title: input.title,
@@ -96,14 +98,15 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
       "verified-at": new Date().toISOString(),
       decided_at: new Date().toISOString().slice(0, 10),
       scope_globs: input.scope_globs,
+      sot_kind: "ledger",
+      sot_path: "ledger",
+      sot_content_hash: bodyContentHash(body),
       ...(input.supersedes !== undefined ? { supersedes: input.supersedes } : {}),
       ...(input.assertions !== undefined ? { assertions: input.assertions } : {}),
       ...(input.human_review_hint !== undefined
         ? { human_review_hint: input.human_review_hint }
         : {}),
     };
-    const body =
-      input.body_markdown ?? `# ${id} — ${input.title}\n\n## Summary\n\n${input.summary}\n`;
     const filename = target === "accepted" ? `${id}.md` : `${id}.draft.md`;
     const path = join(outDir, filename);
     const content = `---\n${stringifyYaml(frontmatter)}---\n\n${body}`;

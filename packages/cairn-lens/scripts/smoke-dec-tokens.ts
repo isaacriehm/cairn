@@ -70,6 +70,9 @@ function runSmoke(): void {
 id: DEC-a3f7b2c
 title: Use strict null checks everywhere
 status: accepted
+sot_kind: ledger
+sot_path: ledger
+sot_content_hash: "0000000000000000000000000000000000000000000000000000000000000000"
 ---
 
 Body text here.
@@ -82,6 +85,9 @@ Body text here.
 id: DEC-5e9d10a
 title: Prefer immutable data structures
 status: accepted
+sot_kind: ledger
+sot_path: ledger
+sot_content_hash: "0000000000000000000000000000000000000000000000000000000000000000"
 ---
 `,
       "utf8",
@@ -107,7 +113,7 @@ status: accepted
     mkdirSync(decDir, { recursive: true });
     writeFileSync(
       join(decDir, "DEC-a3f7b2c.md"),
-      `---\nid: DEC-a3f7b2c\ntitle: Only one DEC\nstatus: accepted\n---\n`,
+      `---\nid: DEC-a3f7b2c\ntitle: Only one DEC\nstatus: accepted\nsot_kind: ledger\nsot_path: ledger\nsot_content_hash: "0000000000000000000000000000000000000000000000000000000000000000"\n---\n`,
       "utf8",
     );
     const resolver = new LensResolver(repoRoot);
