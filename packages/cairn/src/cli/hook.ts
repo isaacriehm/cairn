@@ -7,17 +7,22 @@
  * plugin (e.g. terminal-side debug). Both routes call the same runners.
  *
  *   cairn hook session-start
- *   cairn hook session-end       cleanup per-session state dir
- *   cairn hook stop              assistant turn end — drain events + heartbeat
+ *   cairn hook session-end         cleanup per-session state dir
+ *   cairn hook stop                assistant turn end — drain events + heartbeat
  *   cairn hook user-prompt-submit  resolves @-attached file citations
- *   cairn hook read-enrich       PostToolUse on Read — citation legend
- *   cairn hook write-guard       PostToolUse on Write/Edit — copy-safety + scope reminder
- *   cairn hook sot-align         PostToolUse on Write/Edit — Layer A alignment + DEC creation
+ *   cairn hook read-enrich         PostToolUse on Read — citation legend
+ *   cairn hook write-guard         PostToolUse on Write/Edit — copy-safety + scope reminder
+ *   cairn hook sot-align           PostToolUse on Write/Edit — Layer A alignment + DEC creation
+ *   cairn hook pre-commit-align    git pre-commit — Layer B detection-only drift log
  *
  * PreToolUse is intentionally NOT supported — bricks the session if the hook fails.
+ * `pre-commit-align` is invoked from the bundled `.cairn/git-hooks/pre-commit`
+ * shell hook (different mechanism from Claude Code PreToolUse) and is
+ * detection-only — never modifies the commit, never blocks.
  */
 
 import {
+  runPreCommitAlign,
   runReadEnricher,
   runSessionEndHook,
   runSessionStartHook,
@@ -37,11 +42,13 @@ function usage(): never {
       "  read-enrich           PostToolUse on Read — citation legend enricher\n" +
       "  write-guard           PostToolUse on Write/Edit — copy-safety + scope reminder\n" +
       "  sot-align             PostToolUse on Write/Edit — Layer A alignment + DEC creation\n" +
+      "  pre-commit-align      git pre-commit — Layer B detection-only drift log\n" +
       "\n" +
-      "Reads the Claude Code hook payload JSON on stdin, emits the\n" +
-      "Shape-B response on stdout. Wired by the Claude Code plugin's\n" +
-      "hooks/hooks.json — adopted projects do not need their own\n" +
-      "`.claude/settings.json` hook entries.\n",
+      "Claude Code hooks read a JSON payload on stdin and emit the\n" +
+      "Shape-B response on stdout (wired by the plugin's hooks/hooks.json).\n" +
+      "The git pre-commit-align variant is invoked by the bundled\n" +
+      "`.cairn/git-hooks/pre-commit` shell hook with no payload and\n" +
+      "always exits 0.\n",
   );
   process.exit(1);
 }
@@ -70,6 +77,9 @@ export async function hookCli(argv: string[]): Promise<void> {
       return;
     case "sot-align":
       await runSotAlign();
+      return;
+    case "pre-commit-align":
+      await runPreCommitAlign();
       return;
     default:
       console.error(`cairn hook: unknown event "${sub}"`);
