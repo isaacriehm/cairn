@@ -326,10 +326,26 @@ export class CitationDecorationManager implements vscode.Disposable {
     // "below" + "off" skip after-decoration entirely — below renders via
     // the citation CodeLens provider; off means inline display disabled.
 
+    // VS Code limitation (microsoft/vscode#63600): `after.contentText`
+    // cannot render `\n` and is sanitized against CSS-injection of block
+    // layout. So inline ghost text is always single-line. To stop the
+    // operator from losing context when titles are long or multi-line,
+    // every inline / replace decoration gets a `hoverMessage` carrying
+    // the full untruncated title — hover reveals what the inline view
+    // had to clip.
+    const buildHover = (id: string, fullTitle: string, status: string): vscode.MarkdownString => {
+      const md = new vscode.MarkdownString(undefined, true);
+      md.isTrusted = false;
+      md.supportHtml = false;
+      md.appendMarkdown(`**§${id}** _(${status})_\n\n${fullTitle}`);
+      return md;
+    };
+
     for (const { lineIdx, start, end, id } of decHits) {
       const r = decCache.get(id)!;
       const range = new vscode.Range(lineIdx, start, lineIdx, end);
       flagIfPending(lineIdx, start, end, id);
+      const hover = buildHover(id, r.title, r.status);
       if (shouldRenderGhost) {
         const trailer =
           r.status === "accepted"
@@ -337,6 +353,7 @@ export class CitationDecorationManager implements vscode.Disposable {
             : "(unresolved)";
         const opt: vscode.DecorationOptions = {
           range,
+          hoverMessage: hover,
           renderOptions: { after: { contentText: trailer } },
         };
         if (r.status === "accepted") inlineDecAccepted.push(opt);
@@ -350,6 +367,7 @@ export class CitationDecorationManager implements vscode.Disposable {
               : `? (unresolved §${id})`;
           const opt: vscode.DecorationOptions = {
             range: titleAnchor,
+            hoverMessage: hover,
             renderOptions: { before: { contentText: trailer } },
           };
           if (r.status === "accepted") replaceTitleDecAccepted.push(opt);
@@ -362,6 +380,13 @@ export class CitationDecorationManager implements vscode.Disposable {
       const r = invCache.get(id)!;
       const range = new vscode.Range(lineIdx, start, lineIdx, end);
       flagIfPending(lineIdx, start, end, id);
+      const hover = buildHover(
+        id,
+        r.title,
+        r.status === "superseded" && r.supersededBy
+          ? `superseded by §${r.supersededBy}`
+          : r.status,
+      );
       if (shouldRenderGhost) {
         const trailer =
           r.status === "active"
@@ -371,6 +396,7 @@ export class CitationDecorationManager implements vscode.Disposable {
               : "(unresolved)";
         const opt: vscode.DecorationOptions = {
           range,
+          hoverMessage: hover,
           renderOptions: { after: { contentText: trailer } },
         };
         if (r.status === "active") inlineActive.push(opt);
@@ -387,6 +413,7 @@ export class CitationDecorationManager implements vscode.Disposable {
                 : `? (unresolved §${id})`;
           const opt: vscode.DecorationOptions = {
             range: titleAnchor,
+            hoverMessage: hover,
             renderOptions: { before: { contentText: trailer } },
           };
           if (r.status === "active") replaceTitleActive.push(opt);
