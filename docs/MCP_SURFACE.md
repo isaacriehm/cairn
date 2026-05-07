@@ -1,11 +1,10 @@
 ---
 type: mcp-surface
-status: draft-v4
+status: draft-v5
 audience: dual
-generated: 2026-05-04
-supersedes: MCP_SURFACE.md (draft-v3)
+generated: 2026-05-07
+supersedes: MCP_SURFACE.md (draft-v4)
 depends-on:
-  - docs/PRIMER.md
   - docs/FILESYSTEM_LAYOUT.md
   - docs/ARCHITECTURE.md
 ---
@@ -43,7 +42,7 @@ Adopters register the server via `.mcp.json` (created by `cairn init`):
 
 ---
 
-## Tool catalog (18 tools)
+## Tool catalog (40 tools)
 
 Conventions:
 
@@ -51,6 +50,90 @@ Conventions:
 - All tools return structured JSON. No prose.
 - Path-allowlist gating on every write tool.
 - Errors return `{ error: { code, message, details } }` — never throw.
+
+### Complete tool index
+
+Source of truth: `packages/cairn-core/src/mcp/tools/index.ts` (`allTools`).
+
+**Read — graph traversal (8)**
+
+| Tool                          | What                                                                          |
+| ----------------------------- | ----------------------------------------------------------------------------- |
+| `cairn_decision_get`          | Full DEC by id (frontmatter + assertions + body markdown).                    |
+| `cairn_decisions_in_scope`    | DEC summaries whose scope_globs overlap supplied path-globs.                  |
+| `cairn_decisions_for_symbol`  | Like in-scope, narrowed to decisions whose body mentions a specific symbol.   |
+| `cairn_invariant_get`         | Full §INV by id.                                                              |
+| `cairn_invariants_in_scope`   | §INV summaries by path-glob overlap.                                          |
+| `cairn_canonical_for_topic`   | `topic → canonical_path + sha256 + verified_at`. Curated topic registry.      |
+| `cairn_ground_get`            | Bulk extract by category (schema / routes / events / quality_grades / glossary). |
+| `cairn_supersedes_chain`      | Full chain forward to current binding decision.                               |
+
+**Read — search + retrieval (4)**
+
+| Tool                       | What                                                                       |
+| -------------------------- | -------------------------------------------------------------------------- |
+| `cairn_search`             | FTS over canonical-zone artifacts; compact index records (~50 tokens each). |
+| `cairn_timeline`           | Chronologically ordered events for a scope window.                         |
+| `cairn_get_full`           | Full body of a named artifact after `cairn_search` narrows candidates.     |
+| `cairn_search_candidates`  | Phase 6 candidate surface — search across DEC drafts in `_inbox/`.         |
+
+**Read — historical zone (gated, 1)**
+
+| Tool                  | What                                                                          |
+| --------------------- | ----------------------------------------------------------------------------- |
+| `cairn_query_history` | Only path to `.archive/`. Server walks + LLM-summarizes; raw stale never enters context. |
+
+**Write — append-only (3)**
+
+| Tool                    | What                                                                     |
+| ----------------------- | ------------------------------------------------------------------------ |
+| `cairn_record_decision` | Drop new DEC draft into `_inbox/`. Server allocates `DEC-NNNN`.          |
+| `cairn_task_create`     | Create `.cairn/tasks/active/<id>/` with `spec.tightened.md` + `status.yaml`. |
+| `cairn_archive`         | Move file from canonical zone to `.archive/<today>/`. Idempotent.        |
+
+**Write — phase 6 candidate surface (2)**
+
+| Tool                      | What                                                                  |
+| ------------------------- | --------------------------------------------------------------------- |
+| `cairn_propose_decision`  | Submit a new DEC candidate from a Phase-6 / source-comment ingest.    |
+| `cairn_reject_candidate`  | Mark a candidate rejected with reason; persists in audit log.         |
+
+**Write — plugin-era attention queue (6)**
+
+| Tool                            | What                                                                      |
+| ------------------------------- | ------------------------------------------------------------------------- |
+| `cairn_resolve_attention`       | Resolve a single attention item (DEC draft / baseline finding / drift).   |
+| `cairn_bulk_accept_attention`   | Auto-promote high-confidence drafts before interactive triage.            |
+| `cairn_attention_dedup`         | Cluster near-duplicate drafts by Jaccard ≥ 0.4.                            |
+| `cairn_attention_restore`       | Undo the last batch of attention resolutions (within session).            |
+| `cairn_attention_serve`         | Spawn a local browser triage GUI when queue > 15.                         |
+| `cairn_attention_wait`          | Block until the browser GUI emits resolutions or the operator cancels.    |
+
+**Write — Layer C SessionStart drain (1)**
+
+| Tool                | What                                                                       |
+| ------------------- | -------------------------------------------------------------------------- |
+| `cairn_align_drain` | Drain queued SoT-alignment cases written by PostToolUse Write/Edit hooks.  |
+
+**Init pipeline (15)**
+
+| Tool                              | What                                                                |
+| --------------------------------- | ------------------------------------------------------------------- |
+| `cairn_init_resume`               | Resume an in-flight adoption from the last completed phase.         |
+| `cairn_init_phases_678_parallel`  | Run phases 6, 7b, 7c concurrently (docs / source-comments / rules). |
+| `cairn_init_phase_1_detect`       | Env probe + framework signals.                                      |
+| `cairn_init_phase_2_walker`       | Repo file walk → manifest + extension stats.                        |
+| `cairn_init_phase_3_mapper`       | Sonnet domain mapper → module proposals + scope globs.              |
+| `cairn_init_phase_3b_seed`        | Write `.cairn/` skeleton + grandfather pre-adoption commits.        |
+| `cairn_init_phase_4_pilot`        | Operator picks seed module from mapper's top-3.                     |
+| `cairn_init_phase_5_brand`        | Auto-fill brand / voice / product DEC drafts.                       |
+| `cairn_init_phase_5b_topic_index` | Content-fingerprint pre-pass for cross-source dedup.                |
+| `cairn_init_phase_6_docs_ingest`  | Haiku-staged ingestion of authored `*.md` → DEC drafts.             |
+| `cairn_init_phase_7b_source_comments` | Walk source docblocks, classify, emit DEC/INV drafts.           |
+| `cairn_init_phase_7c_rules_merge` | Reconcile `CLAUDE.md` / `AGENTS.md` / `.claude/rules/*`; flag conflicts. |
+| `cairn_init_phase_8_baseline`     | First sensor sweep against synthetic full-tree diff.                |
+| `cairn_init_phase_10_strip`       | Per-module strip-replace consent.                                   |
+| `cairn_init_phase_12_multidev`    | Detect package manager, install git hooks, emit `JOIN.md`.          |
 
 ### Read tools — graph traversal
 
@@ -321,8 +404,6 @@ Deliberate omissions, with reasons:
 | `cairn_append` | Direct-append to run artifact paths was removed; runtime writes to runs/ directly via fs, no MCP round-trip needed. |
 | `cairn_set_quality_grade` | The GC sweep owns quality grades; agents don't write them. |
 | `cairn_modify_workflow` | `workflow.md` is operator-edited only; agents read via canonical extracts. |
-| `cairn_decision_update` | Decisions are append-only via supersedes chain. No in-place edits. |
-| `cairn_invariant_disable` | Invariants are superseded with new entries, not disabled. |
 
 ---
 
@@ -359,8 +440,8 @@ Deliberate omissions, with reasons:
    bug report OR observation per its when_to_use trigger gate)
 3. Skill gathers in-scope context (cairn_decisions_in_scope,
    cairn_invariants_in_scope), asks ≤3 clarifying questions per round,
-   tightens the spec
-4. Plugin calls: cairn_record_decision({ ..., target: "inbox" }) → DEC-0099 draft created in _inbox/
+   tightens the spec via cairn_task_create
+4. Reviewer subagent (after dispatch) calls cairn_record_decision → DEC-0099 draft lands in _inbox/
 5. Stop hook surfaces inline: "Review DEC-0099 draft? [a] accept [b] reject [c] edit"
 6. Operator picks [a]
 7. cairn-attention skill calls cairn_resolve_attention({ item_id: "DEC-0099", choice: "a", kind: "decision_draft" })
@@ -383,12 +464,11 @@ Deliberate omissions, with reasons:
 
 ```
 packages/cairn-core/src/mcp/
-├── server.ts               ← MCP transport entry; routes tools to handlers
+├── serve.ts                ← MCP transport entry; routes tools to handlers
 ├── context.ts              ← per-server context (repoRoot + optional runId)
 ├── errors.ts               ← McpErrorCode enum + envelope shape
 ├── result.ts               ← wraps payloads as MCP CallToolResult
 ├── path-allowlist.ts       ← APPEND_ALLOWLIST, ARCHIVE_DENY, HISTORICAL_ZONE
-├── schemas.ts              ← zod input schemas per tool
 ├── telemetry.ts            ← per-call mcp-calls.jsonl writer
 ├── history/
 │   ├── walker.ts           ← .archive/ walker with path_hint + date window
@@ -397,6 +477,8 @@ packages/cairn-core/src/mcp/
 │   ├── summarizer.ts       ← end-to-end runQueryHistory; post-resolves canonical pointer
 │   └── index.ts            ← barrel
 └── tools/
+    ├── index.ts                  ← `allTools` array (single source of truth)
+    ├── types.ts                  ← `ToolDef` shape
     ├── decision-get.ts
     ├── decisions-in-scope.ts
     ├── decisions-for-symbol.ts
@@ -409,12 +491,22 @@ packages/cairn-core/src/mcp/
     ├── timeline.ts
     ├── get-full.ts
     ├── query-history.ts
-    ├── append.ts
+    ├── search-candidates.ts
     ├── record-decision.ts
-    ├── record-run-event.ts
-    ├── drop-task.ts
+    ├── task-create.ts
     ├── archive.ts
-    └── ask-operator.ts
+    ├── propose-decision.ts
+    ├── reject-candidate.ts
+    ├── resolve-attention.ts
+    ├── bulk-accept-attention.ts
+    ├── attention-dedup.ts
+    ├── attention-restore.ts
+    ├── attention-serve.ts
+    ├── attention-wait.ts
+    ├── align-drain.ts
+    └── init-phases.ts            ← `initPhaseTools` (13 phases) + `initResumeTool` + `initParallel678Tool`
 ```
 
 Started via `cairn mcp serve` (CLI in `packages/cairn/`). Stdio transport. Registered for Claude Code via the `.mcp.json` block above.
+
+To add a new tool: define a `ToolDef` in `tools/<name>.ts`, import + push into `allTools` in `tools/index.ts`. The server picks it up automatically — no separate registration step.

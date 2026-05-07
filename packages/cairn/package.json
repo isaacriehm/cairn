@@ -81,7 +81,9 @@
     "smoke:layer-c-sessionstart-drain": "tsx scripts/smoke-layer-c-sessionstart-drain.ts",
     "smoke:fix-align": "tsx scripts/smoke-fix-align.ts",
     "smoke:fix-align-gates": "tsx scripts/smoke-fix-align-gates.ts",
-    "smoke:attention-undo": "tsx scripts/smoke-attention-undo.ts"
+    "smoke:attention-undo": "tsx scripts/smoke-attention-undo.ts",
+    "smokes": "pnpm smoke:plugin-layout && pnpm smoke:resolve-attention && pnpm smoke:stop-hook && pnpm smoke:events && pnpm smoke:session-state && pnpm smoke:status-line && pnpm smoke:session-start && pnpm smoke:handoff && pnpm smoke:scope-index && pnpm smoke:read-enrich && pnpm smoke:init && pnpm smoke:ingestion-baseline && pnpm smoke:gc && pnpm smoke:lock && pnpm smoke:source-comments && pnpm smoke:rules-merge && pnpm smoke:join && pnpm smoke:bypass-detection && pnpm smoke:bootstrap-guard && pnpm smoke:e2e-adoption && pnpm smoke:e2e-daily-flow",
+    "smokes:all": "pnpm run \"/^smoke:/\""
   },
   "dependencies": {
     "@isaacriehm/cairn-core": "workspace:*",

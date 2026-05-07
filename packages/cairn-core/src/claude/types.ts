@@ -32,9 +32,9 @@ export interface RunClaudeOptions {
    */
   extraArgs?: string[];
   /**
-   * Free-form purpose tag (e.g. "init.mapper", "decision-extractor",
-   * "tier0.classify") for trace logs. Helps the operator find which
-   * call surface emitted a given subprocess invocation.
+   * Free-form purpose tag (e.g. "init.mapper", "init.docs-ingest",
+   * "init.source-comments") for trace logs. Helps the operator find
+   * which call surface emitted a given subprocess invocation.
    */
   purpose?: string;
   /** Repo root + Claude Code session id for trace correlation, when known. */

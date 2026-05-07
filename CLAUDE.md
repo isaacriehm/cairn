@@ -56,7 +56,6 @@ cairn/
     ├── cairn/                       — umbrella + CLI bin (`cairn init/join/hook/...`)
     ├── cairn-core/                  — state + context + MCP server + sensors + hook runners
     ├── cairn-frontend-claudecode/   — Claude Code plugin (manifest + hooks + skills + agents + commands)
-    ├── cairn-frontend-stub/         — in-memory test adapter (internal)
     └── cairn-lens/                  — VS Code / Cursor extension (.vsix)
 ```
 
@@ -64,36 +63,40 @@ cairn/
 technical surface ("the cairn wraps the agent"); Cairn is the project
 brand. Same with the `cairn_*` MCP tool prefix.
 
-## Smoke gate
+## Common commands
+
+Root-level pnpm scripts. No filter args, no package navigation, no bash loops.
+
+| Command                       | What                                                          |
+| ----------------------------- | ------------------------------------------------------------- |
+| `pnpm install`                | Install workspace deps.                                       |
+| `pnpm build`                  | Build all packages.                                           |
+| `pnpm typecheck`              | Typecheck all packages.                                       |
+| `pnpm clean`                  | Wipe `dist/` + `*.tsbuildinfo` across packages.               |
+| `pnpm smokes`                 | Run the 21-smoke gate. All must pass on a clean tree.         |
+| `pnpm smokes:all`             | Run every declared smoke (~41). Slower; pre-release sweep.    |
+| `pnpm smoke:llm-prompt-eval`  | Opt-in real-Haiku regression smoke (burns quota — see below). |
+| `pnpm version:check`          | Verify package versions in sync.                              |
+| `pnpm release:patch\|minor\|major` | Bump versions across the workspace.                      |
+
+Bootstrap once:
 
 ```bash
 pnpm install
-pnpm -r build
-for s in plugin-layout resolve-attention stop-hook events session-state \
-         status-line session-start handoff scope-index read-enrich init \
-         ingestion-baseline gc lock source-comments rules-merge join \
-         bypass-detection bootstrap-guard e2e-adoption e2e-daily-flow; do
-  pnpm --filter @isaacriehm/cairn "smoke:$s"
-done
+pnpm build
+pnpm smokes
 ```
-
-22 smokes; all should pass on a clean tree.
 
 ### Opt-in: real-LLM regression smoke
 
-`smoke:llm-prompt-eval` runs the Phase 6 Stage-1 file-purpose filter
-prompt against three inline fixtures (one ADR, one UAT log, one research
+`pnpm smoke:llm-prompt-eval` runs the Phase 6 Stage-1 file-purpose
+filter prompt against three inline fixtures (ADR, UAT log, research
 scratchpad) using **real Haiku** — it burns operator quota and is
-**not** part of the standard 22-smoke gate above. Run it only when:
+**not** part of `pnpm smokes`. Run only when:
 
 - touching the Stage-1 system prompt
-  (`packages/cairn-core/src/init/ingest-docs.ts` → `FILE_FILTER_SYSTEM`),
-  or
+  (`packages/cairn-core/src/init/ingest-docs.ts` → `FILE_FILTER_SYSTEM`), or
 - upgrading the Haiku model alias used by `runClaude`.
-
-```bash
-pnpm --filter @isaacriehm/cairn smoke:llm-prompt-eval
-```
 
 If a fixture flips, surface the failure — do not silently weaken the
 assertions.

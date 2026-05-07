@@ -35,15 +35,15 @@ Single-vendor lock-in is rejected at the architecture level even while we ship C
 ```
 packages/
   cairn/                              — umbrella + CLI bin (`cairn init`, `cairn join`, `cairn hook X`, …)
-  cairn-core/                         — state + MCP + tier0 + tightener + sensors + GC + hook runners
+  cairn-core/                         — state + MCP + sensors + GC + hook runners + init pipeline
   cairn-frontend-claudecode/          — Claude Code plugin (.claude-plugin/plugin.json)
-  cairn-frontend-stub/                — in-memory test adapter
   cairn-lens/                         — VS Code / Cursor IDE extension (parallel surface)
 ```
 
-`tier0/` (Haiku-classifier) and `tightener/` (spec quality gate) live inside
-cairn-core — both are central to the daily flow's question-asker and
-spec-tightener.
+The daily-flow question-asker and spec-tightener are no longer
+backend modules — they were purged in v0.2.1 and replaced by the
+`cairn-direction` skill, where main Claude does the routing +
+tightening live (see `docs/SYSTEM_OVERVIEW.md` §10).
 
 `pnpm-workspace.yaml` lists `packages/*`. There are no dormant trees in
 the public repo.
@@ -581,8 +581,8 @@ The following decisions were made during drafting and folded into the relevant s
 
 The plugin pivot landed across ten steps. Per-step deliverables:
 
-1. **Repo unification** — five workspace packages live under `packages/*`.
-2. **Tier-1 Haiku subprocess** — `claude --model haiku` subprocess + JSON-schema output replaces the pre-pivot local-classifier backend. (The earlier Tier-0 prompt-classifier layer was later folded into the cairn-direction skill's `when_to_use` gate; the Haiku tier is now the lowest active backend tier.)
+1. **Repo unification** — four workspace packages live under `packages/*` (`cairn`, `cairn-core`, `cairn-frontend-claudecode`, `cairn-lens`). The internal in-memory test adapter `cairn-frontend-stub` was deleted post-pivot.
+2. **Tier-1 Haiku subprocess** — `claude --model haiku` subprocess + JSON-schema output replaces the pre-pivot local-classifier backend. (The earlier Tier-0 prompt-classifier and backend tightener modules were both purged in v0.2.1; routing + tightening are now main-Claude judgment via the `cairn-direction` skill. Haiku is the lowest active backend tier.)
 3. **Flock + per-session state partition + invalidation events** — `cairn-core/src/lock.ts`, `.cairn/sessions/<id>/`, `.cairn/events/`. Every write tool wraps in flock; per-session marker + Stop-hook poll cursor.
 4. **Plugin scaffold** — `cairn-frontend-claudecode/` manifest, `.mcp.json`, `hooks/hooks.json`, hook bin entrypoints under `cairn-core/dist/hooks/`.
 5. **Skills + slash commands** — cairn-adopt, cairn-direction, cairn-attention; `/cairn-init`, `/cairn-direction`.

@@ -18,7 +18,6 @@ top of a curated, queryable ground state at `.cairn/ground/`.
 ┌────────────────────────────────────────────────────────────────────┐
 │  FRONTEND (UX surface — pluggable)                                 │
 │    cairn-frontend-claudecode   — Claude Code plugin (primary)      │
-│    cairn-frontend-stub         — In-memory test adapter            │
 │    cairn-lens                  — VS Code / Cursor extension        │
 └────────────────────────────────────────┬───────────────────────────┘
                                          │ MCP server + hooks
@@ -34,9 +33,10 @@ top of a curated, queryable ground state at `.cairn/ground/`.
 │  CORE (state + context)                                            │
 │    cairn-core — `.cairn/ground/` writers, MCP server, sensors,     │
 │                 hook runners, init wizard, GC drift sweep,         │
-│                 decision-capture, source-comment + rules-merge     │
-│                 ingestion, multi-dev install, claude wrapper +     │
-│                 tier0 classifier. The Cairn.                       │
+│                 decision-capture (id allocator only),              │
+│                 source-comment + rules-merge ingestion,            │
+│                 multi-dev install, claude subprocess wrapper.      │
+│                 The Cairn.                                         │
 └────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -78,8 +78,9 @@ What lives here:
 - `ground/` — `.cairn/ground/` schema + writers. Decisions ledger,
   invariants ledger, manifest, canonical-map, scope-index, drift events,
   frontmatter parsing, glob matching.
-- `mcp/` — MCP server. 19 typed tools (read, write-locked write,
-  history-summarizer). Bootstrap-guard wraps every write tool with the
+- `mcp/` — MCP server. 39 typed tools (read, write-locked write,
+  history-summarizer, init-phase orchestration, attention queue
+  drains). Bootstrap-guard wraps every write tool with the
   `BOOTSTRAP_REQUIRED` envelope when a clone is unbootstrapped.
 - `hooks/` — hook runner functions called by both the CLI subcommand
   (`cairn hook <event>`) and the bin entrypoints under `dist/hooks/`.
@@ -110,10 +111,10 @@ What lives here:
 **Tier model.** Backend LLM calls flow through three tiers:
 `haiku` (Tier 1, classifiers + summarizers), `sonnet` (Tier 2, the
 mapper + reviewer subagent), `opus` (Tier 3, currently unused — kept
-in the `ClaudeTier` union as an escape hatch). The earlier Tier 0
-prompt-classifier layer was folded into the cairn-direction skill's
-`when_to_use` gate; routing is now main-Claude judgment, not a
-backend call.
+in the `ClaudeTier` union as an escape hatch). The earlier Tier-0
+prompt-classifier and backend tightener modules were both purged in
+v0.2.1; routing + tightening are now main-Claude judgment via the
+cairn-direction skill, not backend calls.
 
 ### 3.2 `cairn` — umbrella + CLI
 
@@ -131,12 +132,7 @@ Plugin manifest, `.mcp.json` (registers `cairn mcp serve`), `hooks.json`
 `cairn-direction`, `cairn-attention`), agents (reviewer subagent), slash
 commands (`/cairn-init`, `/cairn-direction`).
 
-### 3.4 `cairn-frontend-stub` — test adapter
-
-In-memory `FrontendAdapter` for smokes. Records every dialog request +
-update post; programmable response for dialog round-trips.
-
-### 3.5 `cairn-lens` — VS Code / Cursor extension
+### 3.4 `cairn-lens` — VS Code / Cursor extension
 
 Hover provider, inlay hints, CodeLens for inline §INV references and DEC
 links. Read-only consumer of the same ground state.
@@ -147,18 +143,24 @@ The MCP server (in `cairn-core`) is what agents talk to during a session.
 From the agent's perspective, **the MCP is what Cairn IS**. Tools group
 into:
 
-- **Read** — `cairn_decision_get`, `cairn_decisions_in_scope`,
-  `cairn_decisions_for_symbol`, `cairn_invariant_get`,
-  `cairn_invariants_in_scope`, `cairn_canonical_for_topic`,
-  `cairn_ground_get`, `cairn_supersedes_chain`, `cairn_search`,
-  `cairn_timeline`, `cairn_get_full`, `cairn_query_history`.
-- **Write** (per-write `flock`) — `cairn_record_decision`,
-  `cairn_record_run_event`, `cairn_drop_task`, `cairn_archive`,
-  `cairn_append`, `cairn_ask_operator`.
-- **Plugin-era resolution** — `cairn_resolve_attention` resolves the
-  inline A/B/C surface for DEC-draft accept / reject / edit, baseline-
-  finding triage / suppress / defer, invalidation-event refresh /
-  continue-under-old / abort.
+- **Read — graph traversal** — `cairn_decision_get`,
+  `cairn_decisions_in_scope`, `cairn_decisions_for_symbol`,
+  `cairn_invariant_get`, `cairn_invariants_in_scope`,
+  `cairn_canonical_for_topic`, `cairn_ground_get`,
+  `cairn_supersedes_chain`.
+- **Read — search + retrieval** — `cairn_search`, `cairn_timeline`,
+  `cairn_get_full`, `cairn_search_candidates`.
+- **Read — historical (gated)** — `cairn_query_history` (only path to
+  `.archive/`; LLM-summarized, never raw).
+- **Write — append-only, per-write `flock`** — `cairn_record_decision`,
+  `cairn_propose_decision`, `cairn_reject_candidate`, `cairn_archive`,
+  `cairn_task_create`.
+- **Attention queue** — `cairn_resolve_attention`,
+  `cairn_bulk_accept_attention`, `cairn_attention_dedup`,
+  `cairn_attention_restore`, `cairn_attention_serve`,
+  `cairn_attention_wait`, `cairn_align_drain`.
+- **Init pipeline** — `cairn_init_phase_*` (13 phases) +
+  `cairn_init_resume`, `cairn_init_phases_678_parallel`.
 
 See [`MCP_SURFACE.md`](MCP_SURFACE.md) for tool-by-tool schemas.
 
