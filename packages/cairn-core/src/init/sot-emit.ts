@@ -231,7 +231,7 @@ export async function emitFromTopicIndex(args: EmitArgs): Promise<EmitResult> {
 /* Body lookup                                                                */
 /* -------------------------------------------------------------------------- */
 
-function readSotBody(
+export function readSotBody(
   repoRoot: string,
   entry: TopicIndexEntry,
   anchorMap: AnchorMap,
