@@ -1,4 +1,5 @@
 import type { ToolDef } from "./types.js";
+import { alignDrainTool } from "./align-drain.js";
 import { archiveTool } from "./archive.js";
 import { attentionDedupTool } from "./attention-dedup.js";
 import { attentionRestoreTool } from "./attention-restore.js";
@@ -53,6 +54,8 @@ export const allTools: ToolDef<unknown>[] = [
   attentionRestoreTool as ToolDef<unknown>,
   attentionServeTool as ToolDef<unknown>,
   attentionWaitTool as ToolDef<unknown>,
+  // Write — Layer C SessionStart drain
+  alignDrainTool as ToolDef<unknown>,
   // Write — init pipeline (v0.2.0 MCP-native init)
   initResumeTool as ToolDef<unknown>,
   initParallel678Tool as ToolDef<unknown>,

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { type CtxMeterInput, readStatusForCLI, VERSION } from "../index.js";
+import { alignCli } from "./align.js";
 import { attentionCli } from "./attention.js";
 import { baselineCli } from "./baseline.js";
 import { doctorCli } from "./doctor.js";
@@ -89,6 +90,9 @@ switch (subcommand) {
   case "attention":
     await attentionCli(rest);
     break;
+  case "align":
+    await alignCli(rest);
+    break;
   case "baseline":
     await baselineCli(rest);
     break;
@@ -153,6 +157,8 @@ switch (subcommand) {
         "             (--repo <path>?)\n" +
         "  attention  list pending DEC drafts + baseline sensor findings\n" +
         "             (--repo <path>?)\n" +
+        "  align      Layer C/D alignment commands\n" +
+        "             (subcommands: drain — SessionStart drain, plan §4.3)\n" +
         "  baseline   re-run the synthetic-diff sensor sweep post-adoption\n" +
         "             (--force? --repo <path>?)\n" +
         "  hook       Claude Code hook runner (stdin = hook payload JSON)\n" +

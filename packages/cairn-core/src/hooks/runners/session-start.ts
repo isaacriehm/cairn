@@ -8,6 +8,7 @@
  * `cairn-core/src/hooks/session-start.ts` calls into this runner.
  */
 
+import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -231,6 +232,13 @@ export async function runSessionStartHook(): Promise<void> {
   };
   emitShapeB(out);
 
+  // Layer C drain — fire-and-forget detached child so SessionStart can
+  // return immediately. The drain reads the deferred logs, judges any
+  // ambiguous candidates via Haiku, applies cite/drop/alignment-pending,
+  // and pushes drain-progress / drain-done blips to the per-session
+  // statusline. See `runDrain` in `drain/drain.ts` (plan §4.3).
+  spawnDetachedDrain(repoRoot, sessionId);
+
   recordHookTelemetry({
     hook: "session-start",
     repoRoot,
@@ -251,6 +259,42 @@ export async function runSessionStartHook(): Promise<void> {
       ...(bootstrapBanner !== null ? { bootstrap_banner: bootstrapBanner } : {}),
     },
   });
+}
+
+/**
+ * Layer C drain (plan §4.3) — fire-and-forget detached child after
+ * SessionStart returns its Shape-B response. Detached because the
+ * drain may block on Haiku for several seconds; doing it inline would
+ * delay every session start. The child writes its progress + final
+ * verdict counts to the per-session statusline event queue and
+ * truncates the deferred logs when finished.
+ *
+ * Plugin path only — relies on `${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs`.
+ * Terminal `cairn hook session-start` invocations skip auto-drain
+ * (operators can run `cairn align drain` manually).
+ *
+ * No-op when no entries are deferred — the drain itself short-circuits.
+ */
+function spawnDetachedDrain(repoRoot: string, sessionId: string): void {
+  const pluginRoot = process.env["CLAUDE_PLUGIN_ROOT"];
+  if (typeof pluginRoot !== "string" || pluginRoot.length === 0) return;
+  const cliPath = join(pluginRoot, "dist", "cli.mjs");
+  if (!existsSync(cliPath)) return;
+  try {
+    const child = spawn(
+      "node",
+      [cliPath, "align", "drain", "--session-id", sessionId, "--repo", repoRoot],
+      {
+        cwd: repoRoot,
+        detached: true,
+        stdio: "ignore",
+      },
+    );
+    child.unref();
+  } catch {
+    // Best-effort. If the drain fails to launch the deferred logs simply
+    // wait for the next session.
+  }
 }
 
 /**
