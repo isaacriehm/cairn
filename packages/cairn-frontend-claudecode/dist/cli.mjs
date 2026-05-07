@@ -36262,16 +36262,20 @@ async function bulkAcceptObvious(args) {
           const titleFm = stringField(fm, "proposedTitle") ?? stringField(fm, "title") ?? "";
           const rationaleFm = stringField(fm, "proposedRationale") ?? extractSection(body, "Proposed rationale");
           const proseFromBody = extractSection(body, "Source comment");
-          const prose = rationaleFm.length > 0 ? rationaleFm : proseFromBody;
+          const proseFallback = body.trim();
+          const prose = rationaleFm.length > 0 ? rationaleFm : proseFromBody.length > 0 ? proseFromBody : proseFallback;
+          const rawComment = proseFromBody.length > 0 ? proseFromBody : proseFallback;
           const score = scoreDecDraft({
             sourceFile,
             prose,
             title: titleFm,
-            rawComment: proseFromBody,
+            rawComment,
             globs: args.globs,
             ...args.pilotModule !== void 0 ? { pilotModule: args.pilotModule } : {}
           });
           decResult.decsByConfidence[score] += 1;
+          const prevConf = stringField(fm, "capture_confidence");
+          const previouslyStamped = prevConf === "high" || prevConf === "medium" || prevConf === "low";
           const stampedFm = { ...fm, capture_confidence: score };
           if (atOrAbove(score, threshold)) {
             const acceptedFm = { ...stampedFm, status: "accepted" };
@@ -36314,8 +36318,8 @@ async function bulkAcceptObvious(args) {
             decResult.decsAccepted += 1;
             decResult.acceptedIds.push(id);
           } else {
-            const stampedDoc = renderDoc(stampedFm, body);
-            if (!dry) {
+            if (!dry && !previouslyStamped) {
+              const stampedDoc = renderDoc(stampedFm, body);
               writeFileSync4(abs, stampedDoc, "utf8");
             }
           }
@@ -36354,19 +36358,25 @@ async function bulkAcceptObvious(args) {
           const titleFm = stringField(fm, "title") ?? "";
           const rawCommentBody = extractSection(body, "Source comment");
           const constraintBody = extractSection(body, "Constraint");
-          const prose = constraintBody.length > 0 ? constraintBody : titleFm;
+          const proseFallback = body.trim();
+          const prose = constraintBody.length > 0 ? constraintBody : rawCommentBody.length > 0 ? rawCommentBody : proseFallback;
+          const rawComment = rawCommentBody.length > 0 ? rawCommentBody : proseFallback;
           const score = scoreInvariant({
             sourceFile,
             prose,
             title: titleFm,
-            rawComment: rawCommentBody,
+            rawComment,
             globs: args.globs,
             ...args.pilotModule !== void 0 ? { pilotModule: args.pilotModule } : {}
           });
           invResult.invariantsByConfidence[score] += 1;
-          const stamped = { ...fm, capture_confidence: score };
-          const stampedDoc = renderDoc(stamped, body);
-          writeFileSync4(abs, stampedDoc, "utf8");
+          const prevConf = stringField(fm, "capture_confidence");
+          const previouslyStamped = prevConf === "high" || prevConf === "medium" || prevConf === "low";
+          if (!previouslyStamped) {
+            const stamped = { ...fm, capture_confidence: score };
+            const stampedDoc = renderDoc(stamped, body);
+            writeFileSync4(abs, stampedDoc, "utf8");
+          }
         }
       });
     } else if (invFiles.length > 0 && dry) {
@@ -36384,12 +36394,14 @@ async function bulkAcceptObvious(args) {
         const titleFm = stringField(fm, "title") ?? "";
         const rawCommentBody = extractSection(body, "Source comment");
         const constraintBody = extractSection(body, "Constraint");
-        const prose = constraintBody.length > 0 ? constraintBody : titleFm;
+        const proseFallback = body.trim();
+        const prose = constraintBody.length > 0 ? constraintBody : rawCommentBody.length > 0 ? rawCommentBody : proseFallback;
+        const rawComment = rawCommentBody.length > 0 ? rawCommentBody : proseFallback;
         const score = scoreInvariant({
           sourceFile,
           prose,
           title: titleFm,
-          rawComment: rawCommentBody,
+          rawComment,
           globs: args.globs,
           ...args.pilotModule !== void 0 ? { pilotModule: args.pilotModule } : {}
         });
@@ -37015,12 +37027,15 @@ async function handleApi(req, res, ctx) {
     if (url2 === "/api/bulk-accept" && req.method === "POST") {
       const body = await readJsonBody(req);
       const threshold = parseThreshold(body?.threshold);
+      const dryRun = body?.dryRun === true;
       const result = await bulkAcceptObvious({
         repoRoot: ctx.repoRoot,
         globs: loadGlobs(ctx.repoRoot),
-        threshold
+        threshold,
+        dryRun
       });
-      ctx.counters.accepted += result.decsAccepted;
+      if (!dryRun)
+        ctx.counters.accepted += result.decsAccepted;
       return sendJson(res, 200, { ok: true, ...result });
     }
     if (url2 === "/api/cluster/merge" && req.method === "POST") {
@@ -47245,8 +47260,20 @@ function entryToSotPath(entry) {
   return entry.sot_source;
 }
 function firstLineFallback(body) {
-  const first2 = body.split("\n").find((l) => l.trim().length > 0) ?? "";
-  return first2.replace(/^#+\s*/, "").trim().slice(0, 120) || "(untitled)";
+  const PURE_MARKER_LINE = /^("""|'''|=begin\b.*|=end\b.*|--\[\[|--\]\]|\{-|-\}|\(\*|\*\))$/;
+  for (const raw of body.split("\n")) {
+    const cleaned = raw.replace(/^\s+/, "").replace(/\*+\/\s*$/, "").replace(/^\/\*+\s*/, "").replace(/^\/\/+\s*/, "").replace(/^\*+\s*/, "").replace(/^("""|''')\s*/, "").replace(/\s*("""|''')\s*$/, "").replace(/^#+\s*/, "").replace(/^[─━–—=*~_-]{2,}\s*/, "").replace(/\s*[─━–—=*~_-]{2,}\s*$/, "").trim();
+    if (cleaned.length === 0)
+      continue;
+    if (PURE_MARKER_LINE.test(cleaned))
+      continue;
+    if (cleaned.startsWith("@"))
+      continue;
+    if (/^[─━–—=*~_-]+$/.test(cleaned))
+      continue;
+    return cleaned.slice(0, 120);
+  }
+  return "(untitled)";
 }
 function writeDecisionFile(args) {
   const dir = decisionsDir(args.repoRoot);
@@ -56966,7 +56993,7 @@ async function runDocsIngestion(args) {
   const skipped = [];
   for (const { ctx, cls } of finalEmits) {
     const sot_path = entryToSotPath2(ctx.entry);
-    const titleSeed = cls.proposedTitle.length > 0 ? cls.proposedTitle : firstLineFallback2(ctx.body);
+    const titleSeed = cls.proposedTitle.length > 0 ? cls.proposedTitle : firstLineFallback(ctx.body);
     const id = allocateUniqueDecId({ sot_path, title: titleSeed, capture_source: CAPTURE_SOURCE3 }, existingDecIds);
     const draftPath = writeDraftToInbox({
       repoRoot: args.repoRoot,
@@ -57156,16 +57183,12 @@ function entryToSotPath2(entry) {
   }
   return entry.sot_source;
 }
-function firstLineFallback2(body) {
-  const first2 = body.split("\n").find((l) => l.trim().length > 0) ?? "";
-  return first2.replace(/^#+\s*/, "").trim().slice(0, 120) || "(untitled)";
-}
 function deriveMarkerTitle(ctx) {
   const sot = ctx.entry.candidates.find((c4) => c4.file === ctx.entry.sot_source);
   if (sot?.anchor !== void 0 && sot.anchor.length > 0) {
-    return sot.anchor.replace(/[-_]+/g, " ").trim().slice(0, 120) || firstLineFallback2(ctx.body);
+    return sot.anchor.replace(/[-_]+/g, " ").trim().slice(0, 120) || firstLineFallback(ctx.body);
   }
-  return firstLineFallback2(ctx.body);
+  return firstLineFallback(ctx.body);
 }
 function allocateUniqueDecId(input, existingIds) {
   let id = deriveDecId(input);
@@ -58988,7 +59011,15 @@ async function mapOneSlice(slice, args) {
       prompt: userPrompt,
       system: MODULE_SYSTEM_PROMPT,
       jsonSchema: MODULE_OUTPUT_SCHEMA,
-      timeoutMs: PER_MODULE_TIMEOUT_MS
+      timeoutMs: PER_MODULE_TIMEOUT_MS,
+      // Isolate ambient context — without this every per-module Sonnet
+      // call ingests the operator's user-level CLAUDE.md, the project
+      // CLAUDE.md hierarchy, all plugin slash commands, and every MCP
+      // tool definition. On a 50-slice repo that's the ambient context
+      // multiplied 50x against the operator's coding-plan quota for
+      // zero benefit — the mapper only needs the caller-supplied
+      // module slice + ledger excerpt.
+      isolateAmbientContext: true
     });
     proposal = parseModuleProposal(slice, result.parsed, Date.now() - startedAt);
   } catch (err) {
@@ -75107,7 +75138,7 @@ async function handler13(ctx, input) {
         };
       }
     }
-    const titleSeed = input.title !== void 0 && input.title.trim().length > 0 ? input.title.trim() : firstLineFallback3(body);
+    const titleSeed = input.title !== void 0 && input.title.trim().length > 0 ? input.title.trim() : firstLineFallback2(body);
     const sotPath = entryToSotPath3(entry);
     const existingIds = scanExistingDecisionIds(ctx.repoRoot);
     const decId = allocateUniqueDecId2({ sot_path: sotPath, title: titleSeed, capture_source: CAPTURE_SOURCE5 }, existingIds);
@@ -75176,7 +75207,7 @@ function entryToSotPath3(entry) {
   }
   return entry.sot_source;
 }
-function firstLineFallback3(body) {
+function firstLineFallback2(body) {
   const first2 = body.split("\n").find((l) => l.trim().length > 0) ?? "";
   return first2.replace(/^#+\s*/, "").trim().slice(0, 120) || "(untitled)";
 }
@@ -75569,7 +75600,12 @@ async function runHistorySummarizer(input) {
     prompt: userPrompt,
     system: HISTORY_SUMMARIZER_SYSTEM_PROMPT,
     jsonSchema: HISTORY_SUMMARIZER_OUTPUT_SCHEMA,
-    timeoutMs: input.timeoutMs
+    timeoutMs: input.timeoutMs,
+    // Summarizer only needs the walker-collected archive files and the
+    // accepted-decisions ledger that buildHistorySummarizerUserPrompt
+    // already serialized into the prompt. Ambient project context
+    // would be redundant + expensive.
+    isolateAmbientContext: true
   });
   if (!isSummarizerOutput(result.parsed)) {
     throw new Error(`history summarizer returned malformed output. preview: ${result.text.slice(0, 200)}`);
@@ -76936,11 +76972,11 @@ async function handler19(ctx, input) {
 function deriveTitle(entry, body) {
   const sot = entry.candidates.find((c4) => c4.file === entry.sot_source);
   if (sot?.anchor !== void 0 && sot.anchor.length > 0) {
-    return sot.anchor.replace(/[-_]+/g, " ").trim().slice(0, 120) || firstLineFallback4(body);
+    return sot.anchor.replace(/[-_]+/g, " ").trim().slice(0, 120) || firstLineFallback3(body);
   }
-  return firstLineFallback4(body);
+  return firstLineFallback3(body);
 }
-function firstLineFallback4(body) {
+function firstLineFallback3(body) {
   const first2 = body.split("\n").find((l) => l.trim().length > 0) ?? "";
   return first2.replace(/^#+\s*/, "").trim().slice(0, 120) || "(untitled)";
 }

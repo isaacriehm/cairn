@@ -68,7 +68,7 @@ import {
   type TopicIndexEntry,
 } from "../ground/index.js";
 import { logger } from "../logger.js";
-import { readSotBody } from "./sot-emit.js";
+import { firstLineFallback, readSotBody } from "./sot-emit.js";
 
 const log = logger("init.ingest-docs");
 
@@ -869,10 +869,8 @@ function entryToSotPath(entry: TopicIndexEntry): string {
   return entry.sot_source;
 }
 
-function firstLineFallback(body: string): string {
-  const first = body.split("\n").find((l) => l.trim().length > 0) ?? "";
-  return first.replace(/^#+\s*/, "").trim().slice(0, 120) || "(untitled)";
-}
+// firstLineFallback now lives in sot-emit.ts (single source of truth).
+// Imported above as `firstLineFallback`.
 
 function deriveMarkerTitle(ctx: CandidateContext): string {
   // Prefer the topic-index entry's anchor text (post-walker normalization)
