@@ -79,6 +79,10 @@ export function archivedConflictsDir(repoRoot: string): string {
   return join(conflictsDir(repoRoot), "_archived");
 }
 
+export function alignmentPendingDir(repoRoot: string): string {
+  return join(groundDir(repoRoot), "alignment-pending");
+}
+
 export function sotRenderedCacheDir(repoRoot: string): string {
   return join(repoRoot, ".cairn", "cache", "sot-rendered");
 }

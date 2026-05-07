@@ -44,13 +44,30 @@ import {
 } from "../../attention/index.js";
 import { writeInvalidationEvent } from "../../events/index.js";
 import {
+  alignmentPendingDir,
   archivedConflictsDir,
+  bindDec,
   bodyContentHash,
   conflictsDir,
   decisionsDir,
+  deriveLedgerDecId,
+  deriveLedgerInvId,
+  emptySotBindings,
+  emptySotCache,
   invariantsDir,
+  readSotBindings,
+  readSotCache,
   recordDriftEvent,
+  setSotCacheEntry,
+  writeSotBindings,
+  writeSotCache,
 } from "../../ground/index.js";
+import { tokenize } from "../../text/jaccard.js";
+import {
+  applyStripReplace,
+  formatBareCitation,
+  type ReplaceItem,
+} from "../../init/source-comments/index.js";
 import { writeDecisionsLedger, writeInvariantsLedger } from "../../ground/ledgers.js";
 import {
   clearDeferState,
@@ -77,7 +94,8 @@ interface Input {
     | "drift"
     | "bypass"
     | "review"
-    | "conflict";
+    | "conflict"
+    | "alignment_pending";
   flagged_items?: string[];
   defer_hours?: number;
   rationale?: string;
@@ -114,6 +132,8 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
       return resolveReview(ctx, input);
     case "conflict":
       return resolveConflict(ctx, input);
+    case "alignment_pending":
+      return resolveAlignmentPending(ctx, input);
   }
 }
 
@@ -581,6 +601,376 @@ function rebuildLedgers(repoRoot: string): void {
       "invariants ledger rebuild failed after conflict resolution",
     );
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Alignment-pending resolution (plan §4.1.A / §4.1.B)                        */
+/* -------------------------------------------------------------------------- */
+
+interface AlignmentPendingState {
+  abs: string;
+  rel: string;
+  filename: string;
+  fm: Record<string, unknown>;
+  blockProse: string;
+  existingId: string | null;
+  existingBody: string | null;
+}
+
+function loadAlignmentPending(
+  repoRoot: string,
+  itemId: string,
+): AlignmentPendingState | null {
+  const dir = alignmentPendingDir(repoRoot);
+  const filename = `${itemId}.md`;
+  const abs = join(dir, filename);
+  if (!existsSync(abs)) return null;
+  let raw: string;
+  try {
+    raw = readFileSync(abs, "utf8");
+  } catch {
+    return null;
+  }
+  const fmMatch = raw.match(/^---\n([\s\S]*?)\n---\n?/);
+  let fm: Record<string, unknown> = {};
+  if (fmMatch !== null && fmMatch[1] !== undefined) {
+    try {
+      const parsed = parseYaml(fmMatch[1]);
+      if (typeof parsed === "object" && parsed !== null) {
+        fm = parsed as Record<string, unknown>;
+      }
+    } catch {
+      /* best-effort */
+    }
+  }
+  const body = fmMatch !== null ? raw.slice(fmMatch[0].length) : raw;
+  // Block prose lives between the first ```/``` fence pair under the
+  // "## Block ..." heading. Pick the first fenced block.
+  const blockMatch = body.match(/##\s+Block[^\n]*\n+```\n([\s\S]*?)\n```/);
+  const blockProse = blockMatch?.[1]?.trim() ?? "";
+  // Existing entity body (tier2-ambiguous only) lives in a second fenced block.
+  const existingId =
+    typeof fm["existing_id"] === "string" ? (fm["existing_id"] as string) : null;
+  let existingBody: string | null = null;
+  if (existingId !== null) {
+    const existingMatch = body.match(/##\s+Existing\s+\S+[^\n]*\n+```\n([\s\S]*?)\n```/);
+    existingBody = existingMatch?.[1]?.trim() ?? null;
+  }
+  return {
+    abs,
+    rel: `.cairn/ground/alignment-pending/${filename}`,
+    filename,
+    fm,
+    blockProse,
+    existingId,
+    existingBody,
+  };
+}
+
+function buildPendingReplaceItem(
+  fm: Record<string, unknown>,
+  rawProse: string,
+  replacement: string,
+): ReplaceItem | null {
+  const file = typeof fm["source_file"] === "string" ? fm["source_file"] : null;
+  const startOffset =
+    typeof fm["start_offset"] === "number" ? fm["start_offset"] : null;
+  const endOffset =
+    typeof fm["end_offset"] === "number" ? fm["end_offset"] : null;
+  if (file === null || startOffset === null || endOffset === null) return null;
+  return {
+    blockId: typeof fm["slug"] === "string" ? `pending:${fm["slug"]}` : "pending:unknown",
+    file,
+    startOffset,
+    endOffset,
+    replacement,
+    expectedRaw: typeof fm["raw"] === "string" ? (fm["raw"] as string) : rawProse,
+  };
+}
+
+async function resolveAlignmentPending(
+  ctx: McpContext,
+  input: Input,
+): Promise<unknown> {
+  const state = loadAlignmentPending(ctx.repoRoot, input.item_id);
+  if (state === null) {
+    return mcpError(
+      "FILE_NOT_FOUND",
+      `no alignment-pending file for item_id=${input.item_id}`,
+    );
+  }
+  const kind = String(state.fm["kind"] ?? "");
+  const lang = typeof state.fm["lang"] === "string" ? state.fm["lang"] : "unknown";
+  const sourceFile = typeof state.fm["source_file"] === "string" ? state.fm["source_file"] : "";
+  const startLine = typeof state.fm["start_line"] === "number" ? state.fm["start_line"] : 0;
+
+  return withWriteLock(ctx.repoRoot, () => {
+    if (kind === "tier2-ambiguous") {
+      if (state.existingId === null) {
+        return mcpError(
+          "VALIDATION_FAILED",
+          "tier2-ambiguous pending entry missing existing_id",
+        );
+      }
+      if (input.choice === "a") {
+        // Same — cite existing.
+        const replacement = formatBareCitation(lang, state.existingId);
+        const item = buildPendingReplaceItem(state.fm, state.blockProse, replacement);
+        if (item !== null) applyStripReplace({
+          repoRoot: ctx.repoRoot,
+          items: [item],
+          dirtyDecisions: { [item.file]: "overwrite" },
+        });
+        rmSync(state.abs, { force: true });
+        return {
+          ok: true,
+          resolved_kind: "alignment_cite",
+          item_id: input.item_id,
+          existing_id: state.existingId,
+        };
+      }
+      if (input.choice === "b") {
+        // Augments — emit sibling DEC linked via `related`. Source gets
+        // both cites stacked. (Operator-driven augments emit a DEC
+        // sibling; constraint augments still flow through the Layer A
+        // delta classifier on a future Write.)
+        const id = emitOperatorAugmentSibling(ctx.repoRoot, {
+          source_file: sourceFile,
+          source_offset: startLine,
+          existingId: state.existingId,
+          delta: state.blockProse,
+          rationale: input.rationale ?? "",
+        });
+        const replacement =
+          formatBareCitation(lang, state.existingId) +
+          "\n" +
+          formatBareCitation(lang, id);
+        const item = buildPendingReplaceItem(state.fm, state.blockProse, replacement);
+        if (item !== null) applyStripReplace({
+          repoRoot: ctx.repoRoot,
+          items: [item],
+          dirtyDecisions: { [item.file]: "overwrite" },
+        });
+        rmSync(state.abs, { force: true });
+        try {
+          writeDecisionsLedger({ repoRoot: ctx.repoRoot });
+        } catch {
+          /* best-effort */
+        }
+        return {
+          ok: true,
+          resolved_kind: "alignment_augments",
+          item_id: input.item_id,
+          existing_id: state.existingId,
+          new_id: id,
+        };
+      }
+      if (input.choice === "c") {
+        // New decision — emit fresh DEC, source carries new cite only.
+        const id = emitFreshDec(ctx.repoRoot, {
+          source_file: sourceFile,
+          source_offset: startLine,
+          body: state.blockProse,
+          captureSuffix: "operator-new",
+          related: null,
+        });
+        const replacement = formatBareCitation(lang, id);
+        const item = buildPendingReplaceItem(state.fm, state.blockProse, replacement);
+        if (item !== null) applyStripReplace({
+          repoRoot: ctx.repoRoot,
+          items: [item],
+          dirtyDecisions: { [item.file]: "overwrite" },
+        });
+        rmSync(state.abs, { force: true });
+        try {
+          writeDecisionsLedger({ repoRoot: ctx.repoRoot });
+        } catch {
+          /* best-effort */
+        }
+        return {
+          ok: true,
+          resolved_kind: "alignment_new",
+          item_id: input.item_id,
+          new_id: id,
+        };
+      }
+      if (input.choice === "d") {
+        // Replace — new becomes canonical, existing superseded.
+        const id = emitFreshDec(ctx.repoRoot, {
+          source_file: sourceFile,
+          source_offset: startLine,
+          body: state.blockProse,
+          captureSuffix: "operator-replace",
+          related: state.existingId,
+        });
+        // Mark existing as superseded.
+        const existingRef = entityRefFor(ctx.repoRoot, state.existingId);
+        const parsed = readEntity(existingRef);
+        if (parsed !== null) {
+          parsed.fm["status"] = "superseded";
+          parsed.fm["superseded_by"] = id;
+          parsed.fm["verified-at"] = new Date().toISOString();
+          writeEntity(existingRef, parsed.fm, parsed.body);
+        }
+        const replacement = formatBareCitation(lang, id);
+        const item = buildPendingReplaceItem(state.fm, state.blockProse, replacement);
+        if (item !== null) applyStripReplace({
+          repoRoot: ctx.repoRoot,
+          items: [item],
+          dirtyDecisions: { [item.file]: "overwrite" },
+        });
+        rmSync(state.abs, { force: true });
+        try {
+          writeDecisionsLedger({ repoRoot: ctx.repoRoot });
+          writeInvariantsLedger({ repoRoot: ctx.repoRoot });
+        } catch {
+          /* best-effort */
+        }
+        return {
+          ok: true,
+          resolved_kind: "alignment_replace",
+          item_id: input.item_id,
+          new_id: id,
+          superseded_id: state.existingId,
+        };
+      }
+    }
+
+    if (kind === "tier3-ambiguous") {
+      if (input.choice === "a" || input.choice === "b") {
+        const isInv = input.choice === "b";
+        const id = emitFreshDec(ctx.repoRoot, {
+          source_file: sourceFile,
+          source_offset: startLine,
+          body: state.blockProse,
+          captureSuffix: isInv ? "operator-constraint" : "operator-decision",
+          related: null,
+          asInv: isInv,
+        });
+        const replacement = formatBareCitation(lang, id);
+        const item = buildPendingReplaceItem(state.fm, state.blockProse, replacement);
+        if (item !== null) applyStripReplace({
+          repoRoot: ctx.repoRoot,
+          items: [item],
+          dirtyDecisions: { [item.file]: "overwrite" },
+        });
+        rmSync(state.abs, { force: true });
+        try {
+          if (isInv) writeInvariantsLedger({ repoRoot: ctx.repoRoot });
+          else writeDecisionsLedger({ repoRoot: ctx.repoRoot });
+        } catch {
+          /* best-effort */
+        }
+        return {
+          ok: true,
+          resolved_kind: isInv ? "alignment_constraint" : "alignment_decision",
+          item_id: input.item_id,
+          new_id: id,
+        };
+      }
+      if (input.choice === "c" || input.choice === "d") {
+        // Descriptive / none-of-these — drop the pending file. Source
+        // stays untouched (operator's narrative preserved).
+        rmSync(state.abs, { force: true });
+        return {
+          ok: true,
+          resolved_kind:
+            input.choice === "c" ? "alignment_descriptive" : "alignment_skip",
+          item_id: input.item_id,
+        };
+      }
+    }
+
+    return mcpError(
+      "VALIDATION_FAILED",
+      `unsupported alignment_pending kind=${kind} or choice=${input.choice}`,
+    );
+  });
+}
+
+interface FreshDecArgs {
+  source_file: string;
+  source_offset: number;
+  body: string;
+  captureSuffix: string;
+  related: string | null;
+  asInv?: boolean;
+}
+
+function emitFreshDec(repoRoot: string, args: FreshDecArgs): string {
+  const isInv = args.asInv === true;
+  const inputs = {
+    source_file: args.source_file,
+    source_offset: args.source_offset,
+    capture_source: `layer-a-resolve-${args.captureSuffix}`,
+  };
+  const id = isInv ? deriveLedgerInvId(inputs) : deriveLedgerDecId(inputs);
+  const dir = isInv ? invariantsDir(repoRoot) : decisionsDir(repoRoot);
+  const abs = join(dir, `${id}.md`);
+  const trimmed = args.body.trim();
+  const now = new Date().toISOString();
+  const fm: Record<string, unknown> = {
+    id,
+    title: firstLineOf(trimmed),
+    type: isInv ? "invariant" : "adr",
+    status: isInv ? "active" : "accepted",
+    audience: "dual",
+    generated: now,
+    "verified-at": now,
+    sot_kind: "ledger",
+    sot_path: "ledger",
+    sot_content_hash: bodyContentHash(trimmed),
+    capture_source: `layer-a-resolve-${args.captureSuffix}`,
+    source_file: args.source_file,
+  };
+  if (!isInv) {
+    fm["decided_at"] = now;
+    fm["decided_by"] = "cairn-resolve-attention";
+  }
+  if (args.related !== null) fm["related"] = args.related;
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(abs, `---\n${stringifyYaml(fm).trimEnd()}\n---\n\n${trimmed}\n`, "utf8");
+
+  let bindings = readSotBindings(repoRoot);
+  if (Object.keys(bindings.forward).length === 0) bindings = emptySotBindings();
+  bindings = bindDec(bindings, id, "ledger");
+  writeSotBindings(repoRoot, bindings);
+
+  let cache = readSotCache(repoRoot);
+  if (Object.keys(cache.entries).length === 0) cache = emptySotCache();
+  cache = setSotCacheEntry(cache, id, {
+    dec_id: id,
+    sot_path: "ledger",
+    body_hash: bodyContentHash(trimmed),
+    tokens: Array.from(tokenize(trimmed, { codeAware: true })),
+    shingles: [],
+    mtime_ms: Date.now(),
+  });
+  writeSotCache(repoRoot, cache);
+  return id;
+}
+
+interface OperatorAugmentArgs {
+  source_file: string;
+  source_offset: number;
+  existingId: string;
+  delta: string;
+  rationale: string;
+}
+
+function emitOperatorAugmentSibling(repoRoot: string, args: OperatorAugmentArgs): string {
+  return emitFreshDec(repoRoot, {
+    source_file: args.source_file,
+    source_offset: args.source_offset,
+    body: args.delta,
+    captureSuffix: `operator-augments-${args.existingId}`,
+    related: args.existingId,
+  });
+}
+
+function firstLineOf(text: string): string {
+  const first = text.split("\n").find((l) => l.trim().length > 0) ?? "";
+  return first.replace(/^[#*\-\s>]+/, "").trim().slice(0, 120) || "(untitled)";
 }
 
 async function resolveConflict(ctx: McpContext, input: Input): Promise<unknown> {

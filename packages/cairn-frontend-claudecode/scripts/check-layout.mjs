@@ -101,6 +101,7 @@ if (hooksFile) {
       "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook user-prompt-submit",
       "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook read-enrich",
       "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook write-guard",
+      "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook sot-align",
     ]);
     const visit = (event, entries) => {
       for (const entry of entries) {

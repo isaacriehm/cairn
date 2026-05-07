@@ -98,6 +98,7 @@ function runSmoke(): void {
       "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook stop",
       "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook read-enrich",
       "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook write-guard",
+      "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook sot-align",
     ]);
     for (const event of ["SessionStart", "SessionEnd", "Stop", "PostToolUse"] as const) {
       for (const entry of hooks[event]) {

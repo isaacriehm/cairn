@@ -22,7 +22,11 @@ export type {
   IngestSourceCommentsArgs,
   IngestSourceCommentsResult,
 } from "./ingest.js";
-export { applyStripReplace, previewStripReplace } from "./strip-replace.js";
+export {
+  applyStripReplace,
+  formatBareCitation,
+  previewStripReplace,
+} from "./strip-replace.js";
 export type {
   DirtyDecision,
   FileOutcome,
