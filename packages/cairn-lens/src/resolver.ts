@@ -10,16 +10,28 @@
  * Spec: docs/LENS_SPEC.md.
  */
 
-import { existsSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import {
   buildDecisionsLedger,
   buildInvariantsLedger,
+  decisionsDir,
   getInvariantsLedger,
   getScopeIndexEntry,
+  invariantsDir,
   lookupTask,
+  readAnchorMap,
   readScopeIndex,
+  readSotBindings,
   scopeIndexPath,
+  sotRenderedCacheDir,
+  type AnchorMapEntry,
   type ScopeIndex,
   type ScopeIndexEntry,
 } from "@isaacriehm/cairn-core";
@@ -29,6 +41,43 @@ interface DecisionResolution {
   id: string;
   title: string;
   status: "accepted" | "unknown";
+}
+
+/**
+ * Body-rendering result used by the Lens hover provider — extends
+ * `DecisionResolution` with the SoT-aware payload introduced in
+ * v0.5.0 (plan §10). For `sot_kind: ledger` entries the body comes
+ * straight from `.cairn/ground/decisions/<id>.md`. For `sot_kind:
+ * path` entries the body comes from the live source via the
+ * anchor-map; on miss the resolver falls back to the on-disk
+ * snapshot under `.cairn/cache/sot-rendered/<id>.md`.
+ */
+interface DecisionBody {
+  id: string;
+  title: string;
+  status: "accepted" | "unknown";
+  body: string;
+  /** "ledger" | "path" — when "unknown", body is empty. */
+  sot_kind: "ledger" | "path" | "unknown";
+  /** Path (file#anchor for path-kind, "ledger" for ledger-kind, "" when unknown). */
+  sot_path: string;
+  /** True when body was loaded from the offline snapshot, not the live source. */
+  fromCache: boolean;
+}
+
+/**
+ * Body-rendering result for invariants. Same SoT pivot as
+ * `DecisionBody`.
+ */
+interface InvariantBody {
+  id: string;
+  title: string;
+  status: "active" | "superseded" | "unknown";
+  supersededBy: string | null;
+  body: string;
+  sot_kind: "ledger" | "path" | "unknown";
+  sot_path: string;
+  fromCache: boolean;
 }
 
 interface InvariantResolution {
@@ -83,6 +132,139 @@ export class LensResolver {
    * (which tolerates a missing or empty decisions dir). Returns status "unknown"
    * when no matching accepted decision is found.
    */
+  /**
+   * Resolve a §DEC-NNNN citation to its body — plan §10. Reads
+   * `sot-bindings.yaml` to find the SoT path; routes to the ledger
+   * entity file or the live-source anchor accordingly. Caches the
+   * rendered body to `.cairn/cache/sot-rendered/<id>.md` so a later
+   * call after the source disappears (rename, branch swap, deleted
+   * file) can fall back gracefully.
+   */
+  resolveDecisionBody(id: string): DecisionBody {
+    const base = this.resolveDecision(id);
+    const out: DecisionBody = {
+      id: base.id,
+      title: base.title,
+      status: base.status,
+      body: "",
+      sot_kind: "unknown",
+      sot_path: "",
+      fromCache: false,
+    };
+
+    let bindings;
+    try {
+      bindings = readSotBindings(this.repoRoot);
+    } catch (err) {
+      lensLog(
+        `resolveDecisionBody(${id}) — sot-bindings read failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      // Fall through to ledger-only.
+      bindings = null;
+    }
+
+    const sotPath: string | null =
+      bindings === null ? null : (bindings.forward[id] ?? null);
+
+    // Default: ledger-kind. Ledger entity file always lives under
+    // `.cairn/ground/decisions/<id>.md` regardless of bindings state.
+    if (sotPath === null || sotPath === "ledger") {
+      out.sot_kind = sotPath === null ? "unknown" : "ledger";
+      out.sot_path = sotPath ?? "";
+      const body = readEntityBodyFromDisk(decisionsDir(this.repoRoot), id);
+      if (body !== null) {
+        out.body = body;
+        // Snapshot the ledger body too — keeps offline rendering
+        // symmetric across kinds.
+        writeRenderedSnapshot(this.repoRoot, id, body);
+      } else {
+        const cached = readRenderedSnapshot(this.repoRoot, id);
+        if (cached !== null) {
+          out.body = cached;
+          out.fromCache = true;
+        }
+      }
+      return out;
+    }
+
+    // Path-kind: read the live file at the recorded anchor.
+    out.sot_kind = "path";
+    out.sot_path = sotPath;
+    const liveBody = readBodyFromAnchorMap(this.repoRoot, sotPath);
+    if (liveBody !== null) {
+      out.body = liveBody;
+      writeRenderedSnapshot(this.repoRoot, id, liveBody);
+      return out;
+    }
+    const snapshot = readRenderedSnapshot(this.repoRoot, id);
+    if (snapshot !== null) {
+      out.body = snapshot;
+      out.fromCache = true;
+    }
+    return out;
+  }
+
+  /**
+   * Same SoT pivot as `resolveDecisionBody` but for invariants.
+   * Invariant ledger entities live under `.cairn/ground/invariants/`.
+   */
+  resolveInvariantBody(id: string): InvariantBody {
+    const base = this.resolveInvariant(id);
+    const out: InvariantBody = {
+      id: base.id,
+      title: base.title,
+      status: base.status,
+      supersededBy: base.supersededBy,
+      body: "",
+      sot_kind: "unknown",
+      sot_path: "",
+      fromCache: false,
+    };
+
+    let bindings;
+    try {
+      bindings = readSotBindings(this.repoRoot);
+    } catch {
+      bindings = null;
+    }
+    const sotPath: string | null =
+      bindings === null ? null : (bindings.forward[id] ?? null);
+
+    if (sotPath === null || sotPath === "ledger") {
+      out.sot_kind = sotPath === null ? "unknown" : "ledger";
+      out.sot_path = sotPath ?? "";
+      const body = readEntityBodyFromDisk(invariantsDir(this.repoRoot), id);
+      if (body !== null) {
+        out.body = body;
+        writeRenderedSnapshot(this.repoRoot, id, body);
+      } else {
+        const cached = readRenderedSnapshot(this.repoRoot, id);
+        if (cached !== null) {
+          out.body = cached;
+          out.fromCache = true;
+        }
+      }
+      return out;
+    }
+
+    out.sot_kind = "path";
+    out.sot_path = sotPath;
+    const liveBody = readBodyFromAnchorMap(this.repoRoot, sotPath);
+    if (liveBody !== null) {
+      out.body = liveBody;
+      writeRenderedSnapshot(this.repoRoot, id, liveBody);
+      return out;
+    }
+    const snapshot = readRenderedSnapshot(this.repoRoot, id);
+    if (snapshot !== null) {
+      out.body = snapshot;
+      out.fromCache = true;
+    }
+    return out;
+  }
+
   resolveDecision(id: string): DecisionResolution {
     try {
       const ledger = buildDecisionsLedger({ repoRoot: this.repoRoot });
@@ -270,5 +452,109 @@ export class LensResolver {
    */
   loadScopeIndex(): ScopeIndex | null {
     return readScopeIndex(this.repoRoot);
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* SoT body helpers (plan §10)                                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Strip the leading `---\n…\n---\n?` frontmatter block from a DEC/INV
+ * ledger entity file and return the trimmed body. Returns null when
+ * the file is missing or unreadable.
+ */
+function readEntityBodyFromDisk(dir: string, id: string): string | null {
+  const abs = join(dir, `${id}.md`);
+  if (!existsSync(abs)) return null;
+  let raw: string;
+  try {
+    raw = readFileSync(abs, "utf8");
+  } catch {
+    return null;
+  }
+  const m = raw.match(/^---\n[\s\S]*?\n---\n?/);
+  return (m === null ? raw : raw.slice(m[0].length)).trim();
+}
+
+/**
+ * Walk anchor-map.yaml for a path-kind sot_path (e.g. `docs/auth.md#tokens`)
+ * and return the live source body at the recorded anchor. Returns
+ * null when the file is missing, the slug is absent, or the line
+ * range is malformed.
+ *
+ * Anchor-map keys are slugs that the init pipeline derived from the
+ * heading or paragraph content. The reverse-lookup walks every entry
+ * checking `entry.file === <pathPart>` until we find one whose
+ * `current_anchor` matches the fragment. If no fragment is provided
+ * the first entry on the file wins.
+ */
+function readBodyFromAnchorMap(repoRoot: string, sotPath: string): string | null {
+  let map;
+  try {
+    map = readAnchorMap(repoRoot);
+  } catch {
+    return null;
+  }
+  const [pathPart, fragment] = splitSotPath(sotPath);
+  if (pathPart === "") return null;
+
+  let match: AnchorMapEntry | null = null;
+  for (const slug of Object.keys(map.anchors)) {
+    const entry = map.anchors[slug];
+    if (entry === undefined) continue;
+    if (entry.file !== pathPart) continue;
+    if (fragment !== null && entry.current_anchor !== fragment) continue;
+    match = entry;
+    break;
+  }
+  if (match === null) return null;
+
+  const abs = join(repoRoot, match.file);
+  if (!existsSync(abs)) return null;
+  let raw: string;
+  try {
+    raw = readFileSync(abs, "utf8");
+  } catch {
+    return null;
+  }
+  if (match.line_range === undefined) return raw.trim();
+  const [startLine, endLine] = match.line_range;
+  const lines = raw.split("\n");
+  const start = Math.max(0, startLine - 1);
+  const end = Math.min(lines.length, endLine);
+  if (end <= start) return null;
+  return lines.slice(start, end).join("\n").trim();
+}
+
+function splitSotPath(sotPath: string): [string, string | null] {
+  const idx = sotPath.indexOf("#");
+  if (idx === -1) return [sotPath, null];
+  return [sotPath.slice(0, idx), sotPath.slice(idx + 1)];
+}
+
+/**
+ * Snapshot a successfully-rendered body to
+ * `.cairn/cache/sot-rendered/<id>.md`. Best-effort — write failures
+ * never block the live render.
+ */
+function writeRenderedSnapshot(repoRoot: string, id: string, body: string): void {
+  if (body.length === 0) return;
+  const dir = sotRenderedCacheDir(repoRoot);
+  try {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, `${id}.md`), body, "utf8");
+  } catch {
+    /* best-effort — Lens never blocks on cache writes */
+  }
+}
+
+function readRenderedSnapshot(repoRoot: string, id: string): string | null {
+  const path = join(sotRenderedCacheDir(repoRoot), `${id}.md`);
+  if (!existsSync(path)) return null;
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return null;
   }
 }
