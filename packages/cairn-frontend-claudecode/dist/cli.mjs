@@ -43339,6 +43339,22 @@ function bindDec(bindings, decId, sotPath) {
   }
   return { ...bindings, forward, reverse };
 }
+function unbindDec(bindings, decId) {
+  const sotPath = bindings.forward[decId];
+  if (sotPath === void 0)
+    return bindings;
+  const forward = { ...bindings.forward };
+  delete forward[decId];
+  const reverse = { ...bindings.reverse };
+  const list = reverse[sotPath] ?? [];
+  const filtered = list.filter((id) => id !== decId);
+  if (filtered.length === 0) {
+    delete reverse[sotPath];
+  } else {
+    reverse[sotPath] = filtered;
+  }
+  return { ...bindings, forward, reverse };
+}
 
 // ../cairn-core/dist/ground/topic-index.js
 var import_yaml11 = __toESM(require_dist(), 1);
@@ -43415,6 +43431,13 @@ function writeSotCache(repoRoot, cache) {
 }
 function setEntry(cache, decId, entry) {
   return { ...cache, entries: { ...cache.entries, [decId]: entry } };
+}
+function deleteEntry(cache, decId) {
+  if (cache.entries[decId] === void 0)
+    return cache;
+  const entries2 = { ...cache.entries };
+  delete entries2[decId];
+  return { ...cache, entries: entries2 };
 }
 
 // ../cairn-core/dist/ground/anchor-map.js
@@ -49942,7 +49965,7 @@ async function alignFile(args) {
         const candBody = readEntityBody(repoRoot, cand.id);
         if (candBody === null)
           continue;
-        const candScope = `${cand.id}-${cand.body_hash.slice(0, 12)}`;
+        const candScope = `${cand.id}-${bodyContentHash(candBody).slice(0, 12)}`;
         const cachedP1 = readVerdictCache2(repoRoot, "dedup-p1", block.prose, candScope);
         let p1;
         if (cachedP1 === "same" || cachedP1 === "different" || cachedP1 === "ambiguous") {
@@ -74899,6 +74922,62 @@ function rebuildLedgers(repoRoot) {
     log44.warn({ err: err instanceof Error ? err.message : String(err) }, "invariants ledger rebuild failed after conflict resolution");
   }
 }
+function cleanLosersFromSotState(repoRoot, losers) {
+  let bindings = readSotBindings(repoRoot);
+  let cache = readSotCache(repoRoot);
+  let mutated = false;
+  for (const loser of losers) {
+    const nextBindings = unbindDec(bindings, loser.id);
+    if (nextBindings !== bindings) {
+      bindings = nextBindings;
+      mutated = true;
+    }
+    const nextCache = deleteEntry(cache, loser.id);
+    if (nextCache !== cache) {
+      cache = nextCache;
+      mutated = true;
+    }
+  }
+  if (!mutated)
+    return;
+  try {
+    writeSotBindings(repoRoot, bindings);
+  } catch (err) {
+    log44.warn({ err: err instanceof Error ? err.message : String(err) }, "sot-bindings rewrite failed during conflict resolution cleanup");
+  }
+  try {
+    writeSotCache(repoRoot, cache);
+  } catch (err) {
+    log44.warn({ err: err instanceof Error ? err.message : String(err) }, "sot-cache rewrite failed during conflict resolution cleanup");
+  }
+}
+function bindAndCacheMergedEntity(repoRoot, mergedId, mergedBody) {
+  let bindings = readSotBindings(repoRoot);
+  if (Object.keys(bindings.forward).length === 0)
+    bindings = emptySotBindings();
+  bindings = bindDec(bindings, mergedId, "ledger");
+  try {
+    writeSotBindings(repoRoot, bindings);
+  } catch (err) {
+    log44.warn({ err: err instanceof Error ? err.message : String(err) }, "sot-bindings rewrite failed for merged entity");
+  }
+  let cache = readSotCache(repoRoot);
+  if (Object.keys(cache.entries).length === 0)
+    cache = emptySotCache();
+  cache = setEntry(cache, mergedId, {
+    dec_id: mergedId,
+    sot_path: "ledger",
+    body_hash: bodyContentHash(mergedBody),
+    tokens: Array.from(tokenize(mergedBody, { codeAware: true })),
+    shingles: [],
+    mtime_ms: Date.now()
+  });
+  try {
+    writeSotCache(repoRoot, cache);
+  } catch (err) {
+    log44.warn({ err: err instanceof Error ? err.message : String(err) }, "sot-cache rewrite failed for merged entity");
+  }
+}
 function loadAlignmentPending(repoRoot, itemId) {
   const dir = alignmentPendingDir(repoRoot);
   const filename = `${itemId}.md`;
@@ -75217,6 +75296,7 @@ async function resolveConflict(ctx, input) {
       }
       recordOrphanDriftEvents(ctx.repoRoot, [{ ref: loser, parsed: loserBefore }]);
       deleteConflictFile(conflict);
+      cleanLosersFromSotState(ctx.repoRoot, [loser]);
       rebuildLedgers(ctx.repoRoot);
       try {
         writeInvalidationEvent(ctx.repoRoot, {
@@ -75252,6 +75332,7 @@ async function resolveConflict(ctx, input) {
         { ref: conflict.bRef, parsed: bBefore2 }
       ]);
       deleteConflictFile(conflict);
+      cleanLosersFromSotState(ctx.repoRoot, [conflict.aRef, conflict.bRef]);
       rebuildLedgers(ctx.repoRoot);
       try {
         writeInvalidationEvent(ctx.repoRoot, {
@@ -75292,6 +75373,7 @@ async function resolveConflict(ctx, input) {
       { ref: conflict.bRef, parsed: bBefore }
     ]);
     const archivedRel = moveConflictToArchive(ctx.repoRoot, conflict);
+    cleanLosersFromSotState(ctx.repoRoot, [conflict.aRef, conflict.bRef]);
     rebuildLedgers(ctx.repoRoot);
     try {
       writeInvalidationEvent(ctx.repoRoot, {
@@ -75383,6 +75465,7 @@ ${(0, import_yaml40.stringify)(mergedFm).trimEnd()}
 ${mergedBody}`, "utf8");
   setSupersededBy(repoRoot, conflict.aRef, mergedId, "superseded");
   setSupersededBy(repoRoot, conflict.bRef, mergedId, "superseded");
+  bindAndCacheMergedEntity(repoRoot, mergedId, mergedBody);
   return { mergedId, mergedRel };
 }
 function synthesizeMergedId(repoRoot, kind) {

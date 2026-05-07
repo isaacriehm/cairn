@@ -50,6 +50,7 @@ import {
   bodyContentHash,
   conflictsDir,
   decisionsDir,
+  deleteSotCacheEntry,
   deriveLedgerDecId,
   deriveLedgerInvId,
   emptySotBindings,
@@ -59,6 +60,7 @@ import {
   readSotCache,
   recordDriftEvent,
   setSotCacheEntry,
+  unbindDec,
   writeSotBindings,
   writeSotCache,
 } from "../../ground/index.js";
@@ -603,6 +605,93 @@ function rebuildLedgers(repoRoot: string): void {
   }
 }
 
+/**
+ * Drop superseded / archived losers from sot-bindings + sot-cache so
+ * Layer A's pre-filter doesn't pick them as candidates and phase 5b
+ * doesn't loop on a path bound to a now-superseded id. The orphan_path
+ * drift event (recorded separately for sot_kind="path" losers) remains
+ * the operator-facing surface to recover the orphaned prose.
+ */
+function cleanLosersFromSotState(
+  repoRoot: string,
+  losers: EntityRef[],
+): void {
+  let bindings = readSotBindings(repoRoot);
+  let cache = readSotCache(repoRoot);
+  let mutated = false;
+  for (const loser of losers) {
+    const nextBindings = unbindDec(bindings, loser.id);
+    if (nextBindings !== bindings) {
+      bindings = nextBindings;
+      mutated = true;
+    }
+    const nextCache = deleteSotCacheEntry(cache, loser.id);
+    if (nextCache !== cache) {
+      cache = nextCache;
+      mutated = true;
+    }
+  }
+  if (!mutated) return;
+  try {
+    writeSotBindings(repoRoot, bindings);
+  } catch (err) {
+    log.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      "sot-bindings rewrite failed during conflict resolution cleanup",
+    );
+  }
+  try {
+    writeSotCache(repoRoot, cache);
+  } catch (err) {
+    log.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      "sot-cache rewrite failed during conflict resolution cleanup",
+    );
+  }
+}
+
+/**
+ * Bind + cache a merged entity that was just written to ground. Mirrors
+ * the bind/cache wiring in `emitFreshDec` so Layer A's pre-filter sees
+ * the merged DEC as a Tier-2 candidate immediately, instead of waiting
+ * for the next SessionStart drain to rebuild sot-cache.
+ */
+function bindAndCacheMergedEntity(
+  repoRoot: string,
+  mergedId: string,
+  mergedBody: string,
+): void {
+  let bindings = readSotBindings(repoRoot);
+  if (Object.keys(bindings.forward).length === 0) bindings = emptySotBindings();
+  bindings = bindDec(bindings, mergedId, "ledger");
+  try {
+    writeSotBindings(repoRoot, bindings);
+  } catch (err) {
+    log.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      "sot-bindings rewrite failed for merged entity",
+    );
+  }
+  let cache = readSotCache(repoRoot);
+  if (Object.keys(cache.entries).length === 0) cache = emptySotCache();
+  cache = setSotCacheEntry(cache, mergedId, {
+    dec_id: mergedId,
+    sot_path: "ledger",
+    body_hash: bodyContentHash(mergedBody),
+    tokens: Array.from(tokenize(mergedBody, { codeAware: true })),
+    shingles: [],
+    mtime_ms: Date.now(),
+  });
+  try {
+    writeSotCache(repoRoot, cache);
+  } catch (err) {
+    log.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      "sot-cache rewrite failed for merged entity",
+    );
+  }
+}
+
 /* -------------------------------------------------------------------------- */
 /* Alignment-pending resolution (plan §4.1.A / §4.1.B)                        */
 /* -------------------------------------------------------------------------- */
@@ -998,6 +1087,7 @@ async function resolveConflict(ctx: McpContext, input: Input): Promise<unknown> 
       }
       recordOrphanDriftEvents(ctx.repoRoot, [{ ref: loser, parsed: loserBefore }]);
       deleteConflictFile(conflict);
+      cleanLosersFromSotState(ctx.repoRoot, [loser]);
       rebuildLedgers(ctx.repoRoot);
       try {
         writeInvalidationEvent(ctx.repoRoot, {
@@ -1034,6 +1124,7 @@ async function resolveConflict(ctx: McpContext, input: Input): Promise<unknown> 
         { ref: conflict.bRef, parsed: bBefore },
       ]);
       deleteConflictFile(conflict);
+      cleanLosersFromSotState(ctx.repoRoot, [conflict.aRef, conflict.bRef]);
       rebuildLedgers(ctx.repoRoot);
       try {
         writeInvalidationEvent(ctx.repoRoot, {
@@ -1077,6 +1168,7 @@ async function resolveConflict(ctx: McpContext, input: Input): Promise<unknown> 
       { ref: conflict.bRef, parsed: bBefore },
     ]);
     const archivedRel = moveConflictToArchive(ctx.repoRoot, conflict);
+    cleanLosersFromSotState(ctx.repoRoot, [conflict.aRef, conflict.bRef]);
     rebuildLedgers(ctx.repoRoot);
     try {
       writeInvalidationEvent(ctx.repoRoot, {
@@ -1199,6 +1291,9 @@ function mergeConflict(
   // Both old entries get superseded_by → new merged id.
   setSupersededBy(repoRoot, conflict.aRef, mergedId, "superseded");
   setSupersededBy(repoRoot, conflict.bRef, mergedId, "superseded");
+  // Bind + cache the merged entity so Layer A picks it up on the next
+  // PostToolUse without waiting for SessionStart drain.
+  bindAndCacheMergedEntity(repoRoot, mergedId, mergedBody);
   return { mergedId, mergedRel };
 }
 

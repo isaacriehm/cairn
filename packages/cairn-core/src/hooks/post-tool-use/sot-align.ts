@@ -361,11 +361,13 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
       candidateLoop: for (const cand of candidates) {
         const candBody = readEntityBody(repoRoot, cand.id);
         if (candBody === null) continue;
-        // Verdict cache scoped on (block prose, candidate id, candidate
-        // body_hash). Including the body hash invalidates the cache when
-        // the DEC refreshes — a stale "same" verdict against a body
-        // that has since changed would let us cite a now-different DEC.
-        const candScope = `${cand.id}-${cand.body_hash.slice(0, 12)}`;
+        // Verdict cache scoped on (block prose, candidate id, fresh body
+        // hash). The hash is computed from `candBody` we just read off
+        // disk rather than the sot-cache snapshot in `cand.body_hash` —
+        // the operator can edit DEC bodies between sot-cache refreshes,
+        // and a stale "same" verdict against an old body would let us
+        // cite a now-different DEC.
+        const candScope = `${cand.id}-${bodyContentHash(candBody).slice(0, 12)}`;
 
         // Pass 1.
         const cachedP1 = readVerdictCache(repoRoot, "dedup-p1", block.prose, candScope);
