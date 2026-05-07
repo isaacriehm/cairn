@@ -77218,13 +77218,13 @@ var allTools = [
   getFullTool,
   // Read — historical (gated)
   queryHistoryTool,
-  // Read — phase 6 candidate surface (PR 2 / PHASE_6_REDESIGN §4.6)
+  // Read — phase 6 candidate surface
   searchCandidatesTool,
   // Write
   recordDecisionTool,
   taskCreateTool,
   archiveTool,
-  // Write — phase 6 candidate surface (PR 2 / PHASE_6_REDESIGN §4.6)
+  // Write — phase 6 candidate surface
   proposeDecisionTool,
   rejectCandidateTool,
   // Write — plugin-era

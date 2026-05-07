@@ -94,7 +94,7 @@ export async function buildTopicIndex(
     const result = await resolveTopics(blocks, resolveOpts);
     const topicIndexPath = writeTopicIndex(args.repoRoot, result.topicIndex);
     const anchorMapPath = writeAnchorMap(args.repoRoot, result.anchorMap);
-    // Phase 5b extension (PHASE_6_REDESIGN §4.2):
+    // Phase 5b extension:
     //   - Write `file-candidates-map.yaml` so the read-enrich hook can
     //     do O(1) per-file candidate-count lookups instead of scanning
     //     the whole topic-index per Read.

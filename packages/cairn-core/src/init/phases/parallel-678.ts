@@ -103,7 +103,7 @@ export async function runPhases678Parallel(
   const t0 = performance.now();
   const startedAt = Date.now();
 
-  // Phase 6 now runs the staged ingest pipeline (PHASE_6_REDESIGN §4.1):
+  // Phase 6 now runs the staged ingest pipeline:
   // Stage 3 marker scan (0 Haiku) → Stage 1 file-purpose binary filter
   // (batch=30, concurrency=5) → Stage 2 section-level batch classifier
   // (batch=30, concurrency=5) → Stage 4 emit drafts to `_inbox/`. Each

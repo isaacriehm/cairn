@@ -1,5 +1,5 @@
 /**
- * Phase 6-docs-ingest — staged docs ingestion (PHASE_6_REDESIGN §4.1).
+ * Phase 6-docs-ingest — staged docs ingestion.
  *
  * Wraps `runDocsIngestion`; no operator input. The skill driver
  * surfaces the resulting `decsWritten.length` (drafts in `_inbox/`) in

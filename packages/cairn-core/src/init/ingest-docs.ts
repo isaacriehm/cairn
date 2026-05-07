@@ -1,5 +1,5 @@
 /**
- * Phase 6 — staged docs ingestion (PHASE_6_REDESIGN §4.1).
+ * Phase 6 — staged docs ingestion.
  *
  * Replaces the v0.6 bulk-classifier path. Cuts wall from ~15 min →
  * ~75 s on gcb-platform-scale repos AND collapses the noisy ledger
@@ -73,7 +73,7 @@ import { firstLineFallback, readSotBody } from "./sot-emit.js";
 const log = logger("init.ingest-docs");
 
 /* -------------------------------------------------------------------------- */
-/* Tunables — locked in §3 of PHASE_6_REDESIGN                                */
+/* Tunables — locked tunables                                */
 /* -------------------------------------------------------------------------- */
 
 /** N files per Stage-1 Haiku call. */

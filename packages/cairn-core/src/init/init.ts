@@ -711,7 +711,7 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   // SessionStart in any clone seeds the per-session file with the
   // current attention_count derived from drafts + baseline findings.
 
-  // ── Step 6: completion summary (terse, per PHASE_6_REDESIGN §4.9) ──
+  // ── Step 6: completion summary (terse, per ) ──
   printCompletionSummary({
     projectName: decidedSlug,
     repoRoot,
@@ -1125,7 +1125,7 @@ interface CompletionSummaryArgs {
 }
 
 /**
- * Cold-start summary, locked wording from PHASE_6_REDESIGN §4.9.
+ * Cold-start summary, locked wording from 
  *
  *   Adopted <project> in <duration>.
  *   - <N> active rules baseline verified.

@@ -2,7 +2,7 @@
  * `cairn_search_candidates` — query topic-index entries that haven't
  * been promoted to a DEC yet (`dec_id IS NULL`).
  *
- * Spec: PHASE_6_REDESIGN §4.6. Mirrors the response shape of
+ * Spec:  Mirrors the response shape of
  * `cairn_decisions_in_scope` so AI agents can use the two
  * interchangeably during the daily read-enrich-driven curator flow.
  *

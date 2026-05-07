@@ -3,7 +3,7 @@
  * `.cairn/ground/_rejected.yaml` so phase 6 / `cairn ingest` /
  * `cairn_propose_decision` skip it on the next pass.
  *
- * Spec: PHASE_6_REDESIGN §4.6. Dedup by slug — first writer wins the
+ *  Dedup by slug — first writer wins the
  * `reason` string; subsequent writes only refresh `rejected_at`. The
  * AI-curator path stamps `rejected_by: "ai-curator"`; operator-driven
  * rejections (`cairn-attention` skill) reuse the same writer with

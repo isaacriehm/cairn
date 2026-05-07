@@ -96,7 +96,7 @@ pnpm --filter @isaacriehm/cairn smoke:llm-prompt-eval
 ```
 
 If a fixture flips, surface the failure — do not silently weaken the
-assertions. The locked prompt is in `docs/PHASE_6_REDESIGN.md` §4.1.
+assertions.
 
 ## Starting fresh
 

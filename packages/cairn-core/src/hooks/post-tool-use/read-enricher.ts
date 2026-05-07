@@ -201,7 +201,7 @@ export async function runReadEnricher(): Promise<void> {
         : null;
     const resolveTaskFn = (taskId: string): TaskLookupResult =>
       lookupTask(repoRoot, taskId);
-    // PR 2 / PHASE_6_REDESIGN §4.7 — O(1) lookup against the
+    // O(1) lookup against the
     // file-candidates-map. Stays at 0 (silent) on un-adopted projects
     // and on files that aren't the SoT for any unpromoted candidate.
     const unpromotedCandidates = getFileCandidateCount(repoRoot, relPath);

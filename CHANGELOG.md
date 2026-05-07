@@ -6,173 +6,90 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.7.0] — 2026-05-07
 
-The phase-6 (docs ingestion) redesign. Adoption on a busy monorepo
-went from a projected ~25 hours wall + ~7000 noisy paragraph-DECs
-to ~75 seconds + ~30-80 curated drafts in `_inbox/`. The reframe
-("seed not migration") was vetted across three rounds of external
-architectural review and lives as the locked spec in
-[`docs/PHASE_6_REDESIGN.md`](docs/PHASE_6_REDESIGN.md).
-
 ### Added
 
-- **Phase 6 staged docs ingestion.** Replaces the bulk Haiku
-  classifier. Four stages: (1) deterministic marker scan — emits a
-  DEC draft when the walker stamped `marker_kind` on a topic-index
-  entry from `cairn: { kind: decision | rule }` frontmatter or a
-  `<!-- cairn:decision -->` HTML comment within 3 lines of a
-  heading. (2) Haiku binary file-purpose filter (batch=30,
-  concurrency=5) — input is filename + frontmatter + first 800
-  chars + a Table of Contents (every H1/H2/H3 line up to 100
-  lines). Locked rigid prompt: a file is authoritative ONLY if it
-  is a canonical rulebook, formal ADR, or list of binding domain
-  invariants; project plans / research / UAT logs / status updates
-  / API docs are NOT authoritative even if they contain proposed or
-  historical decisions. (3) Haiku section-level batch classifier
-  (batch=30, concurrency=5) — runs only on sections from
-  authoritative files that aren't already covered by a marker. (4)
-  Emit drafts to `.cairn/ground/decisions/_inbox/` with verbatim
-  bodies via `readSotBody` (no AI paraphrasing — preserves
-  `sot_content_hash` for the drift sensor). Skipped entries stay as
-  topic-index candidates queryable via the new MCP tools.
-- **Three new MCP tools surfacing topic-index candidates.**
-  - `cairn_search_candidates({ query?, scope?, kind?, limit? })`
-    queries topic-index entries `WHERE dec_id IS NULL`. Mirrors
-    `cairn_decisions_in_scope` shape so AI agents can use them
-    interchangeably.
-  - `cairn_propose_decision({ slug, title?, kind? })` promotes a
-    candidate to a DEC draft in `_inbox/`. Idempotent on slug
-    (returns existing dec_id if already promoted), refuses rejected
-    slugs, drift-checks the extracted body against the topic-index
-    entry's `content_hash` and refuses with `reason: "drifted"` on
-    mismatch. Response wording explicitly tells the AI: "DO NOT
-    enforce this rule yet — proposal only. You MAY cite as
-    'proposed (DEC-xxx, draft)'."
-  - `cairn_reject_candidate({ slug, reason })` appends to
-    `.cairn/ground/_rejected.yaml`. Dedupes by slug — first-writer
-    wins the reason; later writes update `rejected_at` only.
-- **Read-enrich hook surfaces unpromoted candidates.** When Claude
-  reads a file with ≥1 unpromoted topic-index candidate, the hook
-  injects a one-line notice prompting the AI to call
-  `cairn_propose_decision` if a passage states an active rule. O(1)
-  per-file lookup via the new
-  `.cairn/ground/file-candidates-map.yaml` (`{ filepath →
-  candidate-count }`) emitted by phase 5b. Without the per-file
-  index the hook would scan the whole topic-index on every Read
-  call.
-- **`cairn tag --insert-marker <pattern> <file-or-dir>`.**
-  Operator-driven retro-tagging of existing decision docs. Inserts
-  `<!-- cairn:decision -->` after each line matching `<pattern>`.
-  Three safety gates: (1) git-aware — refuses on a dirty tree
-  unless `--force`; (2) impact circuit breaker — skips files where
-  the pattern matches more than 30% of lines, requires
-  `--force-pattern` to override; (3) idempotent — scans 3 lines
-  ahead before inserting so blank lines between heading and body
-  don't double-tag. Deterministic, 0 Haiku.
+- **Staged docs ingestion.** Phase 6 now runs an explicit marker
+  scan, a file-level Haiku filter, and a section-level Haiku batch
+  classifier before emitting DEC drafts to `_inbox/`. Cuts adoption
+  wall on busy monorepos from hours to roughly a minute and
+  collapses the noisy ledger to a curated draft set the operator
+  triages via `cairn attention`.
+- **Three MCP tools for unpromoted topic-index candidates.**
+  - `cairn_search_candidates({ query?, scope?, kind?, limit? })` —
+    queries entries with `dec_id IS NULL`; mirrors
+    `cairn_decisions_in_scope` shape.
+  - `cairn_propose_decision({ slug, title?, kind? })` — promotes a
+    candidate to a DEC draft. Idempotent on slug, drift-checked
+    against the topic-index `content_hash`, refuses rejected slugs.
+    Response wording instructs the AI not to enforce until
+    operator-accepted.
+  - `cairn_reject_candidate({ slug, reason })` — appends to
+    `.cairn/ground/_rejected.yaml`, dedupe-by-slug.
+- **Read-enrich hook surfaces unpromoted candidates** via an O(1)
+  `file-candidates-map.yaml` lookup (emitted by phase 5b). Files
+  with ≥1 candidate get a one-line notice prompting
+  `cairn_propose_decision` when a passage states an active rule.
+- **`cairn tag --insert-marker <pattern> <path>`** — operator-driven
+  retro-tag CLI. Git-aware (refuses dirty tree without `--force`),
+  impact circuit breaker (skips files where the pattern hits more
+  than 30% of lines without `--force-pattern`), 3-line idempotency
+  lookahead. Deterministic, 0 Haiku.
 - **Phase 7b regex pre-filter.** Essay-class block comments only
-  reach the batch classifier when they match
-  `/(MUST|MUST NOT|SHALL|NEVER|ALWAYS|REQUIRED|FORBIDDEN|INVARIANT|@invariant|@rule|@decision|@cairn:decision|@cairn:rule)/i`.
-  Code uses rigid documentation conventions, so regex is safe here
-  (unlike arbitrary prose in phase 6). Non-matching essays stay as
-  topic-index candidates; AI agents can promote later via
-  `cairn_propose_decision`. Marker overrides
-  (`@cairn:decision` / `@cairn:rule`) always emit regardless.
-- **`smoke:llm-prompt-eval`.** Opt-in real-Haiku smoke that asserts
-  the Stage-1 file-purpose prompt against three inline fixtures
-  (one ADR, one UAT log, one research scratchpad). Burns operator
-  quota; not part of the standard smoke gate. Run when touching the
-  Stage-1 system prompt or upgrading the Haiku model alias.
+  reach the batch classifier when they contain imperative
+  conventions (MUST / SHALL / NEVER / INVARIANT / @invariant /
+  @rule / @decision / @cairn:decision / @cairn:rule). Marker tags
+  always emit regardless.
+- **`smoke:llm-prompt-eval`** — opt-in real-Haiku smoke against
+  three inline fixtures (ADR / UAT log / research) that pins the
+  Stage-1 file-purpose prompt's behavior. Not part of the standard
+  smoke gate; run when touching the prompt or upgrading the model.
 
 ### Fixed
 
-- **Title extraction (52% of ledger malformed).** `firstLineFallback`
-  now strips C-family markers (/**, /*, */, //, *), Python
+- **Title extraction.** `firstLineFallback` now strips C-family
+  markers, JSDoc continuations, line-comment markers, Python
   triple-quote, Ruby `=begin`/`=end`, Lua `--[[`/`--]]`, Haskell
   `{-`/`-}`, OCaml `(*`/`*)`, markdown headings, and horizontal-rule
-  separators (incl. ASCII `-`). Skips JSDoc-style `@tag` annotations
-  and pure block-comment boundary lines. Walks the body until it
-  finds real prose. Unified into a single source-of-truth helper
-  exported from `sot-emit.ts`; removed the divergent duplicate from
-  `ingest-docs.ts`.
-- **Confidence scorer returned "low" universally.** Phase-7b drafts
-  emit verbatim essay bodies without `## Source comment` /
-  `## Constraint` headings; the bulk-accept scorer was running
-  `extractSection(body, "Source comment")` and getting an empty
-  string, so DECISION_VERBS / INVARIANT_MODALS / REASON_MARKERS
-  regexes never matched and every draft scored low. Added a fallback
-  to the full body, plus a symmetric `rawComment` fallback. Combined
-  with substantive prose this lifts genuine high-signal drafts above
-  the "high" threshold instead of universally collapsing to low.
-- **Web UI "accept high-confidence" silently mutated drafts.** When
-  zero drafts met the high threshold, the bulk-accept handler still
-  stamped every draft's `capture_confidence` with the computed score
-  (almost always "low"). Two fixes: (1) the action now runs a
-  dry-run preview first, surfaces the high/medium/low distribution
-  and the promote count via `window.confirm`, and only commits if
-  the operator confirms; (2) the on-disk write is gated — drafts
-  that already carry a valid confidence enum value are not
-  re-stamped, so a second click with a different threshold doesn't
-  overwrite earlier scoring.
-- **Subagent token leak (per-adoption).** Two `runClaude` callers
-  were spawning `claude --print` subprocesses without
-  `isolateAmbientContext: true`. Each call ingested the operator's
-  user-level CLAUDE.md, the project CLAUDE.md hierarchy, all plugin
-  slash commands, and every MCP tool definition for zero benefit.
-  Worst offender was `mapper-parallel.ts` — multiplied that
-  ambient context up to 50× per adoption (one per module slice).
-  Both fixed: `init/mapper-parallel.ts` and
-  `mcp/history/summarizer.ts`.
-- **Lens ghost text clipped long / multi-line titles.** VS Code
-  can't render `\n` in `after.contentText` decorations
-  (microsoft/vscode#63600); the lens was truncating titles at 60
-  chars and providing no escape. Every inline / replace decoration
-  now carries a `hoverMessage` (`vscode.MarkdownString`) with the
-  full untruncated title — hover over the §INV / §DEC token
-  reveals what the inline display had to clip.
-- **Phase 5b judge timeout storms.** `TIMEOUT_MS` was 8000 ms;
-  `claude --print` cold-start + Haiku JSON-schema reply routinely
-  exceeded that window. Every call SIGTERM'd at exit code 143
-  before producing a verdict, and the resolver burned the same wall
-  time on every candidate pair while returning "different" for
-  each. Bumped to 45000 ms and added a circuit breaker (5
-  consecutive timeouts → bail entire phase 5b; quota / auth errors
-  trip on the first occurrence). Resolver now also collects
-  candidate pairs in a flat list, dispatches a worker pool of
-  N=5 concurrent judges, and emits `onProgress` callbacks per
-  completed call so the statusline shows live `X/Y pairs (P%) ~Nm`.
-- **Walker walked the agent-worktree pollution.**
-  `topic-index/walk.ts` now skips `.claude/` from the doc walk
-  (`.claude/rules/` is still picked up by the dedicated
-  `walkRulesDir`). Eliminates duplicate prose pairs that
-  `claude-flow` agent worktrees inject into the topic-index.
-- **Phase 6 progress writer pinned at 100%.** `parallel-678.ts`
-  was emitting `batch = total` from the first callback, so the
-  statusline showed `7548/7548 (100%)` while the phase still had
-  hours of work left. Replaced with an external counter that
-  increments per completed entry.
-- **Cold-start UX.** `cairn init` finishes with a terse 4-line
-  summary (active rules verified / decision drafts found /
-  unpromoted candidates indexed / next action) instead of the old
-  walker-internal log spam. Predictable, points operators at
-  `cairn attention` for triage. The `cairn-adopt` skill registry
-  also got a `5b-topic-index` row with realistic ETAs (~30s small
-  / 2-10 min large) and a context line for the live progress
-  ticker — without it the adoption banner advertised `<1s` for a
-  phase that takes minutes.
-
-### Architecture
-
-- **`docs/PHASE_6_REDESIGN.md`** locked. Captures the §3 design
-  constraints (no env vars, no hardcoded paths except `.claude/`,
-  no backward-compat shims, hard cutovers only), the four-stage
-  pipeline, the three new MCP tools, the read-enrich hook
-  extension, the `cairn tag` safety model, and the migration path
-  (`rm -rf .cairn/ && cairn init` — honors the no-shims
-  constraint). The supporting audit trail (three rounds of external
-  architectural review) is referenced from §10.
+  separators. Skips `@tag` annotations and pure boundary lines.
+  Single shared implementation in `sot-emit.ts`; removed the
+  divergent copy from `ingest-docs.ts`.
+- **Confidence scorer returned "low" universally.** `bulk-accept`
+  now falls back to the full body when the `## Source comment` /
+  `## Constraint` sections are missing (phase-7b drafts emit
+  verbatim essays). Stamping is gated so a re-run with a different
+  threshold doesn't overwrite earlier scores on drafts that already
+  carry a valid confidence value.
+- **Web UI "accept high-confidence" silently mutated drafts.** The
+  action now runs a dry-run preview, surfaces the high/medium/low
+  distribution + promote count via `window.confirm`, and only
+  commits if the operator confirms. Counters skip dry runs.
+- **Subagent token leak.** `init/mapper-parallel.ts` and
+  `mcp/history/summarizer.ts` now pass `isolateAmbientContext:
+  true` so the subprocess doesn't ingest the operator's CLAUDE.md
+  hierarchy and plugin/MCP context per call.
+- **Lens ghost text clipped long / multi-line titles.** Inline and
+  replace decorations now carry a `hoverMessage` with the full
+  untruncated title (works around microsoft/vscode#63600).
+- **Phase 5b judge timeout storms.** `TIMEOUT_MS` 8000→45000 ms +
+  circuit breaker (5 consecutive timeouts → bail; auth/quota
+  errors trip immediately). Resolver also runs a worker pool of
+  N=5 concurrent judges with `onProgress` callbacks for live
+  statusline updates.
+- **Walker pollution from agent worktrees.** `topic-index/walk.ts`
+  now skips `.claude/` from the doc walk; `.claude/rules/` stays
+  covered by the dedicated `walkRulesDir`.
+- **Progress writer pinned at 100%.** `parallel-678.ts` no longer
+  emits `batch = total` from the first callback; an external
+  counter increments per completed entry.
+- **Cold-start UX.** `cairn init` ends with a four-line summary
+  (rules verified / drafts found / candidates indexed / next
+  action). The `cairn-adopt` skill registry also got a
+  `5b-topic-index` row with realistic ETAs and a live-progress
+  context line.
 
 ### Migration
 
-Hard cutover. Operators with adopted projects from v0.6.x:
+Hard cutover. Operators with v0.6.x adopted projects:
 
 ```
 rm -rf .cairn/
@@ -180,10 +97,8 @@ cairn init
 ```
 
 The new schema (`marker_kind` on ProseBlock, `_rejected.yaml`,
-`file-candidates-map.yaml`, drafts in `_inbox/` instead of
-`decisions/` for phase 6) is not migration-compatible with the
-v0.6.x ground state. Hand-edited DECs that should survive must be
-backed up first.
+`file-candidates-map.yaml`, phase-6 drafts in `_inbox/`) is not
+migration-compatible. Back up hand-edited DECs first.
 
 ## [0.6.0] — 2026-05-07
 

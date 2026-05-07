@@ -31,7 +31,7 @@ function row(content: string): string {
  * `unpromotedCandidates` — count of topic-index entries whose
  * `sot_source` is the file the agent just Read and whose `dec_id` is
  * still null. Sourced via O(1) lookup against
- * `.cairn/ground/file-candidates-map.yaml` per PHASE_6_REDESIGN §4.7.
+ * `.cairn/ground/file-candidates-map.yaml`
  * When > 0 the legend prepends a curator hint so the agent knows it
  * can call `cairn_propose_decision({ slug })` to surface a passage
  * the operator has clearly committed to as a rule.

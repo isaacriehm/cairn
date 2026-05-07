@@ -2,7 +2,7 @@
  * `cairn_propose_decision` — promote a topic-index candidate (slug)
  * into a DEC draft under `.cairn/ground/decisions/_inbox/`.
  *
- * Spec: PHASE_6_REDESIGN §4.6 / §5.4. The AI-curator path. Body is
+ * 6 / §5.4. The AI-curator path. Body is
  * ALWAYS verbatim from `readSotBody` so the resulting draft's
  * `sot_content_hash` matches the source paragraph the agent saw — no
  * paraphrasing, no AI-generated prose. The drift sensor depends on

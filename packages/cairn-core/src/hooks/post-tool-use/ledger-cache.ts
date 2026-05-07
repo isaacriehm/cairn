@@ -391,7 +391,7 @@ export function getScopeIndexEntry(
  * missing (no walks have happened yet — typical for a fresh clone) so
  * the candidate-count hint stays silent on un-adopted projects.
  *
- * Spec: PHASE_6_REDESIGN §4.7. The map is regenerated every time
+ *  The map is regenerated every time
  * phase 5b walks the repo and every time phase 6 / `cairn_propose_decision`
  * stamps a new `dec_id` on a topic-index entry. The mtime invalidation
  * picks up both refresh paths.

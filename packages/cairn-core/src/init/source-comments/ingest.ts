@@ -99,7 +99,7 @@ const log = logger("init.source-comments.ingest");
 const CAPTURE_SOURCE = "init-source-comments";
 
 /**
- * Phase 7b regex pre-filter (PHASE_6_REDESIGN §4.3).
+ * Phase 7b regex pre-filter.
  *
  * Essay-class block comments only fall through to the Haiku batch
  * classifier when their prose matches imperative documentation
