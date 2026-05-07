@@ -25,8 +25,6 @@ import {
   decisionsDir,
   deriveDecId,
   deriveInvId,
-  emptySotBindings,
-  emptySotCache,
   invariantsDir,
   readSotBindings,
   readSotCache,
@@ -112,9 +110,7 @@ export async function emitFromTopicIndex(args: EmitArgs): Promise<EmitResult> {
   const { repoRoot, topicIndex, anchorMap, filter, classifier, sot_kind, capture_source, idDeriver } = args;
 
   let bindings = readSotBindings(repoRoot);
-  if (Object.keys(bindings.forward).length === 0) bindings = emptySotBindings();
   let cache = readSotCache(repoRoot);
-  if (Object.keys(cache.entries).length === 0) cache = emptySotCache();
 
   const emitted: EmittedRecord[] = [];
   const skipped: { slug: string; reason: string }[] = [];

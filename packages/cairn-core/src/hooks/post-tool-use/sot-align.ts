@@ -56,6 +56,7 @@ import {
 } from "node:fs";
 import { createHash } from "node:crypto";
 import { dirname, join, relative } from "node:path";
+import { writeFileSafe } from "../../fs.js";
 import { stringify as stringifyYaml } from "yaml";
 import { readHookStdin } from "../runners/payload.js";
 import { resolveRepoRoot } from "../../session-start/index.js";
@@ -67,9 +68,6 @@ import {
   deriveLedgerDecId,
   deriveLedgerInvId,
   emptyAnchorMap,
-  emptySotBindings,
-  emptySotCache,
-  emptyTopicIndex,
   invariantsDir,
   readAnchorMap,
   readSotBindings,
@@ -1257,16 +1255,12 @@ async function emitLedgerEntity(args: {
       writeFileSync(abs, out, "utf8");
       // Bind sot-path → id + cache tokens for future Layer A passes.
       const bindings = readSotBindings(repoRoot);
-      const baseBindings =
-        Object.keys(bindings.forward).length > 0 ? bindings : emptySotBindings();
-      const updatedBindings = bindDec(baseBindings, id, "ledger");
+      const updatedBindings = bindDec(bindings, id, "ledger");
       updatedBindings.generated = new Date().toISOString();
       writeSotBindings(repoRoot, updatedBindings);
 
       const cache = readSotCache(repoRoot);
-      const baseCache =
-        Object.keys(cache.entries).length > 0 ? cache : emptySotCache();
-      const updatedCache = setSotCacheEntry(baseCache, id, {
+      const updatedCache = setSotCacheEntry(cache, id, {
         dec_id: id,
         sot_path: "ledger",
         body_hash: bodyContentHash(block.prose),
@@ -1280,8 +1274,7 @@ async function emitLedgerEntity(args: {
       // Topic-index entry so phase 5b sees this slug as already emitted.
       const slug = topicSlug(block.prose);
       const ti = readTopicIndex(repoRoot);
-      const baseTi = Object.keys(ti.topics).length > 0 ? ti : emptyTopicIndex();
-      const updatedTi = setTopic(baseTi, slug, {
+      const updatedTi = setTopic(ti, slug, {
         slug,
         dec_id: id,
         sot_source: block.file,
@@ -1375,12 +1368,7 @@ function writeVerdictCache(
 ): void {
   const path = verdictCachePath(repoRoot, scope, blockBody, scopeKey);
   try {
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(
-      path,
-      JSON.stringify({ verdict, ts: new Date().toISOString() }, null, 2),
-      "utf8",
-    );
+    writeFileSafe(path, JSON.stringify({ verdict, ts: new Date().toISOString() }, null, 2));
   } catch {
     /* best-effort */
   }
@@ -1630,18 +1618,14 @@ async function emitAugmentSibling(args: {
 
       // Bind new id → ledger.
       const bindings = readSotBindings(repoRoot);
-      const baseBindings =
-        Object.keys(bindings.forward).length > 0 ? bindings : emptySotBindings();
-      const updatedBindings = bindDec(baseBindings, id, "ledger");
+      const updatedBindings = bindDec(bindings, id, "ledger");
       updatedBindings.generated = new Date().toISOString();
       writeSotBindings(repoRoot, updatedBindings);
 
       // Append delta tokens to sot-cache so the augments DEC/INV is
       // visible to subsequent Tier 1/2 passes within the same run.
       const cache = readSotCache(repoRoot);
-      const baseCache =
-        Object.keys(cache.entries).length > 0 ? cache : emptySotCache();
-      const updatedCache = setSotCacheEntry(baseCache, id, {
+      const updatedCache = setSotCacheEntry(cache, id, {
         dec_id: id,
         sot_path: "ledger",
         body_hash: bodyContentHash(trimmedDelta),
@@ -1655,8 +1639,7 @@ async function emitAugmentSibling(args: {
       // Topic-index entry — distinct slug from existing target's body.
       const slug = topicSlug(trimmedDelta);
       const ti = readTopicIndex(repoRoot);
-      const baseTi = Object.keys(ti.topics).length > 0 ? ti : emptyTopicIndex();
-      const updatedTi = setTopic(baseTi, slug, {
+      const updatedTi = setTopic(ti, slug, {
         slug,
         dec_id: id,
         sot_source: block.file,

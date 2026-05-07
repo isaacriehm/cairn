@@ -33,8 +33,9 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import { writeFileSafe } from "../../fs.js";
 import { createHash } from "node:crypto";
-import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { stringify as stringifyYaml } from "yaml";
 import {
   parseDraftMeta,
   restoreDec,
@@ -53,9 +54,8 @@ import {
   deleteSotCacheEntry,
   deriveLedgerDecId,
   deriveLedgerInvId,
-  emptySotBindings,
-  emptySotCache,
   invariantsDir,
+  parseFrontmatterRecord,
   readSotBindings,
   readSotCache,
   recordDriftEvent,
@@ -441,19 +441,7 @@ function parseConflictFile(repoRoot: string, itemId: string): ConflictFile | nul
   } catch {
     return null;
   }
-  const fmMatch = raw.match(/^---\n([\s\S]*?)\n---\n?/);
-  let fm: Record<string, unknown> = {};
-  if (fmMatch !== null && fmMatch[1] !== undefined) {
-    try {
-      const parsed = parseYaml(fmMatch[1]);
-      if (typeof parsed === "object" && parsed !== null) {
-        fm = parsed as Record<string, unknown>;
-      }
-    } catch {
-      /* best-effort */
-    }
-  }
-  const body = fmMatch !== null ? raw.slice(fmMatch[0].length) : raw;
+  const { fm, body } = parseFrontmatterRecord(raw);
   const aId = String(fm["a_id"] ?? itemId.split("__")[0] ?? "");
   const bId = String(fm["b_id"] ?? itemId.split("__")[1] ?? "");
   if (!CONFLICT_ID_RE.test(aId) || !CONFLICT_ID_RE.test(bId)) return null;
@@ -482,19 +470,7 @@ function readEntity(ref: EntityRef): ParsedEntity | null {
   } catch {
     return null;
   }
-  const fmMatch = raw.match(/^---\n([\s\S]*?)\n---\n?/);
-  let fm: Record<string, unknown> = {};
-  if (fmMatch !== null && fmMatch[1] !== undefined) {
-    try {
-      const parsed = parseYaml(fmMatch[1]);
-      if (typeof parsed === "object" && parsed !== null) {
-        fm = parsed as Record<string, unknown>;
-      }
-    } catch {
-      /* best-effort */
-    }
-  }
-  const body = fmMatch !== null ? raw.slice(fmMatch[0].length) : raw;
+  const { fm, body } = parseFrontmatterRecord(raw);
   return { fm, body, raw };
 }
 
@@ -662,7 +638,6 @@ function bindAndCacheMergedEntity(
   mergedBody: string,
 ): void {
   let bindings = readSotBindings(repoRoot);
-  if (Object.keys(bindings.forward).length === 0) bindings = emptySotBindings();
   bindings = bindDec(bindings, mergedId, "ledger");
   try {
     writeSotBindings(repoRoot, bindings);
@@ -673,7 +648,6 @@ function bindAndCacheMergedEntity(
     );
   }
   let cache = readSotCache(repoRoot);
-  if (Object.keys(cache.entries).length === 0) cache = emptySotCache();
   cache = setSotCacheEntry(cache, mergedId, {
     dec_id: mergedId,
     sot_path: "ledger",
@@ -720,19 +694,7 @@ function loadAlignmentPending(
   } catch {
     return null;
   }
-  const fmMatch = raw.match(/^---\n([\s\S]*?)\n---\n?/);
-  let fm: Record<string, unknown> = {};
-  if (fmMatch !== null && fmMatch[1] !== undefined) {
-    try {
-      const parsed = parseYaml(fmMatch[1]);
-      if (typeof parsed === "object" && parsed !== null) {
-        fm = parsed as Record<string, unknown>;
-      }
-    } catch {
-      /* best-effort */
-    }
-  }
-  const body = fmMatch !== null ? raw.slice(fmMatch[0].length) : raw;
+  const { fm, body } = parseFrontmatterRecord(raw);
   // Block prose lives between the first ```/``` fence pair under the
   // "## Block ..." heading. Pick the first fenced block.
   const blockMatch = body.match(/##\s+Block[^\n]*\n+```\n([\s\S]*?)\n```/);
@@ -1021,12 +983,10 @@ function emitFreshDec(repoRoot: string, args: FreshDecArgs): string {
   writeFileSync(abs, `---\n${stringifyYaml(fm).trimEnd()}\n---\n\n${trimmed}\n`, "utf8");
 
   let bindings = readSotBindings(repoRoot);
-  if (Object.keys(bindings.forward).length === 0) bindings = emptySotBindings();
   bindings = bindDec(bindings, id, "ledger");
   writeSotBindings(repoRoot, bindings);
 
   let cache = readSotCache(repoRoot);
-  if (Object.keys(cache.entries).length === 0) cache = emptySotCache();
   cache = setSotCacheEntry(cache, id, {
     dec_id: id,
     sot_path: "ledger",
@@ -1282,11 +1242,9 @@ function mergeConflict(
     mergedFm["decided_at"] = now;
     mergedFm["decided_by"] = "cairn-conflict-merge";
   }
-  mkdirSync(dirname(mergedAbs), { recursive: true });
-  writeFileSync(
+  writeFileSafe(
     mergedAbs,
     `---\n${stringifyYaml(mergedFm).trimEnd()}\n---\n${mergedBody}`,
-    "utf8",
   );
   // Both old entries get superseded_by → new merged id.
   setSupersededBy(repoRoot, conflict.aRef, mergedId, "superseded");

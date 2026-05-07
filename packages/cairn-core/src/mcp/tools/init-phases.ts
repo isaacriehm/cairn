@@ -59,9 +59,7 @@ import type { McpContext } from "../context.js";
 import { mcpError } from "../errors.js";
 import type { ToolDef } from "./types.js";
 
-const phaseIdEnum = z.enum(
-  PHASE_IDS as unknown as [PhaseId, ...PhaseId[]],
-);
+const phaseIdEnum = z.enum(PHASE_IDS);
 
 const phaseStateSchema = z.object({
   repoRoot: z.string().min(1),

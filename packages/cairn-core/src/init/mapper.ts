@@ -148,11 +148,11 @@ export function validateMapperOutput(value: unknown): MapperOutput {
       `mapper output failed shape validation: ${JSON.stringify(value).slice(0, 200)}`,
     );
   }
-  const v = value as unknown as Record<string, unknown>;
-  if (v["scope_index"] === undefined) {
-    v["scope_index"] = { files: {} };
+  const out = value as MapperOutput & { scope_index?: MapperOutput["scope_index"] };
+  if (out.scope_index === undefined) {
+    out.scope_index = { files: {} };
   }
-  return value;
+  return out as MapperOutput;
 }
 
 // ── Orchestrator ────────────────────────────────────────────────────────────
@@ -186,8 +186,8 @@ export async function runMapper(args: RunMapperArgs): Promise<MapperResult> {
   const slices = truncatedAtSliceCap
     ? allSlices.slice(0, MAPPER_SLICE_CAP)
     : allSlices;
-  const decisions = readLedgerSafely<DecisionLedgerEntry>(args.repoRoot, "decisions");
-  const invariants = readLedgerSafely<InvariantLedgerEntry>(args.repoRoot, "invariants");
+  const decisions = readLedgerSafely(args.repoRoot, "decisions");
+  const invariants = readLedgerSafely(args.repoRoot, "invariants");
   if (args.onSlicesDetected !== undefined) args.onSlicesDetected(slices);
 
   if (truncatedAtSliceCap) {
@@ -270,15 +270,20 @@ function readIfExists(path: string): string | null {
   }
 }
 
-function readLedgerSafely<T>(repoRoot: string, kind: "decisions" | "invariants"): T[] {
+function readLedgerSafely(repoRoot: string, kind: "decisions"): DecisionLedgerEntry[];
+function readLedgerSafely(repoRoot: string, kind: "invariants"): InvariantLedgerEntry[];
+function readLedgerSafely(
+  repoRoot: string,
+  kind: "decisions" | "invariants",
+): DecisionLedgerEntry[] | InvariantLedgerEntry[] {
   // Ground state may not exist on first-run adopters. Empty list is fine —
   // mapper just gets no in-scope ledger context to classify against.
   try {
     const groundDir = join(repoRoot, ".cairn", "ground");
     if (!existsSync(groundDir)) return [];
-    return (kind === "decisions"
+    return kind === "decisions"
       ? buildDecisionsLedger({ repoRoot })
-      : buildInvariantsLedger({ repoRoot })) as unknown as T[];
+      : buildInvariantsLedger({ repoRoot });
   } catch (err) {
     log.warn({ err: String(err), kind }, "ledger read failed; using empty list");
     return [];
