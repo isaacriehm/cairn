@@ -67,3 +67,4 @@ export {
   type TraceEvent,
   type TraceSource,
 } from "./trace/index.js";
+export { jaccard, tokenize } from "./text/jaccard.js";

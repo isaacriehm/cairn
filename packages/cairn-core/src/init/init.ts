@@ -50,6 +50,7 @@ import {
   runDocsIngestion,
   type IngestionResult,
 } from "./ingest-docs.js";
+import { buildTopicIndex, type SemanticJudge } from "./topic-index/index.js";
 import {
   runSourceCommentsIngestion,
   type CommentClassification,
@@ -202,6 +203,13 @@ export interface RunInitArgs {
     section: RuleSection,
     source: RuleSourceFile,
   ) => RuleClassification;
+  /**
+   * Test override for the phase 5b topic-index semantic judge. Defaults
+   * to a Haiku-backed judge inside `buildTopicIndex`. Smokes pass a
+   * deterministic stand-in to avoid Haiku calls when fixture sections
+   * trip the Jaccard similarity threshold.
+   */
+  mockTopicIndexJudge?: SemanticJudge;
 }
 
 export interface InitResult {
@@ -509,6 +517,41 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     }
   }
 
+  // ── Phase 5b (topic-index): cross-source dedup pre-pass ────────────
+  // Walks every prose-bearing markdown source the SoT model recognizes
+  // (`docs/*`, `CLAUDE.md`, `AGENTS.md`, `.claude/rules/*`) and writes
+  // `topic-index.yaml` + `anchor-map.yaml`. Phases 6 / 7b / 7c read both
+  // before emitting so a single fact never duplicates across sources.
+  // Skipped under the same condition as Phase 6.
+  const skipTopicIndex =
+    args.skipIngestion === true ||
+    (mode === "auto" &&
+      args.mockSourceCommentClassify === undefined &&
+      args.mockRulesMergeClassify === undefined);
+  if (!skipTopicIndex) {
+    process.stdout.write("\n");
+    process.stdout.write(
+      `  ${visualC.bold("Phase 5b")} — topic-index (cross-source dedup)…\n`,
+    );
+    try {
+      const topicArgs: { repoRoot: string; judge?: SemanticJudge } = { repoRoot };
+      if (args.mockTopicIndexJudge !== undefined) topicArgs.judge = args.mockTopicIndexJudge;
+      const topicResult = await buildTopicIndex(topicArgs);
+      process.stdout.write(
+        `    ${topicResult.blockCount} prose block${topicResult.blockCount === 1 ? "" : "s"} indexed; ` +
+          `${topicResult.verbatimCollisions} verbatim collisions, ` +
+          `${topicResult.semanticCollisions} semantic, ` +
+          `${topicResult.judgeCalls} judge calls\n`,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      warnings.push(`topic-index build failed: ${msg}`);
+      process.stdout.write(
+        `    ${visualC.yellow("⚠")} topic-index build failed — ${msg}\n`,
+      );
+    }
+  }
+
   // ── Phase 6: ingestion sweep + baseline audit ──────────────────────
   // Populates project brain from docs that already exist in the repo, then
   // runs every runnable sensor against the full codebase to surface pre-
@@ -593,8 +636,10 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
       });
       process.stdout.write(
         `    Sources: ${rulesMerge.sources.length}; ` +
-          `net-new: ${rulesMerge.kindCounts["rule-net-new"]}; ` +
-          `conflicts: ${rulesMerge.kindCounts["rule-conflict"]}; ` +
+          `DECs: ${rulesMerge.decsWritten.length}; ` +
+          `INVs: ${rulesMerge.invsWritten.length}; ` +
+          `cites: ${rulesMerge.citesEmitted.length}; ` +
+          `conflicts: ${rulesMerge.conflicts.length}; ` +
           `informational: ${rulesMerge.kindCounts.informational}; ` +
           `operator-keep: ${rulesMerge.kindCounts["operator-keep"]}\n`,
       );
