@@ -2020,7 +2020,7 @@ var require_thread_stream = __commonJS({
     var { version: version2 } = require_package();
     var { EventEmitter: EventEmitter2 } = __require("events");
     var { Worker } = __require("worker_threads");
-    var { join: join107 } = __require("path");
+    var { join: join108 } = __require("path");
     var { pathToFileURL } = __require("url");
     var { wait } = require_wait();
     var {
@@ -2056,7 +2056,7 @@ var require_thread_stream = __commonJS({
     function createWorker(stream, opts) {
       const { filename, workerData } = opts;
       const bundlerOverrides = "__bundlerPathsOverrides" in globalThis ? globalThis.__bundlerPathsOverrides : {};
-      const toExecute = bundlerOverrides["thread-stream-worker"] || join107(__dirname, "lib", "worker.js");
+      const toExecute = bundlerOverrides["thread-stream-worker"] || join108(__dirname, "lib", "worker.js");
       const worker = new Worker(toExecute, {
         ...opts.workerOpts,
         trackUnmanagedFds: false,
@@ -2445,9 +2445,9 @@ var require_transport = __commonJS({
   "../../node_modules/.pnpm/pino@10.3.1/node_modules/pino/lib/transport.js"(exports, module) {
     "use strict";
     var { createRequire } = __require("module");
-    var { existsSync: existsSync107 } = __require("node:fs");
+    var { existsSync: existsSync108 } = __require("node:fs");
     var getCallers = require_caller();
-    var { join: join107, isAbsolute: isAbsolute3, sep } = __require("node:path");
+    var { join: join108, isAbsolute: isAbsolute3, sep } = __require("node:path");
     var { fileURLToPath: fileURLToPath6 } = __require("node:url");
     var sleep3 = require_atomic_sleep();
     var onExit2 = require_on_exit_leak_free();
@@ -2519,7 +2519,7 @@ var require_transport = __commonJS({
           return false;
         }
       }
-      return isAbsolute3(path2) && !existsSync107(path2);
+      return isAbsolute3(path2) && !existsSync108(path2);
     }
     function stripQuotes(value) {
       const first2 = value[0];
@@ -2600,7 +2600,7 @@ var require_transport = __commonJS({
         throw new Error("only one of target or targets can be specified");
       }
       if (targets) {
-        target = bundlerOverrides["pino-worker"] || join107(__dirname, "worker.js");
+        target = bundlerOverrides["pino-worker"] || join108(__dirname, "worker.js");
         options.targets = targets.filter((dest) => dest.target).map((dest) => {
           return {
             ...dest,
@@ -2618,7 +2618,7 @@ var require_transport = __commonJS({
           });
         });
       } else if (pipeline) {
-        target = bundlerOverrides["pino-worker"] || join107(__dirname, "worker.js");
+        target = bundlerOverrides["pino-worker"] || join108(__dirname, "worker.js");
         options.pipelines = [pipeline.map((dest) => {
           return {
             ...dest,
@@ -2641,7 +2641,7 @@ var require_transport = __commonJS({
           return origin;
         }
         if (origin === "pino/file") {
-          return join107(__dirname, "..", "file.js");
+          return join108(__dirname, "..", "file.js");
         }
         let fixTarget2;
         for (const filePath of callers) {
@@ -3621,7 +3621,7 @@ var require_safe_stable_stringify = __commonJS({
               return circularValue;
             }
             let res = "";
-            let join107 = ",";
+            let join108 = ",";
             const originalIndentation = indentation;
             if (Array.isArray(value)) {
               if (value.length === 0) {
@@ -3635,7 +3635,7 @@ var require_safe_stable_stringify = __commonJS({
                 indentation += spacer;
                 res += `
 ${indentation}`;
-                join107 = `,
+                join108 = `,
 ${indentation}`;
               }
               const maximumValuesToStringify = Math.min(value.length, maximumBreadth);
@@ -3643,13 +3643,13 @@ ${indentation}`;
               for (; i2 < maximumValuesToStringify - 1; i2++) {
                 const tmp2 = stringifyFnReplacer(String(i2), value, stack, replacer, spacer, indentation);
                 res += tmp2 !== void 0 ? tmp2 : "null";
-                res += join107;
+                res += join108;
               }
               const tmp = stringifyFnReplacer(String(i2), value, stack, replacer, spacer, indentation);
               res += tmp !== void 0 ? tmp : "null";
               if (value.length - 1 > maximumBreadth) {
                 const removedKeys = value.length - maximumBreadth - 1;
-                res += `${join107}"... ${getItemCount(removedKeys)} not stringified"`;
+                res += `${join108}"... ${getItemCount(removedKeys)} not stringified"`;
               }
               if (spacer !== "") {
                 res += `
@@ -3670,7 +3670,7 @@ ${originalIndentation}`;
             let separator = "";
             if (spacer !== "") {
               indentation += spacer;
-              join107 = `,
+              join108 = `,
 ${indentation}`;
               whitespace = " ";
             }
@@ -3684,13 +3684,13 @@ ${indentation}`;
               const tmp = stringifyFnReplacer(key2, value, stack, replacer, spacer, indentation);
               if (tmp !== void 0) {
                 res += `${separator}${strEscape(key2)}:${whitespace}${tmp}`;
-                separator = join107;
+                separator = join108;
               }
             }
             if (keyLength > maximumBreadth) {
               const removedKeys = keyLength - maximumBreadth;
               res += `${separator}"...":${whitespace}"${getItemCount(removedKeys)} not stringified"`;
-              separator = join107;
+              separator = join108;
             }
             if (spacer !== "" && separator.length > 1) {
               res = `
@@ -3731,7 +3731,7 @@ ${originalIndentation}`;
             }
             const originalIndentation = indentation;
             let res = "";
-            let join107 = ",";
+            let join108 = ",";
             if (Array.isArray(value)) {
               if (value.length === 0) {
                 return "[]";
@@ -3744,7 +3744,7 @@ ${originalIndentation}`;
                 indentation += spacer;
                 res += `
 ${indentation}`;
-                join107 = `,
+                join108 = `,
 ${indentation}`;
               }
               const maximumValuesToStringify = Math.min(value.length, maximumBreadth);
@@ -3752,13 +3752,13 @@ ${indentation}`;
               for (; i2 < maximumValuesToStringify - 1; i2++) {
                 const tmp2 = stringifyArrayReplacer(String(i2), value[i2], stack, replacer, spacer, indentation);
                 res += tmp2 !== void 0 ? tmp2 : "null";
-                res += join107;
+                res += join108;
               }
               const tmp = stringifyArrayReplacer(String(i2), value[i2], stack, replacer, spacer, indentation);
               res += tmp !== void 0 ? tmp : "null";
               if (value.length - 1 > maximumBreadth) {
                 const removedKeys = value.length - maximumBreadth - 1;
-                res += `${join107}"... ${getItemCount(removedKeys)} not stringified"`;
+                res += `${join108}"... ${getItemCount(removedKeys)} not stringified"`;
               }
               if (spacer !== "") {
                 res += `
@@ -3771,7 +3771,7 @@ ${originalIndentation}`;
             let whitespace = "";
             if (spacer !== "") {
               indentation += spacer;
-              join107 = `,
+              join108 = `,
 ${indentation}`;
               whitespace = " ";
             }
@@ -3780,7 +3780,7 @@ ${indentation}`;
               const tmp = stringifyArrayReplacer(key2, value[key2], stack, replacer, spacer, indentation);
               if (tmp !== void 0) {
                 res += `${separator}${strEscape(key2)}:${whitespace}${tmp}`;
-                separator = join107;
+                separator = join108;
               }
             }
             if (spacer !== "" && separator.length > 1) {
@@ -3838,20 +3838,20 @@ ${originalIndentation}`;
               indentation += spacer;
               let res2 = `
 ${indentation}`;
-              const join108 = `,
+              const join109 = `,
 ${indentation}`;
               const maximumValuesToStringify = Math.min(value.length, maximumBreadth);
               let i2 = 0;
               for (; i2 < maximumValuesToStringify - 1; i2++) {
                 const tmp2 = stringifyIndent(String(i2), value[i2], stack, spacer, indentation);
                 res2 += tmp2 !== void 0 ? tmp2 : "null";
-                res2 += join108;
+                res2 += join109;
               }
               const tmp = stringifyIndent(String(i2), value[i2], stack, spacer, indentation);
               res2 += tmp !== void 0 ? tmp : "null";
               if (value.length - 1 > maximumBreadth) {
                 const removedKeys = value.length - maximumBreadth - 1;
-                res2 += `${join108}"... ${getItemCount(removedKeys)} not stringified"`;
+                res2 += `${join109}"... ${getItemCount(removedKeys)} not stringified"`;
               }
               res2 += `
 ${originalIndentation}`;
@@ -3867,16 +3867,16 @@ ${originalIndentation}`;
               return '"[Object]"';
             }
             indentation += spacer;
-            const join107 = `,
+            const join108 = `,
 ${indentation}`;
             let res = "";
             let separator = "";
             let maximumPropertiesToStringify = Math.min(keyLength, maximumBreadth);
             if (isTypedArrayWithEntries(value)) {
-              res += stringifyTypedArray(value, join107, maximumBreadth);
+              res += stringifyTypedArray(value, join108, maximumBreadth);
               keys = keys.slice(value.length);
               maximumPropertiesToStringify -= value.length;
-              separator = join107;
+              separator = join108;
             }
             if (deterministic) {
               keys = sort(keys, comparator);
@@ -3887,13 +3887,13 @@ ${indentation}`;
               const tmp = stringifyIndent(key2, value[key2], stack, spacer, indentation);
               if (tmp !== void 0) {
                 res += `${separator}${strEscape(key2)}: ${tmp}`;
-                separator = join107;
+                separator = join108;
               }
             }
             if (keyLength > maximumBreadth) {
               const removedKeys = keyLength - maximumBreadth;
               res += `${separator}"...": "${getItemCount(removedKeys)} not stringified"`;
-              separator = join107;
+              separator = join108;
             }
             if (separator !== "") {
               res = `
@@ -16575,7 +16575,7 @@ var require_compile = __commonJS({
       const schOrFunc = root2.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve29.call(this, root2, ref);
+      let _sch = resolve30.call(this, root2, ref);
       if (_sch === void 0) {
         const schema = (_a4 = root2.localRefs) === null || _a4 === void 0 ? void 0 : _a4[ref];
         const { schemaId } = this.opts;
@@ -16602,7 +16602,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve29(root2, ref) {
+    function resolve30(root2, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -17224,55 +17224,55 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve29(baseURI, relativeURI, options) {
+    function resolve30(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse3(baseURI, schemelessOptions), parse3(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative18, options, skipNormalization) {
+    function resolveComponent(base, relative19, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse3(serialize(base, options), options);
-        relative18 = parse3(serialize(relative18, options), options);
+        relative19 = parse3(serialize(relative19, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative18.scheme) {
-        target.scheme = relative18.scheme;
-        target.userinfo = relative18.userinfo;
-        target.host = relative18.host;
-        target.port = relative18.port;
-        target.path = removeDotSegments(relative18.path || "");
-        target.query = relative18.query;
+      if (!options.tolerant && relative19.scheme) {
+        target.scheme = relative19.scheme;
+        target.userinfo = relative19.userinfo;
+        target.host = relative19.host;
+        target.port = relative19.port;
+        target.path = removeDotSegments(relative19.path || "");
+        target.query = relative19.query;
       } else {
-        if (relative18.userinfo !== void 0 || relative18.host !== void 0 || relative18.port !== void 0) {
-          target.userinfo = relative18.userinfo;
-          target.host = relative18.host;
-          target.port = relative18.port;
-          target.path = removeDotSegments(relative18.path || "");
-          target.query = relative18.query;
+        if (relative19.userinfo !== void 0 || relative19.host !== void 0 || relative19.port !== void 0) {
+          target.userinfo = relative19.userinfo;
+          target.host = relative19.host;
+          target.port = relative19.port;
+          target.path = removeDotSegments(relative19.path || "");
+          target.query = relative19.query;
         } else {
-          if (!relative18.path) {
+          if (!relative19.path) {
             target.path = base.path;
-            if (relative18.query !== void 0) {
-              target.query = relative18.query;
+            if (relative19.query !== void 0) {
+              target.query = relative19.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative18.path[0] === "/") {
-              target.path = removeDotSegments(relative18.path);
+            if (relative19.path[0] === "/") {
+              target.path = removeDotSegments(relative19.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative18.path;
+                target.path = "/" + relative19.path;
               } else if (!base.path) {
-                target.path = relative18.path;
+                target.path = relative19.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative18.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative19.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative18.query;
+            target.query = relative19.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -17280,7 +17280,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative18.fragment;
+      target.fragment = relative19.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -17449,7 +17449,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize: normalize3,
-      resolve: resolve29,
+      resolve: resolve30,
       resolveComponent,
       equal,
       serialize,
@@ -20570,7 +20570,7 @@ function isProcessAlive(pid) {
   }
 }
 function sleep(ms) {
-  return new Promise((resolve29) => setTimeout(resolve29, ms));
+  return new Promise((resolve30) => setTimeout(resolve30, ms));
 }
 
 // ../cairn-core/dist/ground/glob.js
@@ -35770,9 +35770,9 @@ function applyStripReplace(args) {
       itemsSkipped += skipped2.length;
       continue;
     }
-    const isDirty2 = dirtyMap.get(file2) === true;
+    const isDirty3 = dirtyMap.get(file2) === true;
     let stashed = false;
-    if (isDirty2) {
+    if (isDirty3) {
       const decision = args.dirtyDecisions?.[file2];
       if (decision === void 0 || decision === "skip") {
         outcomes.push({
@@ -37084,19 +37084,19 @@ function sendJson(res, status, body) {
   res.end(JSON.stringify(body));
 }
 async function readJsonBody(req) {
-  return new Promise((resolve29, reject) => {
+  return new Promise((resolve30, reject) => {
     const chunks = [];
     req.on("data", (c4) => chunks.push(c4));
     req.on("error", reject);
     req.on("end", () => {
       const raw = Buffer.concat(chunks).toString("utf8");
       if (raw.length === 0)
-        return resolve29({});
+        return resolve30({});
       try {
         const parsed = JSON.parse(raw);
-        resolve29(typeof parsed === "object" && parsed !== null ? parsed : {});
+        resolve30(typeof parsed === "object" && parsed !== null ? parsed : {});
       } catch {
-        resolve29({});
+        resolve30({});
       }
     });
   });
@@ -37316,8 +37316,8 @@ async function startAttentionServer(opts) {
     lastActivity = Date.now();
   };
   let resolveDone;
-  const donePromise = new Promise((resolve29) => {
-    resolveDone = resolve29;
+  const donePromise = new Promise((resolve30) => {
+    resolveDone = resolve30;
   });
   let server;
   let idleTimer;
@@ -37356,11 +37356,11 @@ async function startAttentionServer(opts) {
       onDone: () => beginShutdown("done")
     });
   });
-  await new Promise((resolve29, reject) => {
+  await new Promise((resolve30, reject) => {
     server.once("error", reject);
     server.listen(opts.port, "127.0.0.1", () => {
       server.off("error", reject);
-      resolve29();
+      resolve30();
     });
   });
   const addr = server.address();
@@ -37650,7 +37650,7 @@ async function runClaude(opts) {
     }
   });
   const subprocessCwd = opts.isolateAmbientContext === true ? tmpdir() : opts.cwd ?? process.cwd();
-  return new Promise((resolve29, reject) => {
+  return new Promise((resolve30, reject) => {
     const child = spawn("claude", args, {
       cwd: subprocessCwd,
       stdio: ["pipe", "pipe", "pipe"],
@@ -37746,13 +37746,13 @@ async function runClaude(opts) {
         }
       }
       const usageRaw = envelope["usage"];
-      const usage8 = typeof usageRaw === "object" && usageRaw !== null ? usageRaw : void 0;
+      const usage9 = typeof usageRaw === "object" && usageRaw !== null ? usageRaw : void 0;
       const durationMs = Date.now() - startedAt;
       log8.info({
         model,
         durationMs,
-        input_tokens: usage8?.["input_tokens"],
-        output_tokens: usage8?.["output_tokens"]
+        input_tokens: usage9?.["input_tokens"],
+        output_tokens: usage9?.["output_tokens"]
       }, "claude call complete");
       appendTrace({
         ts: (/* @__PURE__ */ new Date()).toISOString(),
@@ -37766,8 +37766,8 @@ async function runClaude(opts) {
           tier: opts.tier,
           model,
           purpose: opts.purpose ?? null,
-          input_tokens: usage8?.["input_tokens"] ?? null,
-          output_tokens: usage8?.["output_tokens"] ?? null,
+          input_tokens: usage9?.["input_tokens"] ?? null,
+          output_tokens: usage9?.["output_tokens"] ?? null,
           response_chars: text.length,
           response_preview: preview(text),
           parsed_present: parsed !== void 0
@@ -37780,12 +37780,12 @@ async function runClaude(opts) {
         tier: opts.tier,
         model,
         envelope,
-        ...usage8 !== void 0 ? { usage: usage8 } : {}
+        ...usage9 !== void 0 ? { usage: usage9 } : {}
       };
       if (opts.cacheable === true && opts.tier === "haiku" && opts.repoRoot !== void 0) {
         cacheStore(opts.repoRoot, opts, result);
       }
-      resolve29(result);
+      resolve30(result);
     });
     child.stdin.write(opts.prompt);
     child.stdin.end();
@@ -47054,9 +47054,9 @@ async function classifyOneBatch(batch, repoRoot) {
     isolateAmbientContext: true,
     ...repoRoot !== void 0 ? { repoRoot, cacheable: true } : {}
   });
-  const usage8 = result.usage;
-  const inputTokens = typeof usage8?.["input_tokens"] === "number" ? usage8["input_tokens"] : 0;
-  const outputTokens = typeof usage8?.["output_tokens"] === "number" ? usage8["output_tokens"] : 0;
+  const usage9 = result.usage;
+  const inputTokens = typeof usage9?.["input_tokens"] === "number" ? usage9["input_tokens"] : 0;
+  const outputTokens = typeof usage9?.["output_tokens"] === "number" ? usage9["output_tokens"] : 0;
   const parsed = result.parsed;
   if (typeof parsed !== "object" || parsed === null) {
     throw new Error("haiku batch returned non-object payload");
@@ -47295,6 +47295,21 @@ function renderEntity(args) {
 // ../cairn-core/dist/init/source-comments/ingest.js
 var log24 = logger("init.source-comments.ingest");
 var CAPTURE_SOURCE = "init-source-comments";
+var PHASE_7B_DECISION_REGEX = /(MUST|MUST NOT|SHALL|NEVER|ALWAYS|REQUIRED|FORBIDDEN|INVARIANT|@invariant|@rule|@decision|@cairn:decision|@cairn:rule)/i;
+var PHASE_7B_MARKER_REGEX = /@cairn:(decision|rule)/i;
+function dispositionForBlock(block) {
+  if (block.kind === "license")
+    return { kind: "license" };
+  const m = block.raw.match(PHASE_7B_MARKER_REGEX);
+  if (m !== null) {
+    const kw = (m[1] ?? "").toLowerCase();
+    return { kind: "marker", markerKind: kw === "rule" ? "rule" : "decision" };
+  }
+  if (PHASE_7B_DECISION_REGEX.test(block.prose)) {
+    return { kind: "classify" };
+  }
+  return { kind: "candidate-only" };
+}
 async function runSourceCommentsIngestion(args) {
   const repoRoot = args.repoRoot;
   const nowIso = args.nowIso ?? (/* @__PURE__ */ new Date()).toISOString();
@@ -47306,13 +47321,46 @@ async function runSourceCommentsIngestion(args) {
   if (args.walkOptions?.onlyFiles !== void 0) {
     walkOpts.onlyFiles = args.walkOptions.onlyFiles;
   }
-  const walk3 = walkSourceComments(walkOpts);
+  const walk4 = walkSourceComments(walkOpts);
+  const dispositions = walk4.blocks.map(dispositionForBlock);
+  const classifyTargets = [];
+  const classifyTargetIndices = [];
+  for (let i2 = 0; i2 < walk4.blocks.length; i2 += 1) {
+    if (dispositions[i2]?.kind === "classify") {
+      classifyTargets.push(walk4.blocks[i2]);
+      classifyTargetIndices.push(i2);
+    }
+  }
   const classifyResult = await classifyBlocks({
-    blocks: walk3.blocks,
+    blocks: classifyTargets,
     repoRoot,
     ...args.mockClassify !== void 0 ? { mockClassify: args.mockClassify } : {},
     ...args.onBatchProgress !== void 0 ? { onBatchProgress: args.onBatchProgress } : {}
   });
+  const classifications = new Array(walk4.blocks.length);
+  for (let i2 = 0; i2 < walk4.blocks.length; i2 += 1) {
+    const block = walk4.blocks[i2];
+    classifications[i2] = { blockId: block.id, kind: "other", failed: false };
+  }
+  for (let j2 = 0; j2 < classifyTargets.length; j2 += 1) {
+    const blockIdx = classifyTargetIndices[j2];
+    const real = classifyResult.classifications[j2];
+    if (real !== void 0)
+      classifications[blockIdx] = real;
+  }
+  for (let i2 = 0; i2 < walk4.blocks.length; i2 += 1) {
+    const block = walk4.blocks[i2];
+    const d = dispositions[i2];
+    if (d.kind === "marker") {
+      classifications[i2] = {
+        blockId: block.id,
+        kind: d.markerKind === "rule" ? "constraint" : "rationale",
+        failed: false
+      };
+    } else if (d.kind === "license") {
+      classifications[i2] = { blockId: block.id, kind: "license", failed: false };
+    }
+  }
   const kindCounts = {
     rationale: 0,
     constraint: 0,
@@ -47320,7 +47368,7 @@ async function runSourceCommentsIngestion(args) {
     license: 0,
     other: 0
   };
-  for (const c4 of classifyResult.classifications) {
+  for (const c4 of classifications) {
     if (c4 === void 0)
       continue;
     kindCounts[c4.kind] = (kindCounts[c4.kind] ?? 0) + 1;
@@ -47334,11 +47382,34 @@ async function runSourceCommentsIngestion(args) {
   const resolutionByBlockId = /* @__PURE__ */ new Map();
   const skipped = [];
   const emitKindBySlug = /* @__PURE__ */ new Map();
-  for (let i2 = 0; i2 < walk3.blocks.length; i2 += 1) {
-    const block = walk3.blocks[i2];
-    const cls = classifyResult.classifications[i2];
-    if (block === void 0 || cls === void 0)
+  for (let i2 = 0; i2 < walk4.blocks.length; i2 += 1) {
+    const block = walk4.blocks[i2];
+    const cls = classifications[i2];
+    const disposition = dispositions[i2];
+    if (block === void 0 || cls === void 0 || disposition === void 0)
       continue;
+    if (disposition.kind === "candidate-only") {
+      const slug2 = topicSlug(block.prose);
+      if (topicIndex.topics[slug2] === void 0) {
+        const lineRange2 = [block.startLine, block.endLine];
+        topicIndex = setTopic(topicIndex, slug2, {
+          slug: slug2,
+          sot_source: block.file,
+          candidates: [
+            { file: block.file, kind: "source-comment", line_range: lineRange2 }
+          ],
+          created_at: nowIso
+        });
+        anchorMap = setAnchor(anchorMap, slug2, {
+          file: block.file,
+          content_hash: bodyContentHash(block.prose),
+          line_range: lineRange2,
+          kind: "source-comment"
+        });
+      }
+      skipped.push({ blockId: block.id, reason: "phase-7b regex pre-filter: no imperative keyword" });
+      continue;
+    }
     if (cls.kind !== "rationale" && cls.kind !== "constraint") {
       skipped.push({ blockId: block.id, reason: `kind=${cls.kind}` });
       continue;
@@ -47446,8 +47517,8 @@ async function runSourceCommentsIngestion(args) {
   }
   const citesEmitted = [];
   const stripItems = [];
-  for (let i2 = 0; i2 < walk3.blocks.length; i2 += 1) {
-    const block = walk3.blocks[i2];
+  for (let i2 = 0; i2 < walk4.blocks.length; i2 += 1) {
+    const block = walk4.blocks[i2];
     if (block === void 0)
       continue;
     const resolution = resolutionByBlockId.get(block.id);
@@ -47547,12 +47618,12 @@ async function runSourceCommentsIngestion(args) {
   if (args.dryRun !== true) {
     writeYaml(auditPath, {
       run_at: nowIso,
-      files_scanned: walk3.files.length,
-      files_available: walk3.filesAvailable,
-      ...walk3.truncatedAtFileCap ? { truncated_at_file_cap: true } : {},
-      blocks_detected: walk3.blocks.length,
-      bytes_scanned: walk3.bytesScanned,
-      file_count_by_lang: walk3.fileCountByLang,
+      files_scanned: walk4.files.length,
+      files_available: walk4.filesAvailable,
+      ...walk4.truncatedAtFileCap ? { truncated_at_file_cap: true } : {},
+      blocks_detected: walk4.blocks.length,
+      bytes_scanned: walk4.bytesScanned,
+      file_count_by_lang: walk4.fileCountByLang,
       kind_counts: kindCounts,
       batches_run: classifyResult.batchesRun,
       batches_failed: classifyResult.batchesFailed,
@@ -47561,7 +47632,7 @@ async function runSourceCommentsIngestion(args) {
       decs_written: decsWritten.length,
       invs_written: invsWritten.length,
       cites_emitted: citesEmitted.length,
-      blocks: walk3.blocks.map((b2, idx) => ({
+      blocks: walk4.blocks.map((b2, idx) => ({
         block_id: b2.id,
         file: b2.file,
         lang: b2.lang,
@@ -47574,14 +47645,15 @@ async function runSourceCommentsIngestion(args) {
         start_offset: b2.startOffset,
         end_offset: b2.endOffset,
         raw: b2.raw,
-        classification: classifyResult.classifications[idx] ?? null,
+        disposition: dispositions[idx]?.kind ?? null,
+        classification: classifications[idx] ?? null,
         resolution: serializeResolution(resolutionByBlockId.get(b2.id))
       }))
     });
   }
   log24.info({
-    files: walk3.files.length,
-    blocks: walk3.blocks.length,
+    files: walk4.files.length,
+    blocks: walk4.blocks.length,
     kindCounts,
     decs: decsWritten.length,
     invs: invsWritten.length,
@@ -47592,8 +47664,8 @@ async function runSourceCommentsIngestion(args) {
     outputTokens: classifyResult.outputTokens
   }, "source-comments ingestion complete");
   return {
-    walk: walk3,
-    classifications: classifyResult.classifications,
+    walk: walk4,
+    classifications,
     decsWritten,
     invsWritten,
     citesEmitted,
@@ -47746,11 +47818,11 @@ function isMarkdownPath(filePath) {
   return filePath.endsWith(".md") || filePath.endsWith(".mdx");
 }
 function extractBlocks(repoRoot, filePath) {
-  const walk3 = walkSourceComments({
+  const walk4 = walkSourceComments({
     repoRoot,
     onlyFiles: [filePath]
   });
-  return walk3.blocks.filter((b2) => b2.kind !== "license");
+  return walk4.blocks.filter((b2) => b2.kind !== "license");
 }
 function topKCandidates(blockTokens, entries2, threshold, topK) {
   const scored = [];
@@ -61129,13 +61201,13 @@ var PromisePolyfill = class extends Promise {
   // Available starting from Node 22
   // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/withResolvers
   static withResolver() {
-    let resolve29;
+    let resolve30;
     let reject;
     const promise2 = new Promise((res, rej) => {
-      resolve29 = res;
+      resolve30 = res;
       reject = rej;
     });
-    return { promise: promise2, resolve: resolve29, reject };
+    return { promise: promise2, resolve: resolve30, reject };
   }
 };
 
@@ -61172,7 +61244,7 @@ function createPrompt(view) {
     });
     output.mute();
     const screen = new ScreenManager(rl);
-    const { promise: promise2, resolve: resolve29, reject } = PromisePolyfill.withResolver();
+    const { promise: promise2, resolve: resolve30, reject } = PromisePolyfill.withResolver();
     const cancel = () => reject(new CancelPromptError());
     if (signal) {
       const abort = () => reject(new AbortPromptError({ cause: signal.reason }));
@@ -61203,7 +61275,7 @@ function createPrompt(view) {
           try {
             const nextView = view(config2, (value) => {
               if (effectsSettled) {
-                resolve29(value);
+                resolve30(value);
               } else {
                 pendingDone = { value };
               }
@@ -61226,7 +61298,7 @@ function createPrompt(view) {
           if (pendingDone !== null) {
             const { value } = pendingDone;
             pendingDone = null;
-            resolve29(value);
+            resolve30(value);
           }
         });
       };
@@ -71674,7 +71746,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve29) => setTimeout(resolve29, pollInterval));
+        await new Promise((resolve30) => setTimeout(resolve30, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error52) {
@@ -71691,7 +71763,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve29, reject) => {
+    return new Promise((resolve30, reject) => {
       const earlyReject = (error52) => {
         reject(error52);
       };
@@ -71769,7 +71841,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject(parseResult.error);
           } else {
-            resolve29(parseResult.data);
+            resolve30(parseResult.data);
           }
         } catch (error52) {
           reject(error52);
@@ -72030,12 +72102,12 @@ var Protocol = class {
       }
     } catch {
     }
-    return new Promise((resolve29, reject) => {
+    return new Promise((resolve30, reject) => {
       if (signal.aborted) {
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve29, interval);
+      const timeoutId = setTimeout(resolve30, interval);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -73135,7 +73207,7 @@ var McpServer = class {
     let task = createTaskResult.task;
     const pollInterval = task.pollInterval ?? 5e3;
     while (task.status !== "completed" && task.status !== "failed" && task.status !== "cancelled") {
-      await new Promise((resolve29) => setTimeout(resolve29, pollInterval));
+      await new Promise((resolve30) => setTimeout(resolve30, pollInterval));
       const updatedTask = await extra.taskStore.getTask(taskId);
       if (!updatedTask) {
         throw new McpError(ErrorCode.InternalError, `Task ${taskId} not found during polling`);
@@ -73784,12 +73856,12 @@ var StdioServerTransport = class {
     this.onclose?.();
   }
   send(message) {
-    return new Promise((resolve29) => {
+    return new Promise((resolve30) => {
       const json2 = serializeMessage(message);
       if (this._stdout.write(json2)) {
-        resolve29();
+        resolve30();
       } else {
-        this._stdout.once("drain", resolve29);
+        this._stdout.once("drain", resolve30);
       }
     });
   }
@@ -74276,7 +74348,7 @@ async function handler4(ctx, input) {
   if (live !== void 0) {
     const result = await Promise.race([
       live.done.then((s) => ({ kind: "done", state: s })),
-      new Promise((resolve29) => setTimeout(() => resolve29({ kind: "timeout" }), timeoutMs))
+      new Promise((resolve30) => setTimeout(() => resolve30({ kind: "timeout" }), timeoutMs))
     ]);
     if (result.kind === "done") {
       return { ok: true, ...result.state };
@@ -74306,7 +74378,7 @@ async function handler4(ctx, input) {
   };
 }
 function sleep2(ms) {
-  return new Promise((resolve29) => setTimeout(resolve29, ms));
+  return new Promise((resolve30) => setTimeout(resolve30, ms));
 }
 var attentionWaitTool = {
   name: "cairn_attention_wait",
@@ -75402,17 +75474,17 @@ async function runQueryHistory(args) {
     walkOpts.since = args.since;
   if (args.until !== void 0)
     walkOpts.until = args.until;
-  const walk3 = walkArchive(walkOpts);
-  if (walk3.files.length === 0) {
+  const walk4 = walkArchive(walkOpts);
+  if (walk4.files.length === 0) {
     return {
       historical_only: true,
       claims: [],
-      summary_caveat: walk3.bucketsScanned.length === 0 ? "No .archive/ directory found at this repo root." : `No files matched the walk filters (path_hint, since, until) across ${walk3.bucketsScanned.length} archive bucket${walk3.bucketsScanned.length === 1 ? "" : "s"}.`,
+      summary_caveat: walk4.bucketsScanned.length === 0 ? "No .archive/ directory found at this repo root." : `No files matched the walk filters (path_hint, since, until) across ${walk4.bucketsScanned.length} archive bucket${walk4.bucketsScanned.length === 1 ? "" : "s"}.`,
       summarizer_model: "(skipped \u2014 no matches)",
       summarizer_prompt_id: CAIRN_HISTORY_SUMMARIZE_PROMPT_ID,
       walked_files: 0,
-      walked_buckets: walk3.bucketsScanned,
-      truncated_walk: walk3.capHit
+      walked_buckets: walk4.bucketsScanned,
+      truncated_walk: walk4.capHit
     };
   }
   const decisions = loadAcceptedDecisions(args.repoRoot).map((d) => {
@@ -75427,14 +75499,14 @@ async function runQueryHistory(args) {
   log47.info({
     repo: args.repoRoot,
     scope_preview: args.scope.slice(0, 80),
-    files: walk3.files.length,
-    buckets: walk3.bucketsScanned.length,
-    total_bytes: walk3.totalBytes,
+    files: walk4.files.length,
+    buckets: walk4.bucketsScanned.length,
+    total_bytes: walk4.totalBytes,
     tier
   }, "history summarizer dispatch");
   const summarizerInput = {
     scope: args.scope,
-    files: walk3.files,
+    files: walk4.files,
     acceptedDecisions: decisions,
     tier,
     timeoutMs
@@ -75465,7 +75537,7 @@ async function runQueryHistory(args) {
   const caveatBits = [];
   if (summary.summary_caveat.trim().length > 0)
     caveatBits.push(summary.summary_caveat.trim());
-  if (walk3.capHit) {
+  if (walk4.capHit) {
     caveatBits.push(`Walk truncated \u2014 additional matching files were not summarized; refine path_hint / since / until and re-query.`);
   }
   if (summary.no_relevant_history && claims.length === 0) {
@@ -75478,9 +75550,9 @@ async function runQueryHistory(args) {
     summary_caveat: caveatBits.join(" "),
     summarizer_model: summary.model,
     summarizer_prompt_id: CAIRN_HISTORY_SUMMARIZE_PROMPT_ID,
-    walked_files: walk3.files.length,
-    walked_buckets: walk3.bucketsScanned,
-    truncated_walk: walk3.capHit
+    walked_files: walk4.files.length,
+    walked_buckets: walk4.bucketsScanned,
+    truncated_walk: walk4.capHit
   };
 }
 async function runHistorySummarizer(input) {
@@ -79967,10 +80039,213 @@ async function sensorRunCli(argv) {
   process.exit(0);
 }
 
-// ../cairn/dist/cli/trace.js
-import { existsSync as existsSync106, readFileSync as readFileSync93, readdirSync as readdirSync45, statSync as statSync29 } from "node:fs";
-import { join as join106, resolve as resolve28 } from "node:path";
+// ../cairn/dist/cli/tag.js
+import { execFileSync as execFileSync12 } from "node:child_process";
+import { existsSync as existsSync106, readFileSync as readFileSync93, readdirSync as readdirSync45, statSync as statSync29, writeFileSync as writeFileSync45 } from "node:fs";
+import { extname as extname3, join as join106, relative as relative18, resolve as resolve28 } from "node:path";
+var IMPACT_RATIO_LIMIT = 0.3;
+var MARKER_LOOKAHEAD_LINES2 = 3;
+var MARKER_TEXT = "<!-- cairn:decision -->";
+var MARKDOWN_EXTENSIONS = /* @__PURE__ */ new Set([".md", ".mdx", ".markdown"]);
+function usage8() {
+  process.stderr.write("Usage: cairn tag --insert-marker <pattern> <file-or-dir> [--force] [--force-pattern]\n                  [--repo <path>]\n\n  --insert-marker  regex pattern (per-line); marker inserted after each match\n  <file-or-dir>    target file or directory (markdown only)\n  --force          allow run even if targets have uncommitted changes\n  --force-pattern  allow files where pattern matches >30% of lines\n  --repo           repo root for git status (default: cwd)\n");
+  process.exit(2);
+}
 function parseArgs5(argv) {
+  let insertMarker;
+  let target;
+  let repoRoot = process.cwd();
+  let force = false;
+  let forcePattern = false;
+  for (let i2 = 0; i2 < argv.length; i2 += 1) {
+    const arg = argv[i2];
+    if (arg === "--insert-marker") {
+      const v = argv[i2 + 1];
+      if (v === void 0) {
+        process.stderr.write("--insert-marker requires a pattern argument\n");
+        process.exit(2);
+      }
+      insertMarker = v;
+      i2 += 1;
+    } else if (arg === "--repo") {
+      const v = argv[i2 + 1];
+      if (v === void 0) {
+        process.stderr.write("--repo requires a path argument\n");
+        process.exit(2);
+      }
+      repoRoot = resolve28(v);
+      i2 += 1;
+    } else if (arg === "--force") {
+      force = true;
+    } else if (arg === "--force-pattern") {
+      forcePattern = true;
+    } else if (arg === "-h" || arg === "--help") {
+      usage8();
+    } else if (arg !== void 0 && !arg.startsWith("--")) {
+      if (target === void 0)
+        target = arg;
+      else {
+        process.stderr.write(`unexpected positional argument: ${arg}
+`);
+        process.exit(2);
+      }
+    } else {
+      process.stderr.write(`unknown flag: ${String(arg)}
+`);
+      process.exit(2);
+    }
+  }
+  if (insertMarker === void 0 || target === void 0)
+    usage8();
+  return { insertMarker, target, force, forcePattern, repoRoot };
+}
+function resolveTargets(target, repoRoot) {
+  const abs = resolve28(repoRoot, target);
+  if (!existsSync106(abs)) {
+    process.stderr.write(`target does not exist: ${target}
+`);
+    process.exit(2);
+  }
+  const stat = statSync29(abs);
+  if (stat.isFile())
+    return [abs];
+  if (!stat.isDirectory()) {
+    process.stderr.write(`target is not a file or directory: ${target}
+`);
+    process.exit(2);
+  }
+  const out = [];
+  walk3(abs, out);
+  return out;
+}
+function walk3(dir, out) {
+  for (const entry of readdirSync45(dir, { withFileTypes: true })) {
+    if (entry.name === ".git" || entry.name === "node_modules" || entry.name === ".cairn") {
+      continue;
+    }
+    const p2 = join106(dir, entry.name);
+    if (entry.isDirectory())
+      walk3(p2, out);
+    else if (entry.isFile() && MARKDOWN_EXTENSIONS.has(extname3(entry.name).toLowerCase())) {
+      out.push(p2);
+    }
+  }
+}
+function isDirty2(filePath, repoRoot) {
+  try {
+    const rel = relative18(repoRoot, filePath);
+    const out = execFileSync12("git", ["status", "--porcelain", "--", rel], {
+      cwd: repoRoot,
+      encoding: "utf8"
+    });
+    return out.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+function runTag(args) {
+  const stdout2 = args.stdout ?? ((s) => void process.stdout.write(s));
+  const stderr = args.stderr ?? ((s) => void process.stderr.write(s));
+  const dirtyFiles = args.targets.filter((p2) => isDirty2(p2, args.repoRoot));
+  if (dirtyFiles.length > 0 && !args.force) {
+    stderr(`Error: ${dirtyFiles.length} file${dirtyFiles.length === 1 ? "" : "s"} have uncommitted changes:
+`);
+    for (const p2 of dirtyFiles.slice(0, 5)) {
+      stderr(`  - ${relative18(args.repoRoot, p2)}
+`);
+    }
+    if (dirtyFiles.length > 5)
+      stderr(`  - \u2026and ${dirtyFiles.length - 5} more
+`);
+    stderr(`Commit/stash first or pass --force.
+`);
+    return {
+      exitCode: 1,
+      filesProcessed: 0,
+      filesSkippedHighImpact: 0,
+      totalInserted: 0
+    };
+  }
+  const pattern = new RegExp(args.insertMarker);
+  let totalInserted = 0;
+  let filesProcessed = 0;
+  let filesSkippedHighImpact = 0;
+  for (const file2 of args.targets) {
+    let content;
+    try {
+      content = readFileSync93(file2, "utf8");
+    } catch (err) {
+      stderr(`WARN: could not read ${relative18(args.repoRoot, file2)}: ${err.message}
+`);
+      continue;
+    }
+    const lines = content.split("\n");
+    const matchCount = lines.reduce((n, l) => pattern.test(l) ? n + 1 : n, 0);
+    if (matchCount === 0) {
+      filesProcessed += 1;
+      continue;
+    }
+    const ratio = matchCount / Math.max(1, lines.length);
+    if (ratio > IMPACT_RATIO_LIMIT && !args.forcePattern) {
+      stderr(`WARN: pattern matched ${(ratio * 100).toFixed(0)}% of lines in ${relative18(args.repoRoot, file2)}. Skipping. Use --force-pattern to override.
+`);
+      filesSkippedHighImpact += 1;
+      continue;
+    }
+    const out = [];
+    let insertedHere = 0;
+    for (let i2 = 0; i2 < lines.length; i2 += 1) {
+      const line = lines[i2] ?? "";
+      out.push(line);
+      if (pattern.test(line)) {
+        const window2 = lines.slice(i2 + 1, i2 + 1 + MARKER_LOOKAHEAD_LINES2).join("\n");
+        if (!window2.includes(MARKER_TEXT)) {
+          out.push(MARKER_TEXT);
+          insertedHere += 1;
+        }
+      }
+    }
+    if (insertedHere > 0) {
+      writeFileSync45(file2, out.join("\n"), "utf8");
+      totalInserted += insertedHere;
+    }
+    filesProcessed += 1;
+  }
+  stdout2(`Inserted ${totalInserted} marker${totalInserted === 1 ? "" : "s"} across ${filesProcessed} file${filesProcessed === 1 ? "" : "s"}.
+`);
+  if (filesSkippedHighImpact > 0) {
+    stdout2(`Skipped ${filesSkippedHighImpact} file${filesSkippedHighImpact === 1 ? "" : "s"} (impact circuit breaker).
+`);
+  }
+  return {
+    exitCode: 0,
+    filesProcessed,
+    filesSkippedHighImpact,
+    totalInserted
+  };
+}
+async function tagCli(argv) {
+  const parsed = parseArgs5(argv);
+  const targets = resolveTargets(parsed.target, parsed.repoRoot);
+  if (targets.length === 0) {
+    process.stderr.write(`No markdown targets resolved under: ${parsed.target}
+`);
+    process.exit(2);
+  }
+  const result = runTag({
+    insertMarker: parsed.insertMarker,
+    targets,
+    repoRoot: parsed.repoRoot,
+    force: parsed.force,
+    forcePattern: parsed.forcePattern
+  });
+  process.exit(result.exitCode);
+}
+
+// ../cairn/dist/cli/trace.js
+import { existsSync as existsSync107, readFileSync as readFileSync94, readdirSync as readdirSync46, statSync as statSync30 } from "node:fs";
+import { join as join107, resolve as resolve29 } from "node:path";
+function parseArgs6(argv) {
   const positional = [];
   const flags = {};
   for (let i2 = 0; i2 < argv.length; i2++) {
@@ -80048,13 +80323,13 @@ function formatRow(ev, opts) {
 }
 function loadTraceFiles(daysBack) {
   const dir = traceDir();
-  if (!existsSync106(dir))
+  if (!existsSync107(dir))
     return [];
   const out = [];
-  for (const f of readdirSync45(dir)) {
+  for (const f of readdirSync46(dir)) {
     if (!f.startsWith("trace-") || !f.endsWith(".jsonl"))
       continue;
-    out.push(join106(dir, f));
+    out.push(join107(dir, f));
   }
   out.sort();
   return out.slice(-daysBack);
@@ -80064,7 +80339,7 @@ function readEvents(paths) {
   for (const p2 of paths) {
     let raw;
     try {
-      raw = readFileSync93(p2, "utf8");
+      raw = readFileSync94(p2, "utf8");
     } catch {
       continue;
     }
@@ -80086,7 +80361,7 @@ function applyFilters(events, flags) {
     if (typeof flags["session"] === "string" && ev.session_id !== flags["session"])
       return false;
     if (typeof flags["repo"] === "string") {
-      const want = resolve28(flags["repo"]);
+      const want = resolve29(flags["repo"]);
       if (ev.repo_root !== want)
         return false;
     }
@@ -80110,7 +80385,7 @@ async function followTail(filterFlags, wide) {
   const path2 = loadTraceFiles(1)[0];
   if (path2 !== void 0) {
     try {
-      lastSize = statSync29(path2).size;
+      lastSize = statSync30(path2).size;
     } catch {
       lastSize = 0;
     }
@@ -80122,7 +80397,7 @@ async function followTail(filterFlags, wide) {
       continue;
     let st;
     try {
-      st = statSync29(todayPath);
+      st = statSync30(todayPath);
     } catch {
       continue;
     }
@@ -80131,7 +80406,7 @@ async function followTail(filterFlags, wide) {
     firstPass = false;
     let raw;
     try {
-      raw = readFileSync93(todayPath, "utf8");
+      raw = readFileSync94(todayPath, "utf8");
     } catch {
       continue;
     }
@@ -80159,7 +80434,7 @@ async function followTail(filterFlags, wide) {
   }
 }
 async function traceCli(argv) {
-  const { flags } = parseArgs5(argv);
+  const { flags } = parseArgs6(argv);
   if (flags["help"] === true || flags["h"] === true) {
     console.log([
       "Usage: cairn trace [flags]",
@@ -80287,6 +80562,9 @@ switch (subcommand) {
   case "sensor-run":
     await sensorRunCli(rest);
     break;
+  case "tag":
+    await tagCli(rest);
+    break;
   case "trace":
     await traceCli(rest);
     break;
@@ -80327,6 +80605,6 @@ switch (subcommand) {
     console.log(VERSION);
     process.exit(0);
   default:
-    console.error("Usage: cairn <command>\n  init       adopt this cairn into a project\n  join       per-clone bootstrap (set core.hooksPath, chmod hooks)\n  mcp        MCP server (stdio transport)\n             (subcommands: serve)\n  gc         garbage-collection passes against the canonical zone\n             (subcommands: sweep | run)\n  scope      scope-index commands\n             (subcommands: rebuild [--repo <path>])\n  doctor     verify the adoption is healthy (checks core, ground, sensors)\n             (--repo <path>?)\n  fix        auto-resolve doctor warnings where possible\n             (--repo <path>?)\n  attention  list pending DEC drafts + baseline sensor findings\n             (--repo <path>?)\n  align      Layer C/D alignment commands\n             (subcommands: drain \u2014 SessionStart drain, plan \xA74.3)\n  baseline   re-run the synthetic-diff sensor sweep post-adoption\n             (--force? --repo <path>?)\n  hook       Claude Code hook runner (stdin = hook payload JSON)\n             (subcommands: session-start | read-enrich | write-guard)\n  sensor-run git-hook sensor sweep (--staged | --commit-msg <path>)\n  trace      pretty-print the unified live-session trace log\n             (--tail | --session <id> | --repo <path> | --source <name> |\n              --kind <substr> | --errors-only | --wide | --json)\n  status-line  print formatted status line\n               (--project-root <path>? --session-id <id>?\n                or pipe Claude Code status-line payload JSON on stdin)");
+    console.error("Usage: cairn <command>\n  init       adopt this cairn into a project\n  join       per-clone bootstrap (set core.hooksPath, chmod hooks)\n  mcp        MCP server (stdio transport)\n             (subcommands: serve)\n  gc         garbage-collection passes against the canonical zone\n             (subcommands: sweep | run)\n  scope      scope-index commands\n             (subcommands: rebuild [--repo <path>])\n  doctor     verify the adoption is healthy (checks core, ground, sensors)\n             (--repo <path>?)\n  fix        auto-resolve doctor warnings where possible\n             (--repo <path>?)\n  attention  list pending DEC drafts + baseline sensor findings\n             (--repo <path>?)\n  align      Layer C/D alignment commands\n             (subcommands: drain \u2014 SessionStart drain, plan \xA74.3)\n  baseline   re-run the synthetic-diff sensor sweep post-adoption\n             (--force? --repo <path>?)\n  hook       Claude Code hook runner (stdin = hook payload JSON)\n             (subcommands: session-start | read-enrich | write-guard)\n  sensor-run git-hook sensor sweep (--staged | --commit-msg <path>)\n  tag        operator-driven retro-tagging \u2014 insert <!-- cairn:decision -->\n             markers after lines matching a regex pattern\n             (--insert-marker <pattern> <file-or-dir>\n              [--force] [--force-pattern] [--repo <path>])\n  trace      pretty-print the unified live-session trace log\n             (--tail | --session <id> | --repo <path> | --source <name> |\n              --kind <substr> | --errors-only | --wide | --json)\n  status-line  print formatted status line\n               (--project-root <path>? --session-id <id>?\n                or pipe Claude Code status-line payload JSON on stdin)");
     process.exit(subcommand ? 2 : 1);
 }

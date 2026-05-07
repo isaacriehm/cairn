@@ -73,6 +73,7 @@
     "smoke:search-candidates": "tsx scripts/smoke-search-candidates.ts",
     "smoke:propose-decision": "tsx scripts/smoke-propose-decision.ts",
     "smoke:reject-candidate": "tsx scripts/smoke-reject-candidate.ts",
+    "smoke:tag-cli": "tsx scripts/smoke-tag-cli.ts",
     "smoke:conflicts-queue": "tsx scripts/smoke-conflicts-queue.ts",
     "smoke:sot-align": "tsx scripts/smoke-sot-align.ts",
     "smoke:layer-b-precommit": "tsx scripts/smoke-layer-b-precommit.ts",
