@@ -4,6 +4,165 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] — 2026-05-06
+
+### Added
+
+- **SoT (source-of-truth) schema fields on every DEC + INV.** Each
+  entity carries `sot_kind: "ledger" | "path"`, `sot_path` (the
+  external location it was captured from, or the literal `"ledger"`),
+  and `sot_content_hash: <sha256>` of its body. The new
+  `.cairn/ground/sot-bindings.yaml` (forward + reverse path → id maps),
+  `.cairn/ground/sot-cache.yaml` (pre-tokenized DEC bodies for the
+  Layer A Jaccard pre-filter), `.cairn/ground/topic-index.yaml`
+  (content-fingerprint → DEC slug map), and `.cairn/ground/anchor-map.yaml`
+  are the on-disk surfaces that make this provenance addressable.
+  Schema fields ship as `.optional()` for v0.5.0 so existing v0.4.x
+  ledgers stay parseable; the migration script stamps the fields in
+  place. The optional → required flip lands in v0.6.
+- **Layer A — live SoT alignment hook.** New PostToolUse Write/Edit
+  hook reads each freshly-typed prose block, runs Tier 1 (deterministic
+  cite via topic-index), Tier 2 (two-pass Haiku dedup judge against
+  sot-cache candidates), and Tier 3 (fresh DEC creation when no
+  candidate matches). Source files get strip-replaced with bare
+  `// §DEC-NNNN` cites; ambiguous Pass-2 verdicts spill to
+  `.cairn/ground/alignment-pending/<slug>.md` for operator triage via
+  `cairn attention`. Verdict cache scoped on `(prose, candidate id,
+  body hash)` keys so DEC body edits invalidate cached verdicts. New
+  `smoke-sot-align` covers all four pipeline stages.
+- **Layer B — git pre-commit drift log.** A new
+  `.cairn/git-hooks/pre-commit` shell hook (different mechanism from
+  Claude Code PostToolUse) inspects each staged blob, runs the same
+  Tier 1 + Tier 2/3 candidate match against sot-cache, and appends
+  to `.cairn/staleness/log.jsonl` for any block that lands without a
+  cite. Shell-level invocation catches commits made outside Claude
+  Code. Markdown / canonical doc files are skipped (auto-cite never
+  rewrites the operator's narrative). New `smoke-layer-b-precommit`.
+- **Layer C — SessionStart drain.** New `cairn_align_drain` MCP tool
+  + SessionStart hook that catches up alignment work that fired
+  outside an active session (off-session edits, pre-commit drift
+  entries, multi-dev fan-in). Recomputes candidate scope from fresh
+  body reads instead of cached snapshots so cross-session edits
+  re-judge correctly. New `smoke-layer-c-sessionstart-drain`.
+- **Layer D — `cairn fix align` retroactive sweep.** Full-repo
+  Haiku-judge pass over every prose block × every DEC for projects
+  adopted before Layer A landed. Pre-flight `--dry-run` returns the
+  cost estimate; `--max-cost <tokens>` aborts if the estimate exceeds
+  budget (default 500k). `--include` / `--exclude` glob flags scope
+  the sweep. `--no-creation` consolidates to existing DECs only.
+  New `smoke-fix-align`.
+- **Phase 5b topic-index — cross-source dedup pre-pass.** Walks all
+  doc / CLAUDE.md / AGENTS.md / source-comment candidates before
+  phases 6 / 7b / 7c run, normalizes content into 12-char content
+  fingerprints, and writes `topic-index.yaml`. Phases 6 / 7b / 7c
+  consult the index to dedup-by-topic so the same constraint
+  surfacing in three sources emits one DEC, not three. Topic-pair
+  ambiguity routes through a Haiku judge with isolated ambient
+  context and a safe-default `"different"` fallback. New
+  `smoke-topic-index`.
+- **Phase 6 verbatim doc ingest.** New dynamic doc walk replaces the
+  hard-coded README + ARCHITECTURE allowlist. Walks all canonical
+  docs, classifies each block as decision / invariant / context, and
+  emits ledger entries citing the source path. Skipped in adopted
+  v0.4.x repos by the migration since old runs already populated the
+  ledger from a previous walk.
+- **Phase 7b ledger source-comments rewrite.** Source-comment essays
+  no longer auto-emit a DEC per essay — they cite-existing when the
+  topic-index shows the constraint already lives in the ledger. New
+  comments still emit ledger entries. The strip-replace path that
+  was already removing inline comment essays continues to fire on
+  accept.
+- **Phase 7c rules-merge rewrite + contradiction judge.** CLAUDE.md
+  / AGENTS.md ingest now checks the topic-index for cite-existing,
+  and a new contradiction-detection Haiku call (capped 1500-char
+  prose to prevent prompt injection from operator content) compares
+  freshly captured rules against existing ledger entries. Pairs that
+  judge as contradictory write a conflict file at
+  `.cairn/ground/conflicts/<a-id>__<b-id>.md` instead of accepting
+  silently. The init pipeline's previously-parallel phases 6 / 7b /
+  7c are now sequentialized — they share the topic-index +
+  sot-cache files, so concurrent writes were racing on disk.
+- **Conflicts queue + `cairn_resolve_attention` conflict path.** New
+  `kind: "conflict"` resolves the four operator-facing choices
+  (a: keep A, b: keep B, c: merge into a fresh DEC, d: archive
+  both). Each choice supersedes / archives the losing entity, drops
+  the loser from `sot-bindings` + `sot-cache` so Layer A's Tier-2
+  pre-filter doesn't keep picking the now-superseded id, and emits
+  an `orphan_path` drift event whenever the loser was path-SoT — the
+  losing-side prose still lives at its original `sot_path` and the
+  drift event is the operator-facing surface to recover it (re-cite
+  the winner manually, promote it to a fresh DEC, or delete the
+  orphan paragraph). Merge path also binds + caches the freshly
+  emitted merged entity so Layer A picks it up on the next
+  PostToolUse without waiting for SessionStart drain. Cairn-attention
+  skill renders the four-option surface inline. New
+  `smoke-conflicts-queue` covers all four branches and asserts
+  post-resolution sot-state invariants.
+- **`cairn attention undo` + Layer A audit log.** Every Layer A
+  auto-resolution (Tier 1 cite, Tier 2 same / augments cite, Tier 3
+  fresh DEC creation) appends one line to
+  `.cairn/state/align-undo-log.jsonl` with the strip-replace metadata
+  needed to reverse it. `cairn attention undo [--since <duration>]`
+  reverts recent entries (Tier 1 + Tier 2 cites supported in v0.5.0;
+  tier3-creation + augments-sibling reversal returns
+  `not-supported` and is queued for v0.6). Log self-prunes on undo
+  for idempotent re-runs against the same window. New
+  `smoke-attention-undo`.
+- **Statusline event queue.** Bounded ring buffer at
+  `.cairn/state/statusline-events.json` (cap 32) carries
+  PostToolUse-emitted alignment blips so the statusline reader can
+  surface ephemeral feedback (`⬡ aligned DEC-NNNN`) without
+  cluttering the longer-lived ground state.
+- **Lens — sot-aware body resolution.** The VS Code / Cursor
+  extension's hover provider now follows `sot_kind` / `sot_path`
+  when rendering DEC + INV bodies. Path-SoT entities surface their
+  external source path; ledger-SoT entities render the ledger entry
+  body directly. Gracefully handles missing `sot-cache.yaml` /
+  `sot-bindings.yaml` (pre-migration v0.4.x repos). New
+  `smoke-sot-body`.
+- **`/tmp/cairn-v0.5.0-migrate.mjs` — solo-user migration script.**
+  Stamps `sot_kind` / `sot_path` / `sot_content_hash` on every
+  existing DEC + INV that lacks them (idempotent), initializes the
+  four new ground files if missing, seeds `sot-bindings` +
+  `sot-cache` from the post-stamp ledger, installs the Layer B
+  pre-commit hook alongside the existing post-commit hook, and skips
+  phase 7b (v0.4.x already strip-replaced source comments). New
+  `smoke-migrate-to-sot` validates the script on a synthesized
+  v0.4.x fixture.
+
+### Changed
+
+- **Init phases 6 / 7b / 7c are now sequential.** Previously
+  `cairn_init_phases_678_parallel` ran them concurrently. Phase 5b's
+  topic-index + the new sot-cache mean phases 6 / 7b / 7c share
+  on-disk state; sequencing them eliminates concurrent-write races.
+  The MCP tool keeps the `parallel` name for backward continuity
+  but its body now `await`s each phase in order.
+
+### Fixed
+
+- **Layer A verdict cache keyed on stale body hash.** The Tier 2
+  pre-filter stored verdicts under
+  `(prose, candidate id, candidate body_hash)` with `body_hash`
+  pulled from the sot-cache snapshot in `cand.body_hash`. Sot-cache
+  is not refreshed when the operator edits a DEC body directly, so
+  the cache could return a "same" verdict made against an old body
+  while Haiku judged the fresh body. Fixed by computing the hash from
+  `candBody` (already read off disk in the same loop) so the scope
+  invalidates immediately on body edit.
+- **Conflict resolution left dangling sot-bindings + sot-cache
+  entries.** The four-branch resolver rebuilt only the DEC / INV
+  ledgers; superseded / archived losers retained their entries in
+  `sot-bindings.yaml` and `sot-cache.yaml`. Layer A's pre-filter
+  walks every cache entry with no supersede check, so it could pick
+  a now-superseded loser as a Tier-2 candidate, and phase 5b's path
+  walks could loop on a binding pointing to a superseded id. Fixed
+  by unbinding losers from sot-bindings + dropping their sot-cache
+  entries in all three branches (supersede / merge / archive).
+  `mergeConflict` now also binds + caches the merged entity so Layer
+  A picks it up on the next PostToolUse without waiting for
+  SessionStart drain.
+
 ## [0.4.2] — 2026-05-06
 
 ### Fixed
