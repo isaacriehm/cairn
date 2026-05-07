@@ -56,6 +56,10 @@
           {
             "type": "command",
             "command": "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook write-guard"
+          },
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook sot-align"
           }
         ]
       }

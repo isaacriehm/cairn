@@ -1,6 +1,7 @@
 export {
   CANONICAL_GLOBS,
   CANONICAL_EXCLUDES,
+  alignmentPendingDir,
   anchorMapPath,
   archivedConflictsDir,
   conflictsDir,

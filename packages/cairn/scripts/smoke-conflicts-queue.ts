@@ -25,7 +25,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import {
   allTools,
@@ -409,6 +409,242 @@ async function main(): Promise<void> {
       `Step 6: missing file must FILE_NOT_FOUND, got ${JSON.stringify(result)}`,
     );
     console.log("  ✓ Step 6 — missing conflict file errors cleanly");
+  }
+
+  // ── Step 7 — alignment_pending tier3 [a] decision → fresh DEC + cite
+  {
+    const repoRoot = mkRepoRoot();
+    // Mount a source file with a JSDoc block whose offsets we'll seed
+    // into the pending file's frontmatter.
+    const source = [
+      "/**",
+      " * The retry budget for upstream API calls follows an exponential",
+      " * backoff starting at 200ms and capping at 5s per request. We chose",
+      " * this curve over linear because the error spike profile is heavy-tailed.",
+      " */",
+      "export function retry() {}",
+    ].join("\n") + "\n";
+    const sourceAbs = join(repoRoot, "src/retry.ts");
+    mkdirSync(dirname(sourceAbs), { recursive: true });
+    writeFileSync(sourceAbs, source, "utf8");
+    // Compute byte offsets of the JSDoc block.
+    const startOffset = source.indexOf("/**");
+    const endOffset = source.indexOf(" */") + " */".length;
+    const blockRaw = source.slice(startOffset, endOffset);
+    const blockProse =
+      "The retry budget for upstream API calls follows an exponential\n" +
+      "backoff starting at 200ms and capping at 5s per request. We chose\n" +
+      "this curve over linear because the error spike profile is heavy-tailed.";
+
+    // Pending file fixture.
+    const slug = "abcdef012345";
+    const pendingAbs = join(
+      repoRoot,
+      ".cairn",
+      "ground",
+      "alignment-pending",
+      `${slug}.md`,
+    );
+    mkdirSync(dirname(pendingAbs), { recursive: true });
+    const fm: Record<string, unknown> = {
+      slug,
+      kind: "tier3-ambiguous",
+      source_file: "src/retry.ts",
+      source_range: "1-5",
+      start_line: 1,
+      end_line: 5,
+      start_offset: startOffset,
+      end_offset: endOffset,
+      lang: "js",
+      raw: blockRaw,
+      detected_at: "2026-01-01T00:00:00Z",
+      detector: "layer-a-pass2-ambiguous",
+      severity: "soft",
+    };
+    const pendingBody = [
+      "---",
+      stringifyYaml(fm).trimEnd(),
+      "---",
+      "",
+      "# Alignment pending",
+      "",
+      "## Block (just written at `src/retry.ts:1-5`)",
+      "",
+      "```",
+      blockProse,
+      "```",
+      "",
+    ].join("\n");
+    writeFileSync(pendingAbs, pendingBody, "utf8");
+
+    const ctx: McpContext = { repoRoot, sessionId: "smoke-pend-decision" };
+    const result = await call(tool, ctx, {
+      kind: "alignment_pending",
+      item_id: slug,
+      choice: "a",
+    });
+    assert(result.ok === true, `Step 7: ok=true, got ${JSON.stringify(result)}`);
+    assert(result.resolved_kind === "alignment_decision", "Step 7: resolved_kind");
+    const newId = String(result.new_id ?? "");
+    assert(/^DEC-[0-9a-f]{7,}$/.test(newId), `Step 7: new_id format, got ${newId}`);
+    const after = readFileSync(sourceAbs, "utf8");
+    assert(after.includes(`// §${newId}`), "Step 7: source carries fresh §DEC cite");
+    assert(!after.includes("/**\n * The retry budget"), "Step 7: original block stripped");
+    assert(!existsSync(pendingAbs), "Step 7: pending file deleted");
+    console.log(`  ✓ Step 7 — alignment_pending [a] tier3 → fresh ${newId}`);
+  }
+
+  // ── Step 8 — alignment_pending tier2 [b] augments → sibling DEC ─
+  {
+    const repoRoot = mkRepoRoot();
+    const existingId = "DEC-eeeeeee";
+    const existingBody =
+      "Use bcrypt with cost factor 12 because operational topology is uniform.";
+    writeDec(repoRoot, existingId, existingBody, "ledger");
+
+    // Source block (the operator's new prose).
+    const source = [
+      "/**",
+      " * Use bcrypt with cost factor 12 because operational topology is uniform.",
+      " * Rotation forbidden mid-flight to avoid lockout cascades on rolling deploys.",
+      " */",
+      "export function hash() {}",
+    ].join("\n") + "\n";
+    const sourceAbs = join(repoRoot, "src/hash.ts");
+    mkdirSync(dirname(sourceAbs), { recursive: true });
+    writeFileSync(sourceAbs, source, "utf8");
+    const startOffset = source.indexOf("/**");
+    const endOffset = source.indexOf(" */") + " */".length;
+    const blockRaw = source.slice(startOffset, endOffset);
+    const blockProse =
+      "Use bcrypt with cost factor 12 because operational topology is uniform.\n" +
+      "Rotation forbidden mid-flight to avoid lockout cascades on rolling deploys.";
+
+    const slug = "fedcba543210";
+    const pendingAbs = join(
+      repoRoot,
+      ".cairn",
+      "ground",
+      "alignment-pending",
+      `${slug}.md`,
+    );
+    mkdirSync(dirname(pendingAbs), { recursive: true });
+    const fm: Record<string, unknown> = {
+      slug,
+      kind: "tier2-ambiguous",
+      source_file: "src/hash.ts",
+      source_range: "1-4",
+      start_line: 1,
+      end_line: 4,
+      start_offset: startOffset,
+      end_offset: endOffset,
+      lang: "js",
+      raw: blockRaw,
+      existing_id: existingId,
+      detected_at: "2026-01-01T00:00:00Z",
+      detector: "layer-a-pass2-ambiguous",
+      severity: "soft",
+    };
+    const pendingBody = [
+      "---",
+      stringifyYaml(fm).trimEnd(),
+      "---",
+      "",
+      "# Alignment pending",
+      "",
+      "## Block (just written at `src/hash.ts:1-4`)",
+      "",
+      "```",
+      blockProse,
+      "```",
+      "",
+      `## Existing ${existingId}`,
+      "",
+      "```",
+      existingBody,
+      "```",
+      "",
+    ].join("\n");
+    writeFileSync(pendingAbs, pendingBody, "utf8");
+
+    const ctx: McpContext = { repoRoot, sessionId: "smoke-pend-augments" };
+    const result = await call(tool, ctx, {
+      kind: "alignment_pending",
+      item_id: slug,
+      choice: "b",
+      rationale: "Operator confirms rotation rule augments existing bcrypt choice",
+    });
+    assert(result.ok === true, "Step 8: ok=true");
+    assert(result.resolved_kind === "alignment_augments", "Step 8: resolved_kind");
+    const newId = String(result.new_id ?? "");
+    assert(/^DEC-[0-9a-f]{7,}$/.test(newId), "Step 8: new_id format");
+    assert(result.existing_id === existingId, "Step 8: existing preserved");
+    const after = readFileSync(sourceAbs, "utf8");
+    assert(after.includes(`// §${existingId}`), "Step 8: existing § token kept");
+    assert(after.includes(`// §${newId}`), "Step 8: new § token added");
+    assert(!existsSync(pendingAbs), "Step 8: pending file deleted");
+    // Existing DEC unchanged.
+    const existingFm = readDecFm(repoRoot, existingId);
+    assert(existingFm !== null && existingFm.status === "accepted", "Step 8: existing still accepted");
+    console.log(`  ✓ Step 8 — alignment_pending [b] tier2 augments → sibling ${newId}, double-cite`);
+  }
+
+  // ── Step 9 — alignment_pending tier3 [c] descriptive → drop file ─
+  {
+    const repoRoot = mkRepoRoot();
+    const source = [
+      "/**",
+      " * Returns the merged user object. Maps the row to the API shape.",
+      " * Throws when fields are missing.",
+      " */",
+      "export function user() {}",
+    ].join("\n") + "\n";
+    const sourceAbs = join(repoRoot, "src/user.ts");
+    mkdirSync(dirname(sourceAbs), { recursive: true });
+    writeFileSync(sourceAbs, source, "utf8");
+
+    const slug = "111111111111";
+    const pendingAbs = join(
+      repoRoot,
+      ".cairn",
+      "ground",
+      "alignment-pending",
+      `${slug}.md`,
+    );
+    mkdirSync(dirname(pendingAbs), { recursive: true });
+    const fm: Record<string, unknown> = {
+      slug,
+      kind: "tier3-ambiguous",
+      source_file: "src/user.ts",
+      source_range: "1-4",
+      start_line: 1,
+      end_line: 4,
+      start_offset: 0,
+      end_offset: 100,
+      lang: "js",
+      raw: source.slice(0, 100),
+      detected_at: "2026-01-01T00:00:00Z",
+      detector: "layer-a-pass2-ambiguous",
+      severity: "soft",
+    };
+    writeFileSync(
+      pendingAbs,
+      `---\n${stringifyYaml(fm).trimEnd()}\n---\n`,
+      "utf8",
+    );
+
+    const ctx: McpContext = { repoRoot, sessionId: "smoke-pend-desc" };
+    const result = await call(tool, ctx, {
+      kind: "alignment_pending",
+      item_id: slug,
+      choice: "c",
+    });
+    assert(result.ok === true, "Step 9: ok=true");
+    assert(result.resolved_kind === "alignment_descriptive", "Step 9: resolved_kind");
+    assert(!existsSync(pendingAbs), "Step 9: pending dropped");
+    const after = readFileSync(sourceAbs, "utf8");
+    assert(after === source, "Step 9: source untouched on descriptive");
+    console.log("  ✓ Step 9 — alignment_pending [c] descriptive drops pending, source intact");
   }
 
   cleanup();

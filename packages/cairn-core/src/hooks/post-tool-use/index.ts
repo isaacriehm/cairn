@@ -26,3 +26,10 @@ export { scanForCopyLeakage } from "./copy-scanner.js";
 export type { CopyIssue } from "./copy-scanner.js";
 export { readCopySafetyConfig } from "./allowlist-reader.js";
 export type { CopySafetyConfig } from "./allowlist-reader.js";
+export { alignFile, runSotAlign } from "./sot-align.js";
+export type {
+  AlignFileArgs,
+  AlignFileResult,
+  CreationVerdict,
+  DedupVerdict,
+} from "./sot-align.js";

@@ -12,6 +12,7 @@
  *   cairn hook user-prompt-submit  resolves @-attached file citations
  *   cairn hook read-enrich       PostToolUse on Read — citation legend
  *   cairn hook write-guard       PostToolUse on Write/Edit — copy-safety + scope reminder
+ *   cairn hook sot-align         PostToolUse on Write/Edit — Layer A alignment + DEC creation
  *
  * PreToolUse is intentionally NOT supported — bricks the session if the hook fails.
  */
@@ -20,6 +21,7 @@ import {
   runReadEnricher,
   runSessionEndHook,
   runSessionStartHook,
+  runSotAlign,
   runStopHook,
   runUserPromptSubmitHook,
   runWriteGuardian,
@@ -34,6 +36,7 @@ function usage(): never {
       "  user-prompt-submit    UserPromptSubmit — resolve citations in @-attached files\n" +
       "  read-enrich           PostToolUse on Read — citation legend enricher\n" +
       "  write-guard           PostToolUse on Write/Edit — copy-safety + scope reminder\n" +
+      "  sot-align             PostToolUse on Write/Edit — Layer A alignment + DEC creation\n" +
       "\n" +
       "Reads the Claude Code hook payload JSON on stdin, emits the\n" +
       "Shape-B response on stdout. Wired by the Claude Code plugin's\n" +
@@ -64,6 +67,9 @@ export async function hookCli(argv: string[]): Promise<void> {
       return;
     case "write-guard":
       await runWriteGuardian();
+      return;
+    case "sot-align":
+      await runSotAlign();
       return;
     default:
       console.error(`cairn hook: unknown event "${sub}"`);

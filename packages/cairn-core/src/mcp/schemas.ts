@@ -155,6 +155,17 @@ export const resolveAttentionInput = {
    *              c merge into a fresh DEC (both old superseded),
    *              d archive both (move conflict file to _archived/).
    *              Plan §5.4.1 — never rewrites source files.
+   * `alignment_pending` — Layer A's Pass-2 dedup or creation judge stayed
+   *              ambiguous and wrote `.cairn/ground/alignment-pending/<slug>.md`
+   *              for operator triage (plan §4.1.A / §4.1.B).
+   *              For tier2-ambiguous (paired with an existing entity):
+   *                a=same (cite existing + strip), b=augments (sibling DEC
+   *                linked via `related` + double-cite), c=new (fresh DEC),
+   *                d=replace (new supersedes existing).
+   *              For tier3-ambiguous (no candidate):
+   *                a=decision (fresh DEC + cite), b=constraint (fresh INV
+   *                + cite), c=descriptive (drop pending, leave source),
+   *                d=none-of-these (drop pending, leave source untouched).
    */
   kind: z.enum([
     "decision_draft",
@@ -164,6 +175,7 @@ export const resolveAttentionInput = {
     "bypass",
     "review",
     "conflict",
+    "alignment_pending",
   ]),
   /**
    * Full SHA / task_id list for the bypass / review snapshot. Used
