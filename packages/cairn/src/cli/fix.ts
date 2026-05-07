@@ -46,10 +46,13 @@ import {
   applyBrandAnswers,
   deriveBrandFromProject,
   derivedToBrandAnswers,
+  gitDirtyPathsInScope,
   parseDraftMeta,
   readMapperOutputFile,
   runDecSourceStrip,
   runFixAlign,
+  validateFixAlignSentinel,
+  writeFixAlignSentinel,
   type BrandAnswers,
   type FixAlignArgs,
   type FixAlignResult,
@@ -482,6 +485,7 @@ const RETROACTIVE_SUBCOMMANDS = new Set([
 
 function parseAlignFlags(argv: string[]): {
   dryRun: boolean;
+  force: boolean;
   maxCost: number | null;
   include: string[];
   exclude: string[];
@@ -489,6 +493,7 @@ function parseAlignFlags(argv: string[]): {
 } {
   const flags = {
     dryRun: false,
+    force: false,
     maxCost: null as number | null,
     include: [] as string[],
     exclude: [] as string[],
@@ -498,6 +503,8 @@ function parseAlignFlags(argv: string[]): {
     const a = argv[i];
     if (a === "--dry-run") {
       flags.dryRun = true;
+    } else if (a === "--force") {
+      flags.force = true;
     } else if (a === "--no-creation") {
       flags.skipCreation = true;
     } else if (a === "--max-cost") {
@@ -584,8 +591,40 @@ function renderApply(result: FixAlignResult): string {
 
 async function fixAlign(repoRoot: string, argv: string[]): Promise<void> {
   const flags = parseAlignFlags(argv);
+  const sentinelArgs = {
+    include: flags.include,
+    exclude: flags.exclude,
+    skipCreation: flags.skipCreation,
+    maxCost: flags.maxCost,
+  };
+
+  // Apply-phase gates (skipped on --dry-run and on --force).
+  if (!flags.dryRun && !flags.force) {
+    const sentinel = validateFixAlignSentinel(repoRoot, sentinelArgs);
+    if (!sentinel.ok) {
+      process.stdout.write(
+        `  ⬡ cairn fix align — ${repoRoot}\n\n` +
+          `  ✗ aborted — ${sentinel.detail}.\n` +
+          `  Re-run \`cairn fix align --dry-run\` with the same flags first, or pass --force.\n`,
+      );
+      process.exit(2);
+    }
+    const dirty = gitDirtyPathsInScope(repoRoot, flags.include);
+    if (dirty.length > 0) {
+      const preview = dirty.slice(0, 5).map((d) => `    ${d.status} ${d.path}`).join("\n");
+      const overflow = dirty.length > 5 ? `\n    … and ${dirty.length - 5} more` : "";
+      process.stdout.write(
+        `  ⬡ cairn fix align — ${repoRoot}\n\n` +
+          `  ✗ aborted — working tree dirty within sweep scope (${dirty.length} path${dirty.length === 1 ? "" : "s"}):\n` +
+          `${preview}${overflow}\n` +
+          `  Commit / stash these changes first, or pass --force to override.\n`,
+      );
+      process.exit(2);
+    }
+  }
+
   process.stdout.write(
-    `  ⬡ cairn fix align${flags.dryRun ? " --dry-run" : ""} — ${repoRoot}\n\n` +
+    `  ⬡ cairn fix align${flags.dryRun ? " --dry-run" : ""}${flags.force ? " --force" : ""} — ${repoRoot}\n\n` +
       `  pre-flight…\n`,
   );
   const args: FixAlignArgs = { repoRoot };
@@ -608,8 +647,12 @@ async function fixAlign(repoRoot: string, argv: string[]): Promise<void> {
   }
 
   if (flags.dryRun) {
+    // Stamp the sentinel so the next non-dry-run invocation with the
+    // same flags can pass the validation gate.
+    writeFixAlignSentinel(repoRoot, sentinelArgs);
     process.stdout.write(
-      `\n  Dry-run complete. Re-run without --dry-run to apply.\n`,
+      `\n  Dry-run complete. Re-run without --dry-run within 30 minutes to apply ` +
+        `(sentinel written to .cairn/state/fix-align-dryrun.json).\n`,
     );
     process.exit(0);
   }
@@ -628,12 +671,23 @@ export async function fixCli(argv: string[]): Promise<void> {
         "    align           Layer D — full-repo Haiku-judge sweep over every\n" +
         "                    prose block × every DEC. Use --dry-run for the\n" +
         "                    pre-flight cost estimate; re-run without --dry-run\n" +
-        "                    to apply. Flags:\n" +
+        "                    within 30 min to apply. Flags:\n" +
         "                      --max-cost <tokens>    abort if estimate exceeds\n" +
         "                                             budget (default 500k).\n" +
         "                      --include <glob>       repeatable — scope the sweep.\n" +
         "                      --exclude <glob>       repeatable — atop defaults.\n" +
         "                      --no-creation          skip Tier 3; consolidate only.\n" +
+        "                      --force                bypass the dry-run sentinel +\n" +
+        "                                             dirty-tree guard (CI / scripted\n" +
+        "                                             contexts only).\n" +
+        "                    Apply gates:\n" +
+        "                      • dry-run sentinel — `--dry-run` writes\n" +
+        "                        .cairn/state/fix-align-dryrun.json with HEAD SHA +\n" +
+        "                        flag hash. Apply requires a fresh (≤30 min) sentinel\n" +
+        "                        matching current HEAD + flags.\n" +
+        "                      • dirty-tree guard — apply aborts if `git status`\n" +
+        "                        reports modified / staged paths inside the include\n" +
+        "                        globs (or anywhere when no --include passed).\n" +
         "  Subcommands (retroactive — for projects adopted on older versions):\n" +
         "    brand           re-run the Haiku brand-derive call against the\n" +
         "                    mapper output already on disk; rewrite the 4 brand\n" +

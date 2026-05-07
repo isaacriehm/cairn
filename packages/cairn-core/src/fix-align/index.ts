@@ -9,3 +9,16 @@ export type {
   PreflightResult,
   AggregateAlignResult,
 } from "./run.js";
+export {
+  fixAlignSentinelPath,
+  gitDirtyPathsInScope,
+  hashFixAlignArgs,
+  readGitHeadSha,
+  validateFixAlignSentinel,
+  writeFixAlignSentinel,
+} from "./sentinel.js";
+export type {
+  DirtyPath,
+  FixAlignSentinelArgs,
+  SentinelValidation,
+} from "./sentinel.js";
