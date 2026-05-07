@@ -29,6 +29,16 @@ import { dirname, join } from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import {
   allTools,
+  bindDec,
+  bodyContentHash,
+  emptySotBindings,
+  emptySotCache,
+  readSotBindings,
+  readSotCache,
+  setSotCacheEntry,
+  tokenize,
+  writeSotBindings,
+  writeSotCache,
   type McpContext,
   type ToolDef,
 } from "@isaacriehm/cairn-core";
@@ -157,6 +167,29 @@ function readDriftEvents(repoRoot: string): Array<Record<string, unknown>> {
   return out;
 }
 
+/**
+ * Seed sot-bindings + sot-cache so post-resolution cleanup has something
+ * to remove. Mirrors the bind/cache shape that emitFreshDec writes for
+ * fresh DECs in production.
+ */
+function seedSotState(repoRoot: string, id: string, body: string, sotPath: string): void {
+  let bindings = readSotBindings(repoRoot);
+  if (Object.keys(bindings.forward).length === 0) bindings = emptySotBindings();
+  bindings = bindDec(bindings, id, sotPath);
+  writeSotBindings(repoRoot, bindings);
+  let cache = readSotCache(repoRoot);
+  if (Object.keys(cache.entries).length === 0) cache = emptySotCache();
+  cache = setSotCacheEntry(cache, id, {
+    dec_id: id,
+    sot_path: sotPath,
+    body_hash: bodyContentHash(body),
+    tokens: Array.from(tokenize(body, { codeAware: true })),
+    shingles: [],
+    mtime_ms: Date.now(),
+  });
+  writeSotCache(repoRoot, cache);
+}
+
 function readDecFm(repoRoot: string, id: string): Record<string, unknown> | null {
   const abs = join(repoRoot, ".cairn", "ground", "decisions", `${id}.md`);
   if (!existsSync(abs)) return null;
@@ -202,6 +235,8 @@ async function main(): Promise<void> {
     const bBody = "We sign tokens with RS256 because asymmetric. HS512 forbidden.";
     writeDec(repoRoot, aId, aBody, "CLAUDE.md#token-signing");
     writeDec(repoRoot, bId, bBody, "ledger");
+    seedSotState(repoRoot, aId, aBody, "CLAUDE.md#token-signing");
+    seedSotState(repoRoot, bId, bBody, "ledger");
     const filename = writeConflictFile(repoRoot, aId, bId, aBody, bBody, "A says HS512 only; B forbids HS512 — contradictory.");
     // Write CLAUDE.md so we can verify it stays untouched.
     const claudeMd = `# Top\n\n## Token signing\n\n${aBody}\n`;
@@ -238,6 +273,25 @@ async function main(): Promise<void> {
       driftA.length === 0,
       `Step 1: no orphan drift expected (loser=ledger), got ${JSON.stringify(driftA)}`,
     );
+    // Loser B unbound from sot-bindings + sot-cache; winner A retained.
+    const bindings1 = readSotBindings(repoRoot);
+    const cache1 = readSotCache(repoRoot);
+    assert(
+      bindings1.forward[bId] === undefined,
+      `Step 1: loser B unbound from sot-bindings.forward, got ${String(bindings1.forward[bId])}`,
+    );
+    assert(
+      cache1.entries[bId] === undefined,
+      `Step 1: loser B removed from sot-cache, got ${JSON.stringify(cache1.entries[bId])}`,
+    );
+    assert(
+      bindings1.forward[aId] !== undefined,
+      "Step 1: winner A still bound in sot-bindings",
+    );
+    assert(
+      cache1.entries[aId] !== undefined,
+      "Step 1: winner A still in sot-cache",
+    );
     console.log("  ✓ Step 1 — choice [a] supersede B with A, conflict deleted, source intact");
   }
 
@@ -250,6 +304,8 @@ async function main(): Promise<void> {
     const bBody = "Encrypt PII at rest with table-level keys instead.";
     writeDec(repoRoot, aId, aBody, "CLAUDE.md#encryption");
     writeDec(repoRoot, bId, bBody, "ledger");
+    seedSotState(repoRoot, aId, aBody, "CLAUDE.md#encryption");
+    seedSotState(repoRoot, bId, bBody, "ledger");
     const filename = writeConflictFile(repoRoot, aId, bId, aBody, bBody, "Different key granularity strategies.");
 
     const ctx: McpContext = { repoRoot, sessionId: "smoke-b" };
@@ -280,6 +336,28 @@ async function main(): Promise<void> {
       String(orphanA["path"]).startsWith("CLAUDE.md"),
       "Step 2: drift path = original sot_path",
     );
+    // Loser A (path-SoT) unbound; winner B retained.
+    const bindings2 = readSotBindings(repoRoot);
+    const cache2 = readSotCache(repoRoot);
+    assert(
+      bindings2.forward[aId] === undefined,
+      `Step 2: loser A unbound from sot-bindings.forward, got ${String(bindings2.forward[aId])}`,
+    );
+    assert(
+      cache2.entries[aId] === undefined,
+      "Step 2: loser A removed from sot-cache",
+    );
+    assert(
+      bindings2.forward[bId] !== undefined && cache2.entries[bId] !== undefined,
+      "Step 2: winner B still bound + cached",
+    );
+    // Reverse map for the orphan path no longer references the loser.
+    const orphanPath = String(orphanA["path"]);
+    const reverseList = bindings2.reverse[orphanPath] ?? [];
+    assert(
+      !reverseList.includes(aId),
+      `Step 2: reverse[${orphanPath}] does not list loser A, got ${JSON.stringify(reverseList)}`,
+    );
     console.log(`  ✓ Step 2 — choice [b] supersede A with B + orphan_path drift for ${aId}`);
   }
 
@@ -292,6 +370,8 @@ async function main(): Promise<void> {
     const bBody = "Rate limit anonymous traffic to 100 req/min.";
     writeDec(repoRoot, aId, aBody, "CLAUDE.md#rate-limit");
     writeDec(repoRoot, bId, bBody, "ledger");
+    seedSotState(repoRoot, aId, aBody, "CLAUDE.md#rate-limit");
+    seedSotState(repoRoot, bId, bBody, "ledger");
     const filename = writeConflictFile(repoRoot, aId, bId, aBody, bBody, "Different limits.");
 
     const ctx: McpContext = { repoRoot, sessionId: "smoke-c" };
@@ -331,6 +411,25 @@ async function main(): Promise<void> {
     const orphans = drift.filter((e) => e["kind"] === "orphan_path");
     assert(orphans.length === 1, `Step 3: one orphan drift expected, got ${orphans.length}`);
     assert(orphans[0]?.["dec_id"] === aId, "Step 3: orphan drift refs A (path-SoT side)");
+    // Both originals unbound from bindings + cache; merged DEC bound + cached.
+    const bindings3 = readSotBindings(repoRoot);
+    const cache3 = readSotCache(repoRoot);
+    assert(
+      bindings3.forward[aId] === undefined && bindings3.forward[bId] === undefined,
+      "Step 3: both originals unbound from sot-bindings",
+    );
+    assert(
+      cache3.entries[aId] === undefined && cache3.entries[bId] === undefined,
+      "Step 3: both originals removed from sot-cache",
+    );
+    assert(
+      bindings3.forward[mergedId] === "ledger",
+      `Step 3: merged ${mergedId} bound to ledger, got ${String(bindings3.forward[mergedId])}`,
+    );
+    assert(
+      cache3.entries[mergedId] !== undefined,
+      `Step 3: merged ${mergedId} present in sot-cache`,
+    );
     console.log(`  ✓ Step 3 — choice [c] merge → fresh ${mergedId}, both old superseded, A orphan drift`);
   }
 
@@ -343,6 +442,8 @@ async function main(): Promise<void> {
     const bBody = "Use async/await everywhere; never threads.";
     writeDec(repoRoot, aId, aBody, "CLAUDE.md#concurrency");
     writeDec(repoRoot, bId, bBody, "ledger");
+    seedSotState(repoRoot, aId, aBody, "CLAUDE.md#concurrency");
+    seedSotState(repoRoot, bId, bBody, "ledger");
     const filename = writeConflictFile(repoRoot, aId, bId, aBody, bBody, "Threads vs async strategies disagree.");
 
     const ctx: McpContext = { repoRoot, sessionId: "smoke-d" };
@@ -373,6 +474,17 @@ async function main(): Promise<void> {
     const orphans = drift.filter((e) => e["kind"] === "orphan_path");
     assert(orphans.length === 1, `Step 4: one orphan drift expected, got ${orphans.length}`);
     assert(orphans[0]?.["dec_id"] === aId, "Step 4: orphan drift refs A (path-SoT side)");
+    // Both archived → both unbound from sot-bindings + sot-cache.
+    const bindings4 = readSotBindings(repoRoot);
+    const cache4 = readSotCache(repoRoot);
+    assert(
+      bindings4.forward[aId] === undefined && bindings4.forward[bId] === undefined,
+      "Step 4: both archived entities unbound from sot-bindings",
+    );
+    assert(
+      cache4.entries[aId] === undefined && cache4.entries[bId] === undefined,
+      "Step 4: both archived entities removed from sot-cache",
+    );
     console.log("  ✓ Step 4 — choice [d] both archived, conflict moved to _archived/, A orphan drift");
   }
 
