@@ -21,9 +21,12 @@ import { spawn } from "node:child_process";
 import {
   bulkAcceptObvious,
   restoreDec,
+  runAttentionUndo,
   startAttentionServer,
   type BulkAcceptResult,
   type DraftConfidence,
+  type UndoArgs,
+  type UndoResult,
 } from "@isaacriehm/cairn-core";
 import type { ProjectGlobs } from "@isaacriehm/cairn-core";
 
@@ -382,6 +385,95 @@ async function restoreCli(repoRoot: string, argv: string[]): Promise<void> {
   process.exit(0);
 }
 
+function parseDurationToMs(raw: string): number | null {
+  const m = raw.match(/^(\d+(?:\.\d+)?)(ms|s|m|h|d)?$/);
+  if (m === null) return null;
+  const n = Number.parseFloat(m[1]!);
+  if (!Number.isFinite(n) || n < 0) return null;
+  const unit = m[2] ?? "h";
+  switch (unit) {
+    case "ms":
+      return n;
+    case "s":
+      return n * 1_000;
+    case "m":
+      return n * 60_000;
+    case "h":
+      return n * 3_600_000;
+    case "d":
+      return n * 86_400_000;
+    default:
+      return null;
+  }
+}
+
+function renderUndoSummary(result: UndoResult): string {
+  const lines: string[] = [];
+  lines.push(`    entries in window:        ${result.windowEntries}`);
+  lines.push(`    entries outside window:   ${result.outsideWindow}`);
+  lines.push(`    reverted:                 ${result.reverted}`);
+  lines.push(`    already reverted:         ${result.alreadyReverted}`);
+  lines.push(`    not supported (deferred): ${result.notSupported}`);
+  lines.push(`    source missing:           ${result.sourceMissing}`);
+  lines.push(`    errors:                   ${result.errors}`);
+  if (result.outcomes.length > 0) {
+    lines.push("");
+    lines.push("  per-entry:");
+    for (const o of result.outcomes) {
+      const tag = o.status.padEnd(18, " ");
+      lines.push(`    ${tag} ${o.entry.kind} ${o.entry.file} → ${o.entry.primary_id}`);
+      if (o.detail !== undefined) lines.push(`      ${o.detail}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+async function undoCli(repoRoot: string, argv: string[]): Promise<void> {
+  let sinceMs: number | null = null;
+  let dryRun = false;
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--since") {
+      const v = argv[i + 1];
+      if (v === undefined) {
+        console.error("--since requires a duration (e.g. 30m, 2h, 1d)");
+        process.exit(2);
+      }
+      const ms = parseDurationToMs(v);
+      if (ms === null) {
+        console.error(`--since invalid: ${v} (expected NNh / NNm / NNd / NNs / NNms)`);
+        process.exit(2);
+      }
+      sinceMs = ms;
+      i += 1;
+    } else if (a === "--dry-run") {
+      dryRun = true;
+    } else if (a === "--repo") {
+      i += 1;
+    } else {
+      console.error(`cairn attention undo: unknown flag "${a}"`);
+      process.exit(2);
+    }
+  }
+  const args: UndoArgs = { repoRoot };
+  if (sinceMs !== null) args.sinceMs = sinceMs;
+  if (dryRun) args.dryRun = true;
+  process.stdout.write(
+    `  ⬡ cairn attention undo${dryRun ? " --dry-run" : ""} — ${repoRoot}\n` +
+      `    since:                    ${sinceMs ?? 3_600_000}ms\n\n`,
+  );
+  const result = await runAttentionUndo(args);
+  process.stdout.write(`${renderUndoSummary(result)}\n`);
+  if (dryRun) {
+    process.stdout.write(`\n  Dry-run complete. Re-run without --dry-run to apply.\n`);
+  } else {
+    process.stdout.write(
+      `\n  Undo log pruned. Run again with a larger --since to undo older entries.\n`,
+    );
+  }
+  process.exit(result.errors > 0 ? 2 : 0);
+}
+
 async function bulkAcceptCli(repoRoot: string, argv: string[]): Promise<void> {
   const dryRun = argv.includes("--dry-run");
   const threshold = parseThresholdFlag(argv);
@@ -458,6 +550,7 @@ export async function attentionCli(argv: string[]): Promise<void> {
         "       cairn attention bulk-accept [--threshold high|medium|low] [--dry-run] [--repo <path>]\n" +
         "       cairn attention restore <DEC-id> [--repo <path>]\n" +
         "       cairn attention serve [--port <n>] [--no-open] [--idle-timeout-min <n>] [--repo <path>]\n" +
+        "       cairn attention undo [--since <duration>] [--dry-run] [--repo <path>]\n" +
         "  Default: list DEC drafts pending confirm + latest baseline sensor findings.\n" +
         "  bulk-accept: score drafts by confidence, auto-promote ≥threshold (default high)\n" +
         "    out of _inbox/ to .cairn/ground/decisions/, and stamp\n" +
@@ -470,7 +563,11 @@ export async function attentionCli(argv: string[]): Promise<void> {
         "    Auto-opens the browser unless --no-open. Blocks until the operator clicks Done\n" +
         "    or the server idles out (default 10 min). Writes a sentinel at\n" +
         "    .cairn/cache/attention-done.json on exit.\n" +
-        "  Exit 0 when nothing pending or after bulk-accept/restore/serve; 2 when any items remain.\n",
+        "  undo: revert recent Layer A auto-resolutions logged at\n" +
+        "    .cairn/state/align-undo-log.jsonl. --since accepts NNms / NNs / NNm / NNh / NNd\n" +
+        "    (default 1h). Currently reverts tier1-cite + tier2-cite. tier3-creation /\n" +
+        "    augments-sibling undo is reported as not-supported (manual surgery for now).\n" +
+        "  Exit 0 when nothing pending or after bulk-accept/restore/serve/undo; 2 when any items remain.\n",
     );
     process.exit(0);
   }
@@ -480,6 +577,14 @@ export async function attentionCli(argv: string[]): Promise<void> {
     const repoRoot = parseRepoFlag(rest);
     ensureAdopted(repoRoot);
     await bulkAcceptCli(repoRoot, rest);
+    return;
+  }
+
+  if (argv[0] === "undo") {
+    const rest = argv.slice(1);
+    const repoRoot = parseRepoFlag(rest);
+    ensureAdopted(repoRoot);
+    await undoCli(repoRoot, rest);
     return;
   }
 

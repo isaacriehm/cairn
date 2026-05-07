@@ -95,6 +95,10 @@ import {
   formatBareCitation,
   type ReplaceItem,
 } from "../../init/source-comments/strip-replace.js";
+import {
+  appendAlignUndoEntry,
+  type AlignUndoEntry,
+} from "../../align-undo/index.js";
 import { logger } from "../../logger.js";
 import { tokenize } from "../../text/jaccard.js";
 import { withWriteLock } from "../../lock.js";
@@ -278,6 +282,11 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
   );
 
   const stripItems: ReplaceItem[] = [];
+  // `undoLogEntries` shadows `stripItems` 1:1 — each push to one
+  // pushes to the other. After applyStripReplace succeeds we write
+  // these to `.cairn/state/align-undo-log.jsonl` for `cairn attention
+  // undo` (plan §11.7).
+  const undoLogEntries: AlignUndoEntry[] = [];
   let pass1Calls = 0;
   let pass2Calls = 0;
   let auxiliaryCalls = 0; // delta extraction + classification
@@ -319,7 +328,15 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
     // Tier 1 — deterministic shortcut.
     const tier1Match = tier1PickWithBody(repoRoot, block, candidates);
     if (tier1Match !== null) {
-      stripItems.push(buildCiteItem(block, tier1Match.id));
+      const item = buildCiteItem(block, tier1Match.id);
+      stripItems.push(item);
+      undoLogEntries.push(makeUndoEntry({
+        sessionId,
+        kind: "tier1-cite",
+        block,
+        item,
+        primaryId: tier1Match.id,
+      }));
       pushAlignBlip(repoRoot, sessionId, tier1Match.id, "aligned");
       result.tier1Aligned += 1;
       continue;
@@ -431,7 +448,15 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
       continue;
     }
     if (tier2Outcome.kind === "cite") {
-      stripItems.push(buildCiteItem(block, tier2Outcome.id));
+      const item = buildCiteItem(block, tier2Outcome.id);
+      stripItems.push(item);
+      undoLogEntries.push(makeUndoEntry({
+        sessionId,
+        kind: "tier2-cite",
+        block,
+        item,
+        primaryId: tier2Outcome.id,
+      }));
       pushAlignBlip(repoRoot, sessionId, tier2Outcome.id, "aligned");
       result.tier2Aligned += 1;
       continue;
@@ -478,7 +503,15 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
       }
       if (delta.trim() === "NO_DELTA" || delta.trim().length === 0) {
         // Pass-2 said augments but Stage 1 found nothing — treat as same.
-        stripItems.push(buildCiteItem(block, tier2Outcome.existingId));
+        const item = buildCiteItem(block, tier2Outcome.existingId);
+        stripItems.push(item);
+        undoLogEntries.push(makeUndoEntry({
+          sessionId,
+          kind: "tier2-cite",
+          block,
+          item,
+          primaryId: tier2Outcome.existingId,
+        }));
         pushAlignBlip(repoRoot, sessionId, tier2Outcome.existingId, "aligned");
         result.tier2Aligned += 1;
         continue;
@@ -518,7 +551,16 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
         continue;
       }
       // Existing § token preserved; add the new sibling cite alongside.
-      stripItems.push(buildAugmentCiteItem(block, tier2Outcome.existingId, augEmit.id));
+      const augItem = buildAugmentCiteItem(block, tier2Outcome.existingId, augEmit.id);
+      stripItems.push(augItem);
+      undoLogEntries.push(makeUndoEntry({
+        sessionId,
+        kind: "augments",
+        block,
+        item: augItem,
+        primaryId: augEmit.id,
+        augmentsExistingId: tier2Outcome.existingId,
+      }));
       recordFreshEntry(augEmit.id, delta);
       if (augEmit.kind === "INV") {
         result.augmentsInvs += 1;
@@ -617,7 +659,16 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
       result.skipped += 1;
       continue;
     }
-    stripItems.push(buildCiteItem(block, emit.id));
+    const createItem = buildCiteItem(block, emit.id);
+    stripItems.push(createItem);
+    undoLogEntries.push(makeUndoEntry({
+      sessionId,
+      kind: "tier3-creation",
+      block,
+      item: createItem,
+      primaryId: emit.id,
+      primaryKind: emit.kind,
+    }));
     recordFreshEntry(emit.id, block.prose);
     if (emit.kind === "DEC") {
       result.decsCreated += 1;
@@ -639,6 +690,11 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
       await withWriteLock(repoRoot, () => {
         applyStripReplace({ repoRoot, items: stripItems, dirtyDecisions });
       });
+      // strip-replace landed — append undo records so `cairn attention
+      // undo` can roll back the cite, fresh DEC creation, or augments
+      // sibling. We log AFTER the write so an aborted apply doesn't
+      // leave a misleading audit trail.
+      for (const u of undoLogEntries) appendAlignUndoEntry(repoRoot, u);
     } catch (err) {
       log.warn(
         { err: err instanceof Error ? err.message : String(err) },
@@ -648,6 +704,36 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
   }
 
   return result;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Align-undo entry builder                                                   */
+/* -------------------------------------------------------------------------- */
+
+function makeUndoEntry(args: {
+  sessionId: string | null;
+  kind: AlignUndoEntry["kind"];
+  block: CommentBlock;
+  item: ReplaceItem;
+  primaryId: string;
+  primaryKind?: "DEC" | "INV";
+  augmentsExistingId?: string;
+}): AlignUndoEntry {
+  const entry: AlignUndoEntry = {
+    ts: new Date().toISOString(),
+    session_id: args.sessionId,
+    kind: args.kind,
+    file: args.item.file,
+    start_offset: args.item.startOffset,
+    end_offset: args.item.endOffset,
+    original_raw: args.item.expectedRaw ?? args.block.raw,
+    replacement: args.item.replacement,
+    primary_id: args.primaryId,
+  };
+  if (args.primaryKind !== undefined) entry.primary_kind = args.primaryKind;
+  if (args.augmentsExistingId !== undefined)
+    entry.augments_existing_id = args.augmentsExistingId;
+  return entry;
 }
 
 /* -------------------------------------------------------------------------- */
