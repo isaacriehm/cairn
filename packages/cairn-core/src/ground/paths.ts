@@ -103,6 +103,24 @@ export function stalenessCurrentPath(repoRoot: string): string {
   return join(stalenessDir(repoRoot), "current.json");
 }
 
+/**
+ * Layer A live-hook deferred-block log. PostToolUse Write/Edit appends
+ * one rich record per block when the per-Write Haiku cap is exceeded
+ * or Pass-2-still-ambiguous fires. Drained by Layer C at SessionStart.
+ */
+export function layerADeferredLogPath(repoRoot: string): string {
+  return join(stalenessDir(repoRoot), "layer-a-deferred.jsonl");
+}
+
+/**
+ * Layer B pre-commit-drift rich log. Git pre-commit hook appends one
+ * record per prose block discovered in staged content. Drained by
+ * Layer C at SessionStart.
+ */
+export function preCommitDeferredLogPath(repoRoot: string): string {
+  return join(stalenessDir(repoRoot), "pre-commit-deferred.jsonl");
+}
+
 export function runsTerminalDir(repoRoot: string): string {
   return join(repoRoot, ".cairn", "runs", "terminal");
 }
