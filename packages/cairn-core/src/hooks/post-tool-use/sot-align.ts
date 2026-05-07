@@ -559,6 +559,7 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
         block,
         item: augItem,
         primaryId: augEmit.id,
+        primaryKind: augEmit.kind,
         augmentsExistingId: tier2Outcome.existingId,
       }));
       recordFreshEntry(augEmit.id, delta);
@@ -694,7 +695,7 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
       // undo` can roll back the cite, fresh DEC creation, or augments
       // sibling. We log AFTER the write so an aborted apply doesn't
       // leave a misleading audit trail.
-      for (const u of undoLogEntries) appendAlignUndoEntry(repoRoot, u);
+      for (const u of undoLogEntries) await appendAlignUndoEntry(repoRoot, u);
     } catch (err) {
       log.warn(
         { err: err instanceof Error ? err.message : String(err) },

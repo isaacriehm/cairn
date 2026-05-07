@@ -8,8 +8,14 @@
  *            after Step 1 is a no-op.
  *   Step 3 — Outside-window entries are preserved across undo.
  *   Step 4 — Cite already hand-removed → "already-reverted".
- *   Step 5 — Tier 3 creation entry → "not-supported", entry kept in
- *            log so the operator can hand-resolve.
+ *   Step 5 — Tier 3 creation undo: deletes the entity file, scrubs
+ *            sot-bindings + sot-cache + topic-index references, and
+ *            restores the original prose at the recorded offsets.
+ *   Step 5b — Augments undo: deletes the sibling entity, trims the
+ *            double-cite back to the existing-id cite, leaves the
+ *            existing entity intact.
+ *   Step 5c — tier3-creation with missing source surfaces
+ *            source-missing without rolling back the entity file.
  *   Step 6 — Dry-run: classification only, no source / log writes.
  */
 
@@ -32,13 +38,17 @@ import {
   bodyContentHash,
   emptySotBindings,
   emptySotCache,
+  emptyTopicIndex,
   readSotBindings,
   readSotCache,
+  readTopicIndex,
   runAttentionUndo,
   setSotCacheEntry,
+  setTopic,
   tokenize,
   writeSotBindings,
   writeSotCache,
+  writeTopicIndex,
 } from "@isaacriehm/cairn-core";
 
 const cleanups: string[] = [];
@@ -252,27 +262,139 @@ async function main(): Promise<void> {
     console.log("  ✓ Step 4 — Hand-edited cite reports already-reverted");
   }
 
-  // ── Step 5 — Tier 3 creation → not-supported ────────────────────
+  // ── Step 5 — Tier 3 creation undo (full rollback) ───────────────
   {
     const repoRoot = mkRepoRoot();
+    const decId = "DEC-eeeeeee";
+    const decBody = "Novel constraint about quotas — captured by Layer A.";
+    // Seed the entity + sot-state surfaces as if Layer A had just emitted it.
+    seedAcceptedDec(repoRoot, decId, decBody);
+    let topics = emptyTopicIndex();
+    topics = setTopic(topics, "novel-quota-slug", {
+      slug: "novel-quota-slug",
+      dec_id: decId,
+      sot_source: ".cairn/ground/decisions/" + decId + ".md",
+      candidates: [],
+      created_at: new Date().toISOString(),
+    });
+    writeTopicIndex(repoRoot, topics);
+    // Source file post-strip-replace state — original prose replaced with the cite.
+    const novelSourceWithCite = "// §" + decId + "\nexport function quota() {}\n";
+    writeFile(repoRoot, "src/novel.ts", novelSourceWithCite);
+    const originalRaw =
+      "/**\n * Novel constraint about quotas — captured by Layer A.\n */";
     appendUndoFixture(repoRoot, {
       ts: new Date().toISOString(),
       session_id: null,
       kind: "tier3-creation",
       file: "src/novel.ts",
       start_offset: 0,
-      end_offset: 100,
-      original_raw: "/** novel block */",
-      replacement: "// §DEC-eeeeeee",
-      primary_id: "DEC-eeeeeee",
+      end_offset: originalRaw.length,
+      original_raw: originalRaw,
+      replacement: "// §" + decId,
+      primary_id: decId,
+      primary_kind: "DEC",
+    });
+
+    const result = await runAttentionUndo({ repoRoot });
+    assert(result.reverted === 1, `Step 5: reverted=1, got ${result.reverted}`);
+    assert(result.notSupported === 0, `Step 5: notSupported=0, got ${result.notSupported}`);
+    // Entity file gone.
+    assert(
+      !existsSync(join(repoRoot, ".cairn/ground/decisions", decId + ".md")),
+      "Step 5: entity file deleted",
+    );
+    // sot-bindings + sot-cache cleared.
+    const bindings = readSotBindings(repoRoot);
+    const cache = readSotCache(repoRoot);
+    assert(bindings.forward[decId] === undefined, "Step 5: sot-bindings unbound");
+    assert(cache.entries[decId] === undefined, "Step 5: sot-cache entry dropped");
+    // Topic-index entry survives but no longer references the deleted DEC.
+    const topicsAfter = readTopicIndex(repoRoot);
+    assert(
+      topicsAfter.topics["novel-quota-slug"]?.dec_id === undefined,
+      "Step 5: topic-index dec_id cleared",
+    );
+    // Source restored.
+    const restored = readFileSync(join(repoRoot, "src/novel.ts"), "utf8");
+    assert(restored.includes("Novel constraint"), "Step 5: original prose back in source");
+    assert(!restored.includes("// §" + decId), "Step 5: cite removed from source");
+    console.log("  ✓ Step 5 — tier3-creation undo deletes entity + scrubs sot-state + restores source");
+  }
+
+  // ── Step 5b — Augments undo trims double-cite + drops sibling ───
+  {
+    const repoRoot = mkRepoRoot();
+    const existingId = "DEC-eeeeee1";
+    const newId = "DEC-eeeeee2";
+    const existingBody = "Quota policy: cap anonymous to 60 req/min.";
+    const newBody = "Augment: also cap by IP /24 to 600/min.";
+    seedAcceptedDec(repoRoot, existingId, existingBody);
+    seedAcceptedDec(repoRoot, newId, newBody);
+    const doubleCite = "// §" + existingId + "\n// §" + newId;
+    const sourceWithDouble = doubleCite + "\nexport function quota() {}\n";
+    writeFile(repoRoot, "src/quota.ts", sourceWithDouble);
+    appendUndoFixture(repoRoot, {
+      ts: new Date().toISOString(),
+      session_id: null,
+      kind: "augments",
+      file: "src/quota.ts",
+      start_offset: 0,
+      end_offset: doubleCite.length,
+      original_raw: "/** placeholder — augments undo doesn't restore prose */",
+      replacement: doubleCite,
+      primary_id: newId,
+      primary_kind: "DEC",
+      augments_existing_id: existingId,
+    });
+
+    const result = await runAttentionUndo({ repoRoot });
+    assert(result.reverted === 1, `Step 5b: reverted=1, got ${result.reverted}`);
+    // Sibling gone, existing kept.
+    assert(
+      !existsSync(join(repoRoot, ".cairn/ground/decisions", newId + ".md")),
+      "Step 5b: sibling entity deleted",
+    );
+    assert(
+      existsSync(join(repoRoot, ".cairn/ground/decisions", existingId + ".md")),
+      "Step 5b: existing entity preserved",
+    );
+    const bindings = readSotBindings(repoRoot);
+    assert(bindings.forward[newId] === undefined, "Step 5b: sibling unbound");
+    assert(bindings.forward[existingId] !== undefined, "Step 5b: existing still bound");
+    // Source has only the existing cite, no second line.
+    const trimmed = readFileSync(join(repoRoot, "src/quota.ts"), "utf8");
+    assert(trimmed.includes("// §" + existingId), "Step 5b: existing cite kept");
+    assert(!trimmed.includes("// §" + newId), "Step 5b: sibling cite removed");
+    console.log("  ✓ Step 5b — augments undo trims double-cite + drops sibling, existing preserved");
+  }
+
+  // ── Step 5c — tier3-creation with missing source → source-missing ─
+  {
+    const repoRoot = mkRepoRoot();
+    const decId = "DEC-eeeeee3";
+    seedAcceptedDec(repoRoot, decId, "stale entity for source-missing test");
+    appendUndoFixture(repoRoot, {
+      ts: new Date().toISOString(),
+      session_id: null,
+      kind: "tier3-creation",
+      file: "src/vanished.ts",
+      start_offset: 0,
+      end_offset: 50,
+      original_raw: "/** vanished prose */",
+      replacement: "// §" + decId,
+      primary_id: decId,
       primary_kind: "DEC",
     });
     const result = await runAttentionUndo({ repoRoot });
-    assert(result.notSupported === 1, `Step 5: notSupported=1, got ${result.notSupported}`);
-    assert(result.reverted === 0, "Step 5: not reverted");
-    const log = readFileSync(alignUndoLogPath(repoRoot), "utf8");
-    assert(log.includes("tier3-creation"), "Step 5: not-supported entry kept in log");
-    console.log("  ✓ Step 5 — tier3-creation reported not-supported, kept in log");
+    assert(result.sourceMissing === 1, `Step 5c: sourceMissing=1, got ${result.sourceMissing}`);
+    assert(result.reverted === 0, "Step 5c: nothing reverted when source absent");
+    // Entity file untouched (no rollback partial).
+    assert(
+      existsSync(join(repoRoot, ".cairn/ground/decisions", decId + ".md")),
+      "Step 5c: entity preserved when source missing",
+    );
+    console.log("  ✓ Step 5c — tier3-creation with missing source reports source-missing, no partial");
   }
 
   // ── Step 6 — Dry-run preserves source + log ─────────────────────
