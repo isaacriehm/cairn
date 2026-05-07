@@ -138,6 +138,25 @@ function writeConflictFile(
   return filename;
 }
 
+function readDriftEvents(repoRoot: string): Array<Record<string, unknown>> {
+  const path = join(repoRoot, ".cairn", "staleness", "log.jsonl");
+  if (!existsSync(path)) return [];
+  const raw = readFileSync(path, "utf8");
+  const out: Array<Record<string, unknown>> = [];
+  for (const line of raw.split("\n")) {
+    if (line.trim().length === 0) continue;
+    try {
+      const parsed = JSON.parse(line);
+      if (typeof parsed === "object" && parsed !== null) {
+        out.push(parsed as Record<string, unknown>);
+      }
+    } catch {
+      /* best-effort */
+    }
+  }
+  return out;
+}
+
 function readDecFm(repoRoot: string, id: string): Record<string, unknown> | null {
   const abs = join(repoRoot, ".cairn", "ground", "decisions", `${id}.md`);
   if (!existsSync(abs)) return null;
@@ -212,6 +231,13 @@ async function main(): Promise<void> {
     // CLAUDE.md untouched.
     const claudeAfter = readFileSync(join(repoRoot, "CLAUDE.md"), "utf8");
     assert(claudeAfter === claudeMd, "Step 1: CLAUDE.md untouched");
+    // No orphan drift event — winner A was path-SoT but A is the survivor;
+    // loser B was ledger-SoT, no orphan source prose to surface.
+    const driftA = readDriftEvents(repoRoot);
+    assert(
+      driftA.length === 0,
+      `Step 1: no orphan drift expected (loser=ledger), got ${JSON.stringify(driftA)}`,
+    );
     console.log("  ✓ Step 1 — choice [a] supersede B with A, conflict deleted, source intact");
   }
 
@@ -244,7 +270,17 @@ async function main(): Promise<void> {
       !existsSync(join(repoRoot, ".cairn", "ground", "conflicts", filename)),
       "Step 2: conflict file deleted",
     );
-    console.log("  ✓ Step 2 — choice [b] supersede A with B");
+    // Loser A was sot_kind=path → orphan_path drift event recorded.
+    const drift = readDriftEvents(repoRoot);
+    const orphanA = drift.find(
+      (e) => e["kind"] === "orphan_path" && e["dec_id"] === aId,
+    );
+    assert(orphanA !== undefined, `Step 2: orphan_path drift for ${aId} expected`);
+    assert(
+      String(orphanA["path"]).startsWith("CLAUDE.md"),
+      "Step 2: drift path = original sot_path",
+    );
+    console.log(`  ✓ Step 2 — choice [b] supersede A with B + orphan_path drift for ${aId}`);
   }
 
   // ── Step 3 — choice [c] merge → fresh DEC supersedes both ────────
@@ -289,7 +325,13 @@ async function main(): Promise<void> {
       !existsSync(join(repoRoot, ".cairn", "ground", "conflicts", filename)),
       "Step 3: conflict file deleted after merge",
     );
-    console.log(`  ✓ Step 3 — choice [c] merge → fresh ${mergedId}, both old superseded`);
+    // Both old DECs superseded; only A was sot_kind=path → exactly one
+    // orphan_path drift event for A.
+    const drift = readDriftEvents(repoRoot);
+    const orphans = drift.filter((e) => e["kind"] === "orphan_path");
+    assert(orphans.length === 1, `Step 3: one orphan drift expected, got ${orphans.length}`);
+    assert(orphans[0]?.["dec_id"] === aId, "Step 3: orphan drift refs A (path-SoT side)");
+    console.log(`  ✓ Step 3 — choice [c] merge → fresh ${mergedId}, both old superseded, A orphan drift`);
   }
 
   // ── Step 4 — choice [d] archive both → conflict file → _archived/ ─
@@ -326,7 +368,12 @@ async function main(): Promise<void> {
     const bFm = readDecFm(repoRoot, bId);
     assert(aFm!.status === "archived", `Step 4: A status=archived, got ${String(aFm!.status)}`);
     assert(bFm!.status === "archived", `Step 4: B status=archived, got ${String(bFm!.status)}`);
-    console.log("  ✓ Step 4 — choice [d] both archived, conflict moved to _archived/");
+    // Both archived; only A was sot_kind=path → one orphan_path drift.
+    const drift = readDriftEvents(repoRoot);
+    const orphans = drift.filter((e) => e["kind"] === "orphan_path");
+    assert(orphans.length === 1, `Step 4: one orphan drift expected, got ${orphans.length}`);
+    assert(orphans[0]?.["dec_id"] === aId, "Step 4: orphan drift refs A (path-SoT side)");
+    console.log("  ✓ Step 4 — choice [d] both archived, conflict moved to _archived/, A orphan drift");
   }
 
   // ── Step 5 — d on non-conflict kind rejected ────────────────────

@@ -72178,6 +72178,31 @@ function deleteConflictFile(conflict) {
   } catch {
   }
 }
+function recordOrphanDriftEvents(repoRoot, refs) {
+  const ts = (/* @__PURE__ */ new Date()).toISOString();
+  for (const { ref, parsed } of refs) {
+    if (parsed === null)
+      continue;
+    const sotKind = parsed.fm["sot_kind"];
+    if (sotKind !== "path")
+      continue;
+    const sotPath = String(parsed.fm["sot_path"] ?? "");
+    if (sotPath.length === 0 || sotPath === "ledger")
+      continue;
+    try {
+      recordDriftEvent(repoRoot, {
+        ts,
+        kind: "orphan_path",
+        path: sotPath,
+        detail: `Conflict resolution superseded ${ref.id}; losing-side prose still lives at ${sotPath}.`,
+        severity: "soft",
+        dec_id: ref.id
+      });
+    } catch (err) {
+      log38.warn({ err: err instanceof Error ? err.message : String(err) }, "orphan_path drift event write failed");
+    }
+  }
+}
 function rebuildLedgers(repoRoot) {
   try {
     writeDecisionsLedger({ repoRoot });
@@ -72199,11 +72224,13 @@ async function resolveConflict(ctx, input) {
     const winner = input.choice === "a" ? conflict.aRef : conflict.bRef;
     const loser = input.choice === "a" ? conflict.bRef : conflict.aRef;
     if (input.choice === "a" || input.choice === "b") {
+      const loserBefore = readEntity(loser);
       const winnerOk = setSupersedes(loser, winner);
       const loserOk = setSupersededBy(ctx.repoRoot, loser, winner.id, "superseded");
       if (!winnerOk || !loserOk) {
         return mcpError("VALIDATION_FAILED", `conflict resolution failed: missing entity (winner=${winnerOk ? "ok" : "missing"}, loser=${loserOk ? "ok" : "missing"})`);
       }
+      recordOrphanDriftEvents(ctx.repoRoot, [{ ref: loser, parsed: loserBefore }]);
       deleteConflictFile(conflict);
       rebuildLedgers(ctx.repoRoot);
       try {
@@ -72230,9 +72257,15 @@ async function resolveConflict(ctx, input) {
       };
     }
     if (input.choice === "c") {
+      const aBefore2 = readEntity(conflict.aRef);
+      const bBefore2 = readEntity(conflict.bRef);
       const merge2 = mergeConflict(ctx.repoRoot, conflict, input.rationale);
       if ("error" in merge2)
         return merge2.error;
+      recordOrphanDriftEvents(ctx.repoRoot, [
+        { ref: conflict.aRef, parsed: aBefore2 },
+        { ref: conflict.bRef, parsed: bBefore2 }
+      ]);
       deleteConflictFile(conflict);
       rebuildLedgers(ctx.repoRoot);
       try {
@@ -72265,8 +72298,14 @@ async function resolveConflict(ctx, input) {
         ...input.rationale !== void 0 ? { rationale: input.rationale } : {}
       };
     }
+    const aBefore = readEntity(conflict.aRef);
+    const bBefore = readEntity(conflict.bRef);
     const aOk = setSupersededBy(ctx.repoRoot, conflict.aRef, conflict.bRef.id, "archived");
     const bOk = setSupersededBy(ctx.repoRoot, conflict.bRef, conflict.aRef.id, "archived");
+    recordOrphanDriftEvents(ctx.repoRoot, [
+      { ref: conflict.aRef, parsed: aBefore },
+      { ref: conflict.bRef, parsed: bBefore }
+    ]);
     const archivedRel = moveConflictToArchive(ctx.repoRoot, conflict);
     rebuildLedgers(ctx.repoRoot);
     try {

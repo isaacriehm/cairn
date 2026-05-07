@@ -49,6 +49,7 @@ import {
   conflictsDir,
   decisionsDir,
   invariantsDir,
+  recordDriftEvent,
 } from "../../ground/index.js";
 import { writeDecisionsLedger, writeInvariantsLedger } from "../../ground/ledgers.js";
 import {
@@ -520,6 +521,49 @@ function deleteConflictFile(conflict: ConflictFile): void {
   }
 }
 
+/**
+ * Plan §5.4.1 — losing-side prose stays in its source file
+ * post-resolution; the doc / CLAUDE.md / AGENTS.md narrative is
+ * preserved as-is. The original sot_path entry is now bound to a
+ * superseded / archived id, so phase 5b's next walk would re-emit a
+ * fresh DEC with the same content-addressed id (loop). Recording an
+ * `orphan_path` drift event surfaces the prose to the operator's
+ * attention queue so they can pick: re-cite the winner manually,
+ * promote it to a fresh DEC, or delete the orphan paragraph.
+ *
+ * The drift event includes `dec_id` pointing at the just-superseded
+ * entity so the attention surface can render context (which side won,
+ * what the orphan body looks like).
+ */
+function recordOrphanDriftEvents(
+  repoRoot: string,
+  refs: { ref: EntityRef; parsed: ParsedEntity | null }[],
+): void {
+  const ts = new Date().toISOString();
+  for (const { ref, parsed } of refs) {
+    if (parsed === null) continue;
+    const sotKind = parsed.fm["sot_kind"];
+    if (sotKind !== "path") continue;
+    const sotPath = String(parsed.fm["sot_path"] ?? "");
+    if (sotPath.length === 0 || sotPath === "ledger") continue;
+    try {
+      recordDriftEvent(repoRoot, {
+        ts,
+        kind: "orphan_path",
+        path: sotPath,
+        detail: `Conflict resolution superseded ${ref.id}; losing-side prose still lives at ${sotPath}.`,
+        severity: "soft",
+        dec_id: ref.id,
+      });
+    } catch (err) {
+      log.warn(
+        { err: err instanceof Error ? err.message : String(err) },
+        "orphan_path drift event write failed",
+      );
+    }
+  }
+}
+
 function rebuildLedgers(repoRoot: string): void {
   try {
     writeDecisionsLedger({ repoRoot });
@@ -553,6 +597,7 @@ async function resolveConflict(ctx: McpContext, input: Input): Promise<unknown> 
     const loser = input.choice === "a" ? conflict.bRef : conflict.aRef;
 
     if (input.choice === "a" || input.choice === "b") {
+      const loserBefore = readEntity(loser);
       const winnerOk = setSupersedes(loser, winner);
       const loserOk = setSupersededBy(ctx.repoRoot, loser, winner.id, "superseded");
       if (!winnerOk || !loserOk) {
@@ -561,6 +606,7 @@ async function resolveConflict(ctx: McpContext, input: Input): Promise<unknown> 
           `conflict resolution failed: missing entity (winner=${winnerOk ? "ok" : "missing"}, loser=${loserOk ? "ok" : "missing"})`,
         );
       }
+      recordOrphanDriftEvents(ctx.repoRoot, [{ ref: loser, parsed: loserBefore }]);
       deleteConflictFile(conflict);
       rebuildLedgers(ctx.repoRoot);
       try {
@@ -589,8 +635,14 @@ async function resolveConflict(ctx: McpContext, input: Input): Promise<unknown> 
     }
 
     if (input.choice === "c") {
+      const aBefore = readEntity(conflict.aRef);
+      const bBefore = readEntity(conflict.bRef);
       const merge = mergeConflict(ctx.repoRoot, conflict, input.rationale);
       if ("error" in merge) return merge.error;
+      recordOrphanDriftEvents(ctx.repoRoot, [
+        { ref: conflict.aRef, parsed: aBefore },
+        { ref: conflict.bRef, parsed: bBefore },
+      ]);
       deleteConflictFile(conflict);
       rebuildLedgers(ctx.repoRoot);
       try {
@@ -626,8 +678,14 @@ async function resolveConflict(ctx: McpContext, input: Input): Promise<unknown> 
     }
 
     // choice === "d" — archive both. Conflict file moves to _archived/.
+    const aBefore = readEntity(conflict.aRef);
+    const bBefore = readEntity(conflict.bRef);
     const aOk = setSupersededBy(ctx.repoRoot, conflict.aRef, conflict.bRef.id, "archived");
     const bOk = setSupersededBy(ctx.repoRoot, conflict.bRef, conflict.aRef.id, "archived");
+    recordOrphanDriftEvents(ctx.repoRoot, [
+      { ref: conflict.aRef, parsed: aBefore },
+      { ref: conflict.bRef, parsed: bBefore },
+    ]);
     const archivedRel = moveConflictToArchive(ctx.repoRoot, conflict);
     rebuildLedgers(ctx.repoRoot);
     try {
