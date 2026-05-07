@@ -75,6 +75,7 @@
     "smoke:layer-b-precommit": "tsx scripts/smoke-layer-b-precommit.ts",
     "smoke:layer-c-sessionstart-drain": "tsx scripts/smoke-layer-c-sessionstart-drain.ts",
     "smoke:fix-align": "tsx scripts/smoke-fix-align.ts",
+    "smoke:fix-align-gates": "tsx scripts/smoke-fix-align-gates.ts",
     "smoke:attention-undo": "tsx scripts/smoke-attention-undo.ts",
     "smoke:migrate-to-sot": "tsx scripts/smoke-migrate-to-sot.ts"
   },
