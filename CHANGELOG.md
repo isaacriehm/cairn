@@ -4,6 +4,104 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] — 2026-05-07
+
+### Added
+
+- **`cairn attention undo` reverses Tier-3 fresh DEC/INV creation +
+  augments-sibling emission.** Both kinds previously returned
+  `not-supported` and required hand-surgery. The reversal now deletes
+  the freshly-emitted entity file, unbinds it from `sot-bindings`,
+  drops its `sot-cache` entry, clears the topic-index reference,
+  refreshes the affected ledger, and restores the original prose at
+  the recorded source offsets. All mutations run under
+  `withWriteLock`. Augments rollback also trims the source's
+  double-cite line back to the existing-id cite (the augmented entity
+  stays referenced). Source-restore lands FIRST so a partial failure
+  leaves the operator with original prose + an entity to re-cite
+  manually rather than an orphaned cite pointing at a deleted DEC.
+  Plan §11.7 — closes the v0.6 audit item from the v0.5.0 deferred
+  file.
+- **Layer D apply-phase consent gates.** `cairn fix align` now refuses
+  to run an apply phase without two operator-explicit signals:
+  - **Dry-run sentinel.** `--dry-run` writes
+    `.cairn/state/fix-align-dryrun.json` carrying `ts`,
+    `repo_head_sha`, and `args_hash` (sha256 over the normalized
+    flag set). The next non-dry-run invocation must find a sentinel
+    that is fresh (within 30 minutes), points at the current `git
+    rev-parse HEAD`, and matches the same flag set. Mismatch reports
+    `missing` / `stale` / `head-drifted` / `args-drifted` and aborts
+    before any Haiku call.
+  - **Dirty-tree guard.** Apply scans `git status --porcelain
+    --untracked-files=all` for paths intersecting the include globs.
+    Hits abort with a preview of the first five dirty paths.
+  - **`--force` flag** bypasses both gates for CI / scripted contexts.
+  Plan §4.4.
+- **Lens `⚑` staleness flag.** The decoration provider renders a
+  small amber `⚑` glyph in the left gutter beside any §DEC / §INV
+  token whose id is referenced by a pending entry in
+  `.cairn/staleness/log.jsonl`. Per-line dedup so multiple cite
+  tokens on the same line emit one flag. The lens file watcher fires
+  on `staleness/log.jsonl` changes so the flag clears in real-time
+  when GC drains a drift entry. Plan §10.4.
+- **Append-time GC + write-lock for the Layer A audit log.**
+  `appendAlignUndoEntry` and `pruneAlignUndoLog` now wrap their write
+  cycles in `withWriteLock` — two concurrent Layer A invocations can
+  no longer corrupt JSONL line boundaries. When the log is at or
+  above 256 lines, the append path reads + filters entries older
+  than 7 days before writing back; operators who never run `cairn
+  attention undo` no longer accumulate one line per Layer A
+  auto-resolution forever.
+- **`writeFileSafe` helper** in `cairn-core/src/fs.ts` —
+  `mkdirSync(dirname(path), { recursive: true }) + writeFileSync`
+  collapsed into a single call. Applied to 11 sites across 10 files
+  (ground writers + ad-hoc writers in init / mcp tools).
+- **`parseFrontmatterRecord` helper** in
+  `cairn-core/src/ground/frontmatter.ts` — replaces three identical
+  10-line YAML-frontmatter parse blocks in `resolve-attention.ts`
+  and the two private `parseFrontmatter` functions in
+  `attention/bulk-accept.ts` and `attention/serve/api.ts`.
+
+### Changed
+
+- **`sot_kind` / `sot_path` / `sot_content_hash` are now required**
+  on `DecisionFrontmatter` and `InvariantFrontmatter`. The fields
+  shipped as `.optional()` in v0.5.0 to keep v0.4.x ledgers parseable
+  during the field rollout; required is the belt-and-suspenders flip
+  that catches any drift sooner.
+  `cairn_record_decision` was the lone DEC writer that still emitted
+  drafts without the SoT trio — it now stamps `sot_kind: "ledger"` /
+  `sot_path: "ledger"` / `sot_content_hash: bodyContentHash(body)` on
+  every captured DEC. Other writers (Layer A fresh DEC, conflict
+  merge, init phases 5b / 6 / 7b / 7c) already stamped the fields.
+- **`tools/index.ts` registry typed `ToolDef<never>[]`** instead of
+  `ToolDef<unknown>[]` with 25 cast sites — the contravariant
+  parameter position makes `never` the safe upper-bound for a
+  registry that owns no input schema. Casts collapse to zero.
+- **`.nullable().optional()` → `.nullish()`** across the 14 schema
+  sites (cairn-core/src/ground/schemas.ts + the align-undo log
+  schema). Functionally identical, less noise.
+- **Two `await import("node:fs")` lazy loads → static imports** in
+  drain.ts and one rules-merge ingest path. The lazy loads predated
+  the ESM toolchain settling and were no longer pulling weight.
+
+### Fixed
+
+- **Layer A augments-undo entries now carry `primary_kind`.** Tier-3
+  creation already stamped it; the augments path was missing it,
+  forcing the reversal pipeline to derive the kind from the id
+  prefix. Both paths now store the kind explicitly; the prefix-based
+  derivation remains as a fallback for entries written before this
+  commit.
+- **Dead `emptySot*` / `emptyTopicIndex` fallback guards removed**
+  from `sot-emit`, `resolve-attention`, `sot-align`. The read helpers
+  already return the empty sentinel on missing or invalid file, so
+  the wrapper guards were unreachable.
+- **Three `as unknown as` cast sites cleared.** `z.enum` now gets
+  `PHASE_IDS` directly; `validateMapperOutput` uses a narrow optional
+  cast; `readLedgerSafely` drops the generic `<T>` for typed
+  overloads.
+
 ## [0.5.0] — 2026-05-06
 
 ### Added
@@ -18,8 +116,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (content-fingerprint → DEC slug map), and `.cairn/ground/anchor-map.yaml`
   are the on-disk surfaces that make this provenance addressable.
   Schema fields ship as `.optional()` for v0.5.0 so existing v0.4.x
-  ledgers stay parseable; the migration script stamps the fields in
-  place. The optional → required flip lands in v0.6.
+  ledgers stay parseable. The optional → required flip lands in v0.6.
 - **Layer A — live SoT alignment hook.** New PostToolUse Write/Edit
   hook reads each freshly-typed prose block, runs Tier 1 (deterministic
   cite via topic-index), Tier 2 (two-pass Haiku dedup judge against
@@ -63,9 +160,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Phase 6 verbatim doc ingest.** New dynamic doc walk replaces the
   hard-coded README + ARCHITECTURE allowlist. Walks all canonical
   docs, classifies each block as decision / invariant / context, and
-  emits ledger entries citing the source path. Skipped in adopted
-  v0.4.x repos by the migration since old runs already populated the
-  ledger from a previous walk.
+  emits ledger entries citing the source path.
 - **Phase 7b ledger source-comments rewrite.** Source-comment essays
   no longer auto-emit a DEC per essay — they cite-existing when the
   topic-index shows the constraint already lives in the ledger. New
@@ -120,16 +215,6 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   body directly. Gracefully handles missing `sot-cache.yaml` /
   `sot-bindings.yaml` (pre-migration v0.4.x repos). New
   `smoke-sot-body`.
-- **`/tmp/cairn-v0.5.0-migrate.mjs` — solo-user migration script.**
-  Stamps `sot_kind` / `sot_path` / `sot_content_hash` on every
-  existing DEC + INV that lacks them (idempotent), initializes the
-  four new ground files if missing, seeds `sot-bindings` +
-  `sot-cache` from the post-stamp ledger, installs the Layer B
-  pre-commit hook alongside the existing post-commit hook, and skips
-  phase 7b (v0.4.x already strip-replaced source comments). New
-  `smoke-migrate-to-sot` validates the script on a synthesized
-  v0.4.x fixture.
-
 ### Changed
 
 - **Init phases 6 / 7b / 7c are now sequential.** Previously
