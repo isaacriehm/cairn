@@ -93,18 +93,29 @@ export class CitationHoverProvider implements vscode.HoverProvider {
     md.supportThemeIcons = true;
 
     if (token.kind === "decision") {
-      const r = this.resolver.resolveDecision(token.id);
+      const r = this.resolver.resolveDecisionBody(token.id);
       const statusLabel =
         r.status === "accepted"
           ? "$(check) accepted"
           : "$(question) not in ledger";
       md.appendMarkdown(`**§${r.id}** — ${escapeMd(r.title)}\n\n`);
       md.appendMarkdown(`${statusLabel}\n\n`);
+      if (r.sot_kind === "path" && r.sot_path.length > 0) {
+        md.appendMarkdown(`SoT path: \`${escapeMd(r.sot_path)}\`\n\n`);
+      }
+      if (r.fromCache) {
+        md.appendMarkdown(
+          "$(warning) source unavailable — cached snapshot\n\n",
+        );
+      }
+      if (r.body.length > 0) {
+        md.appendMarkdown(`---\n\n${r.body}\n\n---\n\n`);
+      }
       md.appendMarkdown(
         `[Open decisions ledger](${vscode.Uri.file(this.resolver.decisionsLedgerFilePath()).toString()})`,
       );
     } else if (token.kind === "invariant") {
-      const r = this.resolver.resolveInvariant(token.id);
+      const r = this.resolver.resolveInvariantBody(token.id);
       const statusLabel =
         r.status === "active"
           ? "$(check) active"
@@ -113,8 +124,16 @@ export class CitationHoverProvider implements vscode.HoverProvider {
             : "$(question) not in ledger";
       md.appendMarkdown(`**§${r.id}** — ${escapeMd(r.title)}\n\n`);
       md.appendMarkdown(`${statusLabel}\n\n`);
-      if (r.sourceDecision !== null) {
-        md.appendMarkdown(`Source decision: \`${r.sourceDecision}\`\n\n`);
+      if (r.sot_kind === "path" && r.sot_path.length > 0) {
+        md.appendMarkdown(`SoT path: \`${escapeMd(r.sot_path)}\`\n\n`);
+      }
+      if (r.fromCache) {
+        md.appendMarkdown(
+          "$(warning) source unavailable — cached snapshot\n\n",
+        );
+      }
+      if (r.body.length > 0) {
+        md.appendMarkdown(`---\n\n${r.body}\n\n---\n\n`);
       }
       md.appendMarkdown(
         `[Open invariants ledger](${vscode.Uri.file(this.resolver.invariantsLedgerFilePath()).toString()})`,
