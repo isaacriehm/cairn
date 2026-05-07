@@ -189,3 +189,17 @@ export const resolveAttentionInput = {
   rationale: z.string().optional(),
 };
 
+export const alignDrainInput = {
+  /**
+   * Hard cap on Haiku judge calls. Excess entries stay in the deferred
+   * logs for a future drain. Default 30 (plan §4.3 budget).
+   */
+  max_haiku_calls: z.number().int().min(0).max(200).optional(),
+  /**
+   * Dry-run: classify every entry and report what would happen but do
+   * not strip-replace source files, write alignment-pending records,
+   * or truncate the deferred logs.
+   */
+  dry_run: z.boolean().optional(),
+};
+

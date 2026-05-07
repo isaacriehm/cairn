@@ -61,7 +61,6 @@ import { readHookStdin } from "../runners/payload.js";
 import { resolveRepoRoot } from "../../session-start/index.js";
 import { runClaude } from "../../claude/index.js";
 import {
-  alignmentPendingDir,
   bindDec,
   bodyContentHash,
   decisionsDir,
@@ -81,6 +80,7 @@ import {
   setSotCacheEntry,
   setTopic,
   topicSlug,
+  writeAlignmentPending,
   writeAnchorMap,
   writeSotBindings,
   writeSotCache,
@@ -1612,83 +1612,8 @@ function buildAugmentCiteItem(
 }
 
 /* -------------------------------------------------------------------------- */
-/* Alignment-pending queue (Pass-2-still-ambiguous attention surface)         */
+/* Alignment-pending queue — shared with Layer C drain via ground module      */
 /* -------------------------------------------------------------------------- */
-
-interface AlignmentPendingArgs {
-  repoRoot: string;
-  block: CommentBlock;
-  /** `tier2-ambiguous` (matched a candidate ambiguously) or `tier3-ambiguous`. */
-  kind: "tier2-ambiguous" | "tier3-ambiguous";
-  /** Existing entity id (Tier 2 only). */
-  existingId?: string;
-  /** Existing entity body (Tier 2 only). */
-  existingBody?: string;
-}
-
-function writeAlignmentPending(args: AlignmentPendingArgs): string {
-  const { repoRoot, block, kind } = args;
-  const dir = alignmentPendingDir(repoRoot);
-  mkdirSync(dir, { recursive: true });
-  // Filename is content-fingerprint slug so re-running the same Write
-  // doesn't pile up duplicate files.
-  const slug = topicSlug(block.prose);
-  const filename = `${slug}.md`;
-  const abs = join(dir, filename);
-  if (existsSync(abs)) return `.cairn/ground/alignment-pending/${filename}`;
-  const now = new Date().toISOString();
-  const fm: Record<string, unknown> = {
-    slug,
-    kind,
-    source_file: block.file,
-    source_range: `${block.startLine}-${block.endLine}`,
-    start_line: block.startLine,
-    end_line: block.endLine,
-    start_offset: block.startOffset,
-    end_offset: block.endOffset,
-    lang: block.lang,
-    raw: block.raw,
-    detected_at: now,
-    detector: "layer-a-pass2-ambiguous",
-    severity: "soft",
-  };
-  if (args.existingId !== undefined) fm["existing_id"] = args.existingId;
-  const lines: string[] = [];
-  lines.push("---");
-  lines.push(stringifyYaml(fm).trimEnd());
-  lines.push("---");
-  lines.push("");
-  lines.push(`# Alignment pending — ${slug} (${kind})`);
-  lines.push("");
-  lines.push(`## Block (just written at \`${block.file}:${block.startLine}-${block.endLine}\`)`);
-  lines.push("");
-  lines.push("```");
-  lines.push(block.prose.trim());
-  lines.push("```");
-  lines.push("");
-  if (args.existingId !== undefined && args.existingBody !== undefined) {
-    lines.push(`## Existing ${args.existingId}`);
-    lines.push("");
-    lines.push("```");
-    lines.push(args.existingBody.trim());
-    lines.push("```");
-    lines.push("");
-  }
-  lines.push("## How to resolve");
-  lines.push("");
-  if (kind === "tier2-ambiguous") {
-    lines.push("Pass 2 dedup judge returned ambiguous. cairn-attention will surface");
-    lines.push("a side-by-side render with `[a] same` / `[b] different` /");
-    lines.push("`[c] augments` / `[d] leave for later` choices via");
-    lines.push("`cairn_resolve_attention({ kind: \"alignment_pending\", ... })`.");
-  } else {
-    lines.push("Pass 2 creation judge could not classify the block as");
-    lines.push("decision / constraint / descriptive. cairn-attention will");
-    lines.push("surface `[a] decision` / `[b] constraint` / `[c] descriptive` /");
-    lines.push("`[d] leave for later` via");
-    lines.push("`cairn_resolve_attention({ kind: \"alignment_pending\", ... })`.");
-  }
-  lines.push("");
-  writeFileSync(abs, lines.join("\n"), "utf8");
-  return `.cairn/ground/alignment-pending/${filename}`;
-}
+// `writeAlignmentPending` lives in ground/alignment-pending.ts so both
+// the Layer A hook (here) and the Layer C SessionStart drain can write
+// to the same attention surface with the same on-disk shape.

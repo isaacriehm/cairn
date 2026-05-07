@@ -39,6 +39,11 @@ export {
 export type { LedgerOptions } from "./ledgers.js";
 export { recordDriftEvent, writeDriftSnapshot } from "./drift.js";
 export type { DriftSnapshot } from "./drift.js";
+export { writeAlignmentPending } from "./alignment-pending.js";
+export type {
+  AlignmentPendingKind,
+  WriteAlignmentPendingArgs,
+} from "./alignment-pending.js";
 export { buildQualityGrades, writeQualityGrades } from "./quality-grades.js";
 export type { QualityGradesOptions } from "./quality-grades.js";
 export {
