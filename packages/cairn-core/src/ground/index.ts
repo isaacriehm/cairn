@@ -7,12 +7,14 @@ export {
   conflictsDir,
   decisionsDir,
   decisionsLedgerPath,
+  fileCandidatesMapPath,
   groundDir,
   haikuCacheDir,
   invariantsDir,
   invariantsLedgerPath,
   manifestPath,
   qualityGradesPath,
+  rejectedYamlPath,
   runsTerminalDir,
   sotBindingsPath,
   sotCachePath,
@@ -75,11 +77,14 @@ export {
   InvariantFrontmatter,
   DecisionLedgerEntry,
   InvariantLedgerEntry,
+  FileCandidatesMap,
   QualityGrade,
   QualityGrades,
   DriftEvent,
   PreCommitDriftCandidate,
   PreCommitDriftLogEntry,
+  RejectedEntry,
+  RejectedYaml,
   SotBindings,
   SotCache,
   SotCacheEntry,
@@ -125,6 +130,21 @@ export {
   setAnchor,
   writeAnchorMap,
 } from "./anchor-map.js";
+
+export {
+  appendRejected,
+  emptyRejectedYaml,
+  gcRejectedYaml,
+  readRejectedYaml,
+  writeRejectedYaml,
+} from "./rejected.js";
+
+export {
+  buildFileCandidatesMap,
+  emptyFileCandidatesMap,
+  readFileCandidatesMap,
+  writeFileCandidatesMap,
+} from "./file-candidates-map.js";
 
 export {
   bodyContentHash,
