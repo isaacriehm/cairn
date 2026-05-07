@@ -125,7 +125,8 @@
     "smoke:resolver": "tsx scripts/smoke-resolver.ts",
     "smoke:dec-tokens": "tsx scripts/smoke-dec-tokens.ts",
     "smoke:empty-ground": "tsx scripts/smoke-empty-ground.ts",
-    "smoke:sot-body": "tsx scripts/smoke-sot-body.ts"
+    "smoke:sot-body": "tsx scripts/smoke-sot-body.ts",
+    "smoke:staleness": "tsx scripts/smoke-staleness.ts"
   },
   "dependencies": {
     "@isaacriehm/cairn-core": "workspace:*"
