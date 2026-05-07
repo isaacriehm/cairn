@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { writeFileSafe } from "../fs.js";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { logger } from "../logger.js";
 import { topicIndexPath } from "./paths.js";
@@ -39,9 +39,8 @@ export function readTopicIndex(repoRoot: string): TopicIndex {
 
 export function writeTopicIndex(repoRoot: string, index: TopicIndex): string {
   const path = topicIndexPath(repoRoot);
-  mkdirSync(dirname(path), { recursive: true });
   const next: TopicIndex = { ...index, generated: new Date().toISOString() };
-  writeFileSync(path, stringifyYaml(next), "utf8");
+  writeFileSafe(path, stringifyYaml(next));
   log.debug({ path, topics: Object.keys(next.topics).length }, "wrote topic-index");
   return path;
 }

@@ -4,7 +4,7 @@
  * funnel through `withWriteLock`.
  */
 
-import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
@@ -18,6 +18,7 @@ import {
   decisionsLedgerPath,
 } from "../../ground/paths.js";
 import { writeDecisionsLedger } from "../../ground/ledgers.js";
+import { parseFrontmatterRecord } from "../../ground/frontmatter.js";
 import { withWriteLock } from "../../lock.js";
 import { writeInvalidationEvent } from "../../events/index.js";
 import { logger } from "../../logger.js";
@@ -217,7 +218,7 @@ async function buildState(ctx: ApiCtx): Promise<unknown> {
       } catch {
         continue;
       }
-      const fm = parseFrontmatter(raw);
+      const fm = parseFrontmatterRecord(raw).fm;
       const body = stripFrontmatter(raw);
       const id = stringField(fm, "id") ?? e.name.replace(/\.draft\.md$/, "");
       const title =
@@ -226,7 +227,6 @@ async function buildState(ctx: ApiCtx): Promise<unknown> {
         id;
       let mtimeMs = 0;
       try {
-        const { statSync } = await import("node:fs");
         mtimeMs = statSync(abs).mtimeMs;
       } catch {
         /* leave 0 */
@@ -368,18 +368,6 @@ async function editDraft(
   });
 }
 
-function parseFrontmatter(doc: string): Record<string, unknown> {
-  const m = doc.match(/^---\n([\s\S]*?)\n---/);
-  if (m === null || m[1] === undefined) return {};
-  try {
-    const parsed = parseYaml(m[1]);
-    return typeof parsed === "object" && parsed !== null
-      ? (parsed as Record<string, unknown>)
-      : {};
-  } catch {
-    return {};
-  }
-}
 
 function stripFrontmatter(doc: string): string {
   return doc.replace(/^---\n[\s\S]*?\n---\n?/, "");

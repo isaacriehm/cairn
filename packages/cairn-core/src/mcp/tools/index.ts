@@ -27,39 +27,39 @@ import { supersedesChainTool } from "./supersedes-chain.js";
 import { taskCreateTool } from "./task-create.js";
 import { timelineTool } from "./timeline.js";
 
-export const allTools: ToolDef<unknown>[] = [
+export const allTools: ToolDef<never>[] = [
   // Read — graph traversal
-  decisionGetTool as ToolDef<unknown>,
-  decisionsInScopeTool as ToolDef<unknown>,
-  decisionsForSymbolTool as ToolDef<unknown>,
-  canonicalForTopicTool as ToolDef<unknown>,
-  groundGetTool as ToolDef<unknown>,
-  supersedesChainTool as ToolDef<unknown>,
-  invariantGetTool as ToolDef<unknown>,
-  invariantsInScopeTool as ToolDef<unknown>,
+  decisionGetTool,
+  decisionsInScopeTool,
+  decisionsForSymbolTool,
+  canonicalForTopicTool,
+  groundGetTool,
+  supersedesChainTool,
+  invariantGetTool,
+  invariantsInScopeTool,
   // Read — 3-layer progressive
-  searchTool as ToolDef<unknown>,
-  timelineTool as ToolDef<unknown>,
-  getFullTool as ToolDef<unknown>,
+  searchTool,
+  timelineTool,
+  getFullTool,
   // Read — historical (gated)
-  queryHistoryTool as ToolDef<unknown>,
+  queryHistoryTool,
   // Write
-  recordDecisionTool as ToolDef<unknown>,
-  taskCreateTool as ToolDef<unknown>,
-  archiveTool as ToolDef<unknown>,
+  recordDecisionTool,
+  taskCreateTool,
+  archiveTool,
   // Write — plugin-era
-  resolveAttentionTool as ToolDef<unknown>,
-  bulkAcceptAttentionTool as ToolDef<unknown>,
-  attentionDedupTool as ToolDef<unknown>,
-  attentionRestoreTool as ToolDef<unknown>,
-  attentionServeTool as ToolDef<unknown>,
-  attentionWaitTool as ToolDef<unknown>,
+  resolveAttentionTool,
+  bulkAcceptAttentionTool,
+  attentionDedupTool,
+  attentionRestoreTool,
+  attentionServeTool,
+  attentionWaitTool,
   // Write — Layer C SessionStart drain
-  alignDrainTool as ToolDef<unknown>,
+  alignDrainTool,
   // Write — init pipeline (v0.2.0 MCP-native init)
-  initResumeTool as ToolDef<unknown>,
-  initParallel678Tool as ToolDef<unknown>,
-  ...(initPhaseTools as ToolDef<unknown>[]),
+  initResumeTool,
+  initParallel678Tool,
+  ...initPhaseTools,
 ];
 
 export type { ToolDef };

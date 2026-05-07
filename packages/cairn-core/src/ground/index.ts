@@ -26,7 +26,7 @@ export {
 } from "./paths.js";
 export { matchGlob, matchAnyGlob, compileGlob } from "./glob.js";
 export { walkCanonical } from "./walk.js";
-export { parseFrontmatter, readFrontmatter, evaluateFreshness } from "./frontmatter.js";
+export { parseFrontmatter, parseFrontmatterRecord, readFrontmatter, evaluateFreshness } from "./frontmatter.js";
 export type { ParsedDocument, FreshnessVerdict } from "./frontmatter.js";
 export { buildManifest, writeManifest } from "./manifest.js";
 export type { BuildManifestOptions } from "./manifest.js";

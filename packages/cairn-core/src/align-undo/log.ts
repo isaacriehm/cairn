@@ -28,7 +28,7 @@ const log = logger("align-undo.log");
 
 export const AlignUndoEntry = z.object({
   ts: z.string(),
-  session_id: z.string().nullable().optional(),
+  session_id: z.string().nullish(),
   kind: z.enum(["tier1-cite", "tier2-cite", "tier3-creation", "augments"]),
   file: z.string(),
   start_offset: z.number(),

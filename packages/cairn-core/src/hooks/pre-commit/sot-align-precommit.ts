@@ -40,6 +40,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { writeFileSafe } from "../../fs.js";
 import { resolveRepoRoot } from "../../session-start/index.js";
 import {
   bodyContentHash,
@@ -139,8 +140,7 @@ export function alignStagedTree(args: PreCommitAlignArgs): PreCommitAlignResult 
         continue;
       }
       const dst = join(stageRoot, rel);
-      mkdirSync(dirname(dst), { recursive: true });
-      writeFileSync(dst, content, "utf8");
+      writeFileSafe(dst, content);
       result.filesScanned += 1;
 
       const blocks = extractBlocks(stageRoot, rel);

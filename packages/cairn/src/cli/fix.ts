@@ -33,6 +33,7 @@
 import { execFileSync } from "node:child_process";
 import {
   existsSync,
+  mkdirSync,
   readFileSync,
   readdirSync,
   rmSync,
@@ -294,7 +295,6 @@ async function fixClaudeRules(repoRoot: string, dryRun: boolean): Promise<void> 
   // mkdir -p .claude/rules/
   const targetDir = dirname(targetAbs);
   if (!existsSync(targetDir)) {
-    const { mkdirSync } = await import("node:fs");
     mkdirSync(targetDir, { recursive: true });
   }
   writeFileSync(targetAbs, templateContent, "utf8");

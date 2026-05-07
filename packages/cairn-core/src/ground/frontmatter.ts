@@ -13,6 +13,36 @@ export interface ParsedDocument {
 
 const FENCE_RE = /^---\s*\r?\n([\s\S]*?)\r?\n---\s*\r?\n?/;
 
+/**
+ * Extract frontmatter from `source` and return it as an unvalidated
+ * `Record<string, unknown>` alongside the remaining body. Returns
+ * `{ fm: {}, body: source }` on any parse failure or absent frontmatter.
+ *
+ * Use this instead of an inline `.match(/^---…/)` when callers need
+ * arbitrary field access without a Zod schema.
+ */
+export function parseFrontmatterRecord(source: string): {
+  fm: Record<string, unknown>;
+  body: string;
+} {
+  const match = source.match(FENCE_RE);
+  if (match === null || match.index !== 0) {
+    return { fm: {}, body: source };
+  }
+  const raw = match[1] ?? "";
+  const body = source.slice(match[0].length);
+  if (raw.trim().length === 0) return { fm: {}, body };
+  try {
+    const parsed = parseYaml(raw);
+    if (typeof parsed === "object" && parsed !== null) {
+      return { fm: parsed as Record<string, unknown>, body };
+    }
+  } catch {
+    /* ignore — malformed YAML */
+  }
+  return { fm: {}, body };
+}
+
 export function parseFrontmatter(source: string): ParsedDocument {
   const match = source.match(FENCE_RE);
   if (!match || match.index !== 0) {

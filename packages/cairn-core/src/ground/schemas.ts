@@ -11,7 +11,7 @@ export const ProvenanceFrontmatter = z
     generated: z.string().optional(),
     "verified-at": z.string().optional(),
     "source-commits": z.array(z.string()).optional(),
-    supersedes: z.string().nullable().optional(),
+    supersedes: z.string().nullish(),
   })
   .passthrough();
 export type ProvenanceFrontmatter = z.infer<typeof ProvenanceFrontmatter>;
@@ -149,16 +149,16 @@ export const DecisionFrontmatter = z
     decided_at: z.string().optional(),
     decided_by: z.string().optional(),
     scope_globs: z.array(z.string()).optional(),
-    supersedes: z.string().nullable().optional(),
-    superseded_by: z.string().nullable().optional(),
+    supersedes: z.string().nullish(),
+    superseded_by: z.string().nullish(),
     assertions: z.array(DecisionAssertion).optional(),
     human_review_hint: z.string().optional(),
     related_invariants: z.array(z.string()).optional(),
     sot_kind: SotKind.optional(),
     sot_path: z.string().min(1).optional(),
     sot_content_hash: z.string().length(64).optional(),
-    related: z.string().nullable().optional(),
-    derived_from: z.string().nullable().optional(),
+    related: z.string().nullish(),
+    derived_from: z.string().nullish(),
   })
   .passthrough();
 export type DecisionFrontmatter = z.infer<typeof DecisionFrontmatter>;
@@ -173,17 +173,17 @@ export const InvariantFrontmatter = z
     generated: z.string().optional(),
     "verified-at": z.string().optional(),
     source_run: z.string().optional(),
-    source_decision: z.string().nullable().optional(),
+    source_decision: z.string().nullish(),
     introduced_for_bug: z.string().optional(),
     sensor: z.string().optional(),
     e2e: z.string().optional(),
     naming_convention: z.string().optional(),
-    superseded_by: z.string().nullable().optional(),
+    superseded_by: z.string().nullish(),
     sot_kind: SotKind.optional(),
     sot_path: z.string().min(1).optional(),
     sot_content_hash: z.string().length(64).optional(),
-    related: z.string().nullable().optional(),
-    derived_from: z.string().nullable().optional(),
+    related: z.string().nullish(),
+    derived_from: z.string().nullish(),
   })
   .passthrough();
 export type InvariantFrontmatter = z.infer<typeof InvariantFrontmatter>;
@@ -193,8 +193,8 @@ export const DecisionLedgerEntry = z.object({
   title: z.string(),
   status: z.string(),
   scope_globs: z.array(z.string()).optional(),
-  supersedes: z.string().nullable().optional(),
-  superseded_by: z.string().nullable().optional(),
+  supersedes: z.string().nullish(),
+  superseded_by: z.string().nullish(),
 });
 export type DecisionLedgerEntry = z.infer<typeof DecisionLedgerEntry>;
 
@@ -202,8 +202,8 @@ export const InvariantLedgerEntry = z.object({
   id: z.string(),
   title: z.string(),
   status: z.string(),
-  source_decision: z.string().nullable().optional(),
-  superseded_by: z.string().nullable().optional(),
+  source_decision: z.string().nullish(),
+  superseded_by: z.string().nullish(),
 });
 export type InvariantLedgerEntry = z.infer<typeof InvariantLedgerEntry>;
 

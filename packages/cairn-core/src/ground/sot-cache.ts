@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { writeFileSafe } from "../fs.js";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { logger } from "../logger.js";
 import { sotCachePath } from "./paths.js";
@@ -37,9 +37,8 @@ export function readSotCache(repoRoot: string): SotCache {
 
 export function writeSotCache(repoRoot: string, cache: SotCache): string {
   const path = sotCachePath(repoRoot);
-  mkdirSync(dirname(path), { recursive: true });
   const next: SotCache = { ...cache, generated: new Date().toISOString() };
-  writeFileSync(path, stringifyYaml(next), "utf8");
+  writeFileSafe(path, stringifyYaml(next));
   log.debug({ path, entries: Object.keys(next.entries).length }, "wrote sot-cache");
   return path;
 }

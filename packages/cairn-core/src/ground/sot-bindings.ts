@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { writeFileSafe } from "../fs.js";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { logger } from "../logger.js";
 import { sotBindingsPath } from "./paths.js";
@@ -45,9 +45,8 @@ export function readSotBindings(repoRoot: string): SotBindings {
 
 export function writeSotBindings(repoRoot: string, bindings: SotBindings): string {
   const path = sotBindingsPath(repoRoot);
-  mkdirSync(dirname(path), { recursive: true });
   const next: SotBindings = { ...bindings, generated: new Date().toISOString() };
-  writeFileSync(path, stringifyYaml(next), "utf8");
+  writeFileSafe(path, stringifyYaml(next));
   log.debug(
     { path, decs: Object.keys(next.forward).length },
     "wrote sot-bindings",

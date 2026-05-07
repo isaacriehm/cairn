@@ -34,14 +34,14 @@
 
 import {
   existsSync,
-  mkdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { createHash } from "node:crypto";
-import { dirname, join } from "node:path";
-import { z } from "zod";
+import { join } from "node:path";
+import { writeFileSafe } from "../fs.js";
+import { z, type ZodType } from "zod";
 import { runClaude, claudeIsAvailable } from "../claude/index.js";
 import {
   bodyContentHash,
@@ -170,7 +170,7 @@ interface NormalizedEntry {
   tier1Candidate?: { id: string; body_hash: string };
 }
 
-function readJsonl<T>(path: string, parser: z.ZodType<T>): T[] {
+function readJsonl<T>(path: string, parser: ZodType<T>): T[] {
   if (!existsSync(path)) return [];
   const text = readFileSync(path, "utf8");
   if (text.trim().length === 0) return [];
@@ -574,8 +574,7 @@ function writeVerdictCache(
 ): void {
   const path = verdictCachePath(repoRoot, blockBody, scopeKey);
   try {
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, JSON.stringify({ verdict }), "utf8");
+    writeFileSafe(path, JSON.stringify({ verdict }));
   } catch {
     /* best-effort */
   }

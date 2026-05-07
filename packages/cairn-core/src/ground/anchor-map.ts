@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { writeFileSafe } from "../fs.js";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { logger } from "../logger.js";
 import { anchorMapPath } from "./paths.js";
@@ -38,9 +38,8 @@ export function readAnchorMap(repoRoot: string): AnchorMap {
 
 export function writeAnchorMap(repoRoot: string, map: AnchorMap): string {
   const path = anchorMapPath(repoRoot);
-  mkdirSync(dirname(path), { recursive: true });
   const next: AnchorMap = { ...map, generated: new Date().toISOString() };
-  writeFileSync(path, stringifyYaml(next), "utf8");
+  writeFileSafe(path, stringifyYaml(next));
   log.debug({ path, anchors: Object.keys(next.anchors).length }, "wrote anchor-map");
   return path;
 }

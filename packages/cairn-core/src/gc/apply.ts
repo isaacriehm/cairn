@@ -9,8 +9,9 @@
  * orchestrated by `runGcBatch` (sweep.ts).
  */
 
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { rmSync } from "node:fs";
+import { resolve } from "node:path";
+import { writeFileSafe } from "../fs.js";
 import { simpleGit } from "simple-git";
 import type { GcCommitProposal } from "./types.js";
 
@@ -41,8 +42,7 @@ export async function applyCommit(opts: ApplyCommitOptions): Promise<ApplyCommit
         // file may not exist; ignore
       }
     } else {
-      mkdirSync(dirname(abs), { recursive: true });
-      writeFileSync(abs, content, "utf8");
+      writeFileSafe(abs, content);
       written.push(rel);
     }
   }

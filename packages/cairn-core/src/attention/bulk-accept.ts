@@ -30,17 +30,18 @@
 
 import {
   existsSync,
-  mkdirSync,
   readFileSync,
   readdirSync,
   renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
-import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { join } from "node:path";
+import { writeFileSafe } from "../fs.js";
+import { stringify as stringifyYaml } from "yaml";
 import { decisionsDir, invariantsDir } from "../ground/paths.js";
 import { writeDecisionsLedger } from "../ground/ledgers.js";
+import { parseFrontmatterRecord } from "../ground/frontmatter.js";
 import { withWriteLock } from "../lock.js";
 import type { ProjectGlobs } from "../sensors/types.js";
 import {
@@ -132,7 +133,7 @@ export async function bulkAcceptObvious(
           } catch {
             continue;
           }
-          const fm = parseFrontmatter(raw);
+          const fm = parseFrontmatterRecord(raw).fm;
           const body = stripFrontmatter(raw);
           const id = stringField(fm, "id") ?? e.name.replace(/\.draft\.md$/, "");
           const sourceFile = stringField(fm, "sourceFile") ?? "";
@@ -161,8 +162,7 @@ export async function bulkAcceptObvious(
             const acceptedBody = renderDoc(acceptedFm, body);
             const acceptedPath = join(decisionsDir(args.repoRoot), `${id}.md`);
             if (!dry) {
-              mkdirSync(dirname(acceptedPath), { recursive: true });
-              writeFileSync(acceptedPath, acceptedBody, "utf8");
+              writeFileSafe(acceptedPath, acceptedBody);
               try {
                 rmSync(abs, { force: true });
               } catch {
@@ -263,7 +263,7 @@ export async function bulkAcceptObvious(
           } catch {
             continue;
           }
-          const fm = parseFrontmatter(raw);
+          const fm = parseFrontmatterRecord(raw).fm;
           const body = stripFrontmatter(raw);
           const sourceFile = stringField(fm, "sourceFile") ?? "";
           const titleFm = stringField(fm, "title") ?? "";
@@ -294,7 +294,7 @@ export async function bulkAcceptObvious(
         } catch {
           continue;
         }
-        const fm = parseFrontmatter(raw);
+        const fm = parseFrontmatterRecord(raw).fm;
         const body = stripFrontmatter(raw);
         const sourceFile = stringField(fm, "sourceFile") ?? "";
         const titleFm = stringField(fm, "title") ?? "";
@@ -322,19 +322,6 @@ export async function bulkAcceptObvious(
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
-
-function parseFrontmatter(doc: string): Record<string, unknown> {
-  const m = doc.match(/^---\n([\s\S]*?)\n---/);
-  if (m === null || m[1] === undefined) return {};
-  try {
-    const parsed = parseYaml(m[1]);
-    return typeof parsed === "object" && parsed !== null
-      ? (parsed as Record<string, unknown>)
-      : {};
-  } catch {
-    return {};
-  }
-}
 
 function stripFrontmatter(doc: string): string {
   return doc.replace(/^---\n[\s\S]*?\n---\n?/, "");

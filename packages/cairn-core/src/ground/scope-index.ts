@@ -11,8 +11,9 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { writeFileSafe } from "../fs.js";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { detectAll } from "../init/detect.js";
 import {
@@ -124,8 +125,7 @@ export function lookupScope(
 
 export function writeScopeIndex(repoRoot: string, index: ScopeIndex): void {
   const path = scopeIndexPath(repoRoot);
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, stringifyYaml(index), "utf8");
+  writeFileSafe(path, stringifyYaml(index));
 }
 
 const log = logger("ground.scope-index");

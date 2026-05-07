@@ -31,11 +31,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   existsSync,
-  mkdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { writeFileSafe } from "../../fs.js";
 import { logger } from "../../logger.js";
 import { handleApi } from "./api.js";
 
@@ -143,8 +143,7 @@ export async function startAttentionServer(
       endedAt: new Date().toISOString(),
     };
     try {
-      mkdirSync(dirname(sentinelPath), { recursive: true });
-      writeFileSync(sentinelPath, JSON.stringify(state, null, 2), "utf8");
+      writeFileSafe(sentinelPath, JSON.stringify(state, null, 2));
     } catch (err) {
       log.warn(
         { err: err instanceof Error ? err.message : String(err) },
