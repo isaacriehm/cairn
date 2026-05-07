@@ -43393,6 +43393,22 @@ function setTopic(index, slug, entry) {
     topics: { ...index.topics, [slug]: entry }
   };
 }
+function clearDecFromTopicIndex(index, decId) {
+  let mutated = false;
+  const topics = {};
+  for (const [slug, entry] of Object.entries(index.topics)) {
+    if (entry.dec_id === decId) {
+      const { dec_id: _omitted, ...rest2 } = entry;
+      topics[slug] = rest2;
+      mutated = true;
+    } else {
+      topics[slug] = entry;
+    }
+  }
+  if (!mutated)
+    return index;
+  return { ...index, topics };
+}
 
 // ../cairn-core/dist/ground/sot-cache.js
 import { existsSync as existsSync17, readFileSync as readFileSync17 } from "node:fs";
@@ -45606,6 +45622,8 @@ function isDeferState(x2) {
 import { appendFileSync as appendFileSync3, existsSync as existsSync33, mkdirSync as mkdirSync14, readFileSync as readFileSync32, writeFileSync as writeFileSync14 } from "node:fs";
 import { dirname as dirname12, join as join30 } from "node:path";
 var log18 = logger("align-undo.log");
+var MAX_AGE_MS = 7 * 24 * 60 * 60 * 1e3;
+var GC_THRESHOLD_LINES = 256;
 var AlignUndoEntry = external_exports.object({
   ts: external_exports.string(),
   session_id: external_exports.string().nullish(),
@@ -45627,16 +45645,52 @@ var AlignUndoEntry = external_exports.object({
 function alignUndoLogPath(repoRoot) {
   return join30(repoRoot, ".cairn", "state", "align-undo-log.jsonl");
 }
-function appendAlignUndoEntry(repoRoot, entry) {
+async function appendAlignUndoEntry(repoRoot, entry) {
   const validated = AlignUndoEntry.parse(entry);
   const path2 = alignUndoLogPath(repoRoot);
-  try {
-    mkdirSync14(dirname12(path2), { recursive: true });
-    appendFileSync3(path2, `${JSON.stringify(validated)}
+  await withWriteLock(repoRoot, () => {
+    try {
+      mkdirSync14(dirname12(path2), { recursive: true });
+      const remaining = sweepStale(path2);
+      if (remaining === null) {
+        appendFileSync3(path2, `${JSON.stringify(validated)}
 `, "utf8");
-  } catch (err) {
-    log18.warn({ err: err instanceof Error ? err.message : String(err) }, "align-undo log append failed");
+        return;
+      }
+      remaining.push(validated);
+      writeFileSync14(path2, `${remaining.map((e) => JSON.stringify(e)).join("\n")}
+`, "utf8");
+    } catch (err) {
+      log18.warn({ err: err instanceof Error ? err.message : String(err) }, "align-undo log append failed");
+    }
+  });
+}
+function sweepStale(path2) {
+  if (!existsSync33(path2))
+    return null;
+  let text;
+  try {
+    text = readFileSync32(path2, "utf8");
+  } catch {
+    return null;
   }
+  if (text.trim().length === 0)
+    return null;
+  const lines = text.split("\n").filter((line) => line.trim().length > 0);
+  if (lines.length < GC_THRESHOLD_LINES)
+    return null;
+  const cutoff = Date.now() - MAX_AGE_MS;
+  const surviving = [];
+  for (const line of lines) {
+    try {
+      const parsed = AlignUndoEntry.parse(JSON.parse(line));
+      const ts = Date.parse(parsed.ts);
+      if (Number.isFinite(ts) && ts >= cutoff)
+        surviving.push(parsed);
+    } catch {
+    }
+  }
+  return surviving;
 }
 function readAlignUndoLog(repoRoot) {
   const path2 = alignUndoLogPath(repoRoot);
@@ -45658,23 +45712,25 @@ function readAlignUndoLog(repoRoot) {
   }
   return out;
 }
-function pruneAlignUndoLog(repoRoot, remaining) {
+async function pruneAlignUndoLog(repoRoot, remaining) {
   const path2 = alignUndoLogPath(repoRoot);
-  try {
-    mkdirSync14(dirname12(path2), { recursive: true });
-    if (remaining.length === 0) {
-      writeFileSync14(path2, "", "utf8");
-      return;
-    }
-    writeFileSync14(path2, `${remaining.map((e) => JSON.stringify(e)).join("\n")}
+  await withWriteLock(repoRoot, () => {
+    try {
+      mkdirSync14(dirname12(path2), { recursive: true });
+      if (remaining.length === 0) {
+        writeFileSync14(path2, "", "utf8");
+        return;
+      }
+      writeFileSync14(path2, `${remaining.map((e) => JSON.stringify(e)).join("\n")}
 `, "utf8");
-  } catch (err) {
-    log18.warn({ err: err instanceof Error ? err.message : String(err) }, "align-undo log prune failed");
-  }
+    } catch (err) {
+      log18.warn({ err: err instanceof Error ? err.message : String(err) }, "align-undo log prune failed");
+    }
+  });
 }
 
 // ../cairn-core/dist/align-undo/undo.js
-import { existsSync as existsSync34, readFileSync as readFileSync33, writeFileSync as writeFileSync15 } from "node:fs";
+import { existsSync as existsSync34, readFileSync as readFileSync33, rmSync as rmSync8, writeFileSync as writeFileSync15 } from "node:fs";
 import { join as join31 } from "node:path";
 var log19 = logger("align-undo.runner");
 var DEFAULT_SINCE_MS = 60 * 60 * 1e3;
@@ -45697,7 +45753,7 @@ async function runAttentionUndo(args) {
   const outcomes = [];
   inside.sort((a, b2) => Date.parse(b2.ts) - Date.parse(a.ts));
   for (const entry of inside) {
-    outcomes.push(reverseEntry(repoRoot, entry, dryRun));
+    outcomes.push(await reverseEntry(repoRoot, entry, dryRun));
   }
   const result = {
     windowEntries: inside.length,
@@ -45714,18 +45770,20 @@ async function runAttentionUndo(args) {
       ...outside,
       ...outcomes.filter((o2) => o2.status === "not-supported" || o2.status === "error").map((o2) => o2.entry)
     ];
-    pruneAlignUndoLog(repoRoot, keep);
+    await pruneAlignUndoLog(repoRoot, keep);
   }
   return result;
 }
-function reverseEntry(repoRoot, entry, dryRun) {
-  if (entry.kind === "tier3-creation" || entry.kind === "augments") {
-    return {
-      entry,
-      status: "not-supported",
-      detail: entry.kind === "tier3-creation" ? "fresh DEC/INV creation undo deferred to v0.6 \u2014 manually delete the entity file and restore the source block" : "augments-sibling undo deferred to v0.6 \u2014 manually delete the sibling and trim the double-cite"
-    };
+async function reverseEntry(repoRoot, entry, dryRun) {
+  if (entry.kind === "tier3-creation") {
+    return reverseTier3Creation(repoRoot, entry, dryRun);
   }
+  if (entry.kind === "augments") {
+    return reverseAugments(repoRoot, entry, dryRun);
+  }
+  return reverseCite(repoRoot, entry, dryRun);
+}
+function reverseCite(repoRoot, entry, dryRun) {
   const abs = join31(repoRoot, entry.file);
   if (!existsSync34(abs)) {
     return { entry, status: "source-missing", detail: `${entry.file} no longer exists` };
@@ -45771,6 +45829,185 @@ function reverseEntry(repoRoot, entry, dryRun) {
   }
   return { entry, status: "reverted", detail: `${entry.file}` };
 }
+async function reverseTier3Creation(repoRoot, entry, dryRun) {
+  const kind = derivePrimaryKind(entry);
+  const entityDir = kind === "INV" ? invariantsDir(repoRoot) : decisionsDir(repoRoot);
+  const entityPath = join31(entityDir, `${entry.primary_id}.md`);
+  const sourceCheck = checkSourceForReversal(repoRoot, entry);
+  if (sourceCheck.status !== "ready") {
+    const { status, detail } = sourceCheck;
+    return { entry, status, detail };
+  }
+  if (dryRun) {
+    return {
+      entry,
+      status: "reverted",
+      detail: `[dry-run] would delete ${kind === "INV" ? "INV" : "DEC"} ${entry.primary_id} + restore ${entry.file}`
+    };
+  }
+  try {
+    await withWriteLock(repoRoot, () => {
+      writeFileSync15(sourceCheck.absSource, sourceCheck.next, "utf8");
+      rmSync8(entityPath, { force: true });
+      let bindings = readSotBindings(repoRoot);
+      const nextBindings = unbindDec(bindings, entry.primary_id);
+      if (nextBindings !== bindings) {
+        bindings = nextBindings;
+        writeSotBindings(repoRoot, bindings);
+      }
+      let cache = readSotCache(repoRoot);
+      const nextCache = deleteEntry(cache, entry.primary_id);
+      if (nextCache !== cache) {
+        cache = nextCache;
+        writeSotCache(repoRoot, cache);
+      }
+      let topics = readTopicIndex(repoRoot);
+      const nextTopics = clearDecFromTopicIndex(topics, entry.primary_id);
+      if (nextTopics !== topics) {
+        topics = nextTopics;
+        writeTopicIndex(repoRoot, topics);
+      }
+      if (kind === "INV") {
+        writeInvariantsLedger({ repoRoot });
+      } else {
+        writeDecisionsLedger({ repoRoot });
+      }
+    });
+  } catch (err) {
+    log19.warn({ file: entry.file, primary_id: entry.primary_id, err: err instanceof Error ? err.message : String(err) }, "tier3-creation undo failed");
+    return {
+      entry,
+      status: "error",
+      detail: `tier3-creation undo failed: ${err instanceof Error ? err.message : String(err)}`
+    };
+  }
+  return {
+    entry,
+    status: "reverted",
+    detail: `deleted ${kind} ${entry.primary_id} + restored ${entry.file}`
+  };
+}
+async function reverseAugments(repoRoot, entry, dryRun) {
+  const kind = derivePrimaryKind(entry);
+  const entityDir = kind === "INV" ? invariantsDir(repoRoot) : decisionsDir(repoRoot);
+  const entityPath = join31(entityDir, `${entry.primary_id}.md`);
+  const replacement = entry.replacement.trimEnd();
+  const newlineIdx = replacement.indexOf("\n");
+  if (newlineIdx === -1) {
+    return {
+      entry,
+      status: "error",
+      detail: `augments replacement missing newline boundary: ${replacement}`
+    };
+  }
+  const keepCite = replacement.slice(0, newlineIdx);
+  const sourceAbs = join31(repoRoot, entry.file);
+  if (!existsSync34(sourceAbs)) {
+    return { entry, status: "source-missing", detail: `${entry.file} no longer exists` };
+  }
+  let source;
+  try {
+    source = readFileSync33(sourceAbs, "utf8");
+  } catch (err) {
+    return {
+      entry,
+      status: "error",
+      detail: `cannot read ${entry.file}: ${err instanceof Error ? err.message : String(err)}`
+    };
+  }
+  const idx = source.indexOf(replacement);
+  if (idx === -1) {
+    return {
+      entry,
+      status: "already-reverted",
+      detail: `double-cite "${replacement.trim()}" not found in ${entry.file}`
+    };
+  }
+  const next = `${source.slice(0, idx)}${keepCite}${source.slice(idx + replacement.length)}`;
+  if (dryRun) {
+    return {
+      entry,
+      status: "reverted",
+      detail: `[dry-run] would delete sibling ${kind} ${entry.primary_id} + trim double-cite in ${entry.file}`
+    };
+  }
+  try {
+    await withWriteLock(repoRoot, () => {
+      writeFileSync15(sourceAbs, next, "utf8");
+      rmSync8(entityPath, { force: true });
+      let bindings = readSotBindings(repoRoot);
+      const nextBindings = unbindDec(bindings, entry.primary_id);
+      if (nextBindings !== bindings) {
+        bindings = nextBindings;
+        writeSotBindings(repoRoot, bindings);
+      }
+      let cache = readSotCache(repoRoot);
+      const nextCache = deleteEntry(cache, entry.primary_id);
+      if (nextCache !== cache) {
+        cache = nextCache;
+        writeSotCache(repoRoot, cache);
+      }
+      let topics = readTopicIndex(repoRoot);
+      const nextTopics = clearDecFromTopicIndex(topics, entry.primary_id);
+      if (nextTopics !== topics) {
+        topics = nextTopics;
+        writeTopicIndex(repoRoot, topics);
+      }
+      if (kind === "INV") {
+        writeInvariantsLedger({ repoRoot });
+      } else {
+        writeDecisionsLedger({ repoRoot });
+      }
+    });
+  } catch (err) {
+    log19.warn({ file: entry.file, primary_id: entry.primary_id, err: err instanceof Error ? err.message : String(err) }, "augments undo failed");
+    return {
+      entry,
+      status: "error",
+      detail: `augments undo failed: ${err instanceof Error ? err.message : String(err)}`
+    };
+  }
+  return {
+    entry,
+    status: "reverted",
+    detail: `deleted sibling ${kind} ${entry.primary_id} + trimmed double-cite in ${entry.file}`
+  };
+}
+function checkSourceForReversal(repoRoot, entry) {
+  const abs = join31(repoRoot, entry.file);
+  if (!existsSync34(abs)) {
+    return { status: "source-missing", detail: `${entry.file} no longer exists` };
+  }
+  let source;
+  try {
+    source = readFileSync33(abs, "utf8");
+  } catch (err) {
+    return {
+      status: "error",
+      detail: `cannot read ${entry.file}: ${err instanceof Error ? err.message : String(err)}`
+    };
+  }
+  const replacement = entry.replacement.trimEnd();
+  const idx = source.indexOf(replacement);
+  if (idx === -1) {
+    return {
+      status: "already-reverted",
+      detail: `cite "${replacement.trim()}" not found in ${entry.file}`
+    };
+  }
+  const lineStart = source.lastIndexOf("\n", idx) + 1;
+  const lineEnd = source.indexOf("\n", idx + replacement.length);
+  const cutEnd = lineEnd === -1 ? source.length : lineEnd;
+  const indent = source.slice(lineStart, idx);
+  const reflowedOriginal = reapplyIndent(entry.original_raw, indent);
+  const next = `${source.slice(0, lineStart)}${reflowedOriginal}${source.slice(cutEnd)}`;
+  return { status: "ready", absSource: abs, next };
+}
+function derivePrimaryKind(entry) {
+  if (entry.primary_kind !== void 0)
+    return entry.primary_kind;
+  return entry.primary_id.startsWith("INV-") ? "INV" : "DEC";
+}
 function reapplyIndent(raw, indent) {
   if (indent.length === 0)
     return raw;
@@ -45797,7 +46034,7 @@ function reapplyIndent(raw, indent) {
 }
 
 // ../cairn-core/dist/drain/drain.js
-import { existsSync as existsSync41, readFileSync as readFileSync41, rmSync as rmSync8 } from "node:fs";
+import { existsSync as existsSync41, readFileSync as readFileSync41, rmSync as rmSync9 } from "node:fs";
 import { createHash as createHash5 } from "node:crypto";
 import { join as join40 } from "node:path";
 
@@ -48268,7 +48505,7 @@ function truncateIfExists(path2) {
   if (!existsSync41(path2))
     return;
   try {
-    rmSync8(path2, { force: true });
+    rmSync9(path2, { force: true });
   } catch {
   }
 }
@@ -50104,6 +50341,7 @@ async function alignFile(args) {
         block,
         item: augItem,
         primaryId: augEmit.id,
+        primaryKind: augEmit.kind,
         augmentsExistingId: tier2Outcome.existingId
       }));
       recordFreshEntry(augEmit.id, delta);
@@ -50216,7 +50454,7 @@ async function alignFile(args) {
         applyStripReplace({ repoRoot, items: stripItems, dirtyDecisions });
       });
       for (const u of undoLogEntries)
-        appendAlignUndoEntry(repoRoot, u);
+        await appendAlignUndoEntry(repoRoot, u);
     } catch (err) {
       log24.warn({ err: err instanceof Error ? err.message : String(err) }, "Layer A strip-replace failed");
     }
@@ -51182,7 +51420,7 @@ function computePreflight(args) {
 
 // ../cairn-core/dist/hooks/pre-commit/sot-align-precommit.js
 import { execFileSync as execFileSync4 } from "node:child_process";
-import { appendFileSync as appendFileSync6, existsSync as existsSync48, mkdirSync as mkdirSync23, mkdtempSync, rmSync as rmSync9 } from "node:fs";
+import { appendFileSync as appendFileSync6, existsSync as existsSync48, mkdirSync as mkdirSync23, mkdtempSync, rmSync as rmSync10 } from "node:fs";
 import { tmpdir as tmpdir2 } from "node:os";
 import { dirname as dirname18, join as join48 } from "node:path";
 var log26 = logger("hooks.pre-commit.sot-align");
@@ -51271,7 +51509,7 @@ function alignStagedTree(args) {
       }
     }
   } finally {
-    rmSync9(stageRoot, { recursive: true, force: true });
+    rmSync10(stageRoot, { recursive: true, force: true });
   }
   return result;
 }
@@ -61961,7 +62199,7 @@ var PHASE_IDS = [
 ];
 
 // ../cairn-core/dist/init/phases/state-io.js
-import { existsSync as existsSync66, mkdirSync as mkdirSync28, readFileSync as readFileSync61, renameSync as renameSync3, rmSync as rmSync10, writeFileSync as writeFileSync30 } from "node:fs";
+import { existsSync as existsSync66, mkdirSync as mkdirSync28, readFileSync as readFileSync61, renameSync as renameSync3, rmSync as rmSync11, writeFileSync as writeFileSync30 } from "node:fs";
 import { dirname as dirname23, join as join66 } from "node:path";
 var INIT_STATE_PATH = join66(".cairn", "init-state.json");
 function phaseStateAbsPath(repoRoot) {
@@ -74548,7 +74786,7 @@ var recordDecisionTool = {
 };
 
 // ../cairn-core/dist/mcp/tools/resolve-attention.js
-import { appendFileSync as appendFileSync8, existsSync as existsSync86, mkdirSync as mkdirSync37, readFileSync as readFileSync76, readdirSync as readdirSync35, renameSync as renameSync7, rmSync as rmSync11, statSync as statSync25, writeFileSync as writeFileSync37 } from "node:fs";
+import { appendFileSync as appendFileSync8, existsSync as existsSync86, mkdirSync as mkdirSync37, readFileSync as readFileSync76, readdirSync as readdirSync35, renameSync as renameSync7, rmSync as rmSync12, statSync as statSync25, writeFileSync as writeFileSync37 } from "node:fs";
 import { dirname as dirname29, join as join88 } from "node:path";
 var import_yaml40 = __toESM(require_dist(), 1);
 import { createHash as createHash9 } from "node:crypto";
@@ -74662,7 +74900,7 @@ async function resolveDecisionDraft(ctx, input) {
       const promoted = promoteDraftStatus(draft);
       writeFileSync37(acceptedPath2, promoted, "utf8");
       try {
-        rmSync11(inboxPath, { force: true });
+        rmSync12(inboxPath, { force: true });
       } catch {
       }
       try {
@@ -74842,7 +75080,7 @@ function moveConflictToArchive(repoRoot, conflict) {
 }
 function deleteConflictFile(conflict) {
   try {
-    rmSync11(conflict.abs, { force: true });
+    rmSync12(conflict.abs, { force: true });
   } catch {
   }
 }
@@ -75004,7 +75242,7 @@ async function resolveAlignmentPending(ctx, input) {
             items: [item],
             dirtyDecisions: { [item.file]: "overwrite" }
           });
-        rmSync11(state.abs, { force: true });
+        rmSync12(state.abs, { force: true });
         return {
           ok: true,
           resolved_kind: "alignment_cite",
@@ -75028,7 +75266,7 @@ async function resolveAlignmentPending(ctx, input) {
             items: [item],
             dirtyDecisions: { [item.file]: "overwrite" }
           });
-        rmSync11(state.abs, { force: true });
+        rmSync12(state.abs, { force: true });
         try {
           writeDecisionsLedger({ repoRoot: ctx.repoRoot });
         } catch {
@@ -75057,7 +75295,7 @@ async function resolveAlignmentPending(ctx, input) {
             items: [item],
             dirtyDecisions: { [item.file]: "overwrite" }
           });
-        rmSync11(state.abs, { force: true });
+        rmSync12(state.abs, { force: true });
         try {
           writeDecisionsLedger({ repoRoot: ctx.repoRoot });
         } catch {
@@ -75093,7 +75331,7 @@ async function resolveAlignmentPending(ctx, input) {
             items: [item],
             dirtyDecisions: { [item.file]: "overwrite" }
           });
-        rmSync11(state.abs, { force: true });
+        rmSync12(state.abs, { force: true });
         try {
           writeDecisionsLedger({ repoRoot: ctx.repoRoot });
           writeInvariantsLedger({ repoRoot: ctx.repoRoot });
@@ -75127,7 +75365,7 @@ async function resolveAlignmentPending(ctx, input) {
             items: [item],
             dirtyDecisions: { [item.file]: "overwrite" }
           });
-        rmSync11(state.abs, { force: true });
+        rmSync12(state.abs, { force: true });
         try {
           if (isInv)
             writeInvariantsLedger({ repoRoot: ctx.repoRoot });
@@ -75143,7 +75381,7 @@ async function resolveAlignmentPending(ctx, input) {
         };
       }
       if (input.choice === "c" || input.choice === "d") {
-        rmSync11(state.abs, { force: true });
+        rmSync12(state.abs, { force: true });
         return {
           ok: true,
           resolved_kind: input.choice === "c" ? "alignment_descriptive" : "alignment_skip",
@@ -76013,7 +76251,7 @@ function readAttestedCommits(repoRoot) {
 }
 
 // ../cairn-core/dist/session/id.js
-import { existsSync as existsSync92, mkdirSync as mkdirSync39, readdirSync as readdirSync39, readFileSync as readFileSync81, rmSync as rmSync12, statSync as statSync26, writeFileSync as writeFileSync39 } from "node:fs";
+import { existsSync as existsSync92, mkdirSync as mkdirSync39, readdirSync as readdirSync39, readFileSync as readFileSync81, rmSync as rmSync13, statSync as statSync26, writeFileSync as writeFileSync39 } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { join as join94 } from "node:path";
 var MAX_STALE_AGE_MS = 24 * 60 * 60 * 1e3;
@@ -76060,7 +76298,7 @@ function cleanupSession(repoRoot, sessionId) {
   const dir = sessionStateDir(repoRoot, sessionId);
   if (!existsSync92(dir))
     return false;
-  rmSync12(dir, { recursive: true, force: true });
+  rmSync13(dir, { recursive: true, force: true });
   return true;
 }
 function gcStaleSessions(args) {
@@ -76102,7 +76340,7 @@ function gcStaleSessions(args) {
     }
     if (ageMs >= maxAge) {
       try {
-        rmSync12(dir, { recursive: true, force: true });
+        rmSync13(dir, { recursive: true, force: true });
         removed.push(sessionId);
       } catch {
         kept.push(sessionId);
@@ -77656,7 +77894,7 @@ async function fixCli(argv) {
 // ../cairn/dist/cli/fix.js
 var import_yaml44 = __toESM(require_dist(), 1);
 import { execFileSync as execFileSync10 } from "node:child_process";
-import { existsSync as existsSync100, mkdirSync as mkdirSync42, readFileSync as readFileSync88, readdirSync as readdirSync43, rmSync as rmSync13, writeFileSync as writeFileSync42 } from "node:fs";
+import { existsSync as existsSync100, mkdirSync as mkdirSync42, readFileSync as readFileSync88, readdirSync as readdirSync43, rmSync as rmSync14, writeFileSync as writeFileSync42 } from "node:fs";
 import { dirname as dirname31, join as join101, resolve as resolve21 } from "node:path";
 import { fileURLToPath as fileURLToPath5 } from "node:url";
 function parseRepoFlag4(argv) {
@@ -77923,7 +78161,7 @@ async function fixScrubCache(repoRoot, dryRun) {
   let removed = 0;
   for (const name of cacheFiles) {
     try {
-      rmSync13(join101(cacheDir, name), { force: true });
+      rmSync14(join101(cacheDir, name), { force: true });
       removed += 1;
     } catch {
     }

@@ -61,3 +61,28 @@ export function setTopic(index: TopicIndex, slug: string, entry: TopicIndexEntry
 export function getTopic(index: TopicIndex, slug: string): TopicIndexEntry | null {
   return index.topics[slug] ?? null;
 }
+
+/**
+ * Clear `dec_id` from any topic entry that references this DEC. Used
+ * by `cairn attention undo` for tier3-creation reversal so the topic
+ * stays in the index (next phase 5b walk can re-emit the topic) but
+ * no longer points at the now-deleted DEC.
+ */
+export function clearDecFromTopicIndex(
+  index: TopicIndex,
+  decId: string,
+): TopicIndex {
+  let mutated = false;
+  const topics: Record<string, TopicIndexEntry> = {};
+  for (const [slug, entry] of Object.entries(index.topics)) {
+    if (entry.dec_id === decId) {
+      const { dec_id: _omitted, ...rest } = entry;
+      topics[slug] = rest;
+      mutated = true;
+    } else {
+      topics[slug] = entry;
+    }
+  }
+  if (!mutated) return index;
+  return { ...index, topics };
+}

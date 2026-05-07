@@ -99,6 +99,7 @@ export {
 } from "./sot-bindings.js";
 
 export {
+  clearDecFromTopicIndex,
   emptyTopicIndex,
   getTopic,
   readTopicIndex,
