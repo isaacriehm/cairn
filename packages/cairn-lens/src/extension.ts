@@ -252,7 +252,7 @@ function wireProviders(
   const watcher = vscode.workspace.createFileSystemWatcher(
     new vscode.RelativePattern(
       folder,
-      ".cairn/ground/{invariants/invariants.ledger.yaml,decisions/decisions.ledger.yaml,scope-index.yaml}",
+      ".cairn/{ground/invariants/invariants.ledger.yaml,ground/decisions/decisions.ledger.yaml,ground/scope-index.yaml,staleness/log.jsonl}",
     ),
   );
   const onLedgerChange = (uri: vscode.Uri): void => {

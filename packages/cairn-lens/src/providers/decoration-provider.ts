@@ -34,6 +34,7 @@
 import * as vscode from "vscode";
 import { LensResolver } from "../resolver.js";
 import { lensLog } from "../debug-log.js";
+import { readPendingStalenessIds } from "../staleness.js";
 
 type InlineMode = "ghost" | "replace" | "below" | "off";
 
@@ -48,6 +49,12 @@ interface DecorationKit {
   gutterActive: vscode.TextEditorDecorationType;
   gutterSuperseded: vscode.TextEditorDecorationType;
   gutterUnknown: vscode.TextEditorDecorationType;
+  /**
+   * Layer-A staleness flag — `⚑` rendered in the left gutter alongside
+   * the existing health icon when the cite's id is referenced by a
+   * pending entry in `.cairn/staleness/log.jsonl`. Plan §10.4.
+   */
+  gutterStaleness: vscode.TextEditorDecorationType;
   inlineDecAccepted: vscode.TextEditorDecorationType;
   inlineDecUnknown: vscode.TextEditorDecorationType;
   /**
@@ -113,6 +120,11 @@ function makeKit(): DecorationKit {
     gutterUnknown: vscode.window.createTextEditorDecorationType(
       gutterCommon("○"),
     ),
+    gutterStaleness: vscode.window.createTextEditorDecorationType({
+      // Muted amber so the flag pops without looking like an error.
+      before: { contentText: "⚑", color: "#ddb967", margin: "0 0.4em 0 0" },
+      rangeBehavior: vscode.DecorationRangeBehavior.OpenOpen,
+    }),
     inlineDecAccepted: vscode.window.createTextEditorDecorationType(
       inlineCommon("#7aa2d4"),
     ),
@@ -153,6 +165,13 @@ function findCommentBodyStart(lineText: string, tokenStart: number): number | nu
   const m = upToToken.match(/(?:\/\/|#|\/\*|\*)\s*$/);
   if (m) return upToToken.length;
   return null;
+}
+
+function workspaceFolderFor(docPath: string): string | null {
+  const folder = vscode.workspace.workspaceFolders?.find((f) =>
+    docPath.startsWith(`${f.uri.fsPath}/`) || docPath === f.uri.fsPath,
+  );
+  return folder?.uri.fsPath ?? null;
 }
 
 export class CitationDecorationManager implements vscode.Disposable {
@@ -209,6 +228,7 @@ export class CitationDecorationManager implements vscode.Disposable {
     const gutterActive: vscode.Range[] = [];
     const gutterSuperseded: vscode.Range[] = [];
     const gutterUnknown: vscode.Range[] = [];
+    const gutterStaleness: vscode.Range[] = [];
     const inlineDecAccepted: vscode.DecorationOptions[] = [];
     const inlineDecUnknown: vscode.DecorationOptions[] = [];
     const replaceHiderRanges: vscode.Range[] = [];
@@ -267,6 +287,18 @@ export class CitationDecorationManager implements vscode.Disposable {
         this.resolver.resolveInvariant(id),
       ]),
     );
+    // Pending staleness — gutter `⚑` next to any token whose id is
+    // mentioned by a drift event in `.cairn/staleness/log.jsonl`.
+    const folder = workspaceFolderFor(doc.uri.fsPath);
+    const pendingStaleIds = folder === null ? new Set<string>() : readPendingStalenessIds(folder);
+    const flaggedLines = new Set<number>();
+    const flagIfPending = (lineIdx: number, start: number, end: number, id: string): void => {
+      if (!gutterEnabled) return;
+      if (!pendingStaleIds.has(id)) return;
+      if (flaggedLines.has(lineIdx)) return;
+      gutterStaleness.push(new vscode.Range(lineIdx, start, lineIdx, end));
+      flaggedLines.add(lineIdx);
+    };
 
     // Collect one hider range per CITATION-LINE (deduped) so multiple
     // tokens on the same line don't emit redundant ranges. The hider
@@ -297,6 +329,7 @@ export class CitationDecorationManager implements vscode.Disposable {
     for (const { lineIdx, start, end, id } of decHits) {
       const r = decCache.get(id)!;
       const range = new vscode.Range(lineIdx, start, lineIdx, end);
+      flagIfPending(lineIdx, start, end, id);
       if (shouldRenderGhost) {
         const trailer =
           r.status === "accepted"
@@ -328,6 +361,7 @@ export class CitationDecorationManager implements vscode.Disposable {
     for (const { lineIdx, start, end, id } of invHits) {
       const r = invCache.get(id)!;
       const range = new vscode.Range(lineIdx, start, lineIdx, end);
+      flagIfPending(lineIdx, start, end, id);
       if (shouldRenderGhost) {
         const trailer =
           r.status === "active"
@@ -373,6 +407,7 @@ export class CitationDecorationManager implements vscode.Disposable {
     editor.setDecorations(this.kit.gutterActive, gutterActive);
     editor.setDecorations(this.kit.gutterSuperseded, gutterSuperseded);
     editor.setDecorations(this.kit.gutterUnknown, gutterUnknown);
+    editor.setDecorations(this.kit.gutterStaleness, gutterStaleness);
     editor.setDecorations(this.kit.inlineDecAccepted, inlineDecAccepted);
     editor.setDecorations(this.kit.inlineDecUnknown, inlineDecUnknown);
     editor.setDecorations(this.kit.replaceHider, replaceHiderRanges);
@@ -382,7 +417,7 @@ export class CitationDecorationManager implements vscode.Disposable {
     editor.setDecorations(this.kit.replaceTitleDecAccepted, replaceTitleDecAccepted);
     editor.setDecorations(this.kit.replaceTitleDecUnknown, replaceTitleDecUnknown);
     lensLog(
-      `refreshEditor ${doc.uri.fsPath} — applied DEC(${inlineDecAccepted.length}+${inlineDecUnknown.length}) V(${inlineActive.length}+${inlineSuperseded.length}+${inlineUnknown.length}) hider(${replaceHiderRanges.length}) gutter(${gutterActive.length}+${gutterSuperseded.length}+${gutterUnknown.length})`,
+      `refreshEditor ${doc.uri.fsPath} — applied DEC(${inlineDecAccepted.length}+${inlineDecUnknown.length}) V(${inlineActive.length}+${inlineSuperseded.length}+${inlineUnknown.length}) hider(${replaceHiderRanges.length}) gutter(${gutterActive.length}+${gutterSuperseded.length}+${gutterUnknown.length}) stale(${gutterStaleness.length})`,
     );
   }
 
@@ -393,6 +428,7 @@ export class CitationDecorationManager implements vscode.Disposable {
     editor.setDecorations(this.kit.gutterActive, []);
     editor.setDecorations(this.kit.gutterSuperseded, []);
     editor.setDecorations(this.kit.gutterUnknown, []);
+    editor.setDecorations(this.kit.gutterStaleness, []);
     editor.setDecorations(this.kit.inlineDecAccepted, []);
     editor.setDecorations(this.kit.inlineDecUnknown, []);
     editor.setDecorations(this.kit.replaceHider, []);
