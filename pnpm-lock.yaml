@@ -105,6 +105,9 @@ importers:
         specifier: workspace:*
         version: link:../cairn-state
     devDependencies:
+      '@isaacriehm/cairn-core':
+        specifier: workspace:*
+        version: link:../cairn-core
       '@types/node':
         specifier: ^25.6.0
         version: 25.6.0
