@@ -1,15 +1,15 @@
 /**
- * `cairn align <subcommand>` — Layer C/D operator surface.
+ * `cairn align <subcommand>` — alignment commands.
  *
- *   cairn align drain   Layer C SessionStart drain (plan §4.3) —
+ *   cairn align drain   SessionStart Drain (plan §4.3) —
  *                       reads the deferred logs written by Layer A +
  *                       Layer B, re-checks each block, runs the Haiku
  *                       dedup judge for ambiguous candidates, and
  *                       applies cite / drop / alignment-pending. Capped
  *                       at 30 Haiku calls by default.
  *
- * Future subcommands (block 9 — Layer D):
- *   cairn fix align     full-repo Haiku-judge sweep (`fix` namespace).
+ * Future subcommands:
+ *   cairn fix align     Layer C — full-repo Haiku-judge sweep (`fix` namespace).
  *   cairn align undo    rollback recent auto-resolutions.
  */
 
@@ -26,7 +26,7 @@ interface DrainFlags {
 function usage(): never {
   console.error(
     "Usage: cairn align <subcommand>\n" +
-      "  drain                              Layer C SessionStart drain.\n" +
+      "  drain                              SessionStart Drain SessionStart drain.\n" +
       "    [--session-id <id>]              push drain blips to this session\n" +
       "    [--max-haiku-calls <n>]          cap Haiku judge calls (default 30)\n" +
       "    [--dry-run]                      classify only; no source / log writes\n" +

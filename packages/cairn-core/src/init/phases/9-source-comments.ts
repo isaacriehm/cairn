@@ -1,15 +1,6 @@
 /**
- * Phase 7b-source-comments — walk every source file's docblock-class
+ * Phase 9-source-comments — walk every source file's docblock-class
  * comment, classify via Haiku, write DEC drafts / invariant proposals.
- *
- * Heavy walk + per-block classifications spill to
- * `.cairn/init/source-comments-walk.json`; only the lightweight projection
- * (counts, ledger paths, kindCounts) lives on the persisted phase output.
- *
- * Project globs from the mapper + the 4-pilot picked module flow into
- * scoring so every DEC draft + invariant gets `capture_confidence`
- * stamped at write time — `cairn attention bulk-accept` becomes an
- * O(1) file move instead of a re-score sweep.
  */
 
 import {
@@ -26,7 +17,7 @@ import {
 } from "./source-comments-output-io.js";
 import type { PhaseResult, PhaseState } from "./types.js";
 
-export async function runPhase7bSourceComments(state: PhaseState): Promise<PhaseResult> {
+export async function runPhase9SourceComments(state: PhaseState): Promise<PhaseResult> {
   const mapper = state.outputs["3-mapper"] as MapperResultPersisted | undefined;
   const globs: ProjectGlobs = mapper
     ? {
@@ -37,7 +28,7 @@ export async function runPhase7bSourceComments(state: PhaseState): Promise<Phase
         off_limits: mapper.output.off_limits_globs,
       }
     : {};
-  const pilotOut = state.outputs["4-pilot"] as { picked?: string } | undefined;
+  const pilotOut = state.outputs["5-pilot"] as { picked?: string } | undefined;
   const pilotModule =
     typeof pilotOut?.picked === "string" && pilotOut.picked.length > 0
       ? pilotOut.picked
@@ -51,7 +42,7 @@ export async function runPhase7bSourceComments(state: PhaseState): Promise<Phase
       ...(pilotModule !== undefined ? { pilotModule } : {}),
       onBatchProgress: (row) =>
         writeProgress(state.repoRoot, {
-          phase: "7b-source-comments",
+          phase: "9-source-comments",
           batch: row.index + 1,
           total: row.total,
           classified: row.classified,
@@ -64,11 +55,11 @@ export async function runPhase7bSourceComments(state: PhaseState): Promise<Phase
     clearProgress(state.repoRoot);
     const next: PhaseState = {
       ...state,
-      outputs: { ...state.outputs, "7b-source-comments": persisted },
+      outputs: { ...state.outputs, "9-source-comments": persisted },
     };
     return {
       status: "complete",
-      nextPhase: "7c-rules-merge",
+      nextPhase: "10-rules-merge",
       state: advancePhase(next),
     };
   } catch (err) {

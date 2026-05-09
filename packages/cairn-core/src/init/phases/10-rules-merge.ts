@@ -1,5 +1,5 @@
 /**
- * Phase 7c-rules-merge — walk CLAUDE.md / AGENTS.md / .claude/rules/*
+ * Phase 10-rules-merge — walk CLAUDE.md / AGENTS.md / .claude/rules/*
  * sections, classify via Haiku, propose net-new rules + flag conflicts.
  */
 
@@ -11,14 +11,14 @@ import { clearProgress, writeProgress } from "../progress.js";
 import { advancePhase } from "./orchestrator.js";
 import type { PhaseResult, PhaseState } from "./types.js";
 
-export async function runPhase7cRulesMerge(state: PhaseState): Promise<PhaseResult> {
+export async function runPhase10RulesMerge(state: PhaseState): Promise<PhaseResult> {
   const startedAt = Date.now();
   try {
     const result: RunRulesMergeResult = await runRulesMerge({
       repoRoot: state.repoRoot,
       onSectionProgress: (row) =>
         writeProgress(state.repoRoot, {
-          phase: "7c-rules-merge",
+          phase: "10-rules-merge",
           batch: row.index,
           total: row.total,
           startedAt,
@@ -27,11 +27,11 @@ export async function runPhase7cRulesMerge(state: PhaseState): Promise<PhaseResu
     clearProgress(state.repoRoot);
     const next: PhaseState = {
       ...state,
-      outputs: { ...state.outputs, "7c-rules-merge": result },
+      outputs: { ...state.outputs, "10-rules-merge": result },
     };
     return {
       status: "complete",
-      nextPhase: "8-baseline",
+      nextPhase: "11-baseline",
       state: advancePhase(next),
     };
   } catch (err) {

@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * smoke-layer-c-sessionstart-drain — Layer C drain (plan §4.3).
+ * smoke-layer-c-sessionstart-drain — SessionStart Drain drain (plan §4.3).
  *
  * Each step seeds a fixture with one or more deferred-log entries
  * (Layer A or Layer B), drives `runDrain` directly with a mock judge

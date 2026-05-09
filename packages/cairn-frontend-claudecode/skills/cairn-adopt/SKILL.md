@@ -26,7 +26,7 @@ silently no-ops in `select:`). `AskUserQuestion` is built-in and stays
 unprefixed.
 
 ```
-ToolSearch(select:mcp__plugin_cairn_cairn__cairn_init_resume,mcp__plugin_cairn_cairn__cairn_init_run,mcp__plugin_cairn_cairn__cairn_init_phases_678_parallel,mcp__plugin_cairn_cairn__cairn_decision_get,mcp__plugin_cairn_cairn__cairn_resolve_attention,mcp__plugin_cairn_cairn__cairn_bulk_accept_attention,mcp__plugin_cairn_cairn__cairn_attention_dedup,AskUserQuestion)
+ToolSearch(select:mcp__plugin_cairn_cairn__cairn_init_resume,mcp__plugin_cairn_cairn__cairn_init_run,mcp__plugin_cairn_cairn__cairn_init_phases_8_9_10_parallel,mcp__plugin_cairn_cairn__cairn_decision_get,mcp__plugin_cairn_cairn__cairn_resolve_attention,mcp__plugin_cairn_cairn__cairn_bulk_accept_attention,mcp__plugin_cairn_cairn__cairn_attention_dedup,AskUserQuestion)
 ```
 
 After this single call all phase tools + the question tool + the
@@ -176,11 +176,11 @@ fully adopted — abort and tell the operator to check
 
 ```
 while nextPhase != null:
-    if nextPhase == "6-docs-ingest":
-        # Optimized path: phases 6 / 7b / 7c run concurrently with
+    if nextPhase == "8-docs-ingest":
+        # Optimized path: phases 8 / 9 / 10 run concurrently with
         # shared DEC + INV id Sets. One MCP call covers all three;
-        # nextPhase comes back as "8-baseline".
-        tool_name = "cairn_init_phases_678_parallel"
+        # nextPhase comes back as "11-baseline".
+        tool_name = "cairn_init_phases_8_9_10_parallel"
         args = {}
     else:
         tool_name = "cairn_init_run"
@@ -234,32 +234,32 @@ descriptions:
 | `1-detect` | environment + stack signature scan | <1s |
 | `2-walker` | repo summary scan | <1s / ~2s |
 | `3-mapper` | Sonnet domain map (per-module slice) | ~30-60s / 2-4min |
-| `3b-seed` | seed `.cairn/` skeleton + grandfather commits | <1s |
-| `4-pilot` | pick seed module | operator |
-| `5-brand` | brand auto-fill (Haiku) | operator + ~30s |
-| `5b-topic-index` | cross-source dedup pre-pass (Haiku judges semantically-similar pairs) | ~30s / 2-10min |
-| `6-docs-ingest` | Haiku ingest of README + docs/ → DEC drafts | ~15-30s / 1-3min |
-| `7b-source-comments` | Haiku classify essay-class JSDoc → DEC + invariant drafts | ~30s / **5-20min** |
-| `7c-rules-merge` | Haiku per H2 in CLAUDE.md / AGENTS.md / .claude/rules/* | ~30-90s / 1-3min |
-| `8-baseline` | first sensor sweep | <1s / ~5s |
-| `10-strip` | per-module strip-replace consent | operator |
-| `12-multidev` | per-host package manager hints | <1s |
+| `4-seed` | seed `.cairn/` skeleton + grandfather commits | <1s |
+| `5-pilot` | pick seed module | operator |
+| `6-brand` | brand auto-fill (Haiku) | operator + ~30s |
+| `7-topic-index` | cross-source dedup pre-pass (Haiku judges semantically-similar pairs) | ~30s / 2-10min |
+| `8-docs-ingest` | Haiku ingest of README + docs/ → DEC drafts | ~15-30s / 1-3min |
+| `9-source-comments` | Haiku classify essay-class JSDoc → DEC + invariant drafts | ~30s / **5-20min** |
+| `10-rules-merge` | Haiku per H2 in CLAUDE.md / AGENTS.md / .claude/rules/* | ~30-90s / 1-3min |
+| `11-baseline` | first sensor sweep | <1s / ~5s |
+| `12-strip` | per-module strip-replace consent | operator |
+| `13-multidev` | per-host package manager hints | <1s |
 
-For phases `3-mapper`, `6-docs-ingest`, `7b-source-comments`, and
-`7c-rules-merge`, render a one-line context note immediately under
+For phases `3-mapper`, `8-docs-ingest`, `9-source-comments`, and
+`10-rules-merge`, render a one-line context note immediately under
 the banner so the operator knows what's running. Pick the matching
 row; do NOT improvise:
 
 | `<id>` | context line |
 |---|---|
 | `3-mapper` | `Sonnet runs per detected module slice in parallel rounds of 4 (cap: 50 slices). Scales with module count.` |
-| `5b-topic-index` | `Walker collects markdown paragraphs; Haiku judges every cross-file pair above the Jaccard threshold (5-way parallel, hard cap 200). Watch the `⏳` indicator on your statusline for live `X/Y pairs (P%) ~Nm` updates.` |
-| `6-docs-ingest` | `Haiku batch over README + docs/. Scales with doc file count and length.` |
-| `7b-source-comments` | `Haiku classifies every essay-class block comment in scoped source files (4-way parallel). On busy monorepos this is the longest phase — expect minutes, not seconds. /exit is safe; SessionStart resumes. Watch the `⏳` indicator on your statusline for live `phase X/Y (P%) ~Nm` updates.` |
-| `7c-rules-merge` | `Haiku per H2 section across CLAUDE.md / AGENTS.md / .claude/rules/*. Scales with section count.` |
+| `7-topic-index` | `Walker collects markdown paragraphs; Haiku judges every cross-file pair above the Jaccard threshold (5-way parallel, hard cap 200). Watch the `⏳` indicator on your statusline for live `X/Y pairs (P%) ~Nm` updates.` |
+| `8-docs-ingest` | `Haiku batch over README + docs/. Scales with doc file count and length.` |
+| `9-source-comments` | `Haiku classifies every essay-class block comment in scoped source files (4-way parallel). On busy monorepos this is the longest phase — expect minutes, not seconds. /exit is safe; SessionStart resumes. Watch the `⏳` indicator on your statusline for live `phase X/Y (P%) ~Nm` updates.` |
+| `10-rules-merge` | `Haiku per H2 section across CLAUDE.md / AGENTS.md / .claude/rules/*. Scales with section count.` |
 
-**Live progress**: phases `3-mapper`, `5b-topic-index`, `6-docs-ingest`,
-`7b-source-comments`, and `7c-rules-merge` write
+**Live progress**: phases `3-mapper`, `7-topic-index`, `8-docs-ingest`,
+`9-source-comments`, and `10-rules-merge` write
 `.cairn/init/progress.json` after every batch / pair / module / doc /
 section. The Cairn statusline reads it and renders
 `⬡ cairn ⏳ adopt <phase> X/Y (P%) ~Nm` in real time so the operator
@@ -317,13 +317,13 @@ to source the summary fields:
 
 ```bash
 jq -c '{
-  pilot: .outputs["4-pilot"].picked,
-  decs_docs: (.outputs["6-docs-ingest"].decDraftsWritten // [] | length),
-  decs_comments: (.outputs["7b-source-comments"].decDraftsWritten // [] | length),
-  decs_rules: (.outputs["7c-rules-merge"].decDraftsWritten // [] | length),
-  invariants: (.outputs["7b-source-comments"].invariantsWritten // [] | length),
-  baseline_findings: (.outputs["8-baseline"].totalFindings // 0),
-  multidev_hosts: (.outputs["12-multidev"].hostKinds // [])
+  pilot: .outputs["5-pilot"].picked,
+  decs_docs: (.outputs["8-docs-ingest"].decDraftsWritten // [] | length),
+  decs_comments: (.outputs["9-source-comments"].decDraftsWritten // [] | length),
+  decs_rules: (.outputs["10-rules-merge"].decDraftsWritten // [] | length),
+  invariants: (.outputs["9-source-comments"].invariantsWritten // [] | length),
+  baseline_findings: (.outputs["11-baseline"].totalFindings // 0),
+  multidev_hosts: (.outputs["13-multidev"].hostKinds // [])
 }' .cairn/init-state.json
 ```
 
@@ -365,7 +365,7 @@ SessionStart banner re-prompts to resume.
   own those writes (under the per-write flock).
 - Never auto-resolve hard inconsistencies. Every conflict surfaces as
   AskUserQuestion; the operator picks.
-- Comment-strip (Phase 10) requires per-module-batch consent. Default
+- Comment-strip (Phase 12) requires per-module-batch consent. Default
   to surface, never silently strip.
 - Never reference `npx ...`, `cairn <subcommand>`, or any CLI from
   the operator-facing chat output. Surface only AskUserQuestion

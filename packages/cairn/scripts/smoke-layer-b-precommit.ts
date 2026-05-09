@@ -7,7 +7,7 @@
  * check used by Layer A, and writes per-block records to
  * `.cairn/staleness/pre-commit-deferred.jsonl` (rich) and
  * `.cairn/staleness/log.jsonl` (lightweight `pre-commit-drift` events).
- * Layer C's SessionStart drain consumes both files.
+ * SessionStart Drain's SessionStart drain consumes both files.
  *
  *   Step 1 — Tier 1 verbatim duplicate: rich record + drift event
  *            written; staged source unchanged; tier=tier1.
@@ -267,7 +267,7 @@ async function main(): Promise<void> {
     assert(deferred[0]?.tier === "tier2-3", `Step 2: tier=tier2-3, got ${deferred[0]?.tier}`);
     assert(
       (deferred[0]?.candidates.length ?? 0) >= 1,
-      "Step 2: candidate list populated for Layer C Haiku",
+      "Step 2: candidate list populated for SessionStart Drain Haiku",
     );
 
     const drift = readStalenessLog(repoRoot);

@@ -1,11 +1,10 @@
 /**
- * Phase 10-strip — per-module strip-replace consent.
+ * Phase 12-strip — per-module strip-replace consent.
  *
  * Surfaces each ingestion-flagged module as an A/B/C choice (strip /
  * keep / skip). Tracks remaining modules in
- * `outputs["10-strip"].pending` and emits one question at a time
- * until the queue is empty. When the list is empty (most repos), the
- * phase completes immediately with no operator prompts.
+ * `outputs["12-strip"].pending` and emits one question at a time
+ * until the queue is empty.
  */
 
 import { advancePhase } from "./orchestrator.js";
@@ -22,8 +21,8 @@ interface StripState {
   decisions: Record<string, "strip" | "keep" | "skip">;
 }
 
-export async function runPhase10Strip(state: PhaseState): Promise<PhaseResult> {
-  const existing = state.outputs["10-strip"] as StripState | undefined;
+export async function runPhase12Strip(state: PhaseState): Promise<PhaseResult> {
+  const existing = state.outputs["12-strip"] as StripState | undefined;
   const modules: string[] = computeFlaggedModules(state);
 
   // Initialize on first entry.
@@ -42,19 +41,19 @@ export async function runPhase10Strip(state: PhaseState): Promise<PhaseResult> {
   if (s.pending.length === 0) {
     const next: PhaseState = {
       ...state,
-      outputs: { ...state.outputs, "10-strip": s },
+      outputs: { ...state.outputs, "12-strip": s },
       answer: undefined,
     };
     return {
       status: "complete",
-      nextPhase: "12-multidev",
+      nextPhase: "13-multidev",
       state: advancePhase(next),
     };
   }
 
   const head = s.pending[0]!;
   const question: PhaseQuestion = {
-    id: `10-strip:${head}`,
+    id: `12-strip:${head}`,
     prompt: `Strip the source-comment essay in ${head}?`,
     options: [
       {
@@ -75,7 +74,7 @@ export async function runPhase10Strip(state: PhaseState): Promise<PhaseResult> {
   return {
     status: "needs_input",
     question,
-    state: { ...state, outputs: { ...state.outputs, "10-strip": s }, answer: undefined },
+    state: { ...state, outputs: { ...state.outputs, "12-strip": s }, answer: undefined },
   };
 }
 
@@ -91,8 +90,5 @@ function normalizeChoice(answer: string): "strip" | "keep" | "skip" {
 }
 
 function computeFlaggedModules(_state: PhaseState): string[] {
-  // Source-comment + docs-ingest classifiers don't currently flag
-  // module-level strip candidates explicitly. Queue starts empty
-  // → phase 10 completes silently.
   return [];
 }

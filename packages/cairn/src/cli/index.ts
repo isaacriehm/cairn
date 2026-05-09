@@ -161,12 +161,10 @@ switch (subcommand) {
         "             (--repo <path>?)\n" +
         "  attention  list pending DEC drafts + baseline sensor findings\n" +
         "             (--repo <path>?)\n" +
-        "  align      Layer C/D alignment commands\n" +
+        "  align      alignment commands\n" +
         "             (subcommands: drain — SessionStart drain, plan §4.3)\n" +
         "  baseline   re-run the synthetic-diff sensor sweep post-adoption\n" +
         "             (--force? --repo <path>?)\n" +
-        "  hook       Claude Code hook runner (stdin = hook payload JSON)\n" +
-        "             (subcommands: session-start | read-enrich | write-guard)\n" +
         "  sensor-run git-hook sensor sweep (--staged | --commit-msg <path>)\n" +
         "  tag        operator-driven retro-tagging — insert <!-- cairn:decision -->\n" +
         "             markers after lines matching a regex pattern\n" +

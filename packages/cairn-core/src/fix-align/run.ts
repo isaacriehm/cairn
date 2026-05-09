@@ -1,5 +1,5 @@
 /**
- * Layer D — `cairn fix align` (plan §4.4).
+ * Layer C — `cairn fix align` (plan §4.4).
  *
  * Operator-explicit full-repo Haiku-judge sweep over every prose
  * block × every accepted DEC. Reuses the Layer A `alignFile` machinery

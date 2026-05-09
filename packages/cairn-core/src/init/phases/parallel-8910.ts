@@ -1,16 +1,15 @@
 /**
- * Phases 6 / 7b / 7c sequential orchestrator.
+ * Phases 8 / 9 / 10 sequential orchestrator.
  *
  * The three post-pilot ingestion phases (docs-ingest, source-comments,
  * rules-merge) all read + write the same v0.5.0 ground-state files —
  * `topic-index.yaml`, `anchor-map.yaml`, `sot-bindings.yaml`,
  * `sot-cache.yaml`. Concurrent execution races on those writes: each
  * phase reads at start, mutates in memory, writes at end → last writer
- * wipes the others. The v0.4.x parallel orchestrator was safe because
- * only DEC/INV files (uniquely named per id) were on the write path.
+ * wipes the others.
  *
  * v0.5.0 fix: run the phases sequentially in canonical order
- * (6 → 7b → 7c). Each phase still uses Haiku internally (with its own
+ * (8 → 9 → 10). Each phase still uses Haiku internally (with its own
  * concurrency for batching + per-section workers), so the wall-clock
  * cost vs. the v0.4.x parallel pipeline is bounded by the longest
  * phase plus the smaller two — historically <5s combined for the
@@ -18,9 +17,9 @@
  * motion across all three.
  *
  * State machine:
- *   - The runner enters expecting `currentPhase === "6-docs-ingest"` and
- *     exits with `currentPhase === "8-baseline"`, jumping past the
- *     individual 7b / 7c slots in PHASE_IDS. The sequential per-phase
+ *   - The runner enters expecting `currentPhase === "8-docs-ingest"` and
+ *     exits with `currentPhase === "11-baseline"`, jumping past the
+ *     individual 9 / 10 slots in PHASE_IDS. The sequential per-phase
  *     MCP tools remain available; this runner is the optimized path the
  *     adopt skill prefers.
  */
@@ -44,26 +43,26 @@ import {
 import { advancePhase } from "./orchestrator.js";
 import type { PhaseId, PhaseResult, PhaseState } from "./types.js";
 
-const log = logger("init.phases.parallel-678");
+const log = logger("init.phases.parallel-8910");
 
 interface ParallelOutputs {
-  "6-docs-ingest": IngestionResult;
-  "7b-source-comments": IngestSourceCommentsResultPersisted;
-  "7c-rules-merge": RunRulesMergeResult;
+  "8-docs-ingest": IngestionResult;
+  "9-source-comments": IngestSourceCommentsResultPersisted;
+  "10-rules-merge": RunRulesMergeResult;
 }
 
-export async function runPhases678Parallel(
+export async function runPhases8910Parallel(
   state: PhaseState,
 ): Promise<PhaseResult> {
-  // Sanity: this runner only enters at the start of the 6 / 7b / 7c
+  // Sanity: this runner only enters at the start of the 8 / 9 / 10
   // window. If currentPhase is anywhere else, the caller invoked the
   // wrong tool — surface as error so we don't mid-pipeline jump.
-  if (state.currentPhase !== "6-docs-ingest") {
+  if (state.currentPhase !== "8-docs-ingest") {
     return {
       status: "error",
       error: {
         code: "wrong-phase",
-        message: `runPhases678Parallel requires currentPhase=6-docs-ingest, got ${state.currentPhase}`,
+        message: `runPhases8910Parallel requires currentPhase=8-docs-ingest, got ${state.currentPhase}`,
       },
       state,
     };
@@ -79,7 +78,7 @@ export async function runPhases678Parallel(
         off_limits: mapper.output.off_limits_globs,
       }
     : {};
-  const pilotOut = state.outputs["4-pilot"] as { picked?: string } | undefined;
+  const pilotOut = state.outputs["5-pilot"] as { picked?: string } | undefined;
   const pilotModule =
     typeof pilotOut?.picked === "string" && pilotOut.picked.length > 0
       ? pilotOut.picked
@@ -93,17 +92,17 @@ export async function runPhases678Parallel(
       preScannedDecIds: sharedDecIds.size,
       preScannedInvIds: sharedInvIds.size,
     },
-    "parallel-678 starting",
+    "parallel-8910 starting",
   );
 
   // Run the three phases sequentially. v0.5.0 ground-state files
   // (topic-index, anchor-map, sot-bindings, sot-cache) are the shared
-  // mutable surface; serializing 6 → 7b → 7c removes the last-writer-
+  // mutable surface; serializing 8 → 9 → 10 removes the last-writer-
   // wins race that Promise.allSettled had under v0.4.x.
   const t0 = performance.now();
   const startedAt = Date.now();
 
-  // Phase 6 now runs the staged ingest pipeline:
+  // Phase 8 now runs the staged ingest pipeline:
   // Stage 3 marker scan (0 Haiku) → Stage 1 file-purpose binary filter
   // (batch=30, concurrency=5) → Stage 2 section-level batch classifier
   // (batch=30, concurrency=5) → Stage 4 emit drafts to `_inbox/`. Each
@@ -115,7 +114,7 @@ export async function runPhases678Parallel(
       existingDecIds: sharedDecIds,
       onChunkProgress: (row) =>
         writeProgress(state.repoRoot, {
-          phase: `6-docs-ingest:${row.stage}`,
+          phase: `8-docs-ingest:${row.stage}`,
           batch: row.entriesDone,
           total: row.totalEntries,
           startedAt,
@@ -136,7 +135,7 @@ export async function runPhases678Parallel(
       existingInvIds: sharedInvIds,
       onBatchProgress: (row) =>
         writeProgress(state.repoRoot, {
-          phase: "7b-source-comments",
+          phase: "9-source-comments",
           batch: row.index + 1,
           total: row.total,
           classified: row.classified,
@@ -157,7 +156,7 @@ export async function runPhases678Parallel(
       existingInvIds: sharedInvIds,
       onSectionProgress: (row) =>
         writeProgress(state.repoRoot, {
-          phase: "7c-rules-merge",
+          phase: "10-rules-merge",
           batch: row.index,
           total: row.total,
           startedAt,
@@ -175,13 +174,13 @@ export async function runPhases678Parallel(
   const persistedSrc = to7bResultPersisted(srcRes.value);
 
   const outputs: ParallelOutputs = {
-    "6-docs-ingest": docsRes.value,
-    "7b-source-comments": persistedSrc,
-    "7c-rules-merge": rulesRes.value,
+    "8-docs-ingest": docsRes.value,
+    "9-source-comments": persistedSrc,
+    "10-rules-merge": rulesRes.value,
   };
 
-  // Advance the state machine all the way past 7c so the next phase
-  // tool the skill calls is 8-baseline.
+  // Advance the state machine all the way past 10 so the next phase
+  // tool the skill calls is 11-baseline.
   let next: PhaseState = {
     ...state,
     outputs: {
@@ -189,7 +188,7 @@ export async function runPhases678Parallel(
       ...outputs,
     },
   };
-  const skipTargets: PhaseId[] = ["6-docs-ingest", "7b-source-comments", "7c-rules-merge"];
+  const skipTargets: PhaseId[] = ["8-docs-ingest", "9-source-comments", "10-rules-merge"];
   for (const _ of skipTargets) {
     next = advancePhase(next);
   }
@@ -214,7 +213,7 @@ export async function runPhases678Parallel(
       decsAfter: sharedDecIds.size,
       invsAfter: sharedInvIds.size,
     },
-    "parallel-678 complete",
+    "parallel-8910 complete",
   );
 
   return {

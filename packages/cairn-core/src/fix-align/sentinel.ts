@@ -1,5 +1,5 @@
 /**
- * Layer D operator-consent gates (plan §4.4 — items 4 + 9 in
+ * Layer C operator-consent gates (plan §4.4 — items 4 + 9 in
  * `/Users/user/cairn-v0.5.0-deferred.md`).
  *
  * `cairn fix align` runs a full-repo Haiku-judge sweep + strip-replace

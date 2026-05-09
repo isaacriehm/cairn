@@ -15,6 +15,7 @@
 
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { parse as parseYaml } from "yaml";
 
 export type DeferKind = "bypass" | "review";
 
@@ -54,15 +55,28 @@ export function writeDeferState(
   snapshot: {
     flagged_shas?: string[];
     flagged_task_ids?: string[];
-    /** Override defer window. Default 24h. */
+    /** Override defer window. Default from config.yaml or 24h. */
     hours?: number;
     /** ISO timestamp; defaults to new Date().toISOString(). */
     nowIso?: string;
   },
 ): DeferState {
+  let defaultHours = DEFAULT_DEFER_HOURS;
+  try {
+    const cfgPath = join(repoRoot, ".cairn", "config.yaml");
+    if (existsSync(cfgPath)) {
+      const cfg = parseYaml(readFileSync(cfgPath, "utf8"));
+      if (cfg && typeof cfg === "object" && typeof cfg.defer_hours === "number") {
+        defaultHours = cfg.defer_hours;
+      }
+    }
+  } catch {
+    // stay with 24
+  }
+
   const state: DeferState = {
     deferred_at: snapshot.nowIso ?? new Date().toISOString(),
-    deferred_for_hours: snapshot.hours ?? DEFAULT_DEFER_HOURS,
+    deferred_for_hours: snapshot.hours ?? defaultHours,
     flagged_shas: [...(snapshot.flagged_shas ?? [])],
     flagged_task_ids: [...(snapshot.flagged_task_ids ?? [])],
   };

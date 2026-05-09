@@ -1,6 +1,6 @@
 /**
  * Alignment-pending queue writer — used by Layer A (PostToolUse hook,
- * pass-2-still-ambiguous + tier3-ambiguous paths) and Layer C
+ * pass-2-still-ambiguous + tier3-ambiguous paths) and SessionStart Drain
  * (SessionStart drain, Haiku-judge-ambiguous path).
  *
  * The cairn-attention skill renders the file with side-by-side prose
@@ -27,7 +27,7 @@ export interface WriteAlignmentPendingArgs {
   existingBody?: string;
   /**
    * Detector tag stamped into frontmatter — distinguishes Layer A
-   * (`layer-a-pass2-ambiguous`) from Layer C (`layer-c-drain-ambiguous`).
+   * (`layer-a-pass2-ambiguous`) from SessionStart Drain (`layer-c-drain-ambiguous`).
    * Defaults to the Layer A detector for back-compat with the existing
    * `tier3-ambiguous` smoke fixtures.
    */

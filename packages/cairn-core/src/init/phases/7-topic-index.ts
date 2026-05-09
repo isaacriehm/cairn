@@ -1,20 +1,11 @@
 /**
- * Phase 5b — topic-index build (cross-source dedup pre-pass).
+ * Phase 7-topic-index — topic-index build (cross-source dedup pre-pass).
  *
  * Walks every prose-bearing source the SoT model recognizes, computes
  * content-fingerprint slugs, resolves verbatim collisions by priority
  * order, and asks Haiku to judge cross-source semantic-similarity
  * collisions (Jaccard ≥ 0.6, distinct slug). Writes the resulting
  * TopicIndex + AnchorMap to `.cairn/ground/`.
- *
- * Phase 6 / 7b / 7c read this index before emitting any DEC: when a
- * candidate prose block matches a topic that already lives in another
- * source's SoT path, the lower-priority occurrence becomes a
- * §DEC-<hash> cite rather than a fresh DEC. Without this pass the
- * v0.5.0 ledger would still drift toward the v0.4.x cross-source
- * duplication problem.
- *
- * No operator input. Always advances.
  */
 
 import { logger } from "../../logger.js";
@@ -22,7 +13,7 @@ import { buildTopicIndex } from "../topic-index/index.js";
 import { advancePhase } from "./orchestrator.js";
 import type { PhaseResult, PhaseState } from "./types.js";
 
-const log = logger("init.phases.5b-topic-index");
+const log = logger("init.phases.7-topic-index");
 
 export interface TopicIndexPhaseOutput {
   block_count: number;
@@ -35,7 +26,7 @@ export interface TopicIndexPhaseOutput {
   anchor_map_path: string;
 }
 
-export async function runPhase5bTopicIndex(state: PhaseState): Promise<PhaseResult> {
+export async function runPhase7TopicIndex(state: PhaseState): Promise<PhaseResult> {
   try {
     const result = await buildTopicIndex({ repoRoot: state.repoRoot });
     const topicCount = Object.keys(result.topicIndex.topics).length;
@@ -51,23 +42,23 @@ export async function runPhase5bTopicIndex(state: PhaseState): Promise<PhaseResu
     };
     const next: PhaseState = {
       ...state,
-      outputs: { ...state.outputs, "5b-topic-index": out },
+      outputs: { ...state.outputs, "7-topic-index": out },
       answer: undefined,
     };
-    log.info(out, "phase 5b complete");
+    log.info(out, "phase 7 complete");
     return {
       status: "complete",
-      nextPhase: "6-docs-ingest",
+      nextPhase: "8-docs-ingest",
       state: advancePhase(next),
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    log.warn({ err }, "phase 5b failed");
+    log.warn({ err }, "phase 7 failed");
     return {
       status: "error",
       error: {
         code: "topic-index-failed",
-        message: `Phase 5b (topic-index) failed: ${message}`,
+        message: `Phase 7 (topic-index) failed: ${message}`,
       },
       state,
     };

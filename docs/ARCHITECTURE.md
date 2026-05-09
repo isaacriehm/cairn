@@ -72,8 +72,8 @@ Concrete wins:
 What lives here:
 
 - `init/` — adoption wizard. Phase orchestration, mapper (chunked Sonnet),
-  source-comment ingestion (Phase 7b), rules merge (Phase 7c), strip-replace
-  primitives (Phase 10), multi-dev install (Phase 12). Visual rendering
+  source-comment ingestion (Phase 9), rules merge (Phase 10), strip-replace
+  primitives (Phase 12), multi-dev install (Phase 13). Visual rendering
   helpers + the four-question brand setup.
 - `ground/` — `.cairn/ground/` schema + writers. Decisions ledger,
   invariants ledger, manifest, canonical-map, scope-index, drift events,
@@ -91,7 +91,7 @@ What lives here:
   `simple-git`; `canary.ts` post-batch integrity check.
 - `decision-capture/` — DEC id allocator + scanner. The `cairn_record_decision`
   MCP tool composes a draft on top of these.
-- `sensors/` — Layer A (stub catalog), Layer B (attestation), Layer D
+- `sensors/` — Layer A (stub catalog), Layer B (attestation), Layer C
   (structural project-agnostic), decision-assertions, runner, remediation
   prompt body.
 - `session-start/` — `buildSessionStartContext()` composes the SessionStart
@@ -160,7 +160,7 @@ into:
   `cairn_attention_restore`, `cairn_attention_serve`,
   `cairn_attention_wait`, `cairn_align_drain`.
 - **Init pipeline** — `cairn_init_phase_*` (13 phases) +
-  `cairn_init_resume`, `cairn_init_phases_678_parallel`.
+  `cairn_init_resume`, `cairn_init_phases_8_9_10_parallel`.
 
 See [`MCP_SURFACE.md`](MCP_SURFACE.md) for tool-by-tool schemas.
 

@@ -1,5 +1,5 @@
 /**
- * Phase 12-multidev — detect per-host package manager(s) and emit
+ * Phase 13-multidev — detect per-host package manager(s) and emit
  * JOIN.md hints for new contributors. Idempotent.
  */
 
@@ -10,14 +10,14 @@ import {
 import { advancePhase } from "./orchestrator.js";
 import type { PhaseResult, PhaseState } from "./types.js";
 
-export async function runPhase12Multidev(state: PhaseState): Promise<PhaseResult> {
+export async function runPhase13Multidev(state: PhaseState): Promise<PhaseResult> {
   try {
     const result: MultiDevInstallResult = installMultiDev({
       repoRoot: state.repoRoot,
     });
     const next: PhaseState = {
       ...state,
-      outputs: { ...state.outputs, "12-multidev": result },
+      outputs: { ...state.outputs, "13-multidev": result },
     };
     return {
       status: "complete",

@@ -110,25 +110,23 @@ Three trigger paths converge on the same pipeline:
 
 On `[a]`, the skill (or CLI) spawns the init pipeline as a subprocess and **streams its rich terminal output (chalk + ora + cli-progress) into the Claude Code conversation as a fenced code block** — the visual approach (α). Choices that need operator input surface as inline A/B/C via the skill calling Claude Code's AskUserQuestion tool.
 
-### Phases (heavy version per side-note "fully processes once")
+### Phases (v0.5.0+)
 
 | Phase | What happens | Visible to operator |
 |------|--------------|---------------------|
-| 1 | Submodule detect + `git submodule init` | "Detecting submodules…" → "Initialized N submodules" |
-| 2 | Priority walker (high-signal pass + rest pass) | Tree silhouette, file counts per top-level dir |
-| 3 | Per-module Sonnet calls (chunked, parallel, fallback) | Per-module status icons (`↻`/`✓`/`⚠`) updating live |
-| 4 | Pilot module confirm | One A/B/C: pick pilot module from top 3 candidates |
-| 5 | Brand setup — 4 questions inline A/B/C | Brand name / positioning / voice tone / domain |
-| 6 | Writes `.cairn/` skeleton, baseline `status.json` | "Writing .cairn/" → file count |
-| 7a | **Docs ingestion (Haiku/doc, parallel)** — every doc classified into DEC drafts / canonical-map / voice updates / consolidate-with-existing | Per-doc status icons; DEC draft count grows |
-| 7b | **Source comment ingestion (full repo, no cap)** — deterministic walker finds essay-style comment blocks (heuristic: block comment > 3 lines OR > 200 chars OR JSDoc with > 30 words of prose) across **every** source file. Haiku batch-classifies each block (20 blocks per batch call) into DEC draft / §INV invariant proposal / canonical-map citation. Detection deterministic, classification LLM, replacement deterministic (see Phase 10). One-time spend acceptable per the "fully processes once" mandate. | Per-batch status; DEC + §INV counts grow; total Haiku tokens displayed |
-| 7c | **Existing project rules merge** — `CLAUDE.md`, `AGENTS.md`, `.claude/CLAUDE.md`, `.claude/rules/` ingested and reconciled with Cairn state. Post-adoption: Cairn regenerates `CLAUDE.md` and `AGENTS.md` from ground state on each `cairn sweep`; operator-written sections preserved between `<!-- cairn:keep-start -->` and `<!-- cairn:keep-end -->` markers | "Merging project rules…" → diff summary |
-| 8 | Baseline sensor audit — every sensor runs against full repo, findings to `.cairn/baseline/sensor-audit-<ISO>.yaml` | Per-sensor status; finding counts |
-| 9 | **Inconsistency detection** — hard conflicts (factual contradictions across decisions/docs) block + A/B/C inline; soft (scope/phrasing) deferred to attention | "Conflict: DEC-0019 says X; docs/auth.md says Y. `[a]` …" |
-| 10 | **Comment policy enforcement** — strip essay comments, replace with `// §INV-NNNN` cites. **Detection + replacement deterministic (no LLM).** Pre-check: skip files with uncommitted changes; surface "stash and process / skip / overwrite" inline. Originals backed up to `.cairn/backups/source/<rel-path>.original`. Consent-gated per module: A/B/C with full diff preview before any write. | Per-module preview + A/B/C "strip all `[a]` / review per-file `[b]` / skip `[c]`" |
-| 11 | **Project rules write** — plugin enabling auto-merges Cairn's hooks/MCP/skills into user-level `~/.claude/settings.json` `enabledPlugins`. No project-level config touched | "Plugin enabled at user scope" |
-| 12 | **Multi-dev enforcement install** — versioned git hooks at `.cairn/git-hooks/`, `core.hooksPath` configured, CI workflow `.github/workflows/cairn-check.yml` written, `package.json` `prepare` script added (Node projects), `.cairn/JOIN.md` written for new contributors. See §17. | "Installed git hooks + CI gate" |
-| 13 | Final summary + `cairn attention` count | Markdown summary table; pending counts |
+| 1 | Detect environment + stack signatures | "Detecting environment…" → signals |
+| 2 | Priority walker (repo summary scan) | Tree silhouette, file counts |
+| 3 | Sonnet domain mapper (chunked, parallel) | Per-module status icons updating live |
+| 4 | Seed `.cairn/` skeleton + grandfather commits | "Writing .cairn/ skeleton" |
+| 5 | Pilot module confirm | One A/B/C: pick pilot module |
+| 6 | Brand auto-fill (Haiku) | One A/B/C: consent to auto-fill brand |
+| 7 | Topic index build (dedup pre-pass) | "Building topic index…" → block counts |
+| 8 | **Docs ingestion** (README + docs/) | Per-doc status icons; DEC draft count |
+| 9 | **Source comment ingestion** (essay-class) | Per-batch status; DEC + §INV counts |
+| 10 | **Existing project rules merge** (CLAUDE.md) | "Merging project rules…" → diff summary |
+| 11 | Baseline sensor audit | Per-sensor status; finding counts |
+| 12 | **Comment policy enforcement** (strip) | Per-module preview + A/B/C consent |
+| 13 | Multi-dev enforcement install + summary | "Installed git hooks + CI gate" → summary |
 
 After this single pass, Cairn IS the project maintainer. Source files are clean (only `// §INV-NNNN` and `// TODO(TSK-)` cites). All prior decisions are canonicalized. Existing rules are merged. Sensors are baselined. Inconsistencies are resolved or queued.
 
@@ -567,14 +565,14 @@ The following decisions were made during drafting and folded into the relevant s
 | Pre-write safety | Skip dirty files (offer stash/skip/overwrite); backup originals to `.cairn/backups/source/<rel>.original` | §15 |
 | Subagent output | Each subagent's output streams verbatim; reviewer produces final attestation summary | §8, §11 |
 | Adoption tracking | `${CLAUDE_PLUGIN_DATA}/projects.json` keyed by abs-path; `decline-temp` re-prompts after 7 days; `decline-never` requires explicit `/cairn-init` to re-prompt | §11 (skills) |
-| Existing rules merge | Adoption ingests; post-adoption regenerates `CLAUDE.md` + `AGENTS.md` from ground state with `<!-- cairn:keep-start -->` operator sections preserved | §6 Phase 7c |
+| Existing rules merge | Adoption ingests; post-adoption regenerates `CLAUDE.md` + `AGENTS.md` from ground state with `<!-- cairn:keep-start -->` operator sections preserved | §6 Phase 10 |
 | Reviewer last-detection | Stop hook scans `.cairn/tasks/active/<id>/` for missing `attestation.yaml`; spawns reviewer if any | §10 |
 | `--no-verify` bypass detection | Pre-commit hook (paired with post-commit) appends attested SHAs to `.cairn/.attested-commits`; Stop hook diffs against HEAD's last 5; surfaces backfill prompt | §17 Layer 1 |
 | Uninstall vs full uninstall | `cairn uninstall` light (stops enforcement, keeps state); `cairn uninstall --full` restores original comments from backups, deletes `.cairn/`, removes hooks + CI workflow | §16 |
 | MCP project-root detection | cwd-based walker (look for `.cairn/` or `.git/`); no env var dependency | §9 |
 | Subagent dispatch protocol | Skill emits structured ```dispatch``` fenced block; main Claude parses and issues Task calls | §11 |
 | Claude binary requirement | **Hard requirement** — no degraded mode. Adoption preflight detects missing `claude`, bails with install instructions | §6 Phase 1 |
-| Source-comment scan scope | **No cap** — every source file processed during adoption, accept the one-time Haiku spend per "fully processes once" mandate | §6 Phase 7b |
+| Source-comment scan scope | **No cap** — every source file processed during adoption, accept the one-time Haiku spend per "fully processes once" mandate | §6 Phase 9 |
 | `cairn-direction` skill triggering | Auto-invoke via fuzzy `description` matcher + slash command `/cairn-direction <prompt>` as escape hatch when auto-invoke misses | §11 |
 
 ## §19 Build history

@@ -1,10 +1,7 @@
 /**
- * Phase 8-baseline — first sensor sweep against the synthetic
+ * Phase 11-baseline — first sensor sweep against the synthetic
  * full-tree diff. Stamps the audit row counts under outputs so the
  * skill driver can summarize "N findings across M sensors".
- *
- * Reads the mapper's globs (route handlers, DTOs, etc.) from phase 3
- * if available. Falls back to baseline-audit's defaults otherwise.
  */
 
 import {
@@ -18,7 +15,7 @@ import type { MapperResultPersisted } from "./mapper-output-io.js";
 import { advancePhase } from "./orchestrator.js";
 import type { PhaseResult, PhaseState } from "./types.js";
 
-export async function runPhase8Baseline(state: PhaseState): Promise<PhaseResult> {
+export async function runPhase11Baseline(state: PhaseState): Promise<PhaseResult> {
   const detection = state.outputs["1-detect"] as DetectionResult | undefined;
   const mapper = state.outputs["3-mapper"] as
     | MapperResultPersisted
@@ -44,11 +41,11 @@ export async function runPhase8Baseline(state: PhaseState): Promise<PhaseResult>
     });
     const next: PhaseState = {
       ...state,
-      outputs: { ...state.outputs, "8-baseline": result },
+      outputs: { ...state.outputs, "11-baseline": result },
     };
     return {
       status: "complete",
-      nextPhase: "10-strip",
+      nextPhase: "12-strip",
       state: advancePhase(next),
     };
   } catch (err) {

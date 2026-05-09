@@ -227,6 +227,7 @@ async function mapOneSlice(
       // zero benefit — the mapper only needs the caller-supplied
       // module slice + ledger excerpt.
       isolateAmbientContext: true,
+      cacheable: true,
     });
     proposal = parseModuleProposal(slice, result.parsed, Date.now() - startedAt);
   } catch (err) {

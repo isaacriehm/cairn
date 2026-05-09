@@ -1,5 +1,5 @@
 /**
- * Layer C — SessionStart drain (plan §4.3).
+ * SessionStart Drain — SessionStart drain (plan §4.3).
  *
  * Reads the rich deferred logs written by Layer A
  * (`.cairn/staleness/layer-a-deferred.jsonl`) and Layer B
@@ -420,7 +420,7 @@ export async function runDrain(args: DrainArgs): Promise<DrainResult> {
     ts: new Date().toISOString(),
     kind: "doc-drift",
     path: "(drain)",
-    detail: `Layer C drain: cited=${
+    detail: `SessionStart Drain drain: cited=${
       result.citedDeterministic + result.citedHaiku
     } pending=${result.pending} dropped=${result.droppedDifferent + result.droppedMissing} deferred=${result.deferred}`,
     severity: "soft",

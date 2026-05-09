@@ -54,6 +54,7 @@ await build({
   },
   legalComments: "none",
   logLevel: "warning",
+  minify: true,
   absWorkingDir: PKG_ROOT,
   define: {
     __CAIRN_BUNDLED__: "true",
@@ -72,6 +73,12 @@ try {
   process.exit(1);
 }
 rmSync(dstTemplates, { recursive: true, force: true });
-cpSync(srcTemplates, dstTemplates, { recursive: true });
+cpSync(srcTemplates, dstTemplates, {
+  recursive: true,
+  filter: (src) => {
+    // Exclude test fixtures from the distribution tree
+    return !src.includes(".cairn/sessions");
+  },
+});
 
 console.log(`build-bundle: dist/cli.mjs (cairn-core@${VERSION}) + dist/templates/`);
