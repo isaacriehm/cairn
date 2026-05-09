@@ -43,14 +43,36 @@ export function parseHookPayload(text: string): ClaudeHookPayload {
 }
 
 /**
+ * Hook event names Claude Code validates against the runner's stdout
+ * `hookSpecificOutput.hookEventName` field. Claude Code 2.1+ rejects
+ * a hook payload whose `hookEventName` doesn't match the event the
+ * hook was invoked for — e.g. a SessionStart hook returning
+ * `"PostToolUse"` is dropped with `Hook returned incorrect event
+ * name`. The previous shared default of `"PostToolUse"` worked
+ * historically but is now wrong for every other event.
+ */
+export type HookEventName =
+  | "SessionStart"
+  | "SessionEnd"
+  | "Stop"
+  | "UserPromptSubmit"
+  | "PreCompact"
+  | "PostToolUse"
+  | "PreToolUse"
+  | "Notification";
+
+/**
  * Write Shape-B JSON to stdout and exit.
  * Claude Code expects exactly this JSON on stdout to continue.
+ * `hookEventName` MUST match the hook event the runner was invoked
+ * for; mismatches are rejected as `Hook returned incorrect event
+ * name` in Claude Code 2.1+.
  */
-export function emitShapeB(context: string): never {
+export function emitShapeB(context: string, hookEventName: HookEventName): never {
   const payload = {
     continue: true,
     hookSpecificOutput: {
-      hookEventName: "PostToolUse", // matches Claude's generic expectation
+      hookEventName,
       additionalContext: context,
     },
   };

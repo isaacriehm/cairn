@@ -76,7 +76,7 @@ export async function runWriteGuardian(): Promise<void> {
 
     if (payload.tool_name !== "Write" && payload.tool_name !== "Edit") {
       outcome = { skip: "non-write-tool", tool_name: payload.tool_name };
-      emitShapeB("");
+      emitShapeB("", "PostToolUse");
       return;
     }
 
@@ -88,7 +88,7 @@ export async function runWriteGuardian(): Promise<void> {
         file_path: filePath ?? null,
         content_present: content !== undefined,
       };
-      emitShapeB("");
+      emitShapeB("", "PostToolUse");
       return;
     }
 
@@ -97,7 +97,7 @@ export async function runWriteGuardian(): Promise<void> {
     repoRootForTrace = repoRoot;
     if (repoRoot === null) {
       outcome = { skip: "not-adopted", cwd };
-      emitShapeB("");
+      emitShapeB("", "PostToolUse");
       return;
     }
 
@@ -117,15 +117,15 @@ export async function runWriteGuardian(): Promise<void> {
     };
 
     if (result.kind === "none") {
-      emitShapeB("");
+      emitShapeB("", "PostToolUse");
     } else {
-      emitShapeB(result.message ?? "");
+      emitShapeB(result.message ?? "", "PostToolUse");
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     outcome = { error: message };
     log.error({ err: message }, "write-guardian hook failed");
-    emitShapeB("");
+    emitShapeB("", "PostToolUse");
   } finally {
     if (repoRootForTrace !== null) {
       appendTelemetry({

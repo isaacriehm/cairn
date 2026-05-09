@@ -91,7 +91,7 @@ export async function runSessionStartHook(): Promise<void> {
     // Repos NOT adopted: show the banner suggesting `cairn init` if it
     // looks like a project root, else stay silent.
     const banner = renderAdoptionBanner(cwdInput);
-    emitShapeB(banner);
+    emitShapeB(banner, "SessionStart");
     return;
   }
 
@@ -219,7 +219,7 @@ export async function runSessionStartHook(): Promise<void> {
     spawnDetachedDrain(repoRoot, sessionId);
   }
 
-  emitShapeB(additionalContext);
+  emitShapeB(additionalContext, "SessionStart");
 }
 
 /**
