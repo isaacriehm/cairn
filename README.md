@@ -348,6 +348,19 @@ packages/
 
 ## Documentation
 
+**User guide** — read these to use Cairn day to day:
+
+| Doc                                                          | What                                                                |
+| ------------------------------------------------------------ | ------------------------------------------------------------------- |
+| [Core concepts](docs/guide/concepts.md)                      | Decisions, invariants, canonical map, scope, sensors, drift.        |
+| [Using Cairn day to day](docs/guide/daily-flow.md)           | What happens on every prompt, after the one-time adoption.          |
+| [Adopting Cairn](docs/guide/adoption.md)                     | The 13-phase adoption pipeline, walked through step by step.        |
+| [Working with decisions](docs/guide/decisions.md)            | DEC creation paths, file format, supersedes chain, scope design.    |
+| [Cairn for teams](docs/guide/multi-dev.md)                   | Onboarding contributors, the CI gate, bypass detection.             |
+| [Quick reference](docs/guide/reference.md)                   | CLI commands, MCP tools, status-line, file locations, slash commands. |
+
+**Technical specs** — read these when you're modifying Cairn itself:
+
 | Doc                                                          | What                                                          |
 | ------------------------------------------------------------ | ------------------------------------------------------------- |
 | [System Overview](docs/SYSTEM_OVERVIEW.md)                   | End-to-end surface map + Mermaid diagram of all flows.        |

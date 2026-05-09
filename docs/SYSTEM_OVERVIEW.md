@@ -1,5 +1,9 @@
 # Cairn — system overview
 
+> **This is a technical implementation spec.** If you're trying to *use*
+> Cairn rather than modify it, start with the user guide:
+> [Core concepts](guide/concepts.md) and [Using Cairn day to day](guide/daily-flow.md).
+
 End-to-end map of every surface, every flow, every state file. Reflects the
 plugin-era architecture (post v0.2.0; daemon / orchestrator code purged).
 

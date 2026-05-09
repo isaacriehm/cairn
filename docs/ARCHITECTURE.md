@@ -7,6 +7,10 @@ generated: 2026-05-05
 
 # Cairn — Architecture (layered model)
 
+> **This is a technical implementation spec.** If you're trying to *use*
+> Cairn rather than modify it, start with the user guide:
+> [Core concepts](guide/concepts.md).
+
 Cairn is **state management + context loading for AI coding agents**. The
 Claude Code plugin is the primary surface that adopters interact with; the
 CLI provides bootstrap and debug entrypoints. Everything else is built on

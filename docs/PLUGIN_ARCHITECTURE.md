@@ -8,6 +8,10 @@ purpose: Lock the plugin form factor — adoption, daily flow, state, concurrenc
 
 # Plugin Architecture — `cairn-frontend-claudecode`
 
+> **This is a technical implementation spec.** If you're trying to *use*
+> Cairn rather than modify it, start with the user guide:
+> [Adopting Cairn](guide/adoption.md) and [Using Cairn day to day](guide/daily-flow.md).
+
 The plugin pivot: Cairn is shipped as a Claude Code plugin. The operator installs once at user level. From then on, opening Claude Code in any project activates Cairn. After a one-time visual adoption pass, Cairn runs invisibly — surfacing only via inline A/B/C prompts when it needs operator input.
 
 ## §1 Vision

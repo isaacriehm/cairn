@@ -11,6 +11,11 @@ depends-on:
 
 # `cairn-mcp` Server — Tool Surface
 
+> **This is a technical implementation spec.** If you're trying to *use*
+> Cairn rather than modify it, start with the user guide:
+> [Quick reference](guide/reference.md) for the everyday tool list, or
+> [Working with decisions](guide/decisions.md) for query patterns.
+
 The MCP server exposes structured retrieval, append-only writes, and history-explicit access for any registered coding agent (Claude Code, Codex). Lives in `packages/cairn-core/src/mcp/` and is started by `cairn mcp serve` (stdio transport).
 
 ## Why MCP, not raw tools

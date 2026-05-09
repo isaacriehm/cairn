@@ -11,6 +11,11 @@ depends-on:
 
 # Filesystem Layout — Disk-only state for Cairn
 
+> **This is a technical implementation spec.** If you're trying to *use*
+> Cairn rather than modify it, start with the user guide:
+> [Quick reference](guide/reference.md) has the practical file-location
+> table; [Core concepts](guide/concepts.md) explains what each artifact means.
+
 Replaces the prior Postgres design. Everything lives on disk. Two-zone canonical/historical separation. Hook-enforced. Portable to any project via `npx @isaacriehm/cairn init`.
 
 ## 0. Decision summary (locked)
