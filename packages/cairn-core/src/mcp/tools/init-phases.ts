@@ -1,18 +1,26 @@
 /**
  * MCP tools for the v0.3.5 init pipeline.
  *
- * Thirteen `cairn_init_phase_<id>` tools — one per PHASE_IDS entry —
- * plus `cairn_init_resume`. The cairn-adopt skill drives the
- * pipeline by:
+ * Two tools, single surface:
+ *   1. `cairn_init_resume` → { status, nextPhase, repoRoot }
+ *   2. `cairn_init_run({ phase, answer? })` → { status, nextPhase | question | error }
+ *
+ * The cairn-adopt skill drives the pipeline by:
  *   1. cairn_init_resume          → { status, nextPhase, repoRoot }
- *   2. cairn_init_phase_<next>()  → { status, nextPhase | question | error }
+ *   2. cairn_init_run({ phase })  → { status, nextPhase | question | error }
  *   3. AskUserQuestion if needs_input → re-call same tool with { answer }
  *   4. loop on complete + advance until nextPhase === null
  *
+ * Phase 8 (`8-docs-ingest`) is special: `cairn_init_run` internally
+ * dispatches the parallel 8/9/10 runner so the three Haiku-batched
+ * ingestion phases overlap on wall-clock. The combined result advances
+ * to `11-baseline`. The skill doesn't need a separate code path for
+ * this — `cairn_init_run` is the only umbrella.
+ *
  * State persists to .cairn/init-state.json after every successful
  * phase result so the operator can crash-recover. The skill no longer
- * threads state through arguments — phase tools read state from disk
- * and only need an optional `answer` field for needs_input phases.
+ * threads state through arguments — `cairn_init_run` reads state from
+ * disk and only needs an optional `answer` field for needs_input phases.
  *
  * Why no state echo: returning the full state in tool responses
  * triggered MCP-level spillover-to-file once mapper output landed,
@@ -72,17 +80,13 @@ const phaseStateSchema = z.object({
 
 const phaseRunInput = {
   phase: phaseIdEnum,
-  // State is optional — phase tools read .cairn/init-state.json by
-  // default. Callers can still pass an explicit state object (e.g.
-  // smoke tests) but the cairn-adopt skill should pass nothing here.
+  // State is optional — `cairn_init_run` reads .cairn/init-state.json
+  // by default. Callers can still pass an explicit state object (smoke
+  // tests, debug tooling) but the cairn-adopt skill should pass nothing
+  // here.
   state: phaseStateSchema.optional(),
   // Operator answer for needs_input phases. The wrapper splices this
   // into state.answer before invoking the phase runner.
-  answer: z.string().optional(),
-};
-
-const initPhaseInput = {
-  state: phaseStateSchema.optional(),
   answer: z.string().optional(),
 };
 
@@ -104,7 +108,8 @@ const RUNNERS: Record<PhaseId, (s: PhaseState) => Promise<PhaseResult>> = {
   "13-multidev": runPhase13Multidev,
 };
 
-interface PhaseToolInput {
+interface PhaseRunInput {
+  phase: PhaseId;
   state?: PhaseState;
   answer?: string;
 }
@@ -141,6 +146,50 @@ function toSlim(result: PhaseResult): SlimPhaseResponse {
     return { status: "needs_input", question: result.question };
   }
   return { status: "error", error: result.error };
+}
+
+/**
+ * Phase 8 fans out to phases 8/9/10 in parallel. Centralized here so
+ * `cairn_init_run` callers don't have to special-case the gate.
+ */
+async function handlePhase8Parallel(
+  ctx: McpContext,
+  state: PhaseState,
+): Promise<unknown> {
+  if (state.repoRoot !== ctx.repoRoot) {
+    return mcpError(
+      "VALIDATION_FAILED",
+      `state.repoRoot ${state.repoRoot} does not match MCP context ${ctx.repoRoot}`,
+    );
+  }
+  const t0 = performance.now();
+  const result = await runPhases8910Parallel(state);
+  const durationMs = Math.round(performance.now() - t0);
+  clearProgress(state.repoRoot);
+  if (result.status !== "error") {
+    for (const id of [
+      "8-docs-ingest",
+      "9-source-comments",
+      "10-rules-merge",
+    ] as const) {
+      const phaseOut = result.state.outputs[id];
+      if (typeof phaseOut === "object" && phaseOut !== null) {
+        const obj = phaseOut as Record<string, unknown>;
+        if (obj["duration_ms"] === undefined) {
+          obj["duration_ms"] = durationMs;
+        }
+      }
+    }
+    try {
+      writePhaseState(result.state);
+    } catch (err) {
+      return mcpError(
+        "INTERNAL_ERROR",
+        `failed to persist init state: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+  return toSlim(result);
 }
 
 async function handlePhaseRun(
@@ -181,11 +230,18 @@ async function handlePhaseRun(
     input.answer !== undefined && input.answer.length > 0
       ? { ...state, answer: input.answer }
       : state;
+
+  // Phase 8 dispatches the parallel 8/9/10 runner — the three Haiku-
+  // batched ingestion phases overlap on wall-clock and the combined
+  // result advances to `11-baseline`. No separate MCP tool needed.
+  if (id === "8-docs-ingest") {
+    return handlePhase8Parallel(ctx, stateForRun);
+  }
+
   const runner = RUNNERS[id];
   // Coarse-grained statusline coverage
   const isLongPhase =
     id === "3-mapper" ||
-    id === "8-docs-ingest" ||
     id === "9-source-comments" ||
     id === "10-rules-merge";
   if (!isLongPhase) {
@@ -224,24 +280,14 @@ async function handlePhaseRun(
   return toSlim(result);
 }
 
-function makePhaseRunTool(): ToolDef<any> {
+function makePhaseRunTool(): ToolDef<PhaseRunInput> {
   return {
     name: "cairn_init_run",
-    description: "Run a specific initialization phase. Call cairn_init_resume to find the next phase, then invoke this tool with that phase ID. Supports sequential execution of the 13-phase adoption pipeline.",
+    description:
+      "Run the next initialization phase. Call cairn_init_resume to find the next phase, then invoke this tool with that phase ID. Phase 8-docs-ingest internally fans out to phases 8/9/10 in parallel and advances to 11-baseline; every other phase runs sequentially. The cairn-adopt skill loops on this tool until nextPhase === null.",
     inputSchema: phaseRunInput,
     handler: async (ctx, input) => {
       return handlePhaseRun(ctx, input.phase as PhaseId, input);
-    },
-  };
-}
-
-function makePhaseTool(id: PhaseId): ToolDef<PhaseToolInput> {
-  return {
-    name: `cairn_init_phase_${normalizeId(id)}`,
-    description: phaseDescription(id),
-    inputSchema: initPhaseInput,
-    handler: async (ctx, input) => {
-      return handlePhaseRun(ctx, id, input);
     },
   };
 }
@@ -269,111 +315,5 @@ function makeResumeTool(): ToolDef<ResumeToolInput> {
   };
 }
 
-function normalizeId(id: PhaseId): string {
-  // Tool names go through MCP's allowed-character set — the dash in
-  // "7b-source-comments" is fine but we underscore for consistency
-  // with cairn_init_resume / cairn_record_decision conventions.
-  return id.replace(/-/g, "_");
-}
-
-function phaseDescription(id: PhaseId): string {
-  switch (id) {
-    case "1-detect":
-      return "Phase 1-detect — scan the project's environment + stack signatures. Always advances; no operator input.";
-    case "2-walker":
-      return "Phase 2-walker — build the repo summary (manifest previews, by-extension counts, framework signals). Always advances.";
-    case "3-mapper":
-      return "Phase 3-mapper — Sonnet-driven domain map (chunked across module slices). Long-running; no operator input.";
-    case "4-seed":
-      return "Phase 4-seed — write .cairn/ skeleton + config.yaml + scope-index from templates and mapper output. Always advances; no operator input.";
-    case "5-pilot":
-      return "Phase 5-pilot — operator picks the seed module from mapper's top candidates (1 question).";
-    case "6-brand":
-      return "Phase 6-brand — operator picks how to populate the brand DEC drafts: skip / auto-fill / manual (1 question).";
-    case "7-topic-index":
-      return "Phase 7-topic-index — cross-source dedup pre-pass. Walks docs/*.md + CLAUDE.md + AGENTS.md + .claude/rules/* and emits topic-index.yaml + anchor-map.yaml so phases 8/9/10 can dedup-by-topic instead of one DEC per source.";
-    case "8-docs-ingest":
-      return "Phase 8-docs-ingest — Haiku batch over README + docs/ → DEC drafts + canonical-map topics. No operator input.";
-    case "9-source-comments":
-      return "Phase 9-source-comments — Haiku batch over docblock-class source comments → DEC drafts + invariant proposals.";
-    case "10-rules-merge":
-      return "Phase 10-rules-merge — Haiku batch over CLAUDE.md / AGENTS.md / .claude/rules/* → propose net-new rules + flag conflicts.";
-    case "11-baseline":
-      return "Phase 11-baseline — first sensor sweep against synthetic full-tree diff. No operator input.";
-    case "12-strip":
-      return "Phase 12-strip — per-module strip-replace consent for source-comment essays. Operator picks strip / keep / skip per flagged module.";
-    case "13-multidev":
-      return "Phase 13-multidev — detect per-host package manager(s) and emit JOIN.md hints for new contributors. No filesystem mutations. Idempotent.";
-  }
-}
-
-/**
- * Combined parallel runner for the post-pilot ingestion window. Runs
- * phases 8-docs-ingest, 9-source-comments, and 10-rules-merge in
- * parallel inside a single MCP call. The cairn-adopt skill prefers
- * this tool when state.currentPhase=8-docs-ingest; the per-phase
- * sequential tools remain registered for fallback / debug paths.
- */
-function makeParallel8910Tool(): ToolDef<PhaseToolInput> {
-  return {
-    name: "cairn_init_phases_8_9_10_parallel",
-    description:
-      "Run phases 8-docs-ingest, 9-source-comments, and 10-rules-merge concurrently. Pre-scans existing DEC + INV ids and threads shared Sets through all three so id allocations don't collide. Returns the combined slim response with nextPhase=11-baseline. Skill prefers this when state.currentPhase=8-docs-ingest; the per-phase sequential tools stay available for fallback. Wall-clock saves the smaller-two phases' time on real-world adoptions.",
-    inputSchema: initPhaseInput,
-    handler: async (ctx, input) => {
-      let state: PhaseState | null = input.state ?? null;
-      if (state === null) {
-        state = readPhaseState(ctx.repoRoot);
-      }
-      if (state === null) {
-        return mcpError(
-          "VALIDATION_FAILED",
-          "cairn_init_phases_8_9_10_parallel found no init state at .cairn/init-state.json. Call cairn_init_resume to start a fresh pipeline.",
-        );
-      }
-      if (state.currentPhase !== "8-docs-ingest") {
-        return mcpError(
-          "VALIDATION_FAILED",
-          `cairn_init_phases_8_9_10_parallel requires state.currentPhase=8-docs-ingest, got ${state.currentPhase}`,
-        );
-      }
-      if (state.repoRoot !== ctx.repoRoot) {
-        return mcpError(
-          "VALIDATION_FAILED",
-          `state.repoRoot ${state.repoRoot} does not match MCP context ${ctx.repoRoot}`,
-        );
-      }
-      const t0 = performance.now();
-      const result = await runPhases8910Parallel(state);
-      const durationMs = Math.round(performance.now() - t0);
-      if (result.status !== "error") {
-        for (const id of ["8-docs-ingest", "9-source-comments", "10-rules-merge"] as const) {
-          const phaseOut = result.state.outputs[id];
-          if (typeof phaseOut === "object" && phaseOut !== null) {
-            const obj = phaseOut as Record<string, unknown>;
-            if (obj["duration_ms"] === undefined) {
-              obj["duration_ms"] = durationMs;
-            }
-          }
-        }
-        try {
-          writePhaseState(result.state);
-        } catch (err) {
-          return mcpError(
-            "INTERNAL_ERROR",
-            `failed to persist init state: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        }
-      }
-      return toSlim(result);
-    },
-  };
-}
-
-export const initPhaseTools: ToolDef<PhaseToolInput>[] = PHASE_IDS.map(
-  (id) => makePhaseTool(id),
-);
-export const initRunTool: ToolDef<unknown> = makePhaseRunTool();
-export const initParallel8910Tool: ToolDef<PhaseToolInput> = makeParallel8910Tool();
+export const initRunTool: ToolDef<PhaseRunInput> = makePhaseRunTool();
 export const initResumeTool: ToolDef<ResumeToolInput> = makeResumeTool();
-;

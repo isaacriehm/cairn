@@ -82,7 +82,7 @@ What lives here:
 - `ground/` — `.cairn/ground/` schema + writers. Decisions ledger,
   invariants ledger, manifest, canonical-map, scope-index, drift events,
   frontmatter parsing, glob matching.
-- `mcp/` — MCP server. 39 typed tools (read, write-locked write,
+- `mcp/` — MCP server. 25 typed tools (read, write-locked write,
   history-summarizer, init-phase orchestration, attention queue
   drains). Bootstrap-guard wraps every write tool with the
   `BOOTSTRAP_REQUIRED` envelope when a clone is unbootstrapped.

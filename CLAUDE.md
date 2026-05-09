@@ -48,6 +48,36 @@ bootstrap and debug entrypoint. There is no separate orchestration runtime
 - Never use Claude Code `PreToolUse` hooks — they can brick the session. SessionStart instructions + MCP tools only.
 - Hardcode model IDs in code (no env vars). Hard cutovers only (no transition shims).
 
+### Operator-private strings: never write to a committed artifact
+
+This is a public open-source repository. Any string visible from the
+runtime context that identifies the operator personally — the absolute
+working-directory path, parent folders above the repo root, the
+operator's umbrella organization name (visible in the cwd path
+segments), the operator's email address, any private project
+codenames — must NEVER appear in:
+
+- Committed source code (including comments)
+- Documentation (`README.md`, `CHANGELOG.md`, `docs/**`)
+- Git commit messages or tag annotations
+- Subagent prompts that produce committed output
+- The `.claude-plugin/` manifest or any other shipped artifact
+
+The public maintainer name attached to the repo's package metadata
+and LICENSE is the only personally-identifying string allowed; it is
+the deliberate public attribution. Everything else from the operator's
+local environment is private.
+
+When describing a class of bug that involves one of these strings
+(e.g. "paths with spaces"), use a generic placeholder such as
+`/path/with spaces/...`, `<operator-home>`, or `<personal-email>`.
+Do NOT quote the operator's actual path even inside an error string,
+even inside a fenced code-block, even inside a commit-message body.
+
+Enforcement is by attention, not tooling. Violations have shipped
+publicly more than once. If unsure whether a string qualifies as
+operator-private, OMIT IT — there is no "borderline" category.
+
 ## Workspace layout
 
 ```

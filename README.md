@@ -69,7 +69,7 @@ pre-commit and again at CI.
 paths instead of the agent grepping vaguely or fabricating them.
 
 Plus four runtime layers that keep those stores live: an **MCP
-server** (39 typed tools), a **Claude Code plugin** (skills + hooks +
+server** (25 typed tools), a **Claude Code plugin** (skills + hooks +
 reviewer agent), **sensors** (4 layers of automated diff checks), and
 a **CLI** for bootstrap and debug.
 
@@ -258,7 +258,7 @@ on the next GC sweep.
 
 ### Tooling surfaces
 
-- **MCP server** — 39 typed tools across read, write, history,
+- **MCP server** — 25 typed tools across read, write, history,
   attention, init, and search. Used by the plugin and any other MCP
   client.
 - **CLI** — `cairn init / join / mcp / gc / scope / doctor / fix /

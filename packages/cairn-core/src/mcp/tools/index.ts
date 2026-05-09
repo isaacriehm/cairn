@@ -13,8 +13,6 @@ import { getFullTool } from "./get-full.js";
 import { groundGetTool } from "./ground-get.js";
 import { inScopeTool } from "./in-scope.js";
 import {
-  initParallel8910Tool,
-  initPhaseTools,
   initResumeTool,
   initRunTool,
 } from "./init-phases.js";
@@ -61,11 +59,9 @@ export const allTools: ToolDef<never>[] = [
   attentionWaitTool,
   // Write — Layer C SessionStart drain
   alignDrainTool,
-  // Write — init pipeline (v0.2.0 MCP-native init)
+  // Write — init pipeline (v0.7.2 single-umbrella surface)
   initResumeTool,
   initRunTool,
-  initParallel8910Tool,
-  ...initPhaseTools,
 ];
 
 export type { ToolDef };

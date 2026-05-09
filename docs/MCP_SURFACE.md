@@ -47,7 +47,7 @@ Adopters register the server via `.mcp.json` (created by `cairn init`):
 
 ---
 
-## Tool catalog (40 tools)
+## Tool catalog (25 tools)
 
 Conventions:
 
@@ -120,25 +120,24 @@ Source of truth: `packages/cairn-core/src/mcp/tools/index.ts` (`allTools`).
 | ------------------- | -------------------------------------------------------------------------- |
 | `cairn_align_drain` | Drain queued SoT-alignment cases written by PostToolUse Write/Edit hooks.  |
 
-**Init pipeline (15)**
+**Init pipeline (2)**
 
-| Tool                              | What                                                                |
-| --------------------------------- | ------------------------------------------------------------------- |
-| `cairn_init_resume`               | Resume an in-flight adoption from the last completed phase.         |
-| `cairn_init_phases_8_9_10_parallel`  | Run phases 8, 9, 10 concurrently (docs / source-comments / rules). |
-| `cairn_init_phase_1_detect`       | Env probe + framework signals.                                      |
-| `cairn_init_phase_2_walker`       | Repo file walk → manifest + extension stats.                        |
-| `cairn_init_phase_3_mapper`       | Sonnet domain mapper → module proposals + scope globs.              |
-| `cairn_init_phase_4_seed`         | Write `.cairn/` skeleton + grandfather pre-adoption commits.        |
-| `cairn_init_phase_5_pilot`        | Operator picks seed module from mapper's top-3.                     |
-| `cairn_init_phase_6_brand`        | Auto-fill brand / voice / product DEC drafts.                       |
-| `cairn_init_phase_7_topic_index`  | Content-fingerprint pre-pass for cross-source dedup.                |
-| `cairn_init_phase_8_docs_ingest`  | Haiku-staged ingestion of authored `*.md` → DEC drafts.             |
-| `cairn_init_phase_9_source_comments` | Walk source docblocks, classify, emit DEC/INV drafts.           |
-| `cairn_init_phase_10_rules_merge` | Reconcile `CLAUDE.md` / `AGENTS.md` / `.claude/rules/*`; flag conflicts. |
-| `cairn_init_phase_11_baseline`    | First sensor sweep against synthetic full-tree diff.                |
-| `cairn_init_phase_12_strip`       | Per-module strip-replace consent.                                   |
-| `cairn_init_phase_13_multidev`    | Detect package manager, install git hooks, emit `JOIN.md`.          |
+The 13-phase adoption pipeline lives behind a single `cairn_init_run`
+dispatcher. The skill loops on `cairn_init_resume` → `cairn_init_run`
+until `nextPhase === null`. Phase 8 (`8-docs-ingest`) internally fans
+out to phases 8/9/10 in parallel and advances to `11-baseline`; the
+skill doesn't need a separate code path for the parallel runner.
+
+| Tool                | What                                                                                |
+| ------------------- | ----------------------------------------------------------------------------------- |
+| `cairn_init_resume` | Read `.cairn/init-state.json` and return the next phase id (or `null` when done).   |
+| `cairn_init_run`    | Dispatch a specific phase by id (`{ phase, answer? }`). Persists state on success.  |
+
+> **History.** Pre-v0.7.2 surface registered 13 per-phase tools
+> (`cairn_init_phase_<id>`) plus a separate
+> `cairn_init_phases_8_9_10_parallel` tool. They were collapsed into
+> the umbrella above to cut MCP listing bloat (~5k tokens) and remove
+> the skill's special-case branch for the parallel gate.
 
 ### Read tools — graph traversal
 

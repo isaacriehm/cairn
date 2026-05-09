@@ -79,7 +79,7 @@ or directly via `npm install -g @isaacriehm/cairn`.
 
 ## MCP tools by category
 
-The MCP server exposes 39+ typed tools. Source of truth is
+The MCP server exposes 25 typed tools. Source of truth is
 `packages/cairn-core/src/mcp/tools/index.ts`.
 
 ### Read — graph traversal
@@ -139,23 +139,21 @@ The MCP server exposes 39+ typed tools. Source of truth is
 
 ### Init pipeline
 
-| Tool                                         | What                                                              |
-| -------------------------------------------- | ----------------------------------------------------------------- |
-| `cairn_init_resume`                          | Resume in-flight adoption from last completed phase.              |
-| `cairn_init_phases_8_9_10_parallel`          | Run phases 8 / 9 / 10 concurrently (docs / source / rules).       |
-| `cairn_init_phase_1_detect`                  | Env probe + framework signals.                                    |
-| `cairn_init_phase_2_walker`                  | Repo file walk → manifest + extension stats.                      |
-| `cairn_init_phase_3_mapper`                  | Sonnet domain mapper → module proposals + scope globs.            |
-| `cairn_init_phase_3b_seed`                   | Write `.cairn/` skeleton + grandfather pre-adoption commits.      |
-| `cairn_init_phase_4_pilot`                   | Operator picks pilot module from mapper's top-3.                  |
-| `cairn_init_phase_5_brand`                   | Auto-fill brand DEC drafts.                                       |
-| `cairn_init_phase_5b_topic_index`            | Content-fingerprint pre-pass for cross-source dedup.              |
-| `cairn_init_phase_6_docs_ingest`             | Haiku-staged ingestion of authored `*.md`.                        |
-| `cairn_init_phase_7b_source_comments`        | Walk source docblocks; classify; emit DEC/INV drafts.             |
-| `cairn_init_phase_7c_rules_merge`            | Reconcile CLAUDE.md / AGENTS.md / .claude/rules/*.                |
-| `cairn_init_phase_8_baseline`                | First sensor sweep against synthetic full-tree diff.              |
-| `cairn_init_phase_10_strip`                  | Per-module strip-replace consent.                                 |
-| `cairn_init_phase_12_multidev`               | Detect package manager, install hooks, emit `JOIN.md`.            |
+The 13-phase adoption pipeline lives behind a single
+`cairn_init_run` dispatcher. The skill loops on `cairn_init_resume`
+→ `cairn_init_run` until `nextPhase === null`. Phase 8
+(`8-docs-ingest`) internally fans out to phases 8/9/10 in parallel and
+advances to `11-baseline` — no separate parallel tool needed.
+
+| Tool                | What                                                                                |
+| ------------------- | ----------------------------------------------------------------------------------- |
+| `cairn_init_resume` | Read `.cairn/init-state.json` and return the next phase id (or `null` when done).   |
+| `cairn_init_run`    | Dispatch a specific phase by id (`{ phase, answer? }`). Persists state on success.  |
+
+Phase IDs (passed as `phase` arg): `1-detect`, `2-walker`, `3-mapper`,
+`4-seed`, `5-pilot`, `6-brand`, `7-topic-index`, `8-docs-ingest`,
+`9-source-comments`, `10-rules-merge`, `11-baseline`, `12-strip`,
+`13-multidev`.
 
 ### Calling MCP tools from a shell
 

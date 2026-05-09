@@ -26,7 +26,7 @@ silently no-ops in `select:`). `AskUserQuestion` is built-in and stays
 unprefixed.
 
 ```
-ToolSearch(select:mcp__plugin_cairn_cairn__cairn_init_resume,mcp__plugin_cairn_cairn__cairn_init_run,mcp__plugin_cairn_cairn__cairn_init_phases_8_9_10_parallel,mcp__plugin_cairn_cairn__cairn_decision_get,mcp__plugin_cairn_cairn__cairn_resolve_attention,mcp__plugin_cairn_cairn__cairn_bulk_accept_attention,mcp__plugin_cairn_cairn__cairn_attention_dedup,AskUserQuestion)
+ToolSearch(select:mcp__plugin_cairn_cairn__cairn_init_resume,mcp__plugin_cairn_cairn__cairn_init_run,mcp__plugin_cairn_cairn__cairn_decision_get,mcp__plugin_cairn_cairn__cairn_resolve_attention,mcp__plugin_cairn_cairn__cairn_bulk_accept_attention,mcp__plugin_cairn_cairn__cairn_attention_dedup,AskUserQuestion)
 ```
 
 After this single call all phase tools + the question tool + the
@@ -176,24 +176,19 @@ fully adopted — abort and tell the operator to check
 
 ```
 while nextPhase != null:
-    if nextPhase == "8-docs-ingest":
-        # Optimized path: phases 8 / 9 / 10 run concurrently with
-        # shared DEC + INV id Sets. One MCP call covers all three;
-        # nextPhase comes back as "11-baseline".
-        tool_name = "cairn_init_phases_8_9_10_parallel"
-        args = {}
-    else:
-        tool_name = "cairn_init_run"
-        args = { "phase": nextPhase }
-
-    result = call tool_name(args)            # tool reads state from disk
+    args = { "phase": nextPhase }
+    result = call cairn_init_run(args)       # tool reads state from disk
+    # Note: when nextPhase == "8-docs-ingest" the tool internally
+    # fans out to phases 8 / 9 / 10 in parallel (shared DEC + INV id
+    # Sets) and advances to "11-baseline". The skill does NOT need a
+    # separate code path for the parallel runner.
     switch (result.status):
       case "needs_input":
         answer = AskUserQuestion(result.question.prompt, result.question.options)
         # Pass result.question.options.map(o => o.detail) as the
         # AskUserQuestion description field so the operator sees the
         # secondary hint inline with each choice.
-        result = call tool_name({ ...args, answer: answer.id })
+        result = call cairn_init_run({ ...args, answer: answer.id })
         # second call returns "complete" | "error"; fall through.
       case "complete":
         nextPhase = result.nextPhase

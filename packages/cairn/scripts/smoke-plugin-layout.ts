@@ -92,15 +92,20 @@ function runSmoke(): void {
     for (const event of ["SessionStart", "SessionEnd", "Stop", "PostToolUse"] as const) {
       assert(Array.isArray(hooks[event]) && hooks[event].length > 0, `Step 3: ${event} must be non-empty array`);
     }
+    // Quoted form is required — `${CLAUDE_PLUGIN_ROOT}` may resolve to
+    // a path containing spaces (e.g. local-marketplace dev installs
+    // or any operator with spaces in their home). Without the
+    // surrounding `"…"` the shell splits on whitespace and `node`
+    // fails to resolve the module path.
     const ALLOWED = new Set([
-      "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook session-start",
-      "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook session-end",
-      "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook stop",
-      "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook user-prompt-submit",
-      "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook read-enrich",
-      "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook write-guard",
-      "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook sot-align",
-      "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook post-write",
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook session-start',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook session-end',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook stop',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook user-prompt-submit',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook read-enrich',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook write-guard',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook sot-align',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook post-write',
     ]);
     for (const event of ["SessionStart", "SessionEnd", "Stop", "PostToolUse"] as const) {
       for (const entry of hooks[event]) {
