@@ -1,13 +1,13 @@
 /**
  * SoT emit — write DEC + INV ground files from topic-index entries.
  *
- * Shared between phase 6 (docs-ingest), phase 7b (source-comments), and
- * phase 7c (rules-merge). Each phase decides which kind subset of the
+ * Shared between phase 8 (docs-ingest), phase 9 (source-comments), and
+ * phase 10 (rules-merge). Each phase decides which kind subset of the
  * topic-index it owns:
  *
- *   - Phase 6 — sot_source starts with `docs/`        → kind="path",  no strip
- *   - Phase 7b — sot_source maps to a source comment   → kind="ledger", strip-replace fires
- *   - Phase 7c — sot_source ∈ {CLAUDE.md, AGENTS.md, .claude/rules/*}
+ *   - Phase 8 — sot_source starts with `docs/`        → kind="path",  no strip
+ *   - Phase 9 — sot_source maps to a source comment   → kind="ledger", strip-replace fires
+ *   - Phase 10 — sot_source ∈ {CLAUDE.md, AGENTS.md, .claude/rules/*}
  *                                                       → kind="path",  no strip
  *
  * Verbatim bodies, auto-promote to `status: accepted`, content-addressed
@@ -55,9 +55,9 @@ interface EmitClassifier {
 /**
  * Override hook for id derivation. Default emit hashes
  * `(sot_path, title, capture_source)` via `deriveDecId`/`deriveInvId`.
- * Phase 7b's ledger captures need a richer input — `sot_path` is the
+ * Phase 9's ledger captures need a richer input — `sot_path` is the
  * literal string `"ledger"` for every source-comment DEC, so collisions
- * are likely without source-location context. Phase 7b passes a deriver
+ * are likely without source-location context. Phase 9 passes a deriver
  * keyed on `(source_file, source_offset, capture_source)`.
  */
 interface IdDeriverArgs {
@@ -282,7 +282,7 @@ function entryToSotPath(entry: TopicIndexEntry): string {
  * pure separators, JSDoc-style `@tag` annotations, or block-comment
  * boundary markers (`"""`, `=begin`, `--[[`, `{-`, `(*`, etc.).
  *
- * Exported so phase 6 (docs) and phase 7b (source-comments) share one
+ * Exported so phase 8 (docs) and phase 9 (source-comments) share one
  * implementation — there used to be a divergent copy in ingest-docs.ts.
  */
 export function firstLineFallback(body: string): string {

@@ -1,5 +1,5 @@
 /**
- * Phase 6 — staged docs ingestion.
+ * Phase 8 — staged docs ingestion.
  *
  * Replaces the v0.6 bulk-classifier path. Cuts wall from ~15 min →
  * ~75 s on gcb-platform-scale repos AND collapses the noisy ledger
@@ -503,7 +503,7 @@ export async function runDocsIngestion(
   );
 
   if (allCandidates.length === 0) {
-    log.info("phase 6 found no eligible docs entries in topic-index");
+    log.info("phase 8 found no eligible docs entries in topic-index");
     writeFileCandidatesMap(args.repoRoot, topicIndex);
     return zeroResult(allCandidates.length, topicIndex);
   }
@@ -512,7 +512,7 @@ export async function runDocsIngestion(
   // derivation; Stages 1/2 don't, but reading up front keeps the
   // pipeline single-pass over entries. Bodies that fail to read are
   // dropped — anchor-map drift is the only realistic cause and the
-  // entry stays as a candidate for the next phase 5b refresh.
+  // entry stays as a candidate for the next phase 7 refresh.
   const ctxBySlug = new Map<string, CandidateContext>();
   for (const entry of allCandidates) {
     const body = readSotBody(args.repoRoot, entry, anchorMap);
@@ -634,7 +634,7 @@ export async function runDocsIngestion(
       ...ctx.entry,
       dec_id: id,
     });
-    log.debug({ id, slug: ctx.entry.slug, draftPath }, "phase 6 emitted draft");
+    log.debug({ id, slug: ctx.entry.slug, draftPath }, "phase 8 emitted draft");
   }
 
   // Refresh topic-index + file-candidates-map so the read-enrich hook
@@ -656,7 +656,7 @@ export async function runDocsIngestion(
       filesEvaluated,
       unpromotedCandidates,
     },
-    "phase 6 complete",
+    "phase 8 complete",
   );
 
   return {
@@ -704,7 +704,7 @@ export async function runStage1FileFilter(args: {
       } catch (err) {
         log.warn(
           { chunkIdx: idx, size: chunk.length, err: err instanceof Error ? err.message : String(err) },
-          "phase 6 stage 1 file-filter failed; chunk treated as non-authoritative",
+          "phase 8 stage 1 file-filter failed; chunk treated as non-authoritative",
         );
       }
       chunksDone += 1;
@@ -762,7 +762,7 @@ async function runStage2SectionClassifier(args: {
       } catch (err) {
         log.warn(
           { chunkIdx: idx, size: chunk.length, err: err instanceof Error ? err.message : String(err) },
-          "phase 6 stage 2 batch failed; chunk skipped",
+          "phase 8 stage 2 batch failed; chunk skipped",
         );
       }
       chunksDone += 1;

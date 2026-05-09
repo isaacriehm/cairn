@@ -1,5 +1,5 @@
 /**
- * Phase 5b — topic-index build orchestration.
+ * Phase 7 — topic-index build orchestration.
  *
  * Public entry: `buildTopicIndex(args)` walks the repo, resolves
  * verbatim + semantic collisions, and writes the topic-index +
@@ -94,7 +94,7 @@ export async function buildTopicIndex(
     const result = await resolveTopics(blocks, resolveOpts);
     const topicIndexPath = writeTopicIndex(args.repoRoot, result.topicIndex);
     const anchorMapPath = writeAnchorMap(args.repoRoot, result.anchorMap);
-    // Phase 5b extension:
+    // Phase 7 extension:
     //   - Write `file-candidates-map.yaml` so the read-enrich hook can
     //     do O(1) per-file candidate-count lookups instead of scanning
     //     the whole topic-index per Read.

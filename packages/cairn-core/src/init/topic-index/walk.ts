@@ -1,5 +1,5 @@
 /**
- * Phase 5b — cross-source prose-block walker.
+ * Phase 7 — cross-source prose-block walker.
  *
  * Discovers every prose block across the narrative-bearing source kinds
  * the SoT model recognizes. Doc discovery is layout-agnostic: any
@@ -15,10 +15,10 @@
  *   - .claude/rules/*.md                     kind = "rule",        H2/H3-section-granularity
  *
  * Source comments (kind = "source-comment") are reached through the
- * existing phase 7b walker and folded into the topic-index lazily by
- * phase 7b itself; phase 5b builds the doc / rules slice up front.
+ * existing phase 9 walker and folded into the topic-index lazily by
+ * phase 9 itself; phase 7 builds the doc / rules slice up front.
  *
- * The Haiku classifier in phase 6 filters non-binding doc paragraphs
+ * The Haiku classifier in phase 8 filters non-binding doc paragraphs
  * (release notes, tutorials, raw API references) by returning
  * kind=other, so being permissive here doesn't pollute the ledger.
  */
@@ -31,7 +31,7 @@ import { bodyContentHash, normalizeBlock, topicSlug } from "@isaacriehm/cairn-st
 export type ProseBlockKind = "doc" | "claudemd" | "agentsmd" | "rule" | "source-comment";
 
 /**
- * Operator-supplied marker that promotes a block straight to phase 6
+ * Operator-supplied marker that promotes a block straight to phase 8
  * Stage 4 emit (no Haiku judgement). Two surfaces:
  *
  *   1. File-level frontmatter:
@@ -79,7 +79,7 @@ export interface ProseBlock {
    * Operator-flagged marker — `"decision"` / `"rule"` when frontmatter
    * `cairn.kind` is set or a `<!-- cairn:decision -->` /
    * `<!-- cairn:rule -->` comment sits within
-   * {@link MARKER_LOOKAHEAD_LINES} of the heading. Phase 6 Stage 3
+   * {@link MARKER_LOOKAHEAD_LINES} of the heading. Phase 8 Stage 3
    * emits these directly to `_inbox/` without Haiku.
    */
   marker_kind?: MarkerKind;
@@ -96,7 +96,7 @@ const SKIP_DIRS = new Set([
   // not operator docs. Walked separately by `walkRulesDir` for the
   // `.claude/rules/` subtree only — everything else here would create
   // pathological N² semantic-dedup pairs (agent worktrees mirror real
-  // docs char-for-char, blowing up phase 5b).
+  // docs char-for-char, blowing up phase 7).
   ".claude",
   "dist",
   "build",
@@ -115,10 +115,10 @@ const SKIP_DIRS = new Set([
   ".vscode",
 ]);
 
-/** Files owned by phase 7c (rules merge); excluded from the doc walk. */
+/** Files owned by phase 10 (rules merge); excluded from the doc walk. */
 const RULE_OWNED_FILES = new Set(["CLAUDE.md", "AGENTS.md"]);
 
-/** Directory paths owned by phase 7c (relative to repo root). */
+/** Directory paths owned by phase 10 (relative to repo root). */
 const RULE_OWNED_DIRS = [".claude/rules"];
 
 /* -------------------------------------------------------------------------- */
@@ -138,7 +138,7 @@ export function walkProseBlocks(repoRoot: string): ProseBlock[] {
 /* Any reachable *.md (excluding rule-owned paths) → kind="doc"               */
 /*                                                                            */
 /* Layout-agnostic: walks the repo root and yields every markdown file        */
-/* that isn't claimed by phase 7c (CLAUDE.md / AGENTS.md / .claude/rules/*)   */
+/* that isn't claimed by phase 10 (CLAUDE.md / AGENTS.md / .claude/rules/*)   */
 /* and isn't inside a skip dir. Operator's chosen layout — `docs/`,           */
 /* `documentation/`, `notes/`, custom-named folder, root-level READMEs —      */
 /* all flow through this single discovery without configuration.              */

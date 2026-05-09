@@ -1,5 +1,5 @@
 /**
- * Phase 8 — baseline sensor sweep.
+ * Phase 11 — baseline sensor sweep.
  *
  * Runs every sensor that can operate without an LLM call or an external
  * command against a synthetic "every file added at SHA-zero" diff. Each

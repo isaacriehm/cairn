@@ -1,5 +1,5 @@
 /**
- * Phase 7c — operator keep-section preservation.
+ * Phase 10 — operator keep-section preservation.
  *
  * After adoption, cairn regenerates CLAUDE.md / AGENTS.md from ground state
  * on each sweep. Operator-written sections survive only when wrapped in a pair

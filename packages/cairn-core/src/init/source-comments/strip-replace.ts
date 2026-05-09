@@ -265,7 +265,7 @@ export function previewStripReplace(args: {
  *   §DEC-0042   →  `// §DEC-0042`   in C-like languages
  *   §DEC-0042   →  `# §DEC-0042`    in py / rb / sh / lua
  *
- * Single source of truth for citation formatting — both phase 7b's
+ * Single source of truth for citation formatting — both phase 9's
  * inline invariant strip-replace and the post-DEC-accept strip in
  * `cairn_resolve_attention` resolve through this helper so the two
  * paths stay consistent.

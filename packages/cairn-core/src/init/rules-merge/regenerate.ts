@@ -1,7 +1,7 @@
 /**
- * Phase 7c — regenerate CLAUDE.md and AGENTS.md from ground state.
+ * Phase 10 — regenerate CLAUDE.md and AGENTS.md from ground state.
  *
- * Per spec §6 Phase 7c: "post-adoption: cairn regenerates CLAUDE.md and
+ * Per spec §6 Phase 10: "post-adoption: cairn regenerates CLAUDE.md and
  * AGENTS.md from ground state on each `cairn sweep`; operator-written
  * sections preserved between `<!-- cairn:keep-start -->` and
  * `<!-- cairn:keep-end -->` markers".

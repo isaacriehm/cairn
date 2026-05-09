@@ -1,5 +1,5 @@
 /**
- * Phase 5b — interactive brand setup.
+ * Phase 6 — interactive brand setup.
  *
  * After seedCairnLayout writes the templates with `status: draft`, ask the
  * operator 4 quick questions and flip the answered files to `status: current`.

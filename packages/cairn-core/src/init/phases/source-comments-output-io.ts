@@ -1,5 +1,5 @@
 /**
- * Side-file persistence for the heavy Phase 7b output.
+ * Side-file persistence for the heavy Phase 9 output.
  *
  * `IngestSourceCommentsResult` carries the full walk (every comment block's
  * raw text + prose) and the matching classifications. On a busy monorepo
@@ -38,7 +38,7 @@ export function sourceCommentsWalkAbsPath(repoRoot: string): string {
 }
 
 /**
- * Atomically write the full Phase 7b result. Creates `.cairn/init/`
+ * Atomically write the full Phase 9 result. Creates `.cairn/init/`
  * if needed.
  */
 export function writeSourceCommentsWalkFile(
@@ -54,7 +54,7 @@ export function writeSourceCommentsWalkFile(
 }
 
 /**
- * Read the full Phase 7b result from `.cairn/init/source-comments-walk.json`.
+ * Read the full Phase 9 result from `.cairn/init/source-comments-walk.json`.
  * Returns null if missing or unreadable. Available for debug tooling and
  * post-hoc inspection — phase consumers prefer the lightweight projection
  * stored on state.

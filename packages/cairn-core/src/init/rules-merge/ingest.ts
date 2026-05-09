@@ -1,15 +1,15 @@
 /**
- * Phase 7c orchestrator (v0.5.0 SoT model).
+ * Phase 10 orchestrator (v0.5.0 SoT model).
  *
  * Plan §5.4 algorithm:
  *   1. Discover sections in `CLAUDE.md`, `AGENTS.md`, `.claude/rules/*.md`.
- *   2. Topic-index lookup (built by phase 5b) before classification:
+ *   2. Topic-index lookup (built by phase 7) before classification:
  *      - **Match** — slug already owns a docs/CLAUDE.md/AGENTS.md/rule
- *        SoT and was emitted by an earlier phase. Phase 7c records the
+ *        SoT and was emitted by an earlier phase. Phase 10 records the
  *        cite (no source rewrite — operator's narrative stays intact)
  *        and skips emit.
  *      - **Net-new** — slug is in topic-index but not yet emitted.
- *        Phase 7c classifies the section via Haiku (kind only:
+ *        Phase 10 classifies the section via Haiku (kind only:
  *        decision / domain-rule / constraint / informational), emits
  *        a verbatim DEC/INV via `sot-emit` with `sot_kind: "path"` +
  *        `sot_path: <file>#<anchor>`, auto-promotes (`status: accepted`).
@@ -146,7 +146,7 @@ interface RuleEmittedRecord {
 }
 
 interface RuleCiteRecord {
-  /** DEC/INV id the section was bound to (already emitted by phase 6 / 7b). */
+  /** DEC/INV id the section was bound to (already emitted by phase 8 / 7b). */
   id: string;
   /** Section's source file. */
   sourceFile: string;
@@ -155,7 +155,7 @@ interface RuleCiteRecord {
 }
 
 interface RuleConflictRecord {
-  /** Newly emitted entity id (DEC or INV from this phase 7c run). */
+  /** Newly emitted entity id (DEC or INV from this phase 10 run). */
   newId: string;
   /** Pre-existing accepted entity id the new prose contradicts. */
   otherId: string;
@@ -341,7 +341,7 @@ export async function runRulesMerge(args: RunRulesMergeArgs): Promise<RunRulesMe
   for (const [slug, ctx] of sectionsBySlug) {
     const entry = topicIndex.topics[slug];
     if (entry !== undefined && entry.dec_id !== undefined && !ruleFilesSet.has(entry.sot_source)) {
-      // Slug already SoT'd by phase 6 (docs); operator's CLAUDE.md / AGENTS.md
+      // Slug already SoT'd by phase 8 (docs); operator's CLAUDE.md / AGENTS.md
       // section is a cite of the same fact. No source rewrite — operator's
       // narrative stays intact. Plan §5.4.1.
       citesEmitted.push({ id: entry.dec_id, sourceFile: ctx.sourcePath, slug });
@@ -673,7 +673,7 @@ async function runContradictionJudge(args: {
   const a = capBody(args.newBody);
   const b = capBody(args.candidateBody);
   const prompt = [
-    "Statement A (newly captured by phase 7c):",
+    "Statement A (newly captured by phase 10):",
     a,
     "",
     `Statement B (already accepted as ${args.candidateId}):`,
@@ -810,7 +810,7 @@ interface PersistGroundStateArgs {
 function persistGroundState(args: PersistGroundStateArgs): void {
   const { repoRoot } = args;
   // Re-read each ground-state file right before write so concurrent
-  // writers (phase 6 / 7b) don't get clobbered. parallel-678 runs the
+  // writers (phase 8 / 7b) don't get clobbered. parallel-678 runs the
   // three phases sequentially under v0.5.0; this merge is defense in
   // depth for the individual phase tools.
   const freshTopic = readTopicIndex(repoRoot);
@@ -854,7 +854,7 @@ function persistGroundState(args: PersistGroundStateArgs): void {
 
 function stripLeadingHeading(body: string): string {
   // parseRuleSections always pushes the heading line as the first entry
-  // of `body`; strip it so the slug + emitted DEC body match phase 5b's
+  // of `body`; strip it so the slug + emitted DEC body match phase 7's
   // section fingerprint convention (heading excluded from fingerprint).
   const newlineIdx = body.indexOf("\n");
   const trimmedFirst = body.slice(0, newlineIdx === -1 ? body.length : newlineIdx).trim();
