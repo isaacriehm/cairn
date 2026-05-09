@@ -1,5 +1,5 @@
 /**
- * Phase 3b-seed — write `.cairn/` skeleton + project overlay +
+ * Phase 4-seed — write `.cairn/` skeleton + project overlay +
  * grandfather pre-adoption commits.
  *
  * Steps:
@@ -47,7 +47,7 @@ interface SeedPhaseOutput {
   attested_seed_status: "ok" | "skipped" | "error";
 }
 
-export async function runPhase3bSeed(state: PhaseState): Promise<PhaseResult> {
+export async function runPhase4Seed(state: PhaseState): Promise<PhaseResult> {
   const detection = state.outputs["1-detect"] as DetectionResult | undefined;
   const mapperResult = state.outputs["3-mapper"] as
     | MapperResultPersisted
@@ -57,7 +57,7 @@ export async function runPhase3bSeed(state: PhaseState): Promise<PhaseResult> {
       status: "error",
       error: {
         code: "missing-prereqs",
-        message: "Phase 3b-seed needs phase 1-detect output",
+        message: "Phase 4-seed needs phase 1-detect output",
       },
       state,
     };
@@ -150,11 +150,11 @@ export async function runPhase3bSeed(state: PhaseState): Promise<PhaseResult> {
     };
     const next: PhaseState = {
       ...state,
-      outputs: { ...state.outputs, "3b-seed": out },
+      outputs: { ...state.outputs, "4-seed": out },
     };
     return {
       status: "complete",
-      nextPhase: "4-pilot",
+      nextPhase: "5-pilot",
       state: advancePhase(next),
     };
   } catch (err) {

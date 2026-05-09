@@ -65,6 +65,7 @@ export function buildProjectOverlay(
     detected_sensor_commands,
     off_limits: offLimits,
     high_stakes_globs: m?.high_stakes_globs ?? [],
+    defer_hours: 24,
     project_globs: {
       route_handler_globs: m?.route_handler_globs ?? [],
       dto_globs: m?.dto_globs ?? [],

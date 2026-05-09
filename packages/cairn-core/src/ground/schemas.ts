@@ -346,7 +346,7 @@ export type DriftEvent = z.infer<typeof DriftEvent>;
 
 /**
  * Layer B pre-commit-drift log entry written by the git pre-commit
- * hook (`cairn hook pre-commit-align`). Layer C SessionStart drain
+ * hook (`cairn hook pre-commit-align`). SessionStart Drain SessionStart drain
  * consumes this file, re-checks each entry against the (possibly
  * changed) source location, and runs the Haiku judge for ambiguous
  * candidates.
@@ -354,11 +354,11 @@ export type DriftEvent = z.infer<typeof DriftEvent>;
  * Path: `.cairn/staleness/pre-commit-deferred.jsonl`.
  *
  * `tier: tier1` — deterministic match passed (Jaccard ≥ 0.85, shingle
- * ≥ 0.6, length ratio 0.5–2.0). Layer C can auto-cite without Haiku
+ * ≥ 0.6, length ratio 0.5–2.0). SessionStart Drain can auto-cite without Haiku
  * if the block survives.
  *
  * `tier: tier2-3` — Jaccard pre-filter survivors only; Tier 1 didn't
- * fire. Layer C invokes Haiku dedup judge.
+ * fire. SessionStart Drain invokes Haiku dedup judge.
  */
 export const PreCommitDriftCandidate = z.object({
   id: z.string(),

@@ -1,9 +1,9 @@
 /**
- * Layer D — generic project-agnostic structural sensors.
+ * Layer C — generic project-agnostic structural sensors.
  *
  * Triggered when the diff touches files matching the project's glob keys.
  * Each sensor inspects the POST-change content of those files (not just
- * the diff) — Layer D is "do these load-bearing files follow contract",
+ * the diff) — Layer C is "do these load-bearing files follow contract",
  * which is stricter than Layer A's "did this run add new debt".
  *
  *   route-handler-non-empty — every method in a route/controller class has a

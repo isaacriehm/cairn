@@ -25,8 +25,9 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { extname, join, relative, resolve } from "node:path";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { extname, relative, resolve } from "node:path";
+import { walkFs } from "@isaacriehm/cairn-core";
 
 const IMPACT_RATIO_LIMIT = 0.30;
 const MARKER_LOOKAHEAD_LINES = 3;
@@ -114,21 +115,16 @@ function resolveTargets(target: string, repoRoot: string): string[] {
     process.exit(2);
   }
   const out: string[] = [];
-  walk(abs, out);
+  walkFs({
+    dir: abs,
+    skipDirs: new Set([".git", "node_modules", ".cairn"]),
+    onFile: (_rel, fileAbs) => {
+      if (MARKDOWN_EXTENSIONS.has(extname(fileAbs).toLowerCase())) {
+        out.push(fileAbs);
+      }
+    },
+  });
   return out;
-}
-
-function walk(dir: string, out: string[]): void {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name === ".git" || entry.name === "node_modules" || entry.name === ".cairn") {
-      continue;
-    }
-    const p = join(dir, entry.name);
-    if (entry.isDirectory()) walk(p, out);
-    else if (entry.isFile() && MARKDOWN_EXTENSIONS.has(extname(entry.name).toLowerCase())) {
-      out.push(p);
-    }
-  }
 }
 
 function isDirty(filePath: string, repoRoot: string): boolean {

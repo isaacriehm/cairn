@@ -1,16 +1,11 @@
 /**
- * Phase 5-brand — adopt brand DEC drafts inline.
+ * Phase 6-brand — adopt brand DEC drafts inline.
  *
  * Emits ONE A/B/C choice. `auto-fill` substitutes positioning +
  * brand-overview + voice + personas from the mapper's domain summary
  * + sensible defaults; `skip` leaves status: draft for later editing;
  * `manual` hands off to the operator (drafts stay draft, summary
  * surfaces the file paths to edit).
- *
- * Auto-fill writes a populated draft to every brand/product file.
- * Operator can refine + flip status to `accepted` when ready;
- * doctor reports draft brand files as informational, not warning,
- * so CI passes during the operator-paced review.
  */
 
 import { applyBrandAnswers, type BrandAnswers } from "../brand-setup.js";
@@ -35,7 +30,7 @@ function deriveDefaultUsers(state: PhaseState): string {
   return `Developers and operators working on ${slug}. Refine when adding consumer-facing or external personas.`;
 }
 
-export async function runPhase5Brand(state: PhaseState): Promise<PhaseResult> {
+export async function runPhase6Brand(state: PhaseState): Promise<PhaseResult> {
   // Pending operator answer → execute the chosen path.
   if (state.answer !== undefined && state.answer.length > 0) {
     const choice = state.answer;
@@ -47,9 +42,6 @@ export async function runPhase5Brand(state: PhaseState): Promise<PhaseResult> {
       if (mapper !== undefined) {
         const detect = state.outputs["1-detect"] as { project_slug?: string } | undefined;
         const projectSlug = detect?.project_slug ?? "this-project";
-        // Try Haiku-derived brand from README + AGENTS.md / CLAUDE.md
-        // tone signals + mapper domain summary. Falls back to the
-        // mechanical defaults if the call fails.
         const derived = await deriveBrandFromProject({
           repoRoot: state.repoRoot,
           projectSlug,
@@ -75,19 +67,19 @@ export async function runPhase5Brand(state: PhaseState): Promise<PhaseResult> {
       ...state,
       outputs: {
         ...state.outputs,
-        "5-brand": { choice, applied: result },
+        "6-brand": { choice, applied: result },
       },
       answer: undefined,
     };
     return {
       status: "complete",
-      nextPhase: "5b-topic-index",
+      nextPhase: "7-topic-index",
       state: advancePhase(next),
     };
   }
 
   const question: PhaseQuestion = {
-    id: "5-brand",
+    id: "6-brand",
     prompt: "Auto-fill brand text (positioning + voice)?",
     options: [
       {

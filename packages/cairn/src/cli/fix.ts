@@ -668,7 +668,7 @@ export async function fixCli(argv: string[]): Promise<void> {
         "  No subcommand: runs the doctor auto-fix pass (rebuild ledgers,\n" +
         "                 scope-index, etc.).\n" +
         "  Subcommands:\n" +
-        "    align           Layer D — full-repo Haiku-judge sweep over every\n" +
+        "    align           Layer C — full-repo Haiku-judge sweep over every\n" +
         "                    prose block × every DEC. Use --dry-run for the\n" +
         "                    pre-flight cost estimate; re-run without --dry-run\n" +
         "                    within 30 min to apply. Flags:\n" +

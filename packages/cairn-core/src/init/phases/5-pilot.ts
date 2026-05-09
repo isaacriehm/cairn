@@ -1,5 +1,5 @@
 /**
- * Phase 4-pilot — operator picks the seed module.
+ * Phase 5-pilot — operator picks the seed module.
  *
  * The mapper's `pilot_module` field is the model's first guess; this
  * phase surfaces it alongside the next 2 strongest `key_modules` so
@@ -18,7 +18,7 @@ import type { MapperResultPersisted } from "./mapper-output-io.js";
 
 const MAX_OPTIONS = 3;
 
-export async function runPhase4Pilot(state: PhaseState): Promise<PhaseResult> {
+export async function runPhase5Pilot(state: PhaseState): Promise<PhaseResult> {
   const mapper = state.outputs["3-mapper"] as
     | MapperResultPersisted
     | undefined;
@@ -27,7 +27,7 @@ export async function runPhase4Pilot(state: PhaseState): Promise<PhaseResult> {
       status: "error",
       error: {
         code: "missing-prereqs",
-        message: "Phase 4 needs phase 3-mapper output",
+        message: "Phase 5 needs phase 3-mapper output",
       },
       state,
     };
@@ -37,12 +37,12 @@ export async function runPhase4Pilot(state: PhaseState): Promise<PhaseResult> {
   if (state.answer !== undefined && state.answer.length > 0) {
     const next: PhaseState = {
       ...state,
-      outputs: { ...state.outputs, "4-pilot": { picked: state.answer } },
+      outputs: { ...state.outputs, "5-pilot": { picked: state.answer } },
       answer: undefined,
     };
     return {
       status: "complete",
-      nextPhase: "5-brand",
+      nextPhase: "6-brand",
       state: advancePhase(next),
     };
   }
@@ -100,18 +100,18 @@ export async function runPhase4Pilot(state: PhaseState): Promise<PhaseResult> {
     const picked = candidates[0]!.id;
     const next: PhaseState = {
       ...state,
-      outputs: { ...state.outputs, "4-pilot": { picked } },
+      outputs: { ...state.outputs, "5-pilot": { picked } },
       answer: undefined,
     };
     return {
       status: "complete",
-      nextPhase: "5-brand",
+      nextPhase: "6-brand",
       state: advancePhase(next),
     };
   }
 
   const question: PhaseQuestion = {
-    id: "4-pilot",
+    id: "5-pilot",
     prompt: "Which module should Cairn seed first?",
     options: candidates,
     default: candidates[0]!.id,

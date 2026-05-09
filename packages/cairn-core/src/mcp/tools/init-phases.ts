@@ -33,20 +33,20 @@ import {
   freshPhaseState,
   readPhaseState,
   resumePhases,
-  runPhase10Strip,
-  runPhase12Multidev,
   runPhase1Detect,
   runPhase2Walker,
   runPhase3Mapper,
-  runPhase3bSeed,
-  runPhase4Pilot,
-  runPhase5Brand,
-  runPhase5bTopicIndex,
-  runPhase6DocsIngest,
-  runPhase7bSourceComments,
-  runPhase7cRulesMerge,
-  runPhase8Baseline,
-  runPhases678Parallel,
+  runPhase4Seed,
+  runPhase5Pilot,
+  runPhase6Brand,
+  runPhase7TopicIndex,
+  runPhase8DocsIngest,
+  runPhase9SourceComments,
+  runPhase10RulesMerge,
+  runPhase11Baseline,
+  runPhase12Strip,
+  runPhase13Multidev,
+  runPhases8910Parallel,
   writePhaseState,
   writeProgress,
   type PhaseError,
@@ -92,16 +92,16 @@ const RUNNERS: Record<PhaseId, (s: PhaseState) => Promise<PhaseResult>> = {
   "1-detect": runPhase1Detect,
   "2-walker": runPhase2Walker,
   "3-mapper": runPhase3Mapper,
-  "3b-seed": runPhase3bSeed,
-  "4-pilot": runPhase4Pilot,
-  "5-brand": runPhase5Brand,
-  "5b-topic-index": runPhase5bTopicIndex,
-  "6-docs-ingest": runPhase6DocsIngest,
-  "7b-source-comments": runPhase7bSourceComments,
-  "7c-rules-merge": runPhase7cRulesMerge,
-  "8-baseline": runPhase8Baseline,
-  "10-strip": runPhase10Strip,
-  "12-multidev": runPhase12Multidev,
+  "4-seed": runPhase4Seed,
+  "5-pilot": runPhase5Pilot,
+  "6-brand": runPhase6Brand,
+  "7-topic-index": runPhase7TopicIndex,
+  "8-docs-ingest": runPhase8DocsIngest,
+  "9-source-comments": runPhase9SourceComments,
+  "10-rules-merge": runPhase10RulesMerge,
+  "11-baseline": runPhase11Baseline,
+  "12-strip": runPhase12Strip,
+  "13-multidev": runPhase13Multidev,
 };
 
 interface PhaseToolInput {
@@ -185,9 +185,9 @@ async function handlePhaseRun(
   // Coarse-grained statusline coverage
   const isLongPhase =
     id === "3-mapper" ||
-    id === "6-docs-ingest" ||
-    id === "7b-source-comments" ||
-    id === "7c-rules-merge";
+    id === "8-docs-ingest" ||
+    id === "9-source-comments" ||
+    id === "10-rules-merge";
   if (!isLongPhase) {
     writeProgress(state.repoRoot, {
       phase: id,
@@ -284,41 +284,41 @@ function phaseDescription(id: PhaseId): string {
       return "Phase 2-walker — build the repo summary (manifest previews, by-extension counts, framework signals). Always advances.";
     case "3-mapper":
       return "Phase 3-mapper — Sonnet-driven domain map (chunked across module slices). Long-running; no operator input.";
-    case "3b-seed":
-      return "Phase 3b-seed — write .cairn/ skeleton + config.yaml + scope-index from templates and mapper output. Always advances; no operator input.";
-    case "4-pilot":
-      return "Phase 4-pilot — operator picks the seed module from mapper's top candidates (1 question).";
-    case "5-brand":
-      return "Phase 5-brand — operator picks how to populate the brand DEC drafts: skip / auto-fill / manual (1 question).";
-    case "5b-topic-index":
-      return "Phase 5b-topic-index — cross-source dedup pre-pass. Walks docs/*.md + CLAUDE.md + AGENTS.md + .claude/rules/* and emits topic-index.yaml + anchor-map.yaml so phases 6/7b/7c can dedup-by-topic instead of one DEC per source.";
-    case "6-docs-ingest":
-      return "Phase 6-docs-ingest — Haiku batch over README + docs/ → DEC drafts + canonical-map topics. No operator input.";
-    case "7b-source-comments":
-      return "Phase 7b-source-comments — Haiku batch over docblock-class source comments → DEC drafts + invariant proposals.";
-    case "7c-rules-merge":
-      return "Phase 7c-rules-merge — Haiku batch over CLAUDE.md / AGENTS.md / .claude/rules/* → propose net-new rules + flag conflicts.";
-    case "8-baseline":
-      return "Phase 8-baseline — first sensor sweep against synthetic full-tree diff. No operator input.";
-    case "10-strip":
-      return "Phase 10-strip — per-module strip-replace consent for source-comment essays. Operator picks strip / keep / skip per flagged module.";
-    case "12-multidev":
-      return "Phase 12-multidev — detect per-host package manager(s) and emit JOIN.md hints for new contributors. No filesystem mutations. Idempotent.";
+    case "4-seed":
+      return "Phase 4-seed — write .cairn/ skeleton + config.yaml + scope-index from templates and mapper output. Always advances; no operator input.";
+    case "5-pilot":
+      return "Phase 5-pilot — operator picks the seed module from mapper's top candidates (1 question).";
+    case "6-brand":
+      return "Phase 6-brand — operator picks how to populate the brand DEC drafts: skip / auto-fill / manual (1 question).";
+    case "7-topic-index":
+      return "Phase 7-topic-index — cross-source dedup pre-pass. Walks docs/*.md + CLAUDE.md + AGENTS.md + .claude/rules/* and emits topic-index.yaml + anchor-map.yaml so phases 8/9/10 can dedup-by-topic instead of one DEC per source.";
+    case "8-docs-ingest":
+      return "Phase 8-docs-ingest — Haiku batch over README + docs/ → DEC drafts + canonical-map topics. No operator input.";
+    case "9-source-comments":
+      return "Phase 9-source-comments — Haiku batch over docblock-class source comments → DEC drafts + invariant proposals.";
+    case "10-rules-merge":
+      return "Phase 10-rules-merge — Haiku batch over CLAUDE.md / AGENTS.md / .claude/rules/* → propose net-new rules + flag conflicts.";
+    case "11-baseline":
+      return "Phase 11-baseline — first sensor sweep against synthetic full-tree diff. No operator input.";
+    case "12-strip":
+      return "Phase 12-strip — per-module strip-replace consent for source-comment essays. Operator picks strip / keep / skip per flagged module.";
+    case "13-multidev":
+      return "Phase 13-multidev — detect per-host package manager(s) and emit JOIN.md hints for new contributors. No filesystem mutations. Idempotent.";
   }
 }
 
 /**
  * Combined parallel runner for the post-pilot ingestion window. Runs
- * phases 6-docs-ingest, 7b-source-comments, and 7c-rules-merge in
+ * phases 8-docs-ingest, 9-source-comments, and 10-rules-merge in
  * parallel inside a single MCP call. The cairn-adopt skill prefers
- * this tool when state.currentPhase=6-docs-ingest; the per-phase
+ * this tool when state.currentPhase=8-docs-ingest; the per-phase
  * sequential tools remain registered for fallback / debug paths.
  */
-function makeParallel678Tool(): ToolDef<PhaseToolInput> {
+function makeParallel8910Tool(): ToolDef<PhaseToolInput> {
   return {
-    name: "cairn_init_phases_678_parallel",
+    name: "cairn_init_phases_8_9_10_parallel",
     description:
-      "Run phases 6-docs-ingest, 7b-source-comments, and 7c-rules-merge concurrently. Pre-scans existing DEC + INV ids and threads shared Sets through all three so id allocations don't collide. Returns the combined slim response with nextPhase=8-baseline. Skill prefers this when state.currentPhase=6-docs-ingest; the per-phase sequential tools stay available for fallback. Wall-clock saves the smaller-two phases' time on real-world adoptions.",
+      "Run phases 8-docs-ingest, 9-source-comments, and 10-rules-merge concurrently. Pre-scans existing DEC + INV ids and threads shared Sets through all three so id allocations don't collide. Returns the combined slim response with nextPhase=11-baseline. Skill prefers this when state.currentPhase=8-docs-ingest; the per-phase sequential tools stay available for fallback. Wall-clock saves the smaller-two phases' time on real-world adoptions.",
     inputSchema: initPhaseInput,
     handler: async (ctx, input) => {
       let state: PhaseState | null = input.state ?? null;
@@ -328,13 +328,13 @@ function makeParallel678Tool(): ToolDef<PhaseToolInput> {
       if (state === null) {
         return mcpError(
           "VALIDATION_FAILED",
-          "cairn_init_phases_678_parallel found no init state at .cairn/init-state.json. Call cairn_init_resume to start a fresh pipeline.",
+          "cairn_init_phases_8_9_10_parallel found no init state at .cairn/init-state.json. Call cairn_init_resume to start a fresh pipeline.",
         );
       }
-      if (state.currentPhase !== "6-docs-ingest") {
+      if (state.currentPhase !== "8-docs-ingest") {
         return mcpError(
           "VALIDATION_FAILED",
-          `cairn_init_phases_678_parallel requires state.currentPhase=6-docs-ingest, got ${state.currentPhase}`,
+          `cairn_init_phases_8_9_10_parallel requires state.currentPhase=8-docs-ingest, got ${state.currentPhase}`,
         );
       }
       if (state.repoRoot !== ctx.repoRoot) {
@@ -344,10 +344,10 @@ function makeParallel678Tool(): ToolDef<PhaseToolInput> {
         );
       }
       const t0 = performance.now();
-      const result = await runPhases678Parallel(state);
+      const result = await runPhases8910Parallel(state);
       const durationMs = Math.round(performance.now() - t0);
       if (result.status !== "error") {
-        for (const id of ["6-docs-ingest", "7b-source-comments", "7c-rules-merge"] as const) {
+        for (const id of ["8-docs-ingest", "9-source-comments", "10-rules-merge"] as const) {
           const phaseOut = result.state.outputs[id];
           if (typeof phaseOut === "object" && phaseOut !== null) {
             const obj = phaseOut as Record<string, unknown>;
@@ -374,5 +374,5 @@ export const initPhaseTools: ToolDef<PhaseToolInput>[] = PHASE_IDS.map(
   (id) => makePhaseTool(id),
 );
 export const initRunTool: ToolDef<any> = makePhaseRunTool();
-export const initParallel678Tool: ToolDef<PhaseToolInput> = makeParallel678Tool();
+export const initParallel8910Tool: ToolDef<PhaseToolInput> = makeParallel8910Tool();
 export const initResumeTool: ToolDef<ResumeToolInput> = makeResumeTool();

@@ -73,7 +73,7 @@ Root-level pnpm scripts. No filter args, no package navigation, no bash loops.
 | `pnpm build`                  | Build all packages.                                           |
 | `pnpm typecheck`              | Typecheck all packages.                                       |
 | `pnpm clean`                  | Wipe `dist/` + `*.tsbuildinfo` across packages.               |
-| `pnpm smokes`                 | Run the 21-smoke gate. All must pass on a clean tree.         |
+| `pnpm smokes`                 | Run the 27-smoke gate. All must pass on a clean tree.         |
 | `pnpm smokes:all`             | Run every declared smoke (~41). Slower; pre-release sweep.    |
 | `pnpm smoke:llm-prompt-eval`  | Opt-in real-Haiku regression smoke (burns quota — see below). |
 | `pnpm version:check`          | Verify package versions in sync.                              |
@@ -89,7 +89,7 @@ pnpm smokes
 
 ### Opt-in: real-LLM regression smoke
 
-`pnpm smoke:llm-prompt-eval` runs the Phase 6 Stage-1 file-purpose
+`pnpm smoke:llm-prompt-eval` runs the Phase 8 Stage-1 file-purpose
 filter prompt against three inline fixtures (ADR, UAT log, research
 scratchpad) using **real Haiku** — it burns operator quota and is
 **not** part of `pnpm smokes`. Run only when:

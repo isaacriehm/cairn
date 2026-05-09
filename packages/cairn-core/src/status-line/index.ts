@@ -20,7 +20,7 @@ export type TaskState =
 
 /**
  * Status-line event kinds emitted by Layer A (PostToolUse alignment),
- * Layer C (SessionStart drain), and the doc-drift hook.
+ * SessionStart Drain (SessionStart drain), and the doc-drift hook.
  *
  * Plan §9.2 — the visible feedback channel for cairn's auto-resolutions.
  * Layer A never writes to chat; the operator sees what cairn did via

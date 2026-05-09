@@ -6,7 +6,7 @@
  * `MapperResultPersisted` (light projection without scope_index.files
  * and module_proposals) under outputs["3-mapper"]. The full
  * `MapperResult` is written to `.cairn/init/mapper-output.json` —
- * phase 3b-seed loads it from disk to seed scope-index.yaml.
+ * phase 4-seed loads it from disk to seed scope-index.yaml.
  *
  * The split keeps `.cairn/init-state.json` under 30KB even on a
  * 400-file monorepo, which is what the cairn-adopt skill can carry
@@ -73,7 +73,7 @@ export async function runPhase3Mapper(state: PhaseState): Promise<PhaseResult> {
     };
     return {
       status: "complete",
-      nextPhase: "3b-seed",
+      nextPhase: "4-seed",
       state: advancePhase(next),
     };
   } catch (err) {

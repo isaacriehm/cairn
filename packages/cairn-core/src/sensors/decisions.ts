@@ -64,15 +64,26 @@ export function decisionsInScope(
   });
 }
 
-/** Read every tracked file in the mirror once, lazy. */
+/** Read every tracked file in the mirror once, lazy, with a 100-file LRU cap. */
 class MirrorFileReader {
   private cache = new Map<string, string>();
+  private readonly MAX_FILES = 100;
   constructor(private readonly mirrorPath: string) {}
   read(relPath: string): string {
     const cached = this.cache.get(relPath);
-    if (cached !== undefined) return cached;
+    if (cached !== undefined) {
+      // Move to end (most recently used)
+      this.cache.delete(relPath);
+      this.cache.set(relPath, cached);
+      return cached;
+    }
     try {
       const text = readFileSync(join(this.mirrorPath, relPath), "utf8");
+      if (this.cache.size >= this.MAX_FILES) {
+        // Evict oldest (first) entry
+        const first = this.cache.keys().next().value;
+        if (first !== undefined) this.cache.delete(first);
+      }
       this.cache.set(relPath, text);
       return text;
     } catch {

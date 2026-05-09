@@ -22,17 +22,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   freshPhaseState,
-  runPhase10Strip,
-  runPhase12Multidev,
+  runPhase12Strip,
+  runPhase13Multidev,
   runPhase1Detect,
   runPhase2Walker,
   runPhase3Mapper,
-  runPhase4Pilot,
-  runPhase5Brand,
-  runPhase6DocsIngest,
-  runPhase7bSourceComments,
-  runPhase7cRulesMerge,
-  runPhase8Baseline,
+  runPhase5Pilot,
+  runPhase6Brand,
+  runPhase8DocsIngest,
+  runPhase9SourceComments,
+  runPhase10RulesMerge,
+  runPhase11Baseline,
   type PhaseResult,
   type PhaseState,
 } from "@isaacriehm/cairn-core";
@@ -114,9 +114,9 @@ async function runSmoke(): Promise<void> {
     console.log("  ✓ Step 2 — phase 2-walker → complete");
   }
 
-  // ── Step 3 — phase 4-pilot needs_input → complete with answer ───
+  // ── Step 3 — phase 5-pilot needs_input → complete with answer ───
   {
-    // Inject a synthetic mapper output so phase 4 has candidates.
+    // Inject a synthetic mapper output so phase 5 has candidates.
     const stateForPilot: PhaseState = {
       ...after2,
       outputs: {
@@ -143,56 +143,56 @@ async function runSmoke(): Promise<void> {
           model: "synthetic",
         },
       },
-      currentPhase: "4-pilot",
+      currentPhase: "5-pilot",
     };
-    const ask = await runPhase4Pilot(stateForPilot);
+    const ask = await runPhase5Pilot(stateForPilot);
     assert(ask.status === "needs_input", `Step 3: expected needs_input, got ${ask.status}`);
     if (ask.status !== "needs_input") return;
-    assert(ask.question.id === "4-pilot", `Step 3: question.id should be 4-pilot`);
+    assert(ask.question.id === "5-pilot", `Step 3: question.id should be 5-pilot`);
     assert(ask.question.options.length >= 2, `Step 3: at least 2 options expected`);
     assert(
       ask.question.options[0]!.id === "src/auth",
       `Step 3: first option should be the mapper's pilot_module`,
     );
     const stateWithAnswer: PhaseState = { ...ask.state, answer: "src/billing" };
-    const done = await runPhase4Pilot(stateWithAnswer);
+    const done = await runPhase5Pilot(stateWithAnswer);
     assert(done.status === "complete", `Step 3: expected complete, got ${done.status}`);
     if (done.status !== "complete") return;
-    assert(done.nextPhase === "5-brand", `Step 3: nextPhase should be 5-brand`);
-    const out = done.state.outputs["4-pilot"] as { picked: string };
+    assert(done.nextPhase === "6-brand", `Step 3: nextPhase should be 6-brand`);
+    const out = done.state.outputs["5-pilot"] as { picked: string };
     assert(out.picked === "src/billing", `Step 3: picked should round-trip`);
-    console.log("  ✓ Step 3 — phase 4-pilot needs_input → complete");
+    console.log("  ✓ Step 3 — phase 5-pilot needs_input → complete");
   }
 
-  // ── Step 4 — phase 5-brand needs_input → complete on "skip" ─────
+  // ── Step 4 — phase 6-brand needs_input → complete on "skip" ─────
   {
     const repo = mkRepo();
-    const ask = await runPhase5Brand({ ...freshPhaseState(repo), currentPhase: "5-brand" });
+    const ask = await runPhase6Brand({ ...freshPhaseState(repo), currentPhase: "6-brand" });
     assert(ask.status === "needs_input", `Step 4: expected needs_input, got ${ask.status}`);
     if (ask.status !== "needs_input") return;
-    assert(ask.question.id === "5-brand", `Step 4: question.id should be 5-brand`);
+    assert(ask.question.id === "6-brand", `Step 4: question.id should be 6-brand`);
     assert(
       ask.question.options.some((o) => o.id === "skip"),
       `Step 4: skip option missing`,
     );
-    const done = await runPhase5Brand({ ...ask.state, answer: "skip" });
+    const done = await runPhase6Brand({ ...ask.state, answer: "skip" });
     assert(done.status === "complete", `Step 4: expected complete on skip, got ${done.status}`);
     if (done.status !== "complete") return;
     assert(
-      done.nextPhase === "5b-topic-index",
-      `Step 4: nextPhase should be 5b-topic-index`,
+      done.nextPhase === "7-topic-index",
+      `Step 4: nextPhase should be 7-topic-index`,
     );
-    console.log("  ✓ Step 4 — phase 5-brand → skip path");
+    console.log("  ✓ Step 4 — phase 6-brand → skip path");
   }
 
-  // ── Step 5 — phase 10-strip silent-complete with empty queue ────
+  // ── Step 5 — phase 12-strip silent-complete with empty queue ────
   {
     const repo = mkRepo();
-    const r = await runPhase10Strip({ ...freshPhaseState(repo), currentPhase: "10-strip" });
+    const r = await runPhase12Strip({ ...freshPhaseState(repo), currentPhase: "12-strip" });
     assert(r.status === "complete", `Step 5: expected complete, got ${r.status}`);
     if (r.status !== "complete") return;
-    assert(r.nextPhase === "12-multidev", `Step 5: nextPhase should be 12-multidev`);
-    console.log("  ✓ Step 5 — phase 10-strip → complete (no flagged modules)");
+    assert(r.nextPhase === "13-multidev", `Step 5: nextPhase should be 13-multidev`);
+    console.log("  ✓ Step 5 — phase 12-strip → complete (no flagged modules)");
   }
 
   // ── Step 6 — prereq-missing error path for downstream phases ────
@@ -201,10 +201,10 @@ async function runSmoke(): Promise<void> {
     const fresh = freshPhaseState(repo);
     const phasesWithPrereqs = [
       { id: "3-mapper", run: runPhase3Mapper, code: "missing-prereqs" },
-      { id: "4-pilot", run: runPhase4Pilot, code: "missing-prereqs" },
+      { id: "5-pilot", run: runPhase5Pilot, code: "missing-prereqs" },
     ] as const;
     for (const p of phasesWithPrereqs) {
-      const r = await p.run({ ...fresh, currentPhase: p.id });
+      const r = await p.run({ ...fresh, currentPhase: p.id as any });
       assert(
         r.status === "error",
         `Step 6: ${p.id} on empty state should error, got ${r.status}`,
@@ -215,7 +215,7 @@ async function runSmoke(): Promise<void> {
         `Step 6: ${p.id} error.code should be ${p.code}, got ${r.error.code}`,
       );
     }
-    console.log("  ✓ Step 6 — prereq-missing error path for 3-mapper, 4-pilot");
+    console.log("  ✓ Step 6 — prereq-missing error path for 3-mapper, 5-pilot");
   }
 
   // ── Step 7 — phase functions exposed for the long-running phases ─
@@ -226,11 +226,11 @@ async function runSmoke(): Promise<void> {
     // registration has a stable target.
     const fns = [
       ["runPhase3Mapper", runPhase3Mapper],
-      ["runPhase6DocsIngest", runPhase6DocsIngest],
-      ["runPhase7bSourceComments", runPhase7bSourceComments],
-      ["runPhase7cRulesMerge", runPhase7cRulesMerge],
-      ["runPhase8Baseline", runPhase8Baseline],
-      ["runPhase12Multidev", runPhase12Multidev],
+      ["runPhase8DocsIngest", runPhase8DocsIngest],
+      ["runPhase9SourceComments", runPhase9SourceComments],
+      ["runPhase10RulesMerge", runPhase10RulesMerge],
+      ["runPhase11Baseline", runPhase11Baseline],
+      ["runPhase13Multidev", runPhase13Multidev],
     ] as const;
     for (const [name, fn] of fns) {
       assert(typeof fn === "function", `Step 7: ${name} must be exported as a function`);

@@ -1,5 +1,5 @@
 /**
- * Layer D — `cairn fix align` (plan §4.4) barrel.
+ * Layer C — `cairn fix align` (plan §4.4) barrel.
  */
 
 export { runFixAlign } from "./run.js";

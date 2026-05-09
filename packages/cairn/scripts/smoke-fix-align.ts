@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * smoke-fix-align — Layer D `cairn fix align` (plan §4.4).
+ * smoke-fix-align — Layer C `cairn fix align` (plan §4.4).
  *
  *   Step 1 — Empty repo: no source files, preflight reports zero blocks.
  *   Step 2 — Tier 1 verbatim duplicate: apply auto-cites, source rewritten.

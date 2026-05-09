@@ -13,7 +13,7 @@ import { getFullTool } from "./get-full.js";
 import { groundGetTool } from "./ground-get.js";
 import { inScopeTool } from "./in-scope.js";
 import {
-  initParallel678Tool,
+  initParallel8910Tool,
   initPhaseTools,
   initResumeTool,
   initRunTool,
@@ -64,7 +64,7 @@ export const allTools: ToolDef<never>[] = [
   // Write — init pipeline (v0.2.0 MCP-native init)
   initResumeTool,
   initRunTool,
-  initParallel678Tool,
+  initParallel8910Tool,
   ...initPhaseTools,
 ];
 

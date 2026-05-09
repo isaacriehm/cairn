@@ -1,11 +1,11 @@
 /**
  * Sensor runner — orchestrator-facing entry point.
  *
- * Composes Layer A + Layer B + Layer D + decision-assertions into a single
+ * Composes Layer A + Layer B + Layer C + decision-assertions into a single
  * sweep. Returns the aggregated result + the remediation prompt body the
  * orchestrator feeds back to the agent on retry.
  *
- * Phase 9 wires the implementer-side stack only. Layer C (reviewer subagent)
+ * Phase 9 wires the implementer-side stack only. SessionStart Drain (reviewer subagent)
  * is Phase 10; Layer E (high-stakes E2E) and U (UAT) are Phases 11+. Soft
  * findings emitted here are intentionally surfaced for those later layers
  * to consume.
@@ -92,7 +92,7 @@ export async function runSensors(args: RunSensorsArgs): Promise<SensorSweepResul
     }),
   );
 
-  // Layer D — generic structural sensors.
+  // Layer C — generic structural sensors.
   results.push(
     runRouteHandlerNonEmpty({
       diff,

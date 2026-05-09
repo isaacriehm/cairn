@@ -1,5 +1,5 @@
 /**
- * Layer C SessionStart drain — barrel.
+ * SessionStart Drain SessionStart drain — barrel.
  */
 
 export { runDrain } from "./drain.js";

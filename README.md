@@ -134,7 +134,7 @@ flow** runs on every prompt thereafter.
 
 ### Adoption (one time)
 
-A single visual pass with nine phases. The plugin streams output
+A single visual pass with 13 phases. The plugin streams output
 inline so nothing is opaque.
 
 | Phase                | What happens                                                                                                            |
@@ -142,14 +142,14 @@ inline so nothing is opaque.
 | 1. Detect            | Probe environment + framework signals.                                                                                  |
 | 2. Walk              | File manifest, extension stats, language detection.                                                                     |
 | 3. Map               | Sonnet domain mapper proposes module boundaries + `scope-index.yaml` globs.                                             |
-| 3b. Seed             | Write `.cairn/` skeleton, `config.yaml`, grandfather pre-adoption commits into `.attested-commits`.                     |
-| 4. Pilot             | Operator picks a seed module from the mapper's top-3 candidates (one A/B/C question).                                   |
-| 5. Brand             | Auto-fill brand / voice / product DEC drafts from the mapper's domain summary (one A/B/C).                              |
-| 5b. Topic index      | Content-fingerprint pre-pass — dedupes facts that appear across docs, source, and rules before drafting DECs.           |
-| 6, 7b, 7c (parallel) | **Docs ingest** + **Source comments ingest** + **Rules merge** (`CLAUDE.md` / `AGENTS.md`) — all Haiku-batched. Drafts → `_inbox/`. |
-| 8. Baseline          | First sensor sweep against a synthetic full-tree diff. Findings written to `.cairn/baseline/`.                           |
-| 10. Strip            | Per-module strip-replace consent — operator chooses keep / strip / skip for each flagged module.                         |
-| 12. Multi-dev        | Detects package manager, installs git hooks, emits `JOIN.md` for new contributors.                                       |
+| 4. Seed              | Write `.cairn/` skeleton, `config.yaml`, grandfather pre-adoption commits into `.attested-commits`.                     |
+| 5. Pilot             | Operator picks a seed module from the mapper's top-3 candidates (one A/B/C question).                                   |
+| 6. Brand             | Auto-fill brand / voice / product DEC drafts from the mapper's domain summary (one A/B/C).                              |
+| 7. Topic index      | Content-fingerprint pre-pass — dedupes facts that appear across docs, source, and rules before drafting DECs.           |
+| 8, 9, 10 (parallel) | **Docs ingest** + **Source comments ingest** + **Rules merge** (`CLAUDE.md` / `AGENTS.md`) — all Haiku-batched.         |
+| 11. Baseline         | First sensor sweep against a synthetic full-tree diff. Findings written to `.cairn/baseline/`.                           |
+| 12. Strip            | Per-module strip-replace consent — operator chooses keep / strip / skip for each flagged module.                         |
+| 13. Multi-dev        | Detects package manager, installs git hooks, emits `JOIN.md` for new contributors.                                       |
 
 After the pipeline finishes, the **`cairn-attention` skill** drains
 the resulting draft queue. High-confidence drafts auto-bulk-accept;
@@ -242,7 +242,7 @@ already loaded into the spec.
 | -------------- | ------------------------------------------------------------------------------------------------------------- |
 | **Layer A**    | Regex stub-pattern catalog (incomplete impls) + live SoT alignment via PostToolUse Write/Edit dedupe.         |
 | **Layer B**    | Attestation cross-check — does the reviewer's claim match the actual diff?                                    |
-| **Layer D**    | Decision-assertion enforcement — was the in-scope DEC honored?                                                |
+| **Layer C**    | Decision-assertion enforcement — was the in-scope DEC honored?                                                |
 | **Structural** | Route handlers non-empty, DTOs no fake fields, etc.                                                           |
 
 Run at pre-commit, again at CI. Findings flow into the attention

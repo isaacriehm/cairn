@@ -80,15 +80,15 @@ function runSmoke(): void {
     const repo = mkRepo();
     const original: PhaseState = {
       ...freshPhaseState(repo),
-      currentPhase: "5-brand",
-      outputs: { "1-detect": { stack: "node" }, "4-pilot": "src/auth" },
+      currentPhase: "6-brand",
+      outputs: { "1-detect": { stack: "node" }, "5-pilot": "src/auth" },
       answer: "a",
     };
     const path = writePhaseState(original);
     assert(existsSync(path), `Step 3: state file ${path} should exist after write`);
     const round = readPhaseState(repo);
     assert(round !== null, "Step 3: read returned null after write");
-    assert(round!.currentPhase === "5-brand", `Step 3: currentPhase round-trip failed, got ${round!.currentPhase}`);
+    assert(round!.currentPhase === "6-brand", `Step 3: currentPhase round-trip failed, got ${round!.currentPhase}`);
     assert(round!.answer === "a", `Step 3: answer round-trip failed, got ${round!.answer}`);
     const detect = round!.outputs["1-detect"] as { stack: string };
     assert(detect.stack === "node", `Step 3: outputs round-trip failed`);
@@ -104,31 +104,31 @@ function runSmoke(): void {
     const repo = mkRepo();
     writePhaseState({
       ...freshPhaseState(repo),
-      currentPhase: "3b-seed",
+      currentPhase: "4-seed",
     });
     const r = resumePhases(repo);
     assert(r.status === "ready", `Step 4: should report ready, got ${r.status}`);
-    assert(r.nextPhase === "3b-seed", `Step 4: nextPhase should mirror currentPhase, got ${r.nextPhase}`);
-    assert(r.state.currentPhase === "3b-seed", "Step 4: state should preserve currentPhase");
+    assert(r.nextPhase === "4-seed", `Step 4: nextPhase should mirror currentPhase, got ${r.nextPhase}`);
+    assert(r.state.currentPhase === "4-seed", "Step 4: state should preserve currentPhase");
     console.log("  ✓ Step 4 — resumePhases mirrors persisted currentPhase");
   }
 
   // ── Step 5 — terminal-phase recovery (clearPhaseState lost) ──────
-  // After phase 12-multidev completes, init-phases.ts calls
+  // After phase 13-multidev completes, init-phases.ts calls
   // clearPhaseState. If the cleanup itself fails (filesystem error),
-  // the file persists with currentPhase="12-multidev". Resume returns
+  // the file persists with currentPhase="13-multidev". Resume returns
   // "ready" pointing at the last phase id; the skill re-invokes
   // (idempotent) and clearPhaseState runs again on success.
   {
     const repo = mkRepo();
     writePhaseState({
       ...freshPhaseState(repo),
-      currentPhase: "12-multidev",
+      currentPhase: "13-multidev",
     });
     const r = resumePhases(repo);
     assert(r.status === "ready", `Step 5: terminal-phase recovery should report ready, got ${r.status}`);
-    assert(r.nextPhase === "12-multidev", `Step 5: terminal-phase recovery nextPhase should be 12-multidev, got ${r.nextPhase}`);
-    console.log("  ✓ Step 5 — terminal-phase recovery → ready / 12-multidev");
+    assert(r.nextPhase === "13-multidev", `Step 5: terminal-phase recovery nextPhase should be 13-multidev, got ${r.nextPhase}`);
+    console.log("  ✓ Step 5 — terminal-phase recovery → ready / 13-multidev");
   }
 
   // ── Step 6 — schema validation rejects malformed state ──────────
@@ -179,7 +179,7 @@ function runSmoke(): void {
     }
     // Past terminal: stays put.
     const past = advancePhase(s);
-    assert(past.currentPhase === "12-multidev", "Step 8: advancePhase past terminal should be a no-op");
+    assert(past.currentPhase === "13-multidev", "Step 8: advancePhase past terminal should be a no-op");
     console.log("  ✓ Step 8 — phase walk helpers");
   }
 

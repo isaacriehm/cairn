@@ -15,7 +15,7 @@ import { defaultStatusJson, statusJsonPath } from "./writer.js";
 /**
  * Status-line event queue (plan §9).
  *
- * Layer A (alignment hook), Layer C (SessionStart drain), and the doc-drift
+ * Layer A (alignment hook), SessionStart Drain (SessionStart drain), and the doc-drift
  * sensor all push events here. The status-line reader honors
  * `current_event.display_until` to keep a blip visible for 10s before
  * rolling back to the session summary counter.
