@@ -60,8 +60,8 @@ import {
   type SotCache,
   type SotCacheEntry,
   type TopicIndex,
-} from "../../ground/index.js";
-import { writeDecisionsLedger, writeInvariantsLedger } from "../../ground/ledgers.js";
+} from "@isaacriehm/cairn-state";
+import { writeDecisionsLedger, writeInvariantsLedger } from "@isaacriehm/cairn-state";
 import { logger } from "../../logger.js";
 import { jaccard, tokenize } from "../../text/jaccard.js";
 import { emitFromTopicIndex, type EmitClassification } from "../sot-emit.js";

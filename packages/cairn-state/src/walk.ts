@@ -1,7 +1,7 @@
 import { relative, resolve } from "node:path";
 import { CANONICAL_EXCLUDES, CANONICAL_GLOBS } from "./paths.js";
 import { matchAnyGlob } from "./glob.js";
-import { walkFs } from "../fs.js";
+import { walkFs } from "./fs.js";
 
 const SKIP_DIRS = new Set([
   ".git",

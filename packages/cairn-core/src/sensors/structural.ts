@@ -18,7 +18,7 @@
  * that fail-loud-on-noise get disabled which defeats the purpose.
  */
 
-import { matchAnyGlob } from "../ground/glob.js";
+import { matchAnyGlob } from "@isaacriehm/cairn-state";
 import type { DiffEntry, SensorFinding, SensorResult } from "./types.js";
 
 const ROUTE_SENSOR_ID = "route-handler-non-empty";

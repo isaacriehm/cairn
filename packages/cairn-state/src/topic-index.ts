@@ -1,11 +1,11 @@
 import { existsSync, readFileSync } from "node:fs";
-import { writeFileSafe } from "../fs.js";
+import { writeFileSafe } from "./fs.js";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import { logger } from "../logger.js";
+import { getLogger } from "./logger.js";
 import { topicIndexPath } from "./paths.js";
 import { TopicIndex, type TopicIndexEntry } from "./schemas.js";
 
-const log = logger("ground.topic-index");
+const log = getLogger();
 
 /**
  * Topic-index is the ground-state file that maps content-fingerprint

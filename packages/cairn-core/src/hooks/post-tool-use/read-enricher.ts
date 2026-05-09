@@ -23,7 +23,7 @@ import {
   getScopeIndexEntry,
   lookupTask,
   type TaskLookupResult,
-} from "./ledger-cache.js";
+} from "@isaacriehm/cairn-state";
 import { buildLegend, type ScopeIndexHint } from "./legend-builder.js";
 
 const MAX_CONTENT_BYTES = 512_000;

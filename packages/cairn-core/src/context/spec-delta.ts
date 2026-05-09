@@ -20,7 +20,7 @@ import {
   buildDecisionsLedger,
   buildInvariantsLedger,
   matchAnyGlob,
-} from "../ground/index.js";
+} from "@isaacriehm/cairn-state";
 
 const TASK_PATH_CAP = 100;
 

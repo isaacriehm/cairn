@@ -9,17 +9,17 @@ import { createHash } from "node:crypto";
 import { existsSync, openSync, readFileSync, readSync, closeSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import { fileCandidatesMapPath } from "../../ground/paths.js";
-import { FileCandidatesMap } from "../../ground/schemas.js";
+import { fileCandidatesMapPath } from "./paths.js";
+import { FileCandidatesMap } from "./schemas.js";
 import {
   lookupScope,
   readScopeIndex,
   scopeIndexPath,
   type ScopeIndex,
   type ScopeIndexEntry,
-} from "../../ground/scope-index.js";
+} from "./scope-index.js";
 
-export type { ScopeIndexEntry } from "../../ground/scope-index.js";
+export type { ScopeIndexEntry } from "./scope-index.js";
 
 export interface LedgerSnapshot {
   invariantsByid: Map<

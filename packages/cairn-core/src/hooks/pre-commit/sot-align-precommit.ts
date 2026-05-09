@@ -40,7 +40,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { writeFileSafe } from "../../fs.js";
+import { writeFileSafe } from "@isaacriehm/cairn-state";
 import { resolveRepoRoot } from "../../session-start/index.js";
 import {
   bodyContentHash,
@@ -50,7 +50,7 @@ import {
   readSotCache,
   recordDriftEvent,
   type SotCacheEntry,
-} from "../../ground/index.js";
+} from "@isaacriehm/cairn-state";
 import { logger } from "../../logger.js";
 import { tokenize } from "../../text/jaccard.js";
 import {

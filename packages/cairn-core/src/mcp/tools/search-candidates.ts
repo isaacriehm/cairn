@@ -16,9 +16,9 @@ import {
   readRejectedYaml,
   readTopicIndex,
   type TopicIndexEntry,
-} from "../../ground/index.js";
+} from "@isaacriehm/cairn-state";
 import { readSotBody } from "../../init/sot-emit.js";
-import { readAnchorMap } from "../../ground/index.js";
+import { readAnchorMap } from "@isaacriehm/cairn-state";
 import { searchCandidatesInput } from "../schemas.js";
 import type { ToolDef } from "./types.js";
 

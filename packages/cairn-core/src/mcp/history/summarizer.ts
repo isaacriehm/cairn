@@ -20,7 +20,7 @@ import { join } from "node:path";
 import { runClaude } from "../../claude/index.js";
 import type { ClaudeTier } from "../../claude/index.js";
 import { logger } from "../../logger.js";
-import { decisionsDir } from "../../ground/index.js";
+import { decisionsDir } from "@isaacriehm/cairn-state";
 import { loadAcceptedDecisions } from "../../sensors/decisions.js";
 import {
   buildHistorySummarizerUserPrompt,

@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { McpContext } from "../context.js";
-import { runsTerminalDir } from "../../ground/index.js";
+import { runsTerminalDir } from "@isaacriehm/cairn-state";
 import { timelineInput } from "../schemas.js";
 import type { ToolDef } from "./types.js";
 

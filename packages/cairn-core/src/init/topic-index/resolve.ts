@@ -26,13 +26,13 @@
  * hitting the API.
  */
 
-import type { AnchorMap, AnchorMapEntry, TopicIndex, TopicIndexEntry } from "../../ground/schemas.js";
+import type { AnchorMap, AnchorMapEntry, TopicIndex, TopicIndexEntry } from "@isaacriehm/cairn-state";
 import {
   emptyAnchorMap,
   emptyTopicIndex,
   setAnchor,
   setTopic,
-} from "../../ground/index.js";
+} from "@isaacriehm/cairn-state";
 import { ClaudeError, isQuotaKind } from "../../claude/error.js";
 import { logger } from "../../logger.js";
 import { jaccard, tokenize } from "../../text/jaccard.js";

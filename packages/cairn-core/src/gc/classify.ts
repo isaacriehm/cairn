@@ -12,7 +12,7 @@
  * over safe.
  */
 
-import { matchAnyGlob } from "../ground/glob.js";
+import { matchAnyGlob } from "@isaacriehm/cairn-state";
 import type { ProjectGlobs } from "../sensors/types.js";
 import type { GcAutoMergeClass } from "./types.js";
 

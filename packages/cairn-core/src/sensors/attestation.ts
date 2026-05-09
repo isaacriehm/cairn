@@ -11,7 +11,7 @@
  */
 
 import { parse as parseYaml } from "yaml";
-import { matchAnyGlob } from "../ground/glob.js";
+import { matchAnyGlob } from "@isaacriehm/cairn-state";
 import type {
   Attestation,
   DiffEntry,

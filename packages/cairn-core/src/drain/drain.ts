@@ -40,7 +40,7 @@ import {
 } from "node:fs";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { writeFileSafe } from "../fs.js";
+import { writeFileSafe } from "@isaacriehm/cairn-state";
 import { z, type ZodType } from "zod";
 import { runClaude, claudeIsAvailable } from "../claude/index.js";
 import {
@@ -52,7 +52,7 @@ import {
   recordDriftEvent,
   type SotCacheEntry,
   writeAlignmentPending,
-} from "../ground/index.js";
+} from "@isaacriehm/cairn-state";
 import {
   applyStripReplace,
   formatBareCitation,

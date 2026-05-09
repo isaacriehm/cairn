@@ -1,11 +1,11 @@
 import { existsSync, readFileSync } from "node:fs";
-import { writeFileSafe } from "../fs.js";
+import { writeFileSafe } from "./fs.js";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import { logger } from "../logger.js";
+import { getLogger } from "./logger.js";
 import { anchorMapPath } from "./paths.js";
 import { AnchorMap, type AnchorMapEntry } from "./schemas.js";
 
-const log = logger("ground.anchor-map");
+const log = getLogger();
 
 /**
  * Anchor-map is the external slug → location index for sot_kind=path

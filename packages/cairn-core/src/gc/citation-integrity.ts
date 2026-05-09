@@ -16,8 +16,8 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import { buildDecisionsLedger, buildInvariantsLedger } from "../ground/index.js";
-import { decisionsLedgerPath, invariantsLedgerPath } from "../ground/paths.js";
+import { buildDecisionsLedger, buildInvariantsLedger } from "@isaacriehm/cairn-state";
+import { decisionsLedgerPath, invariantsLedgerPath } from "@isaacriehm/cairn-state";
 import { scanCitations } from "../hooks/post-tool-use/citation-scanner.js";
 import type { GcFinding } from "./types.js";
 import { walkSourceTree } from "./walk-source.js";

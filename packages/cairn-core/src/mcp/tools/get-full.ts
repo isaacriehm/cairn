@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { McpContext } from "../context.js";
-import { decisionsDir, invariantsDir } from "../../ground/index.js";
+import { decisionsDir, invariantsDir } from "@isaacriehm/cairn-state";
 import { mcpError } from "../errors.js";
 import { getFullInput } from "../schemas.js";
 import type { ToolDef } from "./types.js";

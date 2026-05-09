@@ -15,12 +15,12 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import { writeFileSafe } from "../fs.js";
-import { logger } from "../logger.js";
+import { writeFileSafe } from "./fs.js";
+import { getLogger } from "./logger.js";
 import { rejectedYamlPath } from "./paths.js";
 import { RejectedYaml, type RejectedEntry } from "./schemas.js";
 
-const log = logger("ground.rejected");
+const log = getLogger();
 
 export function emptyRejectedYaml(): RejectedYaml {
   return { version: 1, generated: new Date().toISOString(), rejected: [] };

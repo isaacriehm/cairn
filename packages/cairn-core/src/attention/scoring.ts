@@ -21,7 +21,7 @@
  * Scoring is pure. Inputs are the parsed draft fields; no filesystem.
  */
 
-import { matchAnyGlob } from "../ground/glob.js";
+import { matchAnyGlob } from "@isaacriehm/cairn-state";
 import type { ProjectGlobs } from "../sensors/types.js";
 
 export type DraftConfidence = "high" | "medium" | "low";

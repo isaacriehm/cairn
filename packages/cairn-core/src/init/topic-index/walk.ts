@@ -26,7 +26,7 @@
 import { type Dirent, existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { parse as parseYaml } from "yaml";
-import { bodyContentHash, normalizeBlock, topicSlug } from "../../ground/slug.js";
+import { bodyContentHash, normalizeBlock, topicSlug } from "@isaacriehm/cairn-state";
 
 export type ProseBlockKind = "doc" | "claudemd" | "agentsmd" | "rule" | "source-comment";
 

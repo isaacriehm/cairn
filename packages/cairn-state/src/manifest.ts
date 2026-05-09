@@ -2,13 +2,13 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { stringify as stringifyYaml } from "yaml";
-import { logger } from "../logger.js";
+import { getLogger } from "./logger.js";
 import { readFrontmatter } from "./frontmatter.js";
 import { groundDir, manifestPath } from "./paths.js";
 import type { Manifest, ManifestEntry } from "./schemas.js";
 import { walkCanonical } from "./walk.js";
 
-const log = logger("ground.manifest");
+const log = getLogger();
 
 export interface BuildManifestOptions {
   repoRoot: string;

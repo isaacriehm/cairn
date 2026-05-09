@@ -16,7 +16,7 @@
 
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, posix, resolve } from "node:path";
-import { walkCanonical } from "../ground/walk.js";
+import { walkCanonical } from "@isaacriehm/cairn-state";
 import type { GcFinding } from "./types.js";
 
 const PASS_ID = "doc-gardening" as const;

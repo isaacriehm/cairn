@@ -24,7 +24,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import { buildManifest } from "../ground/manifest.js";
+import { buildManifest } from "@isaacriehm/cairn-state";
 
 export interface BatchCanaryResult {
   ok: boolean;

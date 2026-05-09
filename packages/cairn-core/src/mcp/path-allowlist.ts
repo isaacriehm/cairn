@@ -1,5 +1,5 @@
 import { isAbsolute, normalize, relative, resolve } from "node:path";
-import { matchAnyGlob } from "../ground/glob.js";
+import { matchAnyGlob } from "@isaacriehm/cairn-state";
 import { mcpError, type McpErrorPayload } from "./errors.js";
 
 /**

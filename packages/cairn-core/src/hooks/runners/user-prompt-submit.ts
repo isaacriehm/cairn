@@ -23,7 +23,7 @@ import {
   getScopeIndexEntry,
   lookupTask,
   type TaskLookupResult,
-} from "../post-tool-use/ledger-cache.js";
+} from "@isaacriehm/cairn-state";
 import { buildLegend, type ScopeIndexHint } from "../post-tool-use/legend-builder.js";
 import { readHookStdin } from "./payload.js";
 

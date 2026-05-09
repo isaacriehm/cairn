@@ -43,7 +43,7 @@ import { stringify as stringifyYaml } from "yaml";
 import {
   writeDecisionsLedger,
   writeInvariantsLedger,
-} from "../../ground/ledgers.js";
+} from "@isaacriehm/cairn-state";
 import {
   bodyContentHash,
   deriveLedgerDecId,
@@ -69,7 +69,7 @@ import {
   type SotCache,
   type TopicIndex,
   type TopicIndexEntry,
-} from "../../ground/index.js";
+} from "@isaacriehm/cairn-state";
 import {
   coerceDecisionIds,
   coerceInvariantIds,
@@ -77,7 +77,7 @@ import {
   writeScopeIndex,
   type ScopeIndex,
   type ScopeIndexEntry,
-} from "../../ground/scope-index.js";
+} from "@isaacriehm/cairn-state";
 import { logger } from "../../logger.js";
 import type { ProjectGlobs } from "../../sensors/types.js";
 import { emitFromTopicIndex, type EmitClassification } from "../sot-emit.js";
@@ -93,7 +93,8 @@ import type {
   CommentClassKind,
 } from "./classify.js";
 import { walkSourceComments } from "./walker.js";
-import type { CommentBlock, WalkOptions, WalkResult } from "./walker.js";
+import type { WalkOptions, WalkResult } from "./walker.js";
+import type { CommentBlock } from "@isaacriehm/cairn-state";
 
 const log = logger("init.source-comments.ingest");
 const CAPTURE_SOURCE = "init-source-comments";

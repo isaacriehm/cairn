@@ -12,7 +12,7 @@ import {
   buildDecisionsLedger,
   buildInvariantsLedger,
   parseFrontmatter,
-} from "../ground/index.js";
+} from "@isaacriehm/cairn-state";
 import { loadSensorRegistry } from "../sensors/catalog.js";
 import {
   CODE_CHANGE_CONTRACT,

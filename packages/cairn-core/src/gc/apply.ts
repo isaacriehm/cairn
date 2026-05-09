@@ -11,7 +11,7 @@
 
 import { rmSync } from "node:fs";
 import { resolve } from "node:path";
-import { writeFileSafe } from "../fs.js";
+import { writeFileSafe } from "@isaacriehm/cairn-state";
 import { simpleGit } from "simple-git";
 import type { GcCommitProposal } from "./types.js";
 

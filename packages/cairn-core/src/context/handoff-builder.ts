@@ -13,7 +13,7 @@ import { type Dirent, existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { simpleGit } from "simple-git";
 import { parse as parseYaml } from "yaml";
-import { parseFrontmatter } from "../ground/index.js";
+import { parseFrontmatter } from "@isaacriehm/cairn-state";
 
 /** Hard cap on rendered handoff size (chars). ~600 tokens. */
 const MAX_CHARS = 2_400;

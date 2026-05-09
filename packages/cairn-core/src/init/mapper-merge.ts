@@ -20,7 +20,7 @@ import { logger } from "../logger.js";
 import {
   coerceDecisionIds,
   coerceInvariantIds,
-} from "../ground/scope-index.js";
+} from "@isaacriehm/cairn-state";
 import type {
   MapperKeyModule,
   MapperOutput,

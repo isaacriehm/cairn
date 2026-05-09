@@ -11,7 +11,7 @@
  * prompts the agent consumes on retry.
  */
 
-import type { DecisionFrontmatter } from "../ground/schemas.js";
+import type { DecisionFrontmatter } from "@isaacriehm/cairn-state";
 
 /** A single file changed in this run. */
 export interface DiffEntry {

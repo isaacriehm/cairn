@@ -1,11 +1,11 @@
 import { existsSync, readFileSync } from "node:fs";
-import { writeFileSafe } from "../fs.js";
+import { writeFileSafe } from "./fs.js";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import { logger } from "../logger.js";
+import { getLogger } from "./logger.js";
 import { sotCachePath } from "./paths.js";
 import { SotCache, type SotCacheEntry } from "./schemas.js";
 
-const log = logger("ground.sot-cache");
+const log = getLogger();
 
 /**
  * Sot-cache holds pre-tokenized DEC body content for the Layer A Jaccard
@@ -43,15 +43,15 @@ export function writeSotCache(repoRoot: string, cache: SotCache): string {
   return path;
 }
 
-export function setEntry(cache: SotCache, decId: string, entry: SotCacheEntry): SotCache {
+export function setSotCacheEntry(cache: SotCache, decId: string, entry: SotCacheEntry): SotCache {
   return { ...cache, entries: { ...cache.entries, [decId]: entry } };
 }
 
-export function getEntry(cache: SotCache, decId: string): SotCacheEntry | null {
+export function getSotCacheEntry(cache: SotCache, decId: string): SotCacheEntry | null {
   return cache.entries[decId] ?? null;
 }
 
-export function deleteEntry(cache: SotCache, decId: string): SotCache {
+export function deleteSotCacheEntry(cache: SotCache, decId: string): SotCache {
   if (cache.entries[decId] === undefined) return cache;
   const entries = { ...cache.entries };
   delete entries[decId];
@@ -62,6 +62,6 @@ export function deleteEntry(cache: SotCache, decId: string): SotCache {
  * Iterate all entries. Layer A's pre-filter pass calls this on each
  * Write to compute Jaccard against every cached DEC body.
  */
-export function entries(cache: SotCache): SotCacheEntry[] {
+export function sotCacheEntries(cache: SotCache): SotCacheEntry[] {
   return Object.values(cache.entries);
 }

@@ -38,6 +38,7 @@ const SOURCE_OF_TRUTH = "packages/cairn/package.json";
 const TARGETS = [
   pkgJsonTarget("packages/cairn/package.json"),
   pkgJsonTarget("packages/cairn-core/package.json"),
+  pkgJsonTarget("packages/cairn-state/package.json"),
   pkgJsonTarget("packages/cairn-frontend-claudecode/package.json"),
   pkgJsonTarget("packages/cairn-lens/package.json"),
   pkgJsonTarget("packages/cairn-frontend-claudecode/.claude-plugin/plugin.json"),

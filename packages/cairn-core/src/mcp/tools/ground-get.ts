@@ -5,7 +5,7 @@ import {
   groundDir,
   manifestPath,
   qualityGradesPath,
-} from "../../ground/index.js";
+} from "@isaacriehm/cairn-state";
 import { mcpError } from "../errors.js";
 import { groundGetInput } from "../schemas.js";
 import type { ToolDef } from "./types.js";

@@ -14,8 +14,8 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import { buildQualityGrades } from "../ground/quality-grades.js";
-import { qualityGradesPath } from "../ground/paths.js";
+import { buildQualityGrades } from "@isaacriehm/cairn-state";
+import { qualityGradesPath } from "@isaacriehm/cairn-state";
 import type { GcCommitProposal, GcFinding } from "./types.js";
 
 const PASS_ID = "quality-grades" as const;

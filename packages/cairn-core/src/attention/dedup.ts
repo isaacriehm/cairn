@@ -20,7 +20,7 @@
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { decisionsDir } from "../ground/paths.js";
+import { decisionsDir } from "@isaacriehm/cairn-state";
 import { jaccard, tokenize } from "../text/jaccard.js";
 
 /** Default char window of body to fold into the token bag. */

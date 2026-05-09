@@ -13,20 +13,9 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { writeFileSafe } from "../fs.js";
+import { writeFileSafe } from "./fs.js";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import { detectAll } from "../init/detect.js";
-import {
-  buildMapperUserPrompt,
-  MAPPER_OUTPUT_SCHEMA,
-  MAPPER_SYSTEM_PROMPT,
-  validateMapperOutput,
-  type MapperOutput,
-  type MapperScopeIndex,
-} from "../init/mapper.js";
-import { buildRepoSummary } from "../init/walker.js";
-import { logger } from "../logger.js";
-import { runClaude } from "../claude/index.js";
+import { getLogger } from "./logger.js";
 
 export interface ScopeIndexEntry {
   decisions: string[];
@@ -128,7 +117,7 @@ export function writeScopeIndex(repoRoot: string, index: ScopeIndex): void {
   writeFileSafe(path, stringifyYaml(index));
 }
 
-const log = logger("ground.scope-index");
+const log = getLogger();
 
 /* -------------------------------------------------------------------------- */
 /* Deterministic citation rescan                                              */

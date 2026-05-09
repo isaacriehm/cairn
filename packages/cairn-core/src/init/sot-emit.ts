@@ -36,7 +36,7 @@ import {
   type SotKind,
   type TopicIndex,
   type TopicIndexEntry,
-} from "../ground/index.js";
+} from "@isaacriehm/cairn-state";
 import { tokenize } from "../text/jaccard.js";
 
 const log = logger("init.sot-emit");

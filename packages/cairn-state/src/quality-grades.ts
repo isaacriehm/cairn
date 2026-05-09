@@ -1,11 +1,11 @@
 import { type Dirent, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import { logger } from "../logger.js";
+import { getLogger } from "./logger.js";
 import { qualityGradesPath, runsTerminalDir } from "./paths.js";
 import { type QualityGrade, type QualityGrades } from "./schemas.js";
 
-const log = logger("ground.quality-grades");
+const log = getLogger();
 
 interface SensorResult {
   sensor: string;

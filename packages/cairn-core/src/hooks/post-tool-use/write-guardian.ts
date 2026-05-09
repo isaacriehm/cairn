@@ -19,15 +19,15 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, writeFileSync, type Dirent } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 import { readHookStdin } from "../runners/payload.js";
-import { matchAnyGlob } from "../../ground/glob.js";
-import { syncFileScopeFromContent } from "../../ground/scope-index.js";
+import { matchAnyGlob } from "@isaacriehm/cairn-state";
+import { syncFileScopeFromContent } from "@isaacriehm/cairn-state";
 import { resolveRepoRoot } from "../../session-start/index.js";
 import {
   readCopySafetyConfig,
   type CopySafetyConfig,
 } from "./allowlist-reader.js";
 import { scanForCopyLeakage, type CopyIssue } from "./copy-scanner.js";
-import { getScopeIndexEntry } from "./ledger-cache.js";
+import { getScopeIndexEntry } from "@isaacriehm/cairn-state";
 import type { ScopeIndexHint } from "./legend-builder.js";
 
 interface ClaudePostToolUsePayload {
