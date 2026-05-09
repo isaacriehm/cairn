@@ -10,19 +10,18 @@
  * Spec: docs/CONTEXT_CONTINUITY_SPEC.md §3.
  */
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, statSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import {
   writeDecisionsLedger,
   writeInvariantsLedger,
-  buildDecisionsLedger,
-  buildInvariantsLedger,
-  matchAnyGlob,
 } from "@isaacriehm/cairn-state";
 import {
   resolveRepoRoot,
+  buildSessionStartContext,
 } from "../../session-start/index.js";
+import { inspectJoinState, runJoin } from "../../join/index.js";
 import {
   resolveSessionId,
   ensureSessionDir,
@@ -32,7 +31,6 @@ import {
 import { writeStatusJson, defaultStatusJson } from "../../status-line/index.js";
 import { gcStaleEvents } from "../../events/reader.js";
 import { rescanScopeIndex } from "@isaacriehm/cairn-state";
-import { buildHandoffBlock } from "../../context/handoff-builder.js";
 import { readActiveTaskSummary } from "../../context/task-summary.js";
 
 import { readDeferState } from "../defer.js";
@@ -160,7 +158,12 @@ export async function runSessionStartHook(): Promise<void> {
   }
 
   const isResume = source === "resume";
-  const buildArgs = { repoRoot };
+  const buildArgs: Parameters<typeof buildSessionStartContext>[0] = { repoRoot };
+  if (isResume) buildArgs.maxChars = 4_000;
+  if (source !== null) buildArgs.source = source;
+  if (cwdInput !== repoRoot && cwdInput.startsWith(repoRoot)) {
+    buildArgs.scopeRelPath = cwdInput.slice(repoRoot.length + 1);
+  }
   const result = await buildSessionStartContext(buildArgs);
   const active = readActiveTaskSummary(repoRoot);
   const bypassCount = readDeferState(repoRoot, "bypass")?.flagged_shas.length ?? 0;
@@ -188,7 +191,9 @@ export async function runSessionStartHook(): Promise<void> {
 
   const bootstrapBanner = renderBootstrapBanner(repoRoot);
   const additionalContext =
-    bootstrapBanner + (isResume ? result.resumePayload : result.openPayload);
+    bootstrapBanner === null
+      ? result.additionalContext
+      : `${bootstrapBanner}\n\n${result.additionalContext}`;
 
   appendTelemetry({
     repoRoot,
@@ -240,44 +245,57 @@ function spawnDetachedDrain(repoRoot: string, sessionId: string): void {
   }
 }
 
-async function buildSessionStartContext(args: { repoRoot: string }): Promise<{
-  openPayload: string;
-  resumePayload: string;
-  counts: {
-    decisions: number;
-    invariants: number;
-    pendingDrafts: number;
-    baselineFindings: number;
-    driftFindings: number;
-  };
-}> {
-  const decs = buildDecisionsLedger({ repoRoot: args.repoRoot });
-  const invs = buildInvariantsLedger({ repoRoot: args.repoRoot });
-  const handoff = await buildHandoffBlock(args.repoRoot);
+function renderBootstrapBanner(repoRoot: string): string | null {
+  if (!existsSync(join(repoRoot, ".git"))) return null;
+  if (!existsSync(join(repoRoot, ".cairn", "config.yaml"))) return null;
+  const state = inspectJoinState({ repoRoot });
+  if (state.hooksPathSet) return null;
 
-  return {
-    openPayload: "Session started.",
-    resumePayload: handoff ?? "Session resumed.",
-    counts: {
-      decisions: decs.length,
-      invariants: invs.length,
-      pendingDrafts: 0,
-      baselineFindings: 0,
-      driftFindings: 0,
-    },
-  };
-}
+  const result = runJoin({ repoRoot });
+  if (result.bootstrapped) {
+    const lines: string[] = [];
+    lines.push("## Cairn — first session on this clone");
+    lines.push("");
+    lines.push(
+      "`cairn join` just finished on this clone (per-clone hooks now " +
+        "wired). Cairn ground state from `.cairn/` is loaded for this " +
+        "session — see the `Cairn ground state` summary below for the " +
+        "decision + invariant counts in scope.",
+    );
+    lines.push("");
+    lines.push(
+      "**On the operator's first reply this session, briefly acknowledge " +
+        "Cairn is active.** Even on a casual greeting, surface a one-line " +
+        "summary like \"Cairn loaded — N decisions, M invariants in scope.\" " +
+        "Then continue with the operator's actual ask.",
+    );
+    lines.push("");
+    lines.push(
+      "Subsequent sessions on this clone skip this banner; the silent " +
+        "ground-state load is the normal idle path.",
+    );
+    return lines.join("\n");
+  }
 
-function renderBootstrapBanner(repoRoot: string): string {
-  const bannerPath = join(repoRoot, ".cairn", "config", "banner.md");
-  if (existsSync(bannerPath)) {
-    try {
-      return readFileSync(bannerPath, "utf8") + "\n\n";
-    } catch {
-      return "";
+  const lines: string[] = [];
+  lines.push("## Cairn — bootstrap failed");
+  lines.push("");
+  lines.push(
+    "This clone is cairn-adopted but `cairn join` did not finish. " +
+      "MCP write tools refuse and local commits skip attestation until " +
+      "this resolves.",
+  );
+  lines.push("");
+  for (const step of result.steps) {
+    if (step.status === "error") {
+      lines.push(`- **${step.step}** — ${step.detail}`);
     }
   }
-  return "";
+  lines.push("");
+  lines.push(
+    "Re-run manually: `node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" join`",
+  );
+  return lines.join("\n");
 }
 
 function looksLikeProjectRoot(dir: string): boolean {

@@ -25,7 +25,7 @@ import {
   scanBypassedCommits,
   type BypassedCommit,
 } from "../bypass-detection.js";
-import { isCurrentlyDeferred, readDeferState } from "../defer.js";
+import { isDeferActive, readDeferState } from "../defer.js";
 import { resolveRepoRoot } from "../../session-start/index.js";
 import {
   readEventsMarker,
@@ -123,8 +123,8 @@ export async function runStopHook(): Promise<void> {
           const reviewDefer = readDeferState(repoRoot, "review");
           const suppressed =
             reviewDefer !== null &&
-            isCurrentlyDeferred(reviewDefer, {
-              kind: "tasks",
+            isDeferActive(reviewDefer, new Date(), {
+              kind: "task_ids",
               values: pendingReviews.map((p) => p.task_id),
             });
           if (suppressed) {
@@ -146,7 +146,7 @@ export async function runStopHook(): Promise<void> {
           const bypassDefer = readDeferState(repoRoot, "bypass");
           const suppressed =
             bypassDefer !== null &&
-            isCurrentlyDeferred(bypassDefer, {
+            isDeferActive(bypassDefer, new Date(), {
               kind: "shas",
               values: bypassed.map((b) => b.sha),
             });

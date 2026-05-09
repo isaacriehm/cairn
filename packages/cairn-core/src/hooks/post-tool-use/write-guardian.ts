@@ -20,6 +20,7 @@ import { basename, relative, resolve, dirname, join } from "node:path";
 import { z } from "zod";
 import {
   getScopeIndexEntry,
+  matchAnyGlob,
 } from "@isaacriehm/cairn-state";
 import {
   readHookStdin,
@@ -150,18 +151,13 @@ export function executeWriteGuardian(args: {
   const filePath = relPath;
 
   const copyConfig = readCopySafetyConfig(repoRoot);
-  // Filtering by globs + allowlist in copyConfig should happen here or inside scanForCopyLeakage.
-  // scanForCopyLeakage currently only takes 2 args.
-  let issues = scanForCopyLeakage(content, filePath);
-  
-  if (copyConfig.enabled) {
-    // Basic filter: only scan if path matches copy_safety globs
-    // (Wait, executeWriteGuardian is already called for a specific file).
-    // Let's filter the issues by allowlist.
+  const shouldScanCopy =
+    copyConfig.enabled && matchAnyGlob(relPath, copyConfig.globs);
+  let issues: ReturnType<typeof scanForCopyLeakage> = [];
+  if (shouldScanCopy) {
+    const raw = scanForCopyLeakage(content, filePath);
     const allowlist = new Set(copyConfig.allowlist);
-    issues = issues.filter((i) => !allowlist.has(i.match));
-  } else {
-    issues = [];
+    issues = raw.filter((i) => !allowlist.has(i.match));
   }
 
   const cachedEntry = getScopeIndexEntry(repoRoot, relPath);

@@ -156,15 +156,10 @@ function resolveStopSignal(
 
   if (input.choice === "c") {
     return withWriteLock(ctx.repoRoot, () => {
-      const statePath = writeDeferState(ctx.repoRoot, kind, {
-        flaggedShas: kind === "bypass" ? flagged : [],
-        flaggedTaskIds: kind === "review" ? flagged : [],
+      const state = writeDeferState(ctx.repoRoot, kind, {
+        flagged_shas: kind === "bypass" ? flagged : [],
+        flagged_task_ids: kind === "review" ? flagged : [],
       });
-      // read back to get the calculated expiry
-      const state = JSON.parse(readFileSync(statePath, "utf8")) as {
-        deferred_at: string;
-        deferred_for_hours: number;
-      };
       return {
         ok: true,
         resolved_kind: `${kind}_deferred`,

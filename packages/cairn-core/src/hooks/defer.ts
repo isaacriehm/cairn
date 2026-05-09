@@ -4,13 +4,17 @@
  * Per-kind defer file: when the operator picks `[c]` defer on the
  * inline A/B/C, cairn_resolve_attention writes
  * `.cairn/.{bypass,review}-deferred-until` with the snapshot of
- * SHAs / task ids. The Stop hook in OTHER sessions reads this and
- * stays inert iff the current flagged set is a subset of the
- * deferred set and the TTL hasn't expired.
+ * SHAs / task-ids that were flagged. Subsequent Stop hooks suppress
+ * the warning while:
+ *   1. now < deferred_at + deferred_for_hours, AND
+ *   2. the current scan's flagged set ⊆ the deferred set
+ *      (anything new shows up).
+ *
+ * Pure read/write/check helpers — no side effects beyond filesystem.
  */
 
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { z } from "zod";
 
 export type DeferKind = "bypass" | "review";
@@ -33,10 +37,8 @@ export function deferStatePath(repoRoot: string, kind: DeferKind): string {
 export function readDeferState(repoRoot: string, kind: DeferKind): DeferState | null {
   const path = deferStatePath(repoRoot, kind);
   if (!existsSync(path)) return null;
-  
   try {
-    const raw = readFileSync(path, "utf8");
-    const parsed: unknown = JSON.parse(raw);
+    const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
     const result = DeferStateSchema.safeParse(parsed);
     return result.success ? result.data : null;
   } catch {
@@ -47,40 +49,38 @@ export function readDeferState(repoRoot: string, kind: DeferKind): DeferState | 
 export function writeDeferState(
   repoRoot: string,
   kind: DeferKind,
-  state: { flaggedShas: string[]; flaggedTaskIds: string[] },
-): string {
-  const path = deferStatePath(repoRoot, kind);
-  const payload: DeferState = {
-    deferred_at: new Date().toISOString(),
-    deferred_for_hours: DEFAULT_DEFER_HOURS,
-    flagged_shas: state.flaggedShas,
-    flagged_task_ids: state.flaggedTaskIds,
+  snapshot: {
+    flagged_shas?: string[];
+    flagged_task_ids?: string[];
+    /** Override defer window. Default 24h. */
+    hours?: number;
+    /** ISO timestamp; defaults to new Date().toISOString(). */
+    nowIso?: string;
+  },
+): DeferState {
+  const state: DeferState = {
+    deferred_at: snapshot.nowIso ?? new Date().toISOString(),
+    deferred_for_hours: snapshot.hours ?? DEFAULT_DEFER_HOURS,
+    flagged_shas: [...(snapshot.flagged_shas ?? [])],
+    flagged_task_ids: [...(snapshot.flagged_task_ids ?? [])],
   };
-  mkdirSync(join(repoRoot, ".cairn"), { recursive: true });
-  writeFileSync(path, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
-  return path;
+  const path = deferStatePath(repoRoot, kind);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, JSON.stringify(state, null, 2), "utf8");
+  return state;
 }
 
 export function clearDeferState(repoRoot: string, kind: DeferKind): void {
-  const path = deferStatePath(repoRoot, kind);
-  try {
-    rmSync(path, { force: true });
-  } catch {
-    /* ignore */
-  }
+  rmSync(deferStatePath(repoRoot, kind), { force: true });
 }
 
-/**
- * Returns true if `currentItems` should be suppressed based on `state`.
- */
-export function isCurrentlyDeferred(
+export function isDeferActive(
   state: DeferState,
-  currentItems: { kind: "shas" | "tasks"; values: string[] },
+  now: Date,
+  currentItems: { kind: "shas" | "task_ids"; values: string[] },
 ): boolean {
-  const now = new Date();
   const deferredAt = Date.parse(state.deferred_at);
   if (Number.isNaN(deferredAt)) return false;
-
   const expiresAt = deferredAt + state.deferred_for_hours * 60 * 60 * 1000;
   if (now.getTime() >= expiresAt) return false;
 
