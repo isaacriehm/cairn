@@ -143,23 +143,23 @@ async function runSmoke(): Promise<void> {
   // ── Step 4 — gcStaleEvents removes old, keeps fresh ──────────────
   {
     const repoRoot = mkRepoRoot();
-    const now = 10_000_000_000;
     const sevenDays = 7 * 24 * 60 * 60 * 1000;
+    const realNow = Date.now();
     writeInvalidationEvent(repoRoot, {
       kind: "decision_drafted",
       refs: [{ kind: "decision", id: "DEC-OLD" }],
       source: { session_id: null, tool: "test" },
-      ts: now - sevenDays - 1,
+      ts: realNow - sevenDays - 1,
     });
     writeInvalidationEvent(repoRoot, {
       kind: "decision_drafted",
       refs: [{ kind: "decision", id: "DEC-NEW" }],
       source: { session_id: null, tool: "test" },
-      ts: now - 1_000,
+      ts: realNow - 1_000,
     });
-    const result = gcStaleEvents({ repoRoot, now: () => now });
+    const result = gcStaleEvents({ repoRoot });
     assert(result.removed.length === 1, `Step 4: expected 1 removed, got ${result.removed.length}`);
-    assert(result.kept.length === 1, `Step 4: expected 1 kept, got ${result.kept.length}`);
+    assert(result.kept === 1, `Step 4: expected 1 kept, got ${result.kept}`);
     console.log("  ✓ Step 4 — gcStaleEvents 7-day boundary");
   }
 

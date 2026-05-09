@@ -8,18 +8,12 @@
  * the project health dashboard accurate.
  */
 
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { buildQualityGrades, qualityGradesPath } from "@isaacriehm/cairn-state";
 import type { GcCommitProposal, GcFinding } from "./types.js";
-import { z } from "zod";
 
 const PASS_ID = "quality-grades" as const;
-
-const ModulesSchema = z.object({
-  modules: z.array(z.unknown()),
-}).passthrough();
 
 export interface QualityUpdateOptions {
   repoRoot: string;
@@ -33,36 +27,43 @@ export async function runQualityUpdate(
   const findings: GcFinding[] = [];
   const proposals: GcCommitProposal[] = [];
 
-  const currentPath = qualityGradesPath(opts.repoRoot);
-  const before = existsSync(currentPath) ? readFileSync(currentPath, "utf8") : "";
+  const filePath = qualityGradesPath(opts.repoRoot);
+  const relPath = ".cairn/ground/quality-grades.yaml";
 
-  // 1. Compute new grades from history.
-  const grades = buildQualityGrades({ repoRoot: opts.repoRoot });
-  const after = stringifyYaml(grades);
+  const grades = buildQualityGrades({
+    repoRoot: opts.repoRoot,
+    ...(opts.recentRunCount !== undefined ? { recentRunCount: opts.recentRunCount } : {}),
+  });
+  const newContent = stringifyYaml(grades);
 
-  // 2. If changed, emit proposal.
-  if (before !== after) {
-    const bModules = safeParseModules(before);
-    const aModules = grades.modules;
+  const existing = existsSync(filePath) ? readFileSync(filePath, "utf8") : "";
+  const existingModulesJson = JSON.stringify(safeParseModules(existing));
+  const newModulesJson = JSON.stringify(grades.modules);
 
-    const proposal: GcCommitProposal = {
-      pass: PASS_ID,
-      class: "safe",
-      paths: [currentPath],
-      patch: { [currentPath]: after },
-      commit_message: `cairn: update quality grades (rebuilt from ${aModules.length} modules)`,
-      findings: [],
-    };
-    proposals.push(proposal);
-
-    findings.push({
-      pass: PASS_ID,
-      kind: "quality_grades_rebuilt",
-      path: ".cairn/ground/quality-grades.yaml",
-      detail: `Quality grades rebuilt from history (${bModules.length} → ${aModules.length} modules)`,
-      severity: "soft",
-    });
+  if (existingModulesJson === newModulesJson) {
+    return { findings, proposals };
   }
+
+  const finding: GcFinding = {
+    pass: PASS_ID,
+    kind: "quality_grades_rebuilt",
+    path: relPath,
+    detail: `quality-grades.yaml modules changed (${grades.modules.length} module${grades.modules.length === 1 ? "" : "s"} graded)`,
+    severity: "info",
+  };
+  findings.push(finding);
+
+  proposals.push({
+    pass: PASS_ID,
+    class: "safe",
+    paths: [relPath],
+    patch: { [relPath]: newContent },
+    commit_message:
+      `chore(gc): refresh quality-grades.yaml (${grades.modules.length} modules)\n\n` +
+      `GC quality-grades pass — recomputed from .cairn/runs/terminal/.\n` +
+      `Auto-applied as safe-class (GC auto-merge policy).\n`,
+    findings: [finding],
+  });
 
   return { findings, proposals };
 }
@@ -70,10 +71,13 @@ export async function runQualityUpdate(
 function safeParseModules(text: string): unknown[] {
   if (text.length === 0) return [];
   try {
-    const parsed: unknown = parseYaml(text);
-    const result = ModulesSchema.safeParse(parsed);
-    return result.success ? result.data.modules : [];
+    const parsed = parseYaml(text);
+    if (typeof parsed === "object" && parsed !== null) {
+      const m = (parsed as { modules?: unknown }).modules;
+      return Array.isArray(m) ? m : [];
+    }
   } catch {
-    return [];
+    // fall through
   }
+  return [];
 }
