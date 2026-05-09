@@ -88,6 +88,13 @@ plugin; third loads it. The plugin ships a self-contained bundle —
 hooks, MCP server, and CLI all run from `dist/cli.mjs` inside the
 plugin cache. No `npx`, no `npm install -g`, no PATH dependency.)
 
+**Recommended:** disable Claude Code's built-in auto-memory before
+adopting — Cairn is your memory layer and the two conflict:
+
+```
+/memory → Disable Auto-Memory
+```
+
 Open Claude Code in any project. The plugin auto-detects on session
 start and offers `[a] adopt now`. Pick `[a]` once. The pipeline streams
 inline so you watch what's happening — typically 2-15 minutes
