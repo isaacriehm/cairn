@@ -1,9 +1,9 @@
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
-import { logger } from "../logger.js";
+import { getLogger } from "./logger.js";
 import { stalenessCurrentPath, stalenessDir, stalenessLogPath } from "./paths.js";
 import { DriftEvent } from "./schemas.js";
 
-const log = logger("ground.drift");
+const log = getLogger();
 
 export interface DriftSnapshot {
   generated: string;

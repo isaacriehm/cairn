@@ -56,7 +56,7 @@ import {
 } from "node:fs";
 import { createHash } from "node:crypto";
 import { dirname, join, relative } from "node:path";
-import { writeFileSafe } from "../../fs.js";
+import { writeFileSafe } from "@isaacriehm/cairn-state";
 import { stringify as stringifyYaml } from "yaml";
 import { readHookStdin } from "../runners/payload.js";
 import { resolveRepoRoot } from "../../session-start/index.js";
@@ -85,8 +85,8 @@ import {
   writeTopicIndex,
   type SotCache,
   type SotCacheEntry,
-} from "../../ground/index.js";
-import { writeDecisionsLedger, writeInvariantsLedger } from "../../ground/ledgers.js";
+} from "@isaacriehm/cairn-state";
+import { writeDecisionsLedger, writeInvariantsLedger } from "@isaacriehm/cairn-state";
 import { type CommentBlock } from "../../init/source-comments/index.js";
 import {
   applyStripReplace,

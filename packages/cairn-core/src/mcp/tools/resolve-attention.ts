@@ -33,7 +33,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
-import { writeFileSafe } from "../../fs.js";
+import { writeFileSafe } from "@isaacriehm/cairn-state";
 import { createHash } from "node:crypto";
 import { stringify as stringifyYaml } from "yaml";
 import {
@@ -63,14 +63,14 @@ import {
   unbindDec,
   writeSotBindings,
   writeSotCache,
-} from "../../ground/index.js";
+} from "@isaacriehm/cairn-state";
 import { tokenize } from "../../text/jaccard.js";
 import {
   applyStripReplace,
   formatBareCitation,
   type ReplaceItem,
 } from "../../init/source-comments/index.js";
-import { writeDecisionsLedger, writeInvariantsLedger } from "../../ground/ledgers.js";
+import { writeDecisionsLedger, writeInvariantsLedger } from "@isaacriehm/cairn-state";
 import {
   clearDeferState,
   writeDeferState,

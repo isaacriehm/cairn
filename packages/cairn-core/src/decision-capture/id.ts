@@ -20,7 +20,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { decisionsDir, invariantsDir } from "../ground/paths.js";
+import { decisionsDir, invariantsDir } from "@isaacriehm/cairn-state";
 
 /** Default short-hash length (matches git short-SHA convention). */
 const HASH_LEN = 7;

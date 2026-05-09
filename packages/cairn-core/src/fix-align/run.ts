@@ -28,7 +28,7 @@ import {
   matchAnyGlob,
   readSotCache,
   type SotCacheEntry,
-} from "../ground/index.js";
+} from "@isaacriehm/cairn-state";
 import { alignFile, type AlignFileArgs, type AlignFileResult } from "../hooks/post-tool-use/index.js";
 import {
   TIER2_JACCARD_FLOOR,

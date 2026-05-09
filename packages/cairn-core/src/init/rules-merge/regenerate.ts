@@ -16,11 +16,11 @@ import { join } from "node:path";
 import {
   buildDecisionsLedger,
   buildInvariantsLedger,
-} from "../../ground/ledgers.js";
+} from "@isaacriehm/cairn-state";
 import type {
   DecisionLedgerEntry,
   InvariantLedgerEntry,
-} from "../../ground/schemas.js";
+} from "@isaacriehm/cairn-state";
 import { extractKeepBlocks, reapplyKeepBlocks } from "./keep-markers.js";
 
 export interface RegenerateRulesArgs {

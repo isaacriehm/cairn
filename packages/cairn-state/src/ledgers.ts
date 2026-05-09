@@ -1,7 +1,7 @@
 import { type Dirent, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { stringify as stringifyYaml } from "yaml";
-import { logger } from "../logger.js";
+import { getLogger } from "./logger.js";
 import { parseFrontmatter } from "./frontmatter.js";
 import {
   decisionsDir,
@@ -16,7 +16,7 @@ import {
   type InvariantLedgerEntry,
 } from "./schemas.js";
 
-const log = logger("ground.ledgers");
+const log = getLogger();
 
 export interface LedgerOptions {
   repoRoot: string;

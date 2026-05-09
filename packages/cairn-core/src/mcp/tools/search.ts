@@ -7,7 +7,7 @@ import {
   manifestPath,
   matchAnyGlob,
   parseFrontmatter,
-} from "../../ground/index.js";
+} from "@isaacriehm/cairn-state";
 import { searchInput } from "../schemas.js";
 import type { ToolDef } from "./types.js";
 

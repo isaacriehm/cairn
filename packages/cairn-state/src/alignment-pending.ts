@@ -11,7 +11,7 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { stringify as stringifyYaml } from "yaml";
-import type { CommentBlock } from "../init/source-comments/index.js";
+import type { CommentBlock } from "./schemas.js";
 import { alignmentPendingDir } from "./paths.js";
 import { topicSlug } from "./slug.js";
 

@@ -17,9 +17,9 @@ import { runDecSourceStrip, parseDraftMeta } from "../source-strip.js";
 import {
   decisionsDir,
   decisionsLedgerPath,
-} from "../../ground/paths.js";
-import { writeDecisionsLedger } from "../../ground/ledgers.js";
-import { parseFrontmatterRecord } from "../../ground/frontmatter.js";
+} from "@isaacriehm/cairn-state";
+import { writeDecisionsLedger } from "@isaacriehm/cairn-state";
+import { parseFrontmatterRecord } from "@isaacriehm/cairn-state";
 import { withWriteLock } from "../../lock.js";
 import { writeInvalidationEvent } from "../../events/index.js";
 import { logger } from "../../logger.js";

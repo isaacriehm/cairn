@@ -22,7 +22,7 @@ import {
   readTopicIndex,
   writeRejectedYaml,
   type RejectedEntry,
-} from "../../ground/index.js";
+} from "@isaacriehm/cairn-state";
 import { withWriteLock } from "../../lock.js";
 import type { McpContext } from "../context.js";
 import { requireBootstrap } from "../bootstrap-guard.js";

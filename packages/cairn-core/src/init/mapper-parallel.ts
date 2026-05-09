@@ -19,11 +19,11 @@ import { logger } from "../logger.js";
 import {
   coerceDecisionIds,
   coerceInvariantIds,
-} from "../ground/scope-index.js";
+} from "@isaacriehm/cairn-state";
 import type {
   DecisionLedgerEntry,
   InvariantLedgerEntry,
-} from "../ground/schemas.js";
+} from "@isaacriehm/cairn-state";
 import type {
   MapperScopeIndex,
 } from "./mapper.js";

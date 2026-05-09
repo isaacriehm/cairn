@@ -15,12 +15,12 @@ export {
   getInvariantsLedger,
   getScopeIndexEntry,
   lookupTask,
-} from "./ledger-cache.js";
+} from "@isaacriehm/cairn-state";
 export type {
   LedgerSnapshot,
   ScopeIndexEntry,
   TaskLookupResult,
-} from "./ledger-cache.js";
+} from "@isaacriehm/cairn-state";
 export { buildLegend } from "./legend-builder.js";
 export type { ScopeIndexHint } from "./legend-builder.js";
 export { runWriteGuardian, executeWriteGuardian } from "./write-guardian.js";

@@ -3,7 +3,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import type { McpContext } from "../context.js";
-import { groundDir, parseFrontmatter } from "../../ground/index.js";
+import { groundDir, parseFrontmatter } from "@isaacriehm/cairn-state";
 import { mcpError } from "../errors.js";
 import { canonicalForTopicInput } from "../schemas.js";
 import type { ToolDef } from "./types.js";

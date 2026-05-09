@@ -1,8 +1,8 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { McpContext } from "../context.js";
-import { decisionsDir, parseFrontmatter } from "../../ground/index.js";
-import { DecisionFrontmatter } from "../../ground/index.js";
+import { decisionsDir, parseFrontmatter } from "@isaacriehm/cairn-state";
+import { DecisionFrontmatter } from "@isaacriehm/cairn-state";
 import { mcpError } from "../errors.js";
 import { supersedesChainInput } from "../schemas.js";
 import type { ToolDef } from "./types.js";

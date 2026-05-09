@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, renameSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { McpContext } from "../context.js";
 import { writeInvalidationEvent, type InvalidationEventRef } from "../../events/index.js";
-import { recordDriftEvent } from "../../ground/index.js";
+import { recordDriftEvent } from "@isaacriehm/cairn-state";
 import { withWriteLock } from "../../lock.js";
 import { requireBootstrap } from "../bootstrap-guard.js";
 import { mcpError } from "../errors.js";

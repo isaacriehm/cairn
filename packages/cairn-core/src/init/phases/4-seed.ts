@@ -23,7 +23,7 @@ import {
   writeScopeIndex,
   type ScopeIndex,
   type ScopeIndexEntry,
-} from "../../ground/scope-index.js";
+} from "@isaacriehm/cairn-state";
 import { seedAttestedCommits } from "../../hooks/seed-attested.js";
 import { buildProjectOverlay } from "../overlay.js";
 import { seedCairnLayout } from "../seed.js";

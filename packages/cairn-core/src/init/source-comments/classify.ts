@@ -25,7 +25,7 @@
 import { runClaude } from "../../claude/index.js";
 import { ClaudeError } from "../../claude/error.js";
 import { logger } from "../../logger.js";
-import type { CommentBlock } from "./walker.js";
+import type { CommentBlock } from "@isaacriehm/cairn-state";
 
 const log = logger("init.source-comments.classify");
 

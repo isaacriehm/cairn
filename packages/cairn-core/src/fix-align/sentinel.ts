@@ -26,8 +26,8 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { writeFileSafe } from "../fs.js";
-import { matchAnyGlob } from "../ground/glob.js";
+import { writeFileSafe } from "@isaacriehm/cairn-state";
+import { matchAnyGlob } from "@isaacriehm/cairn-state";
 import { logger } from "../logger.js";
 
 const log = logger("fix-align.sentinel");

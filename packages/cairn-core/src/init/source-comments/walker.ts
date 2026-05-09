@@ -19,6 +19,11 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import { extname, join, relative } from "node:path";
+import {
+  type CommentBlock,
+  type CommentKind,
+  type CommentLang,
+} from "@isaacriehm/cairn-state";
 
 const SOURCE_EXTENSIONS = new Set<string>([
   ".ts",
@@ -87,54 +92,6 @@ const SKIP_DIRS = new Set<string>([
 const MIN_LINES = 4;
 const MIN_CHARS = 200;
 const MIN_JSDOC_WORDS = 30;
-
-export type CommentLang =
-  | "js"
-  | "py"
-  | "rs"
-  | "go"
-  | "java"
-  | "c"
-  | "cs"
-  | "rb"
-  | "sh"
-  | "php"
-  | "lua"
-  | "dart"
-  | "kt"
-  | "swift"
-  | "scala"
-  | "unknown";
-
-export type CommentKind =
-  | "block"
-  | "jsdoc"
-  | "line-cluster"
-  | "license";
-
-export interface CommentBlock {
-  /** Stable per-walk id: `<rel-path>:<startLine>-<endLine>` */
-  id: string;
-  /** Repo-relative POSIX path. */
-  file: string;
-  lang: CommentLang;
-  kind: CommentKind;
-  /** 1-based, inclusive. */
-  startLine: number;
-  /** 1-based, inclusive. */
-  endLine: number;
-  /** Raw text including comment markers. */
-  raw: string;
-  /** Stripped prose — markers + leading `*` removed, used for word count. */
-  prose: string;
-  lineCount: number;
-  charCount: number;
-  wordCount: number;
-  /** Index where `raw` starts in the file (UTF-8 bytes ≈ chars for source). */
-  startOffset: number;
-  /** Index immediately after `raw`. */
-  endOffset: number;
-}
 
 export interface WalkOptions {
   repoRoot: string;

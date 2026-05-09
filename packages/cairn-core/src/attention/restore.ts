@@ -34,8 +34,8 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { decisionsDir } from "../ground/paths.js";
-import { writeDecisionsLedger } from "../ground/ledgers.js";
+import { decisionsDir } from "@isaacriehm/cairn-state";
+import { writeDecisionsLedger } from "@isaacriehm/cairn-state";
 import { withWriteLock } from "../lock.js";
 import { logger } from "../logger.js";
 

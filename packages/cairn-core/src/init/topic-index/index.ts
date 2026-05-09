@@ -18,7 +18,7 @@ import {
   writeFileCandidatesMap,
   writeRejectedYaml,
   writeTopicIndex,
-} from "../../ground/index.js";
+} from "@isaacriehm/cairn-state";
 import { clearProgress, writeProgress } from "../progress.js";
 import { makeHaikuJudge } from "./judge.js";
 import { resolveTopics, type JudgeProgress, type ResolveResult, type SemanticJudge } from "./resolve.js";

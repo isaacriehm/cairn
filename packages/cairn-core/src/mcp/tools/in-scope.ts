@@ -6,12 +6,12 @@ import {
   invariantsDir,
   matchAnyGlob,
   parseFrontmatter,
-} from "../../ground/index.js";
+} from "@isaacriehm/cairn-state";
 import {
   DecisionFrontmatter,
   InvariantFrontmatter,
   readScopeIndex,
-} from "../../ground/index.js";
+} from "@isaacriehm/cairn-state";
 import { inScopeInput } from "../schemas.js";
 import type { ToolDef } from "./types.js";
 

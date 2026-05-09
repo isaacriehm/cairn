@@ -11,7 +11,7 @@
 
 import { type Dirent, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join, relative } from "node:path";
-import { matchAnyGlob } from "../../ground/glob.js";
+import { matchAnyGlob } from "@isaacriehm/cairn-state";
 
 export interface ArchiveFile {
   /** Absolute path. */

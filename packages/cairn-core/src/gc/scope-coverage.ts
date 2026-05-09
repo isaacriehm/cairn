@@ -13,7 +13,7 @@
 
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { lookupScope, readScopeIndex } from "../ground/scope-index.js";
+import { lookupScope, readScopeIndex } from "@isaacriehm/cairn-state";
 import type { GcFinding } from "./types.js";
 import { walkSourceTree } from "./walk-source.js";
 

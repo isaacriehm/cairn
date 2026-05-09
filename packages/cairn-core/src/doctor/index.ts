@@ -22,7 +22,7 @@ import { parse as parseYaml } from "yaml";
 import {
   buildDecisionsLedger,
   buildInvariantsLedger,
-} from "../ground/index.js";
+} from "@isaacriehm/cairn-state";
 import { normalizeProjectName } from "../paths/index.js";
 
 export type DoctorStatus = "ok" | "warn" | "error" | "info";

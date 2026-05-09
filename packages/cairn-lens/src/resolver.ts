@@ -34,7 +34,7 @@ import {
   type AnchorMapEntry,
   type ScopeIndex,
   type ScopeIndexEntry,
-} from "@isaacriehm/cairn-core";
+} from "@isaacriehm/cairn-state";
 import { lensLog } from "./debug-log.js";
 
 interface DecisionResolution {

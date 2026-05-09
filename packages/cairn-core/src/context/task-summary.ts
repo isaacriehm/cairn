@@ -12,7 +12,7 @@
 import { type Dirent, existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import { parseFrontmatter } from "../ground/index.js";
+import { parseFrontmatter } from "@isaacriehm/cairn-state";
 import type { TaskState } from "../status-line/index.js";
 
 export interface ActiveTaskSummary {

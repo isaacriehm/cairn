@@ -18,8 +18,8 @@ import {
   writeFileCandidatesMap,
   writeTopicIndex,
   type TopicIndexEntry,
-} from "../../ground/index.js";
-import { DecisionAssertion } from "../../ground/index.js";
+} from "@isaacriehm/cairn-state";
+import { DecisionAssertion } from "@isaacriehm/cairn-state";
 import { withWriteLock } from "../../lock.js";
 import { requireBootstrap } from "../bootstrap-guard.js";
 import { mcpError } from "../errors.js";

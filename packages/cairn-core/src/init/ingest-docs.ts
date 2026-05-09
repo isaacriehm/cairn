@@ -66,7 +66,7 @@ import {
   type AnchorMap,
   type TopicIndex,
   type TopicIndexEntry,
-} from "../ground/index.js";
+} from "@isaacriehm/cairn-state";
 import { logger } from "../logger.js";
 import { firstLineFallback, readSotBody } from "./sot-emit.js";
 

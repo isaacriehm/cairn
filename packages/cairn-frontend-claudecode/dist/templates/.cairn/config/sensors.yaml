@@ -36,7 +36,7 @@ sensors:
       - every_run_completion
     fail_severity: hard
 
-  # ── Layer D — project structural / contract sensors ──────────────────────
+  # ── Layer C — project structural / contract sensors ──────────────────────
   - id: route-handler-non-empty
     layer: D
     kind: structural
@@ -89,7 +89,7 @@ sensors:
       - .cairn/ground/invariants/
     fail_severity: hard
 
-  # ── Reviewer subagent (Layer C) ───────────────────────────────────────────
+  # ── Reviewer subagent (SessionStart Drain) ───────────────────────────────────────────
   - id: reviewer-subagent
     layer: C
     kind: inferential
@@ -153,9 +153,9 @@ required_glob_keys:
   - high_stakes_globs          # paths whose changes require Layer E + cross-tenant fixture
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Copy-safety configuration (write guardian + Layer D sensor)
+# Copy-safety configuration (write guardian + Layer C sensor)
 #
-# The write guardian (PostToolUse hook on Write/Edit) and the Layer D
+# The write guardian (PostToolUse hook on Write/Edit) and the Layer C
 # copy-safety sensor both consume this block. Globs default to common frontend
 # file extensions; extend per-project as needed. allowlist holds verbatim
 # strings that match a pattern but are intentional (technical error codes,

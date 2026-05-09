@@ -13,15 +13,15 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import { writeFileSafe } from "../fs.js";
-import { logger } from "../logger.js";
+import { writeFileSafe } from "./fs.js";
+import { getLogger } from "./logger.js";
 import { fileCandidatesMapPath } from "./paths.js";
 import {
   FileCandidatesMap,
   type TopicIndex,
 } from "./schemas.js";
 
-const log = logger("ground.file-candidates-map");
+const log = getLogger();
 
 export function emptyFileCandidatesMap(): FileCandidatesMap {
   return {

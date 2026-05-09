@@ -32,7 +32,7 @@ import {
   writeScopeIndex,
   type ScopeIndex,
   type ScopeIndexEntry,
-} from "../ground/scope-index.js";
+} from "@isaacriehm/cairn-state";
 import { normalizeProjectName } from "../paths/index.js";
 import { homedir } from "node:os";
 import { logger, setLogFile } from "../logger.js";
@@ -51,7 +51,7 @@ import {
   type DocClassification,
   type IngestionResult,
 } from "./ingest-docs.js";
-import type { TopicIndexEntry } from "../ground/index.js";
+import type { TopicIndexEntry } from "@isaacriehm/cairn-state";
 import { buildTopicIndex, type SemanticJudge } from "./topic-index/index.js";
 import {
   runSourceCommentsIngestion,
@@ -67,7 +67,7 @@ import {
   installMultiDev,
   type MultiDevInstallResult,
 } from "./multi-dev/index.js";
-import type { CommentBlock } from "./source-comments/walker.js";
+import type { CommentBlock } from "@isaacriehm/cairn-state";
 import type { RuleSection, RuleSourceFile } from "./rules-merge/index.js";
 import {
   detectMonorepoContext,

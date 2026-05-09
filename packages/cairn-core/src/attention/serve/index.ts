@@ -36,7 +36,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { writeFileSafe } from "../../fs.js";
+import { writeFileSafe } from "@isaacriehm/cairn-state";
 import { logger } from "../../logger.js";
 import { handleApi } from "./api.js";
 

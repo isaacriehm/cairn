@@ -28,11 +28,11 @@ import { logger } from "../logger.js";
 import {
   buildDecisionsLedger,
   buildInvariantsLedger,
-} from "../ground/ledgers.js";
+} from "@isaacriehm/cairn-state";
 import type {
   DecisionLedgerEntry,
   InvariantLedgerEntry,
-} from "../ground/schemas.js";
+} from "@isaacriehm/cairn-state";
 import {
   MAPPER_OUTPUT_SCHEMA,
   MAPPER_SYSTEM_PROMPT,

@@ -10,7 +10,7 @@ import type {
   DecisionsLedgerSnapshot,
   LedgerSnapshot,
   TaskLookupResult,
-} from "./ledger-cache.js";
+} from "@isaacriehm/cairn-state";
 
 export interface ScopeIndexHint {
   /** DEC-IDs in scope for the file. */

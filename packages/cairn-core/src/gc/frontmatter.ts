@@ -17,8 +17,8 @@
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { evaluateFreshness, parseFrontmatter } from "../ground/frontmatter.js";
-import { walkCanonical } from "../ground/walk.js";
+import { evaluateFreshness, parseFrontmatter } from "@isaacriehm/cairn-state";
+import { walkCanonical } from "@isaacriehm/cairn-state";
 import type { GcCommitProposal, GcFinding } from "./types.js";
 
 const PASS_ID = "frontmatter-freshness" as const;
