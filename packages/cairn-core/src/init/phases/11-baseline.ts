@@ -9,17 +9,13 @@ import {
   runBaselineAudit,
   type BaselineAuditResult,
 } from "../baseline-audit.js";
-import type { DetectionResult } from "../types.js";
 import type { ProjectGlobs } from "../../sensors/types.js";
-import type { MapperResultPersisted } from "./mapper-output-io.js";
 import { advancePhase } from "./orchestrator.js";
 import type { PhaseResult, PhaseState } from "./types.js";
 
 export async function runPhase11Baseline(state: PhaseState): Promise<PhaseResult> {
-  const detection = state.outputs["1-detect"] as DetectionResult | undefined;
-  const mapper = state.outputs["3-mapper"] as
-    | MapperResultPersisted
-    | undefined;
+  const detection = state.outputs["1-detect"];
+  const mapper = state.outputs["3-mapper"];
   const globs: ProjectGlobs = mapper
     ? {
         route_handler_globs: mapper.output.route_handler_globs,

@@ -13,6 +13,16 @@
  * and pick up at the same phase on the next session.
  */
 
+import type { DetectionResult } from "../types.js";
+import type { RepoSummary } from "../walker.js";
+import type { IngestionResult } from "../ingest-docs.js";
+import type { RunRulesMergeResult } from "../rules-merge/index.js";
+import type { BaselineAuditResult } from "../baseline-audit.js";
+import type { MultiDevInstallResult } from "../multi-dev/index.js";
+import type { MapperResultPersisted } from "./mapper-output-io.js";
+import type { IngestSourceCommentsResultPersisted } from "./source-comments-output-io.js";
+import type { TopicIndexPhaseOutput } from "./7-topic-index.js";
+
 /** Phase ids in execution order. */
 export const PHASE_IDS = [
   "1-detect",
@@ -36,7 +46,7 @@ export type PhaseId = (typeof PHASE_IDS)[number];
 export interface PhaseQuestion {
   /** Stable identifier so the skill can correlate answers across re-invocations. */
   id: string;
-  /** Operator-facing prompt — full English, not caveman. */
+  /** Operator-facing prompt — full plain English; no operator-personal voice. */
   prompt: string;
   /** Options labeled A/B/C/... */
   options: PhaseOption[];
@@ -73,14 +83,46 @@ export interface PhaseState {
   schemaVersion: 1;
 }
 
-/**
- * Phase outputs are deliberately loose-typed — each phase function
- * stamps its own typed result under its id. Downstream phases read
- * via type-narrowing helpers in their own modules.
- */
-export type PhaseOutputs = {
-  -readonly [K in PhaseId]?: unknown;
-};
+export interface SeedPhaseOutput {
+  written_files: string[];
+  collisions: string[];
+  config_path: string;
+  scope_index_path: string;
+  workflow_slug_patched: boolean;
+  workflow_patch_error: string | null;
+  attested_seeded: number;
+  attested_seed_status: "ok" | "skipped" | "error";
+}
+
+export interface PilotOutput {
+  picked: string;
+}
+
+export interface BrandOutput {
+  choice: string;
+  applied: { updated: string[]; warnings: string[] } | null;
+}
+
+export interface StripState {
+  pending: string[];
+  decisions: Record<string, "strip" | "keep" | "skip">;
+}
+
+export interface PhaseOutputs {
+  "1-detect"?: DetectionResult;
+  "2-walker"?: RepoSummary;
+  "3-mapper"?: MapperResultPersisted;
+  "4-seed"?: SeedPhaseOutput;
+  "5-pilot"?: PilotOutput;
+  "6-brand"?: BrandOutput;
+  "7-topic-index"?: TopicIndexPhaseOutput;
+  "8-docs-ingest"?: IngestionResult;
+  "9-source-comments"?: IngestSourceCommentsResultPersisted;
+  "10-rules-merge"?: RunRulesMergeResult;
+  "11-baseline"?: BaselineAuditResult;
+  "12-strip"?: StripState;
+  "13-multidev"?: MultiDevInstallResult;
+}
 
 /** Discriminated union returned by every phase function. */
 export type PhaseResult =

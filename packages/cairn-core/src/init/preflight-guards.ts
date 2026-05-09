@@ -113,13 +113,30 @@ function checkWorkspaceMarker(
 
 /**
  * Returns true when `repoRoot` looks like the Cairn source repository.
- * Checks for the conjunction of all three markers — any single one would
- * false-positive on too many repos.
+ *
+ * Conjunction of three load-bearing markers — any single one
+ * false-positives on too many repos:
+ *
+ *   1. `packages/cairn-core/package.json` exists AND its `name` field
+ *      is `@isaacriehm/cairn-core`.
+ *   2. `packages/cairn-frontend-claudecode/package.json` exists.
+ *   3. `pnpm-workspace.yaml` at the root.
+ *
+ * The package.json `name` check is what actually identifies the repo
+ * — directory names are not unique enough.
  */
 export function isCairnSourceRepo(repoRoot: string): boolean {
-  return (
-    existsSync(join(repoRoot, "cairn-build")) &&
-    existsSync(join(repoRoot, "packages", "cairn-core")) &&
-    existsSync(join(repoRoot, "pnpm-workspace.yaml"))
-  );
+  if (!existsSync(join(repoRoot, "pnpm-workspace.yaml"))) return false;
+  if (!existsSync(join(repoRoot, "packages", "cairn-frontend-claudecode", "package.json"))) {
+    return false;
+  }
+  const corePkgPath = join(repoRoot, "packages", "cairn-core", "package.json");
+  if (!existsSync(corePkgPath)) return false;
+  try {
+    const raw = readFileSync(corePkgPath, "utf8");
+    const parsed = JSON.parse(raw) as { name?: unknown };
+    return parsed.name === "@isaacriehm/cairn-core";
+  } catch {
+    return false;
+  }
 }

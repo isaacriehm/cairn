@@ -21,37 +21,19 @@ import { stringify as stringifyYaml } from "yaml";
 import {
   scopeIndexPath,
   writeScopeIndex,
-  type ScopeIndex,
   type ScopeIndexEntry,
 } from "@isaacriehm/cairn-state";
 import { seedAttestedCommits } from "../../hooks/seed-attested.js";
 import { buildProjectOverlay } from "../overlay.js";
 import { seedCairnLayout } from "../seed.js";
-import type { DetectionResult } from "../types.js";
 import { updateWorkflowSlugBlock } from "../workflow-block.js";
-import {
-  type MapperResultPersisted,
-  readMapperOutputFile,
-} from "./mapper-output-io.js";
+import { readMapperOutputFile } from "./mapper-output-io.js";
 import { advancePhase } from "./orchestrator.js";
-import type { PhaseResult, PhaseState } from "./types.js";
-
-interface SeedPhaseOutput {
-  written_files: string[];
-  collisions: string[];
-  config_path: string;
-  scope_index_path: string;
-  workflow_slug_patched: boolean;
-  workflow_patch_error: string | null;
-  attested_seeded: number;
-  attested_seed_status: "ok" | "skipped" | "error";
-}
+import type { PhaseResult, PhaseState, SeedPhaseOutput } from "./types.js";
 
 export async function runPhase4Seed(state: PhaseState): Promise<PhaseResult> {
-  const detection = state.outputs["1-detect"] as DetectionResult | undefined;
-  const mapperResult = state.outputs["3-mapper"] as
-    | MapperResultPersisted
-    | undefined;
+  const detection = state.outputs["1-detect"];
+  const mapperResult = state.outputs["3-mapper"];
   if (detection === undefined) {
     return {
       status: "error",

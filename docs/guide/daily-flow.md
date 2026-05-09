@@ -533,7 +533,7 @@ and reports back. Useful when:
 ### Trace logs
 
 Every hook + MCP tool + claude subprocess writes to
-`~/.local/cairn/trace/trace-YYYY-MM-DD.jsonl`.
+`~/.cairn/trace/trace-YYYY-MM-DD.jsonl`.
 
 ```bash
 cairn trace --tail               # follow live

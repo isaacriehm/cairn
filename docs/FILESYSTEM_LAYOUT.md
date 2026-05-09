@@ -116,9 +116,9 @@ The layout below is **stack-agnostic**. Subdirectories under `.cairn/ground/{sch
 Mirror checkout (separate, not in repo):
 
 ```
-~/.local/cairn/repos/<project-slug>/        ← parallel git clone, Cairn operates here
-~/.local/cairn/state/<project-slug>/        ← non-portable runtime state (PIDs, sockets)
-~/.local/cairn/models/                      ← optional model files (reserved for future cache use)
+~/.cairn/repos/<project-slug>/        ← parallel git clone, Cairn operates here
+~/.cairn/state/<project-slug>/        ← non-portable runtime state (PIDs, sockets)
+~/.cairn/models/                      ← optional model files (reserved for future cache use)
 ```
 
 ---
@@ -450,7 +450,7 @@ Gitignored. Per-run scratch + outputs.
   "phase": "streaming_turn",
   "sha_pin": "9e3f4a2",
   "branch_pin": "main",
-  "mirror_path": "~/.local/cairn/repos/<project-slug>",
+  "mirror_path": "~/.cairn/repos/<project-slug>",
   "adapter_channel_id": "...",
   "adapter_thread_id": "...",
   "tokens_input": 0,

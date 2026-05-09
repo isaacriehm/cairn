@@ -71,13 +71,18 @@ export function readSourceCommentsWalkFile(
   }
 }
 
+/** Phase was skipped because the repo is the Cairn source repo itself. */
+export interface IngestSourceCommentsSkippedResult {
+  readonly skipped: "self-adopt";
+}
+
 /**
  * Lightweight projection persisted into `init-state.json` outputs. Drops
  * `walk.blocks` and `classifications` (the heavy fields); keeps ledger /
  * triage references that downstream phases + the cairn-adopt summary
  * skill query directly.
  */
-export interface IngestSourceCommentsResultPersisted {
+export interface IngestSourceCommentsRunResult {
   /** Repo-relative path to the spilled full result, or null when not written. */
   walkPath: string;
   walkSummary: {
@@ -121,10 +126,14 @@ export interface IngestSourceCommentsResultPersisted {
   kindCounts: Record<CommentClassKind, number>;
 }
 
+export type IngestSourceCommentsResultPersisted =
+  | IngestSourceCommentsRunResult
+  | IngestSourceCommentsSkippedResult;
+
 /** Strip the heavy fields from a fresh ingest result for state persistence. */
 export function to7bResultPersisted(
   full: IngestSourceCommentsResult,
-): IngestSourceCommentsResultPersisted {
+): IngestSourceCommentsRunResult {
   return {
     walkPath: SOURCE_COMMENTS_WALK_PATH,
     walkSummary: {

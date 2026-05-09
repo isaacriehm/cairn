@@ -9,10 +9,22 @@
 
 import { runDocsIngestion, type IngestionResult } from "../ingest-docs.js";
 import { clearProgress, writeProgress } from "../progress.js";
-import { advancePhase } from "./orchestrator.js";
+import { advancePhase, isSelfAdoptState } from "./orchestrator.js";
 import type { PhaseResult, PhaseState } from "./types.js";
 
 export async function runPhase8DocsIngest(state: PhaseState): Promise<PhaseResult> {
+  if (isSelfAdoptState(state)) {
+    const skipped: IngestionResult = { skipped: "self-adopt" as const };
+    const next: PhaseState = {
+      ...state,
+      outputs: { ...state.outputs, "8-docs-ingest": skipped },
+    };
+    return {
+      status: "complete",
+      nextPhase: "9-source-comments",
+      state: advancePhase(next),
+    };
+  }
   const startedAt = Date.now();
   try {
     const result: IngestionResult = await runDocsIngestion({

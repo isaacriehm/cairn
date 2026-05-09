@@ -1,6 +1,6 @@
 ---
 name: cairn-direction
-description: Spec-tightener + subagent dispatcher. Engage on code-change asks — verbs, bug reports, observations.
+description: Spec-tightener + subagent dispatcher. Engage on code-change asks — verbs, bug reports, observations. Pivot-aware on active tasks.
 when_to_use: |
   Engage when operator's message implies code change. ANY triggers:
 
@@ -20,11 +20,13 @@ when_to_use: |
   Skip ONLY when:
     - Pure info question ("what does X do", "where Z defined") no
       implied change.
-    - Active task at `.cairn/tasks/active/<id>/` with
-      `phase: tightening`/`running` — direction does not stack.
     - Operator opted out: "skip cairn", "just do it".
     - Trivial one-line edit fully specified ("rename foo to bar in
       baz.ts:42").
+
+  **Active-task case is NOT a skip.** When a task exists at
+  `.cairn/tasks/active/<id>/` with `phase: running`, engage the
+  pivot-detection branch (Step 0.5).
 ---
 
 # Skill: cairn-direction
@@ -43,7 +45,7 @@ every deferred tool the rest of the skill needs. The cairn MCP tools
 back to inline prose questions and the contract breaks.
 
 ```
-ToolSearch(select:mcp__plugin_cairn_cairn__cairn_task_create,mcp__plugin_cairn_cairn__cairn_in_scope,mcp__plugin_cairn_cairn__cairn_canonical_for_topic,mcp__plugin_cairn_cairn__cairn_search,AskUserQuestion)
+ToolSearch(select:mcp__plugin_cairn_cairn__cairn_task_create,mcp__plugin_cairn_cairn__cairn_task_complete,mcp__plugin_cairn_cairn__cairn_in_scope,mcp__plugin_cairn_cairn__cairn_canonical_for_topic,mcp__plugin_cairn_cairn__cairn_search,AskUserQuestion)
 ```
 
 After this call, all phase tools + the question tool are loaded for
@@ -58,9 +60,6 @@ This section reinforces the SKIP cases that surface most often:
 - Pure information questions ("what does X do", "why is Y this
   way", "where is Z defined") with no implied change → route to
   read tools, not direction.
-- An active task already exists at `.cairn/tasks/active/<id>/` and
-  has `phase: tightening` or `phase: running` — direction does not
-  stack.
 - The operator explicitly opted out: message includes "skip cairn",
   "no tightening", "just do it", or "don't ask, just".
 - The change is a single trivial edit the operator has already
@@ -70,6 +69,58 @@ This section reinforces the SKIP cases that surface most often:
 **Bug reports and broken-behavior observations are IN scope** even
 when no task verb appears. If the operator names a symptom in the
 codebase, treat it as a request to fix.
+
+**Active task is NOT a skip case.** If
+`.cairn/tasks/active/<id>/status.yaml` exists with
+`phase: running`, run **Step 0.5 — pivot detection** below before
+deciding what to do. Cairn must help the operator graduate or pivot
+the existing task, not silently hide.
+
+## Step 0.5 — pivot detection (run when an active task exists)
+
+Before Step 1, check for an active task:
+
+```bash
+ls .cairn/tasks/active/ 2>/dev/null
+```
+
+If empty → skip this step, proceed to Step 1.
+
+For each active dir, read `spec.tightened.md` (frontmatter + first
+H1) and `status.yaml` (`phase` field). Pick the first task whose
+`phase` is `running` (the auto-graduator transitions completed work
+out of `running` so anything left here is genuinely in flight).
+
+Compare the operator's new prompt to the active task's title +
+goal:
+
+- **Same subject** (operator is following up on the same work — same
+  files / same noun set / explicit reference like "now also handle
+  the X case in that fix") → no pivot. Do NOT call task_create. Treat
+  the prompt as continued work on the active task; respond directly
+  without spawning a new direction loop.
+- **Diverging subject** (different feature area, different file
+  globs, different noun set) → surface the pivot prompt via
+  `AskUserQuestion`:
+
+  > Active task `TSK-<id>` is **<title>** (<phase>). Your new ask
+  > looks unrelated. Pick:
+  >
+  > - `[a]` complete TSK-<id> first (I'll wait until you wrap it
+  >   then handle the new ask)
+  > - `[b]` pivot — abort TSK-<id>, start fresh on the new ask
+  > - `[c]` keep TSK-<id> active, treat the new ask as a sub-task
+  >   under it (single TSK; both lines of work get the same spec)
+
+  On `[a]` — end the turn with a one-line note: "TSK-<id> still
+  active; finish it then re-ask." Operator continues the prior task.
+  On `[b]` — call `cairn_task_complete({task_id: <id>, outcome:
+  "aborted", summary: "pivoted to: <one-line summary of new ask>"})`,
+  then proceed to Step 1 for the new prompt.
+  On `[c]` — append the new ask as an additional bullet under the
+  existing spec's `## Goal` section via `Edit`, end the turn. The
+  operator continues with the augmented spec; reviewer will attest
+  both lines of work together.
 
 ## Hard contract — ONE CHECKPOINT, BLOCKING
 
@@ -283,5 +334,8 @@ it on future Reads.
 - When dispatching subagents OR implementing inline, instruct
   follow-up markers in source as `// TODO(TSK-<task_id>)` — never
   bare `TODO` (the citation scanner only resolves the cite form).
-- Caveman-ultra style for chat replies; spec file written in full
-  English.
+- Match the project's chat-reply voice from
+  `.cairn/ground/brand/voice.md` when present (Cairn's spec-delta
+  scan injects it into SessionStart context). Default to plain
+  English when the file is absent or empty. The spec file the skill
+  writes is always full English regardless of voice.

@@ -8,6 +8,13 @@ export { runSessionStartHook } from "./session-start.js";
 export { runSessionEndHook } from "./session-end.js";
 export { runStopHook } from "./stop.js";
 export { runUserPromptSubmitHook } from "./user-prompt-submit.js";
+export { runGcAutotriggerCheck } from "./gc-autotrigger.js";
+export type {
+  GcAutotriggerArgv,
+  GcAutotriggerOptions,
+  GcAutotriggerReason,
+  GcAutotriggerResult,
+} from "./gc-autotrigger.js";
 export {
   renderBypassHint,
   scanBypassedCommits,

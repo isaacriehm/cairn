@@ -23,7 +23,9 @@ import { runGcCanary, type GcCanaryResult } from "./canary.js";
 import { runCitationIntegrity } from "./citation-integrity.js";
 import { classifyAutoMerge } from "./classify.js";
 import { runCompletionIntegrity } from "./completion-integrity.js";
+import { runDocClaimsVsRuntime } from "./doc-claims.js";
 import { runDocGardening } from "./doc-gardening.js";
+import { runDocSourceDrift } from "./doc-source-drift.js";
 import { runFrontmatterFreshness } from "./frontmatter.js";
 import { runGeneratorDrift } from "./generator-drift.js";
 import { runQualityUpdate } from "./quality-update.js";
@@ -83,6 +85,8 @@ export async function runGcSweep(opts: RunGcSweepOptions): Promise<GcSweepResult
     "completion-integrity": 0,
     "citation-integrity": 0,
     "attested-commits-pruning": 0,
+    "doc-claims-vs-runtime": 0,
+    "doc-source-drift": 0,
   };
 
   // 1. Frontmatter freshness.
@@ -173,6 +177,22 @@ export async function runGcSweep(opts: RunGcSweepOptions): Promise<GcSweepResult
     const r = runAttestedCommitsGc({ repoRoot: opts.repoRoot });
     findings.push(...r.findings);
     passDurations["attested-commits-pruning"] = Date.now() - t0;
+  }
+
+  // 10. Doc-claims vs runtime drift.
+  {
+    const t0 = Date.now();
+    const r = runDocClaimsVsRuntime({ repoRoot: opts.repoRoot });
+    findings.push(...r.findings);
+    passDurations["doc-claims-vs-runtime"] = Date.now() - t0;
+  }
+
+  // 11. Doc-source drift — body of sot_kind=path DECs/INVs vs ground hash.
+  {
+    const t0 = Date.now();
+    const r = runDocSourceDrift({ repoRoot: opts.repoRoot });
+    findings.push(...r.findings);
+    passDurations["doc-source-drift"] = Date.now() - t0;
   }
 
   // Re-classify proposals against project globs (passes set defaults; this

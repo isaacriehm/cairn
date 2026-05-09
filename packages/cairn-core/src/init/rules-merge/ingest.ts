@@ -165,7 +165,7 @@ interface RuleConflictRecord {
   reasoning: string;
 }
 
-export interface RunRulesMergeResult {
+export interface RunRulesMergeRunResult {
   sources: RuleSourceFile[];
   sectionsTotal: number;
   classifications: RuleClassification[];
@@ -177,6 +177,13 @@ export interface RunRulesMergeResult {
   auditRelPath: string;
   kindCounts: Record<RuleClassKind, number>;
 }
+
+/** Phase was skipped because the repo is the Cairn source repo itself. */
+export interface RunRulesMergeSkippedResult {
+  readonly skipped: "self-adopt";
+}
+
+export type RunRulesMergeResult = RunRulesMergeRunResult | RunRulesMergeSkippedResult;
 
 /* -------------------------------------------------------------------------- */
 /* Schemas + prompts                                                          */

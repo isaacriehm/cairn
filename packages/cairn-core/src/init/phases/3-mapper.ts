@@ -19,8 +19,6 @@
 
 import { runMapper, type MapperResult } from "../mapper.js";
 import { clearProgress, writeProgress } from "../progress.js";
-import type { DetectionResult } from "../types.js";
-import type { RepoSummary } from "../walker.js";
 import {
   toMapperResultPersisted,
   writeMapperOutputFile,
@@ -29,8 +27,8 @@ import { advancePhase } from "./orchestrator.js";
 import type { PhaseResult, PhaseState } from "./types.js";
 
 export async function runPhase3Mapper(state: PhaseState): Promise<PhaseResult> {
-  const detection = state.outputs["1-detect"] as DetectionResult | undefined;
-  const summary = state.outputs["2-walker"] as RepoSummary | undefined;
+  const detection = state.outputs["1-detect"];
+  const summary = state.outputs["2-walker"];
   if (detection === undefined || summary === undefined) {
     return {
       status: "error",

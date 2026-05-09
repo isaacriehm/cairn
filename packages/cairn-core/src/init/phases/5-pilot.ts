@@ -14,14 +14,11 @@ import type {
   PhaseResult,
   PhaseState,
 } from "./types.js";
-import type { MapperResultPersisted } from "./mapper-output-io.js";
 
 const MAX_OPTIONS = 3;
 
 export async function runPhase5Pilot(state: PhaseState): Promise<PhaseResult> {
-  const mapper = state.outputs["3-mapper"] as
-    | MapperResultPersisted
-    | undefined;
+  const mapper = state.outputs["3-mapper"];
   if (mapper === undefined) {
     return {
       status: "error",

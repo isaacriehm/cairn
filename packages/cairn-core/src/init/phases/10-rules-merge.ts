@@ -8,10 +8,22 @@ import {
   type RunRulesMergeResult,
 } from "../rules-merge/index.js";
 import { clearProgress, writeProgress } from "../progress.js";
-import { advancePhase } from "./orchestrator.js";
+import { advancePhase, isSelfAdoptState } from "./orchestrator.js";
 import type { PhaseResult, PhaseState } from "./types.js";
 
 export async function runPhase10RulesMerge(state: PhaseState): Promise<PhaseResult> {
+  if (isSelfAdoptState(state)) {
+    const skipped: RunRulesMergeResult = { skipped: "self-adopt" as const };
+    const next: PhaseState = {
+      ...state,
+      outputs: { ...state.outputs, "10-rules-merge": skipped },
+    };
+    return {
+      status: "complete",
+      nextPhase: "11-baseline",
+      state: advancePhase(next),
+    };
+  }
   const startedAt = Date.now();
   try {
     const result: RunRulesMergeResult = await runRulesMerge({

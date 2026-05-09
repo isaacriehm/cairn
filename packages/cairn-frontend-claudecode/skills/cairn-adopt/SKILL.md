@@ -71,7 +71,7 @@ ingestion phases. Without it the operator stares at a frozen turn for
 minutes during 7b-source-comments. Detect whether the user-level config
 is already wired before asking; if it is, skip this step silently.
 
-Detect:
+Detect — wired iff the command contains the runtime-glob marker:
 
 ```bash
 node -e '
@@ -82,7 +82,7 @@ node -e '
   try{
     const s=JSON.parse(fs.readFileSync(p,"utf8"));
     const c=(s.statusLine&&s.statusLine.command)||"";
-    console.log(c.includes("isaacriehm-cairn")?"wired":"unwired");
+    console.log(c.includes("plugins/cache/*/.active-version-path")?"wired":"unwired");
   }catch{console.log("unreadable");}'
 ```
 
@@ -105,23 +105,27 @@ On `a` or `b`, run the patch (same logic as `/cairn-statusline-setup`
 Step 3 — re-implemented inline so the adopt loop doesn't depend on a
 sibling slash command):
 
-1. Verify the active-version-path shim exists:
+1. Verify the SessionStart shim exists at any plugin cache slug.
+   The hook writes to `~/.claude/plugins/cache/<slug>/.active-version-path`
+   where `<slug>` is whatever marketplace name Claude Code installed
+   the plugin under — locate via glob:
    ```bash
-   test -f ~/.claude/plugins/cache/isaacriehm-cairn/.active-version-path \
-     && echo OK || echo MISSING
+   ls -1t ~/.claude/plugins/cache/*/.active-version-path 2>/dev/null \
+     | head -1
    ```
-   On `MISSING`, surface a one-line note ("statusline patch needs the
-   plugin's SessionStart shim — re-run after the first session") and
-   continue to Step 2 anyway.
+   On empty output, surface a one-line note ("statusline patch needs
+   the plugin's SessionStart shim — re-run after the first session
+   completes") and continue to Step 2 anyway.
 
 2. Read `~/.claude/settings.json` (create with `{}` if missing). Use
    the `Edit` tool with the current file as `old_string` so other
-   top-level fields stay intact. Set `statusLine` to:
+   top-level fields stay intact. Set `statusLine` to the runtime-glob
+   command shape so plugin slug renames don't break it:
 
    ```json
    {
      "type": "command",
-     "command": "node \"$(cat ~/.claude/plugins/cache/isaacriehm-cairn/.active-version-path)\" status-line",
+     "command": "bash -c 'shim=$(ls -1t ~/.claude/plugins/cache/*/.active-version-path 2>/dev/null | head -1); [ -n \"$shim\" ] && node \"$(cat \"$shim\")\" status-line'",
      "refreshInterval": 30
    }
    ```
@@ -147,7 +151,22 @@ git rev-parse --is-inside-work-tree 2>/dev/null || true
 
 If the directory is not a git working tree, surface a one-line note +
 `AskUserQuestion` (`init git repo` / `abort`). On `init git repo`,
-run `git init` then continue. On `abort`, end the turn.
+run:
+
+```bash
+git init
+git config --local safe.directory "$(pwd)"
+git config --local core.fileMode false
+```
+
+The two `git config --local` calls are idempotent and silent if
+already set. They prevent the WSL-from-Windows `dubious ownership`
+error and avoid spurious mode-only diffs across cross-platform
+clones. Cairn's Phase 1 detect re-applies them automatically when
+WSL is detected (`process.platform === "linux"` AND `/proc/version`
+matches `Microsoft|WSL`), so an operator who skips this step still
+ends up with safe.directory + core.fileMode set. On `abort`, end
+the turn.
 
 The Claude binary is no longer required for adoption — the bundled
 plugin includes everything cairn needs. Do not check for `claude`
@@ -372,5 +391,8 @@ SessionStart banner re-prompts to resume.
   back in is `answer` for needs_input phases.
 - Never spawn a subagent to drive the pipeline loop. The skill is the
   orchestrator; nested agents lose the banner channel and burn tokens.
-- Caveman-ultra style for chat replies; full English in any code or
-  document the skill writes.
+- Match the project's chat-reply voice from
+  `.cairn/ground/brand/voice.md` when present (Cairn's spec-delta
+  scan injects it into SessionStart context). Default to plain
+  English when the file is absent or empty. Any code or document the
+  skill writes is always full English regardless of voice.

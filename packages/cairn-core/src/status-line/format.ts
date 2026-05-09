@@ -136,7 +136,27 @@ function renderSignal(
   const summary = summaryCounterText(s.event_counters);
   if (summary !== null) return summary;
 
+  // Idle heartbeat — flips the idle state from "silent = healthy" to
+  // "visible = healthy" so the operator never has to wonder whether
+  // Cairn is alive. Renders only when there is actual ground state in
+  // scope; on a fresh adoption with zero decisions the line stays
+  // minimal.
+  const heartbeat = renderIdleHeartbeat(s);
+  if (heartbeat !== null) return heartbeat;
+
   return null;
+}
+
+/**
+ * Idle heartbeat — `✓ <N>·<M>` where N = decisions in scope, M = §INV
+ * invariants in scope. Returns null when both counts are zero (a brand-
+ * new adoption where the load-bearing surfaces haven't filled yet).
+ */
+function renderIdleHeartbeat(s: StatusJson): string | null {
+  const dec = Math.max(0, s.decisions_in_scope ?? 0);
+  const inv = Math.max(0, s.invariants_in_scope ?? 0);
+  if (dec === 0 && inv === 0) return null;
+  return `✓ ${dec}·${inv}`;
 }
 
 export function formatStatus(

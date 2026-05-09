@@ -22,6 +22,7 @@ import {
   buildSessionStartContext,
 } from "../../session-start/index.js";
 import { inspectJoinState, runJoin } from "../../join/index.js";
+import { findCurrentActiveTask, readTaskJournal } from "../../tasks/index.js";
 import {
   resolveSessionId,
   ensureSessionDir,
@@ -46,26 +47,62 @@ import { spawn } from "node:child_process";
  * Sync the bundle entry point into the homedir shim so `cairn-lens`
  * (and any other external TUI tools) can find the CLI executable
  * regardless of where the plugin bundle is currently installed.
+ *
+ * Writes the shim under the marketplace slug derived from
+ * `CLAUDE_PLUGIN_ROOT` — `~/.claude/plugins/cache/<slug>/.active-version-path`.
+ * The statusline command uses a runtime glob to locate it, so plugin
+ * slug renames (forks, local-dev installs, alt marketplaces) work
+ * automatically with no hardcoded slug.
+ *
+ * `CLAUDE_PLUGIN_ROOT` not set → silent skip with explicit warning so
+ * the operator can diagnose via the SessionStart banner.
  */
 function syncActiveVersionShim(warnings: string[]): void {
   const pluginRoot = process.env["CLAUDE_PLUGIN_ROOT"];
-  if (typeof pluginRoot !== "string" || pluginRoot.length === 0) return;
+  if (typeof pluginRoot !== "string" || pluginRoot.length === 0) {
+    warnings.push(
+      "statusline_shim_skipped: CLAUDE_PLUGIN_ROOT not set (Claude Code did not inject env)",
+    );
+    return;
+  }
   const bundlePath = join(pluginRoot, "dist", "cli.mjs");
   if (!existsSync(bundlePath)) {
     warnings.push(`statusline_shim_skipped: bundle missing at ${bundlePath}`);
     return;
   }
-  const shimDir = join(homedir(), ".claude", "plugins", "cache", "isaacriehm-cairn");
+
+  const slug = pluginCacheSlug(pluginRoot);
+  if (slug === null) {
+    warnings.push(
+      `statusline_shim_skipped: CLAUDE_PLUGIN_ROOT not under ~/.claude/plugins/cache (${pluginRoot})`,
+    );
+    return;
+  }
+
+  const shimDir = join(homedir(), ".claude", "plugins", "cache", slug);
   const shimPath = join(shimDir, ".active-version-path");
   try {
     mkdirSync(shimDir, { recursive: true });
     writeFileSync(shimPath, `${bundlePath}\n`, "utf8");
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    warnings.push(
-      `statusline_shim_failed: ${message}`,
-    );
+    warnings.push(`statusline_shim_failed: ${message}`);
   }
+}
+
+/**
+ * Extract the marketplace slug from a plugin-root path. The cache
+ * layout is `<cacheRoot>/<slug>/<plugin-name>/<version>/`. Returns
+ * the segment immediately under `cache/` or null if the path doesn't
+ * look like a plugin cache.
+ */
+function pluginCacheSlug(pluginRoot: string): string | null {
+  const cacheRoot = join(homedir(), ".claude", "plugins", "cache");
+  if (!pluginRoot.startsWith(cacheRoot)) return null;
+  const rest = pluginRoot.slice(cacheRoot.length).replace(/^[\/\\]+/, "");
+  if (rest.length === 0) return null;
+  const parts = rest.split(/[\/\\]/).filter((p) => p.length > 0);
+  return parts.length > 0 ? (parts[0] ?? null) : null;
 }
 
 interface SessionStartShapeBOutput {
@@ -89,9 +126,14 @@ export async function runSessionStartHook(): Promise<void> {
 
   if (repoRoot === null) {
     // Repos NOT adopted: show the banner suggesting `cairn init` if it
-    // looks like a project root, else stay silent.
+    // looks like a project root, else stay silent. Surface any shim
+    // failures so the operator can diagnose statusline-install issues
+    // without having to be in an adopted project to see them.
     const banner = renderAdoptionBanner(cwdInput);
-    emitShapeB(banner, "SessionStart");
+    const shimNote = renderShimWarningsBanner(shimWarnings);
+    const additionalContext =
+      shimNote === null ? banner : `${banner}\n\n${shimNote}`;
+    emitShapeB(additionalContext, "SessionStart");
     return;
   }
 
@@ -190,10 +232,14 @@ export async function runSessionStartHook(): Promise<void> {
   }
 
   const bootstrapBanner = renderBootstrapBanner(repoRoot);
+  const resumeBanner = renderResumeBanner(repoRoot, sessionId);
+  const banners = [bootstrapBanner, resumeBanner].filter(
+    (b): b is string => b !== null,
+  );
   const additionalContext =
-    bootstrapBanner === null
+    banners.length === 0
       ? result.additionalContext
-      : `${bootstrapBanner}\n\n${result.additionalContext}`;
+      : `${banners.join("\n\n")}\n\n${result.additionalContext}`;
 
   appendTelemetry({
     repoRoot,
@@ -296,6 +342,83 @@ function renderBootstrapBanner(repoRoot: string): string | null {
     "Re-run manually: `node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" join`",
   );
   return lines.join("\n");
+}
+
+/**
+ * Render a resume banner when SessionStart detects an active task
+ * whose journal has entries from a different session. The fresh
+ * session is picking up cold after a `/clear` — surface the most
+ * recent journal entry + next-step + a `/cairn-resume <id>` hint so
+ * main Claude rebuilds context immediately.
+ *
+ * Returns null when no resume condition is met (no active task, no
+ * journal, all entries from the current session, or the journal is
+ * empty).
+ */
+function renderResumeBanner(
+  repoRoot: string,
+  sessionId: string,
+): string | null {
+  const taskId = findCurrentActiveTask(repoRoot);
+  if (taskId === null) return null;
+  const journal = readTaskJournal(repoRoot, taskId, "active");
+  if (journal.length === 0) return null;
+
+  // Resume only when at least one entry came from a DIFFERENT session.
+  // Same-session journal entries indicate continued work in-flight, not
+  // a cold-resume condition.
+  const fromOtherSession = journal.some(
+    (e) => e.session_id !== null && e.session_id !== sessionId,
+  );
+  if (!fromOtherSession) return null;
+
+  const lastEntry = journal[journal.length - 1];
+  if (lastEntry === undefined) return null;
+  const recent = journal.slice(-5);
+
+  const lines: string[] = [];
+  lines.push(`## Cairn — resuming \`${taskId}\` cold`);
+  lines.push("");
+  lines.push(
+    `An active task has journal entries from a prior session. Picking up where the last session left off.`,
+  );
+  lines.push("");
+  lines.push("**Recent journal:**");
+  for (const e of recent) {
+    lines.push(`- ${e.summary}`);
+  }
+  lines.push("");
+  if (lastEntry.next_step !== undefined && lastEntry.next_step.length > 0) {
+    lines.push(`**Next step:** ${lastEntry.next_step}`);
+    lines.push("");
+  }
+  lines.push(
+    `Call \`cairn_resume({ task_id: "${taskId}" })\` for the full payload (in-scope DECs/INVs, all journal entries).`,
+  );
+  return lines.join("\n");
+}
+
+/**
+ * Render a banner exposing shim-write failures so the operator sees
+ * the real cause when `/cairn-statusline-setup` later complains the
+ * shim is missing. Empty array → null (no surface).
+ */
+function renderShimWarningsBanner(warnings: string[]): string | null {
+  const lines = warnings.filter((w) => w.startsWith("statusline_shim"));
+  if (lines.length === 0) return null;
+  const out: string[] = [];
+  out.push("## Cairn — statusline shim issue");
+  out.push("");
+  out.push(
+    "The plugin's SessionStart hook tried to write the statusline shim and reported:",
+  );
+  out.push("");
+  for (const w of lines) out.push(`- \`${w}\``);
+  out.push("");
+  out.push(
+    "If `/cairn-statusline-setup` later says the shim is missing, this is the cause. Common fixes: confirm the plugin is enabled (`/plugin status`), check `CLAUDE_PLUGIN_ROOT` resolves, or rebuild the plugin bundle.",
+  );
+  return out.join("\n");
 }
 
 function looksLikeProjectRoot(dir: string): boolean {

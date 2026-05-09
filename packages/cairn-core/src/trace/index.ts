@@ -3,7 +3,7 @@
  *
  * Every cairn surface (Claude Code hooks, MCP tools, `claude --print`
  * subprocess calls, init phases) appends a single jsonl row per event
- * to `~/.local/cairn/trace/trace-<YYYY-MM-DD>.jsonl`. The `cairn trace`
+ * to `~/.cairn/trace/trace-<YYYY-MM-DD>.jsonl`. The `cairn trace`
  * CLI subcommand reads them back time-sorted across the most recent
  * day(s) so the operator can post-mortem an entire live session in one
  * pane.
@@ -38,7 +38,7 @@ export interface TraceEvent {
 }
 
 export function traceDir(): string {
-  return join(homedir(), ".local", "cairn", "trace");
+  return join(homedir(), ".cairn", "trace");
 }
 
 function todayFilename(now: Date): string {

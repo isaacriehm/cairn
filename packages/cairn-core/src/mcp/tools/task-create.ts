@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
 import { stringify as stringifyYaml } from "yaml";
 import type { McpContext } from "../context.js";
 import { requireBootstrap } from "../bootstrap-guard.js";
@@ -22,19 +23,24 @@ interface Input {
 }
 
 /**
- * Generate a `task_id` matching the regex
- * `^TSK-\d{4}-\d{2}-\d{2}-[a-z0-9-]+-\d{5}$`. The 5-digit millisecond
- * suffix collides only on same-millisecond invocations within the
- * same slug — which never happens in practice and would be caught by
- * the directory-already-exists check anyway.
+ * Generate a `task_id` matching the regex `^TSK-[a-z0-9-]+-[0-9a-f]{7}$`.
+ *
+ * Format: `TSK-<slug>-<7-hex>` where the 7-hex suffix is the first
+ * 7 chars of `sha256(slug + crypto.randomUUID())`. Stable, content-
+ * addressed, no counter file, no rollover. ~268M unique values per
+ * slug bucket; cross-slug collisions impossible because the slug is
+ * in the id.
+ *
+ * Rationale: operators don't manually check task numbers; if order
+ * matters, `ls .cairn/tasks/` sorts by mtime. Hash is the safer
+ * long-haul format.
  */
 function generateTaskId(slug: string): string {
-  const now = new Date();
-  const yyyy = String(now.getUTCFullYear());
-  const mm = String(now.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(now.getUTCDate()).padStart(2, "0");
-  const ms = String(now.getTime()).slice(-5).padStart(5, "0");
-  return `TSK-${yyyy}-${mm}-${dd}-${slug}-${ms}`;
+  const hash = createHash("sha256")
+    .update(`${slug}${randomUUID()}`, "utf8")
+    .digest("hex")
+    .slice(0, 7);
+  return `TSK-${slug}-${hash}`;
 }
 
 function renderInvariantId(id: string): string {

@@ -34,13 +34,12 @@ import { clearProgress, writeProgress } from "../progress.js";
 import { runRulesMerge, type RunRulesMergeResult } from "../rules-merge/index.js";
 import { runSourceCommentsIngestion } from "../source-comments/index.js";
 import type { ProjectGlobs } from "../../sensors/types.js";
-import type { MapperResultPersisted } from "./mapper-output-io.js";
 import {
   to7bResultPersisted,
   writeSourceCommentsWalkFile,
   type IngestSourceCommentsResultPersisted,
 } from "./source-comments-output-io.js";
-import { advancePhase } from "./orchestrator.js";
+import { advancePhase, isSelfAdoptState } from "./orchestrator.js";
 import type { PhaseId, PhaseResult, PhaseState } from "./types.js";
 
 const log = logger("init.phases.parallel-8910");
@@ -68,7 +67,34 @@ export async function runPhases8910Parallel(
     };
   }
 
-  const mapper = state.outputs["3-mapper"] as MapperResultPersisted | undefined;
+  // Self-adopt skip — Q11. Stamp empty outputs for all three phases
+  // and advance past 9 + 10 to 11-baseline so the pipeline mirrors
+  // the normal-path exit shape.
+  if (isSelfAdoptState(state)) {
+    const skippedDocs: IngestionResult = { skipped: "self-adopt" as const };
+    const skippedSrc: IngestSourceCommentsResultPersisted = { skipped: "self-adopt" as const };
+    const skippedRules: RunRulesMergeResult = { skipped: "self-adopt" as const };
+    let next: PhaseState = {
+      ...state,
+      outputs: {
+        ...state.outputs,
+        "8-docs-ingest": skippedDocs,
+        "9-source-comments": skippedSrc,
+        "10-rules-merge": skippedRules,
+      },
+    };
+    const skipTargets: PhaseId[] = ["8-docs-ingest", "9-source-comments", "10-rules-merge"];
+    for (const _ of skipTargets) {
+      next = advancePhase(next);
+    }
+    return {
+      status: "complete",
+      nextPhase: "11-baseline",
+      state: next,
+    };
+  }
+
+  const mapper = state.outputs["3-mapper"];
   const globs: ProjectGlobs = mapper
     ? {
         route_handler_globs: mapper.output.route_handler_globs,
@@ -78,7 +104,7 @@ export async function runPhases8910Parallel(
         off_limits: mapper.output.off_limits_globs,
       }
     : {};
-  const pilotOut = state.outputs["5-pilot"] as { picked?: string } | undefined;
+  const pilotOut = state.outputs["5-pilot"];
   const pilotModule =
     typeof pilotOut?.picked === "string" && pilotOut.picked.length > 0
       ? pilotOut.picked
@@ -178,12 +204,11 @@ export async function runPhases8910Parallel(
   for (const id of skipTargets) {
     const out = next.outputs[id];
     if (typeof out === "object" && out !== null) {
-      const obj = out as Record<string, unknown>;
-      if (obj["duration_ms"] === undefined) {
+      if (!("duration_ms" in out)) {
         // Approximate per-phase duration via the wall-clock divided
         // among the three phases — until each ingest function reports
         // its own duration, this is the best we can do.
-        obj["duration_ms"] = durationMs;
+        Object.assign(out, { duration_ms: durationMs });
       }
     }
   }

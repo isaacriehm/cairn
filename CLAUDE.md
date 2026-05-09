@@ -84,7 +84,8 @@ operator-private, OMIT IT — there is no "borderline" category.
 cairn/
 └── packages/
     ├── cairn/                       — umbrella + CLI bin (`cairn init/join/hook/...`)
-    ├── cairn-core/                  — state + context + MCP server + sensors + hook runners
+    ├── cairn-core/                  — MCP server + sensors + hook runners + init pipeline
+    ├── cairn-state/                 — ground-state schemas + low-level I/O
     ├── cairn-frontend-claudecode/   — Claude Code plugin (manifest + hooks + skills + agents + commands)
     └── cairn-lens/                  — VS Code / Cursor extension (.vsix)
 ```
@@ -103,8 +104,8 @@ Root-level pnpm scripts. No filter args, no package navigation, no bash loops.
 | `pnpm build`                  | Build all packages.                                           |
 | `pnpm typecheck`              | Typecheck all packages.                                       |
 | `pnpm clean`                  | Wipe `dist/` + `*.tsbuildinfo` across packages.               |
-| `pnpm smokes`                 | Run the 27-smoke gate. All must pass on a clean tree.         |
-| `pnpm smokes:all`             | Run every declared smoke (~41). Slower; pre-release sweep.    |
+| `pnpm smokes`                 | Run the 38-smoke gate. All must pass on a clean tree.         |
+| `pnpm smokes:all`             | Run every declared smoke (~46). Slower; pre-release sweep.    |
 | `pnpm smoke:llm-prompt-eval`  | Opt-in real-Haiku regression smoke (burns quota — see below). |
 | `pnpm version:check`          | Verify package versions in sync.                              |
 | `pnpm release:patch\|minor\|major` | Bump versions across the workspace.                      |

@@ -103,6 +103,62 @@ export const taskCreateInput = {
   needs_review: z.boolean().optional(),
 };
 
+/**
+ * `cairn_task_journal_append` — append a per-turn journal entry. The
+ * journal is the resume-layer record that survives `/clear`. `task_id`
+ * defaults to the most-recently-touched active task.
+ */
+export const taskJournalAppendInput = {
+  task_id: z
+    .string()
+    .regex(/^TSK-[a-z0-9-]+-[0-9a-f]{7}$/, "task id must match TSK-<slug>-<7-hex>")
+    .optional(),
+  summary: z
+    .string()
+    .min(1)
+    .max(160, "summary must be ≤160 chars (one-liner)"),
+  next_step: z
+    .string()
+    .max(160, "next_step must be ≤160 chars (one-liner)")
+    .optional(),
+  files_touched: z.array(z.string().min(1)).max(20).optional(),
+  decisions_loaded: z
+    .array(z.string().regex(/^DEC-[0-9a-f]{7,}$/))
+    .max(20)
+    .optional(),
+  /** Claude Code session id of the writer, if known. Stamped into the entry. */
+  session_id: z.string().optional(),
+};
+
+/**
+ * `cairn_resume` — read the resume payload for an active task.
+ */
+export const resumeInput = {
+  task_id: z
+    .string()
+    .regex(/^TSK-[a-z0-9-]+-[0-9a-f]{7}$/, "task id must match TSK-<slug>-<7-hex>")
+    .optional(),
+  max_entries: z.number().int().min(1).max(50).optional(),
+};
+
+/**
+ * `cairn_task_complete` — graduate an active task to a terminal phase
+ * (succeeded / failed / aborted). Format: `TSK-<slug>-<7-hex>`.
+ */
+export const taskCompleteInput = {
+  task_id: z
+    .string()
+    .regex(
+      /^TSK-[a-z0-9-]+-[0-9a-f]{7}$/,
+      "task id must match TSK-<slug>-<7-hex>",
+    ),
+  outcome: z.enum(["succeeded", "failed", "aborted"]),
+  summary: z
+    .string()
+    .max(500, "summary must be ≤500 chars (one sentence is plenty)")
+    .optional(),
+};
+
 export const recordDecisionInput = {
   id: z.string().regex(/^DEC-[0-9a-f]{7,}$/).optional(),
   slug: z.string().optional(),

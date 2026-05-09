@@ -32,7 +32,9 @@ export type GcPassId =
   | "scope-coverage"
   | "completion-integrity"
   | "citation-integrity"
-  | "attested-commits-pruning";
+  | "attested-commits-pruning"
+  | "doc-claims-vs-runtime"
+  | "doc-source-drift";
 
 export type GcFindingKind =
   | "frontmatter_stale"
@@ -48,7 +50,11 @@ export type GcFindingKind =
   | "orphaned_citation"
   | "stale_citation"
   | "quality_grades_rebuilt"
-  | "superseded_citation";
+  | "superseded_citation"
+  | "doc_claim_drift"
+  | "doc_source_drift"
+  | "sot_missing"
+  | "sot_anchor_missing";
 
 export type GcAutoMergeClass = "safe" | "code" | "high-stakes";
 

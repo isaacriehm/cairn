@@ -16,7 +16,7 @@ Claude Code plugin is the primary surface that adopters interact with; the
 CLI provides bootstrap and debug entrypoints. Everything else is built on
 top of a curated, queryable ground state at `.cairn/ground/`.
 
-## §1 Three layers, four packages
+## §1 Three layers, five packages
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐
@@ -35,12 +35,12 @@ top of a curated, queryable ground state at `.cairn/ground/`.
                                          │
 ┌────────────────────────────────────────▼───────────────────────────┐
 │  CORE (state + context)                                            │
-│    cairn-core — `.cairn/ground/` writers, MCP server, sensors,     │
-│                 hook runners, init wizard, GC drift sweep,         │
-│                 decision-capture (id allocator only),              │
-│                 source-comment + rules-merge ingestion,            │
-│                 multi-dev install, claude subprocess wrapper.      │
-│                 The Cairn.                                         │
+│    cairn-core  — MCP server, sensors, hook runners, init wizard,   │
+│                  GC drift sweep, decision-capture (id allocator),  │
+│                  source-comment + rules-merge ingestion,           │
+│                  multi-dev install, claude subprocess wrapper.     │
+│    cairn-state — ground-state schemas + cached read-only I/O.      │
+│                  Imported by cairn-core and cairn-lens.            │
 └────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -82,10 +82,11 @@ What lives here:
 - `ground/` — `.cairn/ground/` schema + writers. Decisions ledger,
   invariants ledger, manifest, canonical-map, scope-index, drift events,
   frontmatter parsing, glob matching.
-- `mcp/` — MCP server. 25 typed tools (read, write-locked write,
+- `mcp/` — MCP server. 29 typed tools (read, write-locked write,
   history-summarizer, init-phase orchestration, attention queue
-  drains). Bootstrap-guard wraps every write tool with the
-  `BOOTSTRAP_REQUIRED` envelope when a clone is unbootstrapped.
+  drains, task lifecycle, resume layer). Bootstrap-guard wraps every
+  write tool with the `BOOTSTRAP_REQUIRED` envelope when a clone is
+  unbootstrapped.
 - `hooks/` — hook runner functions called by both the CLI subcommand
   (`cairn hook <event>`) and the bin entrypoints under `dist/hooks/`.
   SessionStart, SessionEnd, Stop, PostToolUse[Read|Grep|Glob|Write|Edit].
@@ -140,6 +141,15 @@ commands (`/cairn-init`, `/cairn-direction`).
 
 Hover provider, inlay hints, CodeLens for inline §INV references and DEC
 links. Read-only consumer of the same ground state.
+
+### 3.5 `cairn-state` — ground-state schemas + low-level I/O
+
+Lightweight package that holds the Zod schemas for `.cairn/ground/`
+(decisions, invariants, manifest, canonical-map, scope-index), path
+resolution helpers for `.cairn/`, cached ledger and task readers, and
+the decoupled logger interface. Imported by `cairn-core` and
+`cairn-lens` so the ground-state contract is one shared module — no
+reimplementation across consumers.
 
 ## §4 The MCP surface — Cairn's public API
 

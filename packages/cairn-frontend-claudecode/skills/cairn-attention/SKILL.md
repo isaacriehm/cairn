@@ -21,8 +21,14 @@ Before surfacing any DEC choices, verify the clone is bootstrapped.
 SessionStart auto-runs `cairn join` when `core.hooksPath` is unset,
 so by the time this skill engages bootstrap should be wired. If
 `cairn_resolve_attention` still refuses with `BOOTSTRAP_REQUIRED`,
-SessionStart's auto-bootstrap failed — surface its banner (already
-in additionalContext) and end the turn.
+SessionStart's auto-bootstrap failed — call `cairn_bootstrap_retry`
+once to retry inline. On `ok: true`, fall through to Step 0.3. On
+`ok: false`, surface the `failed_steps` list to the operator and
+end the turn (the `remediation` field of the error envelope cites
+this same tool plus a Claude Code restart as the recovery paths).
+Never reference `cli.mjs` or `cairn join` directly in the chat
+surface — Plugin spec §11 forbids exposing CLI subcommands to the
+operator.
 
 ## Step 0.3 — large-queue routing (browser triage GUI)
 
@@ -412,5 +418,8 @@ redundant.
   invocation until resolved — make that visible in the surface text.
 - Never render an inline `[a]/[b]/[c]` blockquote for a question that
   also goes through `AskUserQuestion`. Pick one render path.
-- Caveman-ultra style for chat replies; full English in any DEC body
-  the skill writes.
+- Match the project's chat-reply voice from
+  `.cairn/ground/brand/voice.md` when present (Cairn's spec-delta
+  scan injects it into SessionStart context). Default to plain
+  English when the file is absent or empty. Any DEC body the skill
+  writes is always full English regardless of voice.

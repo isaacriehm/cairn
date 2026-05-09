@@ -40,11 +40,27 @@ export type {
   CompletionIntegrityOptions,
   CompletionIntegrityResult,
 } from "./completion-integrity.js";
+export { runDocClaimsVsRuntime } from "./doc-claims.js";
+export type {
+  DocClaimKind,
+  DocClaimsOptions,
+  DocClaimsResult,
+  RuntimeTruth as DocClaimsRuntimeTruth,
+} from "./doc-claims.js";
 export { runDocGardening } from "./doc-gardening.js";
 export type {
   DocGardeningOptions,
   DocGardeningResult,
 } from "./doc-gardening.js";
+export {
+  extractSectionByAnchor,
+  runDocSourceDrift,
+  slugifyHeading,
+} from "./doc-source-drift.js";
+export type {
+  DocSourceDriftOptions,
+  DocSourceDriftResult,
+} from "./doc-source-drift.js";
 export {
   runFrontmatterFreshness,
 } from "./frontmatter.js";

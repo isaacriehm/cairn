@@ -72,14 +72,14 @@ export function requireBootstrap(repoRoot: string): McpErrorPayload | null {
     .map((s) => `${s.step}: ${s.detail}`);
   return mcpError(
     "BOOTSTRAP_REQUIRED",
-    "this clone is not bootstrapped and `cairn join` auto-attempt failed — see failed_steps for the underlying cause",
+    "this clone is not bootstrapped and the auto-bootstrap retry failed — see failed_steps for the underlying cause",
     {
       project_cairn_version: state.projectCairnVersion,
       hooks_path_value: state.hooksPathValue,
       sessions_dir_ready: state.sessionsDirReady,
       failed_steps: failedSteps,
       remediation:
-        "Re-run manually: `node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" join` (or restart Claude Code so SessionStart's bootstrap path retries)",
+        "Invoke the `cairn_bootstrap_retry` MCP tool to retry inline, or restart Claude Code so SessionStart's bootstrap path retries.",
     },
   );
 }

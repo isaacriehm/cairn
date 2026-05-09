@@ -109,7 +109,21 @@ async function main(): Promise<void> {
   assert(isMcpError(r3), "blocked result is mcpError");
   if (isMcpError(r3)) {
     assert(r3.error.code === "BOOTSTRAP_REQUIRED", "code = BOOTSTRAP_REQUIRED");
-    assert(r3.error.message.includes("cairn join"), "message cites cairn join");
+    assert(
+      r3.error.message.includes("auto-bootstrap"),
+      "message cites auto-bootstrap retry failure",
+    );
+    const detailsRecord = r3.error.details as Record<string, unknown> | undefined;
+    const remediation = detailsRecord?.["remediation"];
+    assert(
+      typeof remediation === "string" &&
+        remediation.includes("cairn_bootstrap_retry"),
+      "remediation cites cairn_bootstrap_retry MCP tool, not a CLI subcommand",
+    );
+    assert(
+      typeof remediation === "string" && !remediation.includes("cli.mjs"),
+      "remediation must NOT expose CLI subcommand path",
+    );
   }
   console.log("  ✓ Step 3 — adopted clone blocked");
 

@@ -63,6 +63,19 @@ export function resumePhases(repoRoot: string): ResumeReport {
 }
 
 /**
+ * Self-adoption flag check. True when Phase 1 detect set
+ * `outputs["1-detect"].is_self_adopt = true` because the operator is
+ * dogfooding Cairn against its own source repo via the
+ * `CAIRN_SELF_ADOPT=1` escape hatch. Phases 8 / 9 / 10 / 12 read this
+ * and short-circuit so the recursive-ingest scenario (Cairn's own
+ * docs / source comments / CLAUDE.md / essay-class block strip)
+ * never runs against the source tree.
+ */
+export function isSelfAdoptState(state: PhaseState): boolean {
+  return state.outputs["1-detect"]?.is_self_adopt === true;
+}
+
+/**
  * Compute the phase id that follows `current` in PHASE_IDS, or null
  * when `current` is already the last id. Pure function — useful from
  * inside individual phase functions when stamping their PhaseResult.

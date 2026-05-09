@@ -12,13 +12,15 @@ compact one-line badge in the prompt's status row:
 ⬡ cairn  [signal]  [ctx-meter pct%]
 ```
 
-Signal priority (first match wins, blank when nothing applies):
+Signal priority (first match wins):
 
+- `⏳ adopt <phase> X/Y (P%) ~Nm` — live during cairn-adopt long phases
 - `⚠ N unattested` — bypass commits since cairn init
-- `⚑ N draft[s]` — pending decision drafts in attention queue
+- `⚑ N pending` — pending decision drafts in attention queue
 - `◐ gc` — GC sweep in progress
-- `TSK-NNNN <title>` — active task in flight
-- (idle) — blank; just brand + ctx meter
+- `TSK-... <title>` — active task in flight
+- `✓ N·M` — **idle heartbeat** showing N decisions and M invariants in scope (positive signal that Cairn is alive)
+- (empty) — fresh adoption with no ground state yet; just brand + ctx meter
 
 ## Step 1 — surface the inline prompt
 
@@ -33,62 +35,75 @@ Render via `AskUserQuestion`:
 ## Step 2 — locate the shim file
 
 The plugin's SessionStart hook writes the bundle's current path to
-`~/.claude/plugins/cache/isaacriehm-cairn/.active-version-path` on
-every session open. The shim file is a single line: the absolute
-path to the active `dist/cli.mjs`.
-
-Verify it exists:
+`~/.claude/plugins/cache/<slug>/.active-version-path` on every session
+open, where `<slug>` is the marketplace name Claude Code installed the
+plugin under. The shim is a single line: the absolute path to the
+active `dist/cli.mjs`. Locate it via glob — never hardcode the slug:
 
 ```bash
-test -f ~/.claude/plugins/cache/isaacriehm-cairn/.active-version-path \
-  && echo OK \
-  || echo MISSING
+ls -1t ~/.claude/plugins/cache/*/.active-version-path 2>/dev/null \
+  | head -1
 ```
 
-If `MISSING`, the plugin hasn't run a SessionStart yet for this
-project — surface:
+If empty, the plugin's SessionStart hook hasn't fired even once for
+the current install. Surface this enumerated cause list:
 
-> Cairn's plugin hasn't fired SessionStart yet on this project. Open
-> Claude Code in a cairn-adopted repo first; the shim file appears
-> after the first session. Re-run this command afterward.
+> Cairn shim not found at any `~/.claude/plugins/cache/*/` path. Likely
+> causes:
+>
+> 1. The plugin isn't installed or isn't enabled — run `/plugin status`
+>    and confirm `cairn` is active.
+> 2. The plugin is installed but SessionStart hasn't fired yet for it
+>    — `/exit` and reopen Claude Code, then re-run this command.
+> 3. The bundle is missing — check
+>    `<plugin-root>/dist/cli.mjs`. If absent, rebuild the plugin
+>    (`pnpm --filter @isaacriehm/cairn-frontend-claudecode build`) or
+>    reinstall via `/plugin install cairn@isaacriehm-cairn`.
+> 4. `CLAUDE_PLUGIN_ROOT` env var was not injected. Older Claude Code
+>    versions did not set it on every hook — upgrade Claude Code.
+>
+> The SessionStart hook also surfaces a banner with the underlying
+> failure — open a session in any directory and look for
+> `## Cairn — statusline shim issue`.
 
 End the turn.
 
 ## Step 3 — patch user settings.json
 
 Read `~/.claude/settings.json` (create with `{}` if missing). Set the
-`statusLine` entry to:
+`statusLine` entry. The command uses a runtime glob so plugin slug
+renames don't break it:
 
 ```json
 {
   "statusLine": {
     "type": "command",
-    "command": "node \"$(cat ~/.claude/plugins/cache/isaacriehm-cairn/.active-version-path)\" status-line",
+    "command": "bash -c 'shim=$(ls -1t ~/.claude/plugins/cache/*/.active-version-path 2>/dev/null | head -1); [ -n \"$shim\" ] && node \"$(cat \"$shim\")\" status-line'",
     "refreshInterval": 30
   }
 }
 ```
 
-The `refreshInterval: 30` keeps the badge live during long subagent
-runs — without it the row goes stale because main-session events
-don't tick while a subagent is in flight.
+The `bash -c` wrapper resolves the most-recently-written shim across
+any plugin slug. `refreshInterval: 30` keeps the badge live during long
+subagent runs.
 
-Preserve any other top-level fields. Use the `Edit` tool with the
-existing file content as `old_string` to do the merge atomically.
+Preserve any other top-level fields in `~/.claude/settings.json`. Use
+the `Edit` tool with the existing file content as `old_string` to do
+the merge atomically.
 
 ## Step 4 — confirm + suggest restart
 
 > Statusline configured. Restart Claude Code to see the badge appear.
-> Idle sessions show `⬡ cairn  [ctx pct%]`; mid-flight tasks render
-> `TSK-NNNN <title>`; pending attention adds `⚑ N draft[s]`; bypass
-> commits add `⚠ N unattested`.
+> Idle sessions show `⬡ cairn  ✓ <N>·<M>  [ctx pct%]`; mid-flight
+> tasks render `TSK-... <title>`; pending attention adds
+> `⚑ N pending`; bypass commits add `⚠ N unattested`.
 
 ## Hard rules
 
-- Never hardcode the plugin's version-specific cache path
-  (e.g. `~/.claude/plugins/cache/isaacriehm-cairn/cairn/0.2.0/`).
-  Plugin upgrades change the version dir; the shim file abstracts
-  that away.
+- **Never hardcode a specific plugin slug** in the statusline command.
+  Slug renames break hardcoded paths; the runtime glob resolves
+  whatever shim is freshest.
 - Never modify `~/.claude/settings.json` outside the `statusLine`
   field. Other fields are operator-owned.
 - The command is idempotent — re-running rewrites the same `statusLine`

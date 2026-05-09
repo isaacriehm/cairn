@@ -63,4 +63,13 @@ export interface DetectionResult {
   environment: {
     claude_auth: boolean;
   };
+  /**
+   * True only when the operator is dogfooding Cairn against its own
+   * source repo via the `CAIRN_SELF_ADOPT=1` escape hatch (Phase 1
+   * detect sets this; otherwise the guard refuses adoption). Phases
+   * 8 / 9 / 10 / 12 short-circuit when this is true so the recursive-
+   * ingest scenario (Cairn's own docs / source comments / CLAUDE.md /
+   * essay-class block strip) never runs against the source tree.
+   */
+  is_self_adopt?: boolean;
 }

@@ -146,7 +146,7 @@ export interface ClassifiedDoc {
   errorMessage?: string;
 }
 
-export interface IngestionResult {
+export interface IngestionRunResult {
   /** Verbatim DEC drafts written under `_inbox/`. */
   decsWritten: { id: string; path: string; sourceFile: string; slug: string }[];
   /** Topic-index entries skipped at Stage 4 (with reason). */
@@ -171,6 +171,13 @@ export interface IngestionResult {
    */
   unpromotedCandidates: number;
 }
+
+/** Phase was skipped because the repo is the Cairn source repo itself. */
+export interface IngestionSkippedResult {
+  readonly skipped: "self-adopt";
+}
+
+export type IngestionResult = IngestionRunResult | IngestionSkippedResult;
 
 export interface ChunkProgressRow {
   chunksDone: number;
@@ -604,8 +611,8 @@ export async function runDocsIngestion(
   ];
 
   let updatedTopicIndex = topicIndex;
-  const decsWritten: IngestionResult["decsWritten"] = [];
-  const skipped: IngestionResult["skipped"] = [];
+  const decsWritten: IngestionRunResult["decsWritten"] = [];
+  const skipped: IngestionRunResult["skipped"] = [];
 
   for (const { ctx, cls } of finalEmits) {
     const sot_path = entryToSotPath(ctx.entry);
@@ -929,7 +936,7 @@ function countUnpromoted(topicIndex: TopicIndex): number {
   return n;
 }
 
-function zeroResult(scanned: number, topicIndex: TopicIndex): IngestionResult {
+function zeroResult(scanned: number, topicIndex: TopicIndex): IngestionRunResult {
   return {
     decsWritten: [],
     skipped: [],

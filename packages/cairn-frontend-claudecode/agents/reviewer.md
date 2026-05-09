@@ -1,11 +1,13 @@
 ---
 name: reviewer
-description: Spawned LAST in multi-chunk Cairn tasks. Reads diff + per-subagent attestations + sensor findings, drafts DECs from non-obvious decisions, writes the task's attestation.yaml.
+description: Spawned LAST in multi-chunk Cairn tasks. Attests the diff, drafts DECs, writes attestation.yaml, calls cairn_task_complete.
 tools:
   - Bash
   - Read
   - Glob
   - Grep
+  - mcp__plugin_cairn_cairn__cairn_record_decision
+  - mcp__plugin_cairn_cairn__cairn_task_complete
 ---
 
 # Reviewer subagent
@@ -130,6 +132,34 @@ remaining_concerns: [<short bullets — flagged for operator>]
 Write to `.cairn/tasks/active/<task_id>/attestation.yaml` (single
 file at the task root — Stop hook checks this exact path).
 
+### Step 6.5 — graduate the task (REQUIRED)
+
+After `attestation.yaml` is on disk, call `cairn_task_complete` to
+move the task to its terminal state:
+
+```jsonc
+cairn_task_complete({
+  task_id: "<task_id>",
+  outcome: "succeeded",  // or "failed" if sensor_status === "failed" / blocking concerns
+  summary: "<≤500 chars — one-sentence wrap of what landed>"
+})
+```
+
+The tool writes terminal phase to `status.yaml` and moves the task
+directory to `.cairn/tasks/done/<task_id>/`. **This is the only path
+that completes a task.** If you skip it, the Stop hook's
+auto-graduator will pick up the missing transition on the next tick
+(the task-root attestation.yaml is the signal), but explicit calls
+keep the operator's status-line accurate immediately.
+
+Outcomes:
+- `succeeded` — sensors passed, no blocking concerns, work matches spec.
+- `failed` — sensor failures the operator must address, or the work
+  did not pass acceptance criteria.
+- `aborted` — the task was abandoned mid-flight (rare for the
+  reviewer path; usually the cairn-direction skill calls this on a
+  pivot before the reviewer fires).
+
 ### Step 7 — return summary
 
 Reply to main Claude with:
@@ -164,5 +194,7 @@ the operator can drill in via `/cairn-attention` if drafts surface.
   it under `remaining_concerns`. Do NOT add `// TODO(TSK-<id>)` cites
   yourself — reviewer is read-only on the working tree. The operator
   decides whether to spawn a follow-up task on the next pass.
-- Caveman-ultra style for the summary reply; full English in the
-  attestation.yaml body.
+- Match the project's chat-reply voice from
+  `.cairn/ground/brand/voice.md` when present. Default to plain
+  English when the file is absent or empty. The `attestation.yaml`
+  body the agent writes is always full English regardless of voice.

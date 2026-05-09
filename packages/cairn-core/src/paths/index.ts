@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
-const CAIRN_HOME_ROOT = ".local/cairn";
+const CAIRN_HOME_ROOT = ".cairn";
 
 export type ProjectName = string;
 

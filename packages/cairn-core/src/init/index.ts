@@ -91,10 +91,30 @@ export type {
   DocClassificationKind,
   FileFilterVerdict,
   IngestionResult,
+  IngestionRunResult,
+  IngestionSkippedResult,
   RunDocsIngestionArgs,
 } from "./ingest-docs.js";
 export { runInit } from "./init.js";
 export type { InitResult, RunInitArgs } from "./init.js";
+export { applyPostInitGitConfig, detectWsl } from "./post-git-init.js";
+export type {
+  GitRunResult,
+  GitRunner,
+  PostGitInitOptions,
+  PostGitInitResult,
+  WslDetectOptions,
+} from "./post-git-init.js";
+export {
+  SKILL_BUDGET_FLOOR,
+  ensureSkillBudgetFloor,
+  settingsJsonPath,
+} from "./skill-budget.js";
+export type {
+  EnsureSkillBudgetOptions,
+  EnsureSkillBudgetOutcome,
+  EnsureSkillBudgetResult,
+} from "./skill-budget.js";
 export {
   buildMapperUserPrompt,
   MAPPER_OUTPUT_SCHEMA,

@@ -17,6 +17,7 @@ import {
   buildInvariantsLedger,
   matchAnyGlob,
 } from "@isaacriehm/cairn-state";
+import { VERSION } from "../index.js";
 import { normalizeProjectName } from "../paths/index.js";
 import { z } from "zod";
 
@@ -61,6 +62,7 @@ export function runDoctor(opts: { repoRoot: string }): DoctorReport {
   // 1. Core checks (adoption state)
   checks.push(checkCairnDir(opts.repoRoot));
   checks.push(checkWorkflowMd(opts.repoRoot));
+  checks.push(checkCairnVersion(opts.repoRoot));
 
   // 2. Ground state
   checks.push(checkScopeIndex(opts.repoRoot));
@@ -99,6 +101,62 @@ function checkCairnDir(repoRoot: string): DoctorCheck {
     label: ".cairn/",
     status: "ok",
     detail: "present",
+  };
+}
+
+function checkCairnVersion(repoRoot: string): DoctorCheck {
+  const path = join(repoRoot, ".cairn", "config.yaml");
+  if (!existsSync(path)) {
+    return {
+      group: "core",
+      label: "cairn version",
+      status: "warn",
+      detail: ".cairn/config.yaml missing — cannot verify version pin",
+      fixCommand: "cairn init --force",
+    };
+  }
+  let projectVersion: string | null = null;
+  try {
+    const parsed: unknown = parseYaml(readFileSync(path, "utf8"));
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "cairn_version" in parsed
+    ) {
+      const v = (parsed as Record<string, unknown>)["cairn_version"];
+      if (typeof v === "string" && v.length > 0) projectVersion = v;
+    }
+  } catch {
+    return {
+      group: "core",
+      label: "cairn version",
+      status: "warn",
+      detail: ".cairn/config.yaml unreadable — cannot verify version pin",
+    };
+  }
+  if (projectVersion === null) {
+    return {
+      group: "core",
+      label: "cairn version",
+      status: "warn",
+      detail: ".cairn/config.yaml missing cairn_version key — re-run init",
+      fixCommand: "cairn init --force",
+    };
+  }
+  if (projectVersion !== VERSION) {
+    return {
+      group: "core",
+      label: "cairn version",
+      status: "warn",
+      detail: `running cairn ${VERSION}; project pinned to ${projectVersion} — sensor schemas may not match`,
+      fixCommand: `npm install -g @isaacriehm/cairn@${projectVersion}`,
+    };
+  }
+  return {
+    group: "core",
+    label: "cairn version",
+    status: "ok",
+    detail: `${VERSION} matches project pin`,
   };
 }
 

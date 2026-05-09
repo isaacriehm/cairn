@@ -60,7 +60,7 @@ graph TB
 
   subgraph "On-disk state"
     Cairn[".cairn/ — repo state"]
-    Local["~/.local/cairn/trace/ — global"]
+    Local["~/.cairn/trace/ — global"]
   end
 
   subgraph "External"
@@ -218,7 +218,7 @@ sequenceDiagram
 ├── init-state.json                      written by: each init phase (resume cursor)
 └── .attested-commits                    seeded Phase 3b, appended on commit-msg hook
 
-~/.local/cairn/trace/
+~/.cairn/trace/
 └── trace-YYYY-MM-DD.jsonl               written by: every hook + MCP tool + claude --print subprocess
 ```
 

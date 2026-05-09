@@ -295,7 +295,7 @@ A consolidated map of where everything lives.
 ### Per-machine (outside repo)
 
 ```
-~/.local/cairn/
+~/.cairn/
 ├── trace/
 │   └── trace-YYYY-MM-DD.jsonl                     unified trace log (every hook + tool + subprocess)
 ├── repos/<project-slug>/                          mirror checkout (reserved for future)

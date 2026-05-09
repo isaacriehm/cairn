@@ -33,6 +33,17 @@ import {
 } from "../../session/index.js";
 import { writeStatusJson } from "../../status-line/index.js";
 import {
+  completeTask,
+  findCurrentActiveTask,
+  readTaskAttestationState,
+  transitionTaskPhase,
+} from "../../tasks/index.js";
+import {
+  checkContextThreshold,
+  renderContextThresholdHint,
+} from "./context-threshold.js";
+import { runGcAutotriggerCheck } from "./gc-autotrigger.js";
+import {
   emitShapeB,
   parseHookPayload,
   readHookStdin,
@@ -79,6 +90,8 @@ export async function runStopHook(): Promise<void> {
   const raw = await readHookStdin();
   const payload = parseHookPayload(raw);
   const sessionId = typeof payload.session_id === "string" ? payload.session_id : null;
+  const transcriptPath =
+    typeof payload.transcript_path === "string" ? payload.transcript_path : null;
   const cwdInput = typeof payload.cwd === "string" ? payload.cwd : process.cwd();
   const repoRoot = resolveRepoRoot(cwdInput);
   const warnings: string[] = [];
@@ -118,6 +131,20 @@ export async function runStopHook(): Promise<void> {
 
     if (!initInProgress) {
       try {
+        const grad = autoGraduateTasks(repoRoot);
+        if (grad.completed.length > 0) {
+          warnings.push(`auto_graduated_completed:${grad.completed.length}`);
+        }
+        if (grad.transitioned.length > 0) {
+          warnings.push(`auto_graduated_review_ready:${grad.transitioned.length}`);
+        }
+      } catch (err) {
+        warnings.push(
+          `auto_graduate_failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+
+      try {
         pendingReviews = scanPendingReviews(repoRoot);
         if (pendingReviews.length > 0) {
           const reviewDefer = readDeferState(repoRoot, "review");
@@ -136,6 +163,30 @@ export async function runStopHook(): Promise<void> {
       } catch (err) {
         warnings.push(
           `pending_review_scan_failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+
+      // Context-threshold check — fires inline AskUserQuestion prompt
+      // when the transcript token estimate crosses the configured
+      // window fraction. Stamps `ctx-threshold-warned.json` on hit so
+      // re-fires are suppressed until usage climbs another +10 %.
+      try {
+        if (sessionId !== null && sessionId.length > 0 && transcriptPath !== null) {
+          const ctxResult = checkContextThreshold({
+            transcriptPath,
+            repoRoot,
+            sessionId,
+          });
+          if (ctxResult.hit) {
+            const taskId = findCurrentActiveTask(repoRoot);
+            const hint = renderContextThresholdHint(ctxResult, taskId);
+            reason = reason.length > 0 ? `${reason}\n\n${hint}` : hint;
+            warnings.push(`ctx_threshold_hit:${ctxResult.pct}%`);
+          }
+        }
+      } catch (err) {
+        warnings.push(
+          `ctx_threshold_failed: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
 
@@ -160,6 +211,19 @@ export async function runStopHook(): Promise<void> {
       } catch (err) {
         warnings.push(
           `bypass_scan_failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+
+      try {
+        const gc = runGcAutotriggerCheck({ repoRoot });
+        if (gc.triggered) {
+          warnings.push(`gc_autotriggered:${gc.reason}`);
+        } else if (gc.reason !== "fresh") {
+          warnings.push(`gc_autotrigger_skipped:${gc.reason}`);
+        }
+      } catch (err) {
+        warnings.push(
+          `gc_autotrigger_failed: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
     }
@@ -293,6 +357,75 @@ function scanPendingReviews(repoRoot: string): PendingReview[] {
     });
   }
   return out;
+}
+
+/**
+ * Auto-graduate active tasks based on attestation presence.
+ *
+ * Rules (only acts on tasks with phase=running):
+ *   1. Task-root `attestation.yaml` exists                     → succeeded → tasks/done/
+ *      (reviewer subagent attested; nothing more to do)
+ *   2. ≥1 subagents/<id>/attestation.yaml AND needs_review=false → succeeded → tasks/done/
+ *      (trivial task, no reviewer scheduled)
+ *   3. ≥1 subagents/<id>/attestation.yaml AND needs_review=true  → ready_for_review
+ *      (reviewer hasn't run yet — `scanPendingReviews` will surface a hint)
+ *
+ * Tasks with no attestation activity stay `running` — they're either
+ * still in flight or stalled (Q4 surfaces stall detection separately).
+ */
+function autoGraduateTasks(
+  repoRoot: string,
+): { completed: string[]; transitioned: string[] } {
+  const activeDir = join(repoRoot, ".cairn", "tasks", "active");
+  const result = { completed: [] as string[], transitioned: [] as string[] };
+  if (!existsSync(activeDir)) return result;
+
+  let entries;
+  try {
+    entries = readdirSync(activeDir, { withFileTypes: true, encoding: "utf8" });
+  } catch {
+    return result;
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const taskId = entry.name;
+    const state = readTaskAttestationState(repoRoot, taskId);
+    if (state === null) continue;
+    if (state.phase !== "running") continue;
+
+    if (state.rootAttestation) {
+      const r = completeTask({
+        repoRoot,
+        taskId,
+        outcome: "succeeded",
+        source: "cairn_stop_auto_graduate",
+      });
+      if (r.ok) result.completed.push(taskId);
+      continue;
+    }
+
+    if (state.subagentAttestations > 0) {
+      if (!state.needsReview) {
+        const r = completeTask({
+          repoRoot,
+          taskId,
+          outcome: "succeeded",
+          source: "cairn_stop_auto_graduate",
+        });
+        if (r.ok) result.completed.push(taskId);
+        continue;
+      }
+      const ok = transitionTaskPhase({
+        repoRoot,
+        taskId,
+        newPhase: "ready_for_review",
+      });
+      if (ok) result.transitioned.push(taskId);
+    }
+  }
+
+  return result;
 }
 
 function renderReviewerHint(pending: PendingReview[]): string {

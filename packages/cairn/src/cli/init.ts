@@ -46,7 +46,7 @@ function usage(): never {
       "package templates, writes .cairn/config.yaml with the project-specific\n" +
       "overlay (mapper output baked in), patches the `<slug>:` block in\n" +
       ".cairn/config/workflow.md, and clones the parallel mirror at\n" +
-      "~/.local/cairn/repos/<slug>/.",
+      "~/.cairn/repos/<slug>/.",
   );
   process.exit(1);
 }

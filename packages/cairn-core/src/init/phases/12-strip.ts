@@ -7,22 +7,29 @@
  * until the queue is empty.
  */
 
-import { advancePhase } from "./orchestrator.js";
+import { advancePhase, isSelfAdoptState } from "./orchestrator.js";
 import type {
   PhaseQuestion,
   PhaseResult,
   PhaseState,
+  StripState,
 } from "./types.js";
 
-interface StripState {
-  /** Modules still awaiting an a/b/c decision. */
-  pending: string[];
-  /** Modules + their final decision keyed by path. */
-  decisions: Record<string, "strip" | "keep" | "skip">;
-}
-
 export async function runPhase12Strip(state: PhaseState): Promise<PhaseResult> {
-  const existing = state.outputs["12-strip"] as StripState | undefined;
+  if (isSelfAdoptState(state)) {
+    const skipped: StripState = { pending: [], decisions: {} };
+    const next: PhaseState = {
+      ...state,
+      outputs: { ...state.outputs, "12-strip": skipped },
+      answer: undefined,
+    };
+    return {
+      status: "complete",
+      nextPhase: "13-multidev",
+      state: advancePhase(next),
+    };
+  }
+  const existing = state.outputs["12-strip"];
   const modules: string[] = computeFlaggedModules(state);
 
   // Initialize on first entry.

@@ -51,6 +51,7 @@ import {
   runDocsIngestion,
   type DocClassification,
   type IngestionResult,
+  type IngestionRunResult,
 } from "./ingest-docs.js";
 import type { TopicIndexEntry } from "@isaacriehm/cairn-state";
 import { buildTopicIndex, type SemanticJudge } from "./topic-index/index.js";
@@ -110,6 +111,10 @@ import { buildRepoSummary, type RepoSummary } from "./walker.js";
 import { updateWorkflowSlugBlock } from "./workflow-block.js";
 
 const log = logger("init");
+
+function isIngestionRunResult(r: IngestionResult | null): r is IngestionRunResult {
+  return r !== null && Array.isArray((r as IngestionRunResult).skipped);
+}
 
 export interface RunInitArgs {
   /** Repo root the operator wants to adopt. Default = process.cwd(). */
@@ -659,13 +664,15 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
           ? { mockClassify: args.mockRulesMergeClassify }
           : {}),
       });
-      process.stdout.write(
-        `    Sources: ${rulesMerge.sources.length}; ` +
-          `Emitted: ${rulesMerge.decsWritten.length + rulesMerge.invsWritten.length}; ` +
-          `cites: ${rulesMerge.citesEmitted.length}; ` +
-          `conflicts: ${rulesMerge.conflicts.length}; ` +
-          `informational: ${rulesMerge.kindCounts["informational"] ?? 0}\n`,
-      );
+      if (!("skipped" in rulesMerge)) {
+        process.stdout.write(
+          `    Sources: ${rulesMerge.sources.length}; ` +
+            `Emitted: ${rulesMerge.decsWritten.length + rulesMerge.invsWritten.length}; ` +
+            `cites: ${rulesMerge.citesEmitted.length}; ` +
+            `conflicts: ${rulesMerge.conflicts.length}; ` +
+            `informational: ${rulesMerge.kindCounts["informational"] ?? 0}\n`,
+        );
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       warnings.push(`rules merge failed: ${msg}`);
@@ -731,7 +738,7 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
       mapper_applied_to_workflow: mapperAppliedToWorkflow,
       mapper_applied_to_config: mapperAppliedToConfig,
       brand_answered: brandSetup?.answered ?? null,
-      ingestion_drafts: phase6.ingestion?.decsWritten.length ?? null,
+      ingestion_drafts: isIngestionRunResult(phase6.ingestion) ? phase6.ingestion.decsWritten.length : null,
       baseline_findings: phase6.baselineAudit?.findingsCount ?? null,
       warnings: warnings.length,
     },

@@ -16,17 +16,12 @@
 
 import { runClaude } from "../claude/index.js";
 import { logger } from "../logger.js";
-import {
-  coerceDecisionIds,
-  coerceInvariantIds,
-} from "@isaacriehm/cairn-state";
+import { coerceDecisionIds, coerceInvariantIds } from "@isaacriehm/cairn-state";
 import type {
   DecisionLedgerEntry,
   InvariantLedgerEntry,
 } from "@isaacriehm/cairn-state";
-import type {
-  MapperScopeIndex,
-} from "./mapper.js";
+import type { MapperScopeIndex } from "./mapper.js";
 import type { ModuleSlice } from "./module-slicer.js";
 
 const log = logger("init.mapper-parallel");
@@ -127,8 +122,8 @@ const MODULE_SYSTEM_PROMPT = [
   "  - `generator_source_globs` — globs whose changes mean a generator must re-run. Examples: `core/openapi.json`, `core/src/db/schema.ts` (Drizzle), `**/*.proto`, `prisma/schema.prisma`.",
   "  - `high_stakes_globs` — globs for high-risk surfaces in this module (auth, billing, payments, multi-tenant, integrations storing tokens, telephony). Be conservative.",
   "  - `off_limits_globs` — globs the cairn MUST NOT touch beyond defaults. Vendored code, large fixtures, copied snapshots.",
-  "  - `scope_index` — `{ files: { \"<repo-relative-path>\": { decisions: [], invariants: [], unscoped?: true } } }`. The user prompt provides the in-scope decisions + invariants list. Map only files within THIS module. Use `unscoped: true` for lockfiles, generated, vendored, or dotfile config.",
-  "  - IMPORTANT: scope_index decisions[] and invariants[] arrays MUST contain ONLY IDs (e.g. \"DEC-a3f7b2c\", \"INV-5e9d10a\" — content-addressed 7+ hex chars). NEVER copy ledger titles or descriptive prose into these arrays — IDs only.",
+  '  - `scope_index` — `{ files: { "<repo-relative-path>": { decisions: [], invariants: [], unscoped?: true } } }`. The user prompt provides the in-scope decisions + invariants list. Map only files within THIS module. Use `unscoped: true` for lockfiles, generated, vendored, or dotfile config.',
+  '  - IMPORTANT: scope_index decisions[] and invariants[] arrays MUST contain ONLY IDs (e.g. "DEC-a3f7b2c", "INV-5e9d10a" — content-addressed 7+ hex chars). NEVER copy ledger titles or descriptive prose into these arrays — IDs only.',
   "  - `notes` — anything notable that didn't fit a structured field.",
   "",
   "Rules:",
@@ -187,11 +182,7 @@ export async function mapModulesParallel(
   return out;
 }
 
-function chunkRounds<T>(
-  items: T[],
-  threshold: number,
-  size: number,
-): T[][] {
+function chunkRounds<T>(items: T[], threshold: number, size: number): T[][] {
   if (items.length <= threshold) return [items];
   const out: T[][] = [];
   for (let i = 0; i < items.length; i += size) {
@@ -229,7 +220,11 @@ async function mapOneSlice(
       isolateAmbientContext: true,
       cacheable: true,
     });
-    proposal = parseModuleProposal(slice, result.parsed, Date.now() - startedAt);
+    proposal = parseModuleProposal(
+      slice,
+      result.parsed,
+      Date.now() - startedAt,
+    );
   } catch (err) {
     proposal = buildFailedProposal(slice, String(err));
     proposal.durationMs = Date.now() - startedAt;
@@ -306,12 +301,17 @@ function parseModuleProposal(
   durationMs: number,
 ): ModuleProposal {
   if (typeof parsed !== "object" || parsed === null) {
-    return { ...buildFailedProposal(slice, "non-object parsed output"), durationMs };
+    return {
+      ...buildFailedProposal(slice, "non-object parsed output"),
+      durationMs,
+    };
   }
   const v = parsed as Record<string, unknown>;
   const arr = (k: string): string[] => {
     const x = v[k];
-    return Array.isArray(x) ? x.filter((s): s is string => typeof s === "string") : [];
+    return Array.isArray(x)
+      ? x.filter((s): s is string => typeof s === "string")
+      : [];
   };
   const scopeRaw = v["scope_index"];
   const scopeIndex: MapperScopeIndex = { files: {} };
@@ -332,12 +332,16 @@ function parseModuleProposal(
       // past the `items: { type: "string" }` JSON-mode gate. Drop anything
       // not matching the canonical DEC-NNNN / INV-NNNN format.
       const decs = Array.isArray(e["decisions"])
-        ? coerceDecisionIds(e["decisions"] as unknown[])
+        ? coerceDecisionIds(e["decisions"])
         : [];
       const invs = Array.isArray(e["invariants"])
-        ? coerceInvariantIds(e["invariants"] as unknown[])
+        ? coerceInvariantIds(e["invariants"])
         : [];
-      const out: { decisions: string[]; invariants: string[]; unscoped?: true } = {
+      const out: {
+        decisions: string[];
+        invariants: string[];
+        unscoped?: true;
+      } = {
         decisions: decs,
         invariants: invs,
       };
@@ -390,7 +394,10 @@ const FALLBACK_HIGH_STAKES_PATTERNS: RegExp[] = [
  * files for missing scope. Operator can re-run `cairn scope rebuild` to
  * upgrade the partial entry into a full proposal later.
  */
-function buildFailedProposal(slice: ModuleSlice, reason: string): ModuleProposal {
+function buildFailedProposal(
+  slice: ModuleSlice,
+  reason: string,
+): ModuleProposal {
   const treePaths = slice.directoryTree
     .split("\n")
     .map((l) => l.trim())
@@ -413,7 +420,9 @@ function buildFailedProposal(slice: ModuleSlice, reason: string): ModuleProposal
       // path (i.e., not the leaf filename). Keyword on a leaf file → glob
       // its parent directory.
       const isLeaf = i === segs.length - 1;
-      const dirPath = isLeaf ? segs.slice(0, i).join("/") : segs.slice(0, i + 1).join("/");
+      const dirPath = isLeaf
+        ? segs.slice(0, i).join("/")
+        : segs.slice(0, i + 1).join("/");
       const repoDir = dirPath === "" ? moduleRel : repoRel(dirPath);
       if (repoDir === "" || repoDir === ".") {
         highStakesGlobs.add(`${seg}/**`);
@@ -427,7 +436,9 @@ function buildFailedProposal(slice: ModuleSlice, reason: string): ModuleProposal
   // Scope index: every file in the slice → unscoped: true so the GC's
   // scope-coverage pass doesn't re-flag them while the partial proposal
   // stands.
-  const scopeIndex: { files: Record<string, MapperScopeIndex["files"][string]> } = {
+  const scopeIndex: {
+    files: Record<string, MapperScopeIndex["files"][string]>;
+  } = {
     files: {},
   };
   for (const path of treePaths) {

@@ -1,7 +1,7 @@
 /**
  * `cairn trace` — pretty-print the unified trace log.
  *
- * Reads `~/.local/cairn/trace/trace-<YYYY-MM-DD>.jsonl` for the most
+ * Reads `~/.cairn/trace/trace-<YYYY-MM-DD>.jsonl` for the most
  * recent two days, time-sorts the rows, and prints a one-line-per-event
  * summary. Optional flags filter by session, repo, source, kind, or
  * follow live.
@@ -225,7 +225,7 @@ export async function traceCli(argv: string[]): Promise<void> {
         "  --days <N>         how many days back to read (default 2)",
         "  --json             one trace row per line, no formatting",
         "",
-        "Trace files: ~/.local/cairn/trace/trace-<YYYY-MM-DD>.jsonl",
+        "Trace files: ~/.cairn/trace/trace-<YYYY-MM-DD>.jsonl",
       ].join("\n"),
     );
     return;

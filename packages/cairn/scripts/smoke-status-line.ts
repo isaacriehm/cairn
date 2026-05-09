@@ -88,13 +88,32 @@ function runSmoke(): void {
     console.log("  ✓ Step 2 — null/empty session id → ground fallback");
   }
 
-  // ── Step 3 — idle session → just `⬡ cairn` (compact, no signal) ──
+  // ── Step 3 — idle session → ⬡ cairn + heartbeat (decisions·invariants) ──
   {
     const repoRoot = mkFixture();
     writeStatusJson(repoRoot, "session-a", syntheticStatus());
     const out = readStatusForCLI(repoRoot, "session-a");
-    assert(out === "⬡ cairn", `Step 3: idle/no-attention should be exactly "⬡ cairn", got ${out}`);
-    console.log("  ✓ Step 3 — idle compact");
+    assert(
+      out === "⬡ cairn  ✓ 12·8",
+      `Step 3: idle should render heartbeat "⬡ cairn  ✓ 12·8", got ${out}`,
+    );
+    console.log("  ✓ Step 3 — idle heartbeat shows decisions·invariants");
+  }
+
+  // ── Step 3b — idle with zero ground state → bare brand mark ────
+  {
+    const repoRoot = mkFixture();
+    writeStatusJson(
+      repoRoot,
+      "session-z",
+      syntheticStatus({ decisions_in_scope: 0, invariants_in_scope: 0 }),
+    );
+    const out = readStatusForCLI(repoRoot, "session-z");
+    assert(
+      out === "⬡ cairn",
+      `Step 3b: zero ground state should render bare "⬡ cairn", got ${out}`,
+    );
+    console.log("  ✓ Step 3b — zero ground state hides heartbeat");
   }
 
   // ── Step 4 — concurrent sessions render disjoint signals ────────
@@ -112,7 +131,10 @@ function runSmoke(): void {
     );
     const a = readStatusForCLI(repoRoot, "session-a");
     const b = readStatusForCLI(repoRoot, "session-b");
-    assert(a === "⬡ cairn", `Step 4: session-a idle should be "⬡ cairn", got ${a}`);
+    assert(
+      a === "⬡ cairn  ✓ 12·8",
+      `Step 4: session-a idle should render heartbeat, got ${a}`,
+    );
     assert(
       b.includes("TSK-0042 wiring auth middleware"),
       `Step 4: session-b should surface "TSK-0042 wiring auth middleware", got ${b}`,

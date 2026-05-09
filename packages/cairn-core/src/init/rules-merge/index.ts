@@ -21,4 +21,6 @@ export type {
   RuleClassification,
   RunRulesMergeArgs,
   RunRulesMergeResult,
+  RunRulesMergeRunResult,
+  RunRulesMergeSkippedResult,
 } from "./ingest.js";

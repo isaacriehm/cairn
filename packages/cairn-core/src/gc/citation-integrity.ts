@@ -106,7 +106,9 @@ const SOURCE_EXTENSIONS = new Set([
 
 const INV_RE = /§INV-([0-9a-f]{7,})\b/g;
 const DEC_RE = /§DEC-([0-9a-f]{7,})\b/g;
-const TSK_RE = /TODO\((TSK-\d{4}-\d{2}-\d{2}-[\w-]+-\d{5})\)/g;
+// Format: `TSK-<slug>-<7-hex>`. The directory lookup is the source
+// of truth; the regex is just a "looks like a task id" gate.
+const TSK_RE = /TODO\((TSK-[a-z0-9-]+-[0-9a-f]{7})\)/g;
 
 /** Run citation-integrity against all source files in repoRoot. */
 export async function runCitationIntegrity(opts: {

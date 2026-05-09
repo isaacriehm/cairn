@@ -174,9 +174,8 @@ async function handlePhase8Parallel(
     ] as const) {
       const phaseOut = result.state.outputs[id];
       if (typeof phaseOut === "object" && phaseOut !== null) {
-        const obj = phaseOut as Record<string, unknown>;
-        if (obj["duration_ms"] === undefined) {
-          obj["duration_ms"] = durationMs;
+        if (!("duration_ms" in phaseOut)) {
+          Object.assign(phaseOut, { duration_ms: durationMs });
         }
       }
     }
@@ -259,11 +258,8 @@ async function handlePhaseRun(
   // Stamp `duration_ms` on the phase's output entry
   if (result.status !== "error") {
     const phaseOut = result.state.outputs[id];
-    if (typeof phaseOut === "object" && phaseOut !== null) {
-      const obj = phaseOut as { duration_ms?: unknown };
-      if (obj.duration_ms === undefined) {
-        (obj as { duration_ms: number }).duration_ms = durationMs;
-      }
+    if (typeof phaseOut === "object" && phaseOut !== null && !("duration_ms" in phaseOut)) {
+      Object.assign(phaseOut, { duration_ms: durationMs });
     }
   }
   // Persist state ONLY on non-error results.

@@ -4,6 +4,156 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Major reliability + UX pass ahead of v1: task lifecycle now graduates
+end-to-end, statusline carries a positive heartbeat, doc-vs-runtime
+drift is caught automatically, adoption is hardened against
+WSL/PowerShell + plugin-slug + skill-listing-budget failure modes,
+and the bootstrap-fail surface no longer exposes CLI subcommands.
+Smoke gate grew from 27 to 38; typed MCP tool count grew from 25
+to 29. Workspace grew to five packages with the addition of
+`cairn-state`.
+
+### Added
+
+- **Task lifecycle complete loop.** New module
+  `packages/cairn-core/src/tasks/lifecycle.ts` exposes
+  `completeTask`, `transitionTaskPhase`, `readTaskAttestationState`,
+  `appendTaskJournal`, `readTaskJournal`, `findCurrentActiveTask`.
+  New MCP tools `cairn_task_complete`, `cairn_task_journal_append`,
+  `cairn_resume`. Stop hook auto-graduates `running` →
+  `succeeded` / `ready_for_review` based on attestation presence
+  and reviewer flags. Reviewer subagent calls `cairn_task_complete`
+  after writing `attestation.yaml`. New
+  `/cairn-resume <task_id>` slash command.
+- **Cairn-as-resume-layer.** Per-turn task journal
+  (`.cairn/tasks/active/<id>/journal.jsonl`); Stop hook fires inline
+  `[a] keep going / [b] /clear and resume / [c] mark task done` when
+  transcript size proxy crosses 50% of the active model's window
+  (Opus 1M, Sonnet/Haiku 200k). SessionStart auto-detects active
+  tasks with prior-session journal entries and injects a
+  resuming-cold banner.
+- **Doc-vs-runtime drift sensor.** GC pass 10 `doc-claims-vs-runtime`
+  scans `README.md`, `CLAUDE.md`, and `docs/*.md` for extractable
+  claims about `packageCount`, `smokeCount`, `mcpToolCount`, and
+  `hookEventCount`; runtime read from package manifests, the smokes
+  chain, the MCP `allTools` array, and the plugin `hooks.json`.
+  Findings surface as conflict A/B/C: regenerate / file task /
+  defer.
+- **Doc-source-drift GC pass.** GC pass 11 walks every DEC's
+  `sot_path`, recomputes `bodyContentHash`, and compares against the
+  stored hash. Surfaces three new finding kinds: `doc_source_drift`,
+  `sot_missing`, `sot_anchor_missing`. Closes the externally-edited-
+  doc loop the existing PostToolUse `sot-align` hook misses.
+- **Stop-driven GC autotrigger.** Stop hook spawns a detached
+  `gc sweep` subprocess when `.cairn/.gc-last-run` is missing or
+  older than 24h. Idempotent; failures degrade silently.
+- **Statusline idle heartbeat.** When ground state is non-zero,
+  idle render shows `⬡ cairn  ✓ <decisions>·<invariants>` instead
+  of bare brand mark. Operator sees Cairn is alive without an
+  exception event.
+- **Skill-listing budget auto-bump.** Phase 1 detect raises
+  `skillListingBudgetFraction` to `0.03` in
+  `~/.claude/settings.json` so Sonnet/Haiku stop dropping
+  `cairn-direction` from the listing on machines with ~20+ user
+  skills. Idempotent; non-numeric / above-floor values preserved.
+- **Bootstrap-retry MCP tool.** New `cairn_bootstrap_retry` re-runs
+  per-clone bootstrap inline when SessionStart's auto-bootstrap
+  failed. Replaces the previous CLI-subcommand exposure in
+  `bootstrap-guard.ts` remediation (plugin spec §11 violation).
+- **`cairn doctor` version-skew check.** Reads
+  `.cairn/config.yaml#cairn_version`, compares to running `VERSION`.
+  Surfaces warn on mismatch with a per-version remediation hint;
+  warn on missing key / missing config; ok on match.
+- **WSL/PowerShell git auto-config.** Phase 1 detect runs
+  `git config --local safe.directory <abs>` and
+  `git config --local core.fileMode false` when WSL is detected
+  (`/proc/version` matches `Microsoft|WSL`). Closes the
+  `dubious ownership` failure on cross-platform clones. The
+  cairn-adopt skill also runs both calls after driving its own
+  `git init`.
+- **Self-adoption guard re-wired.** `isCairnSourceRepo()` rebuilt
+  on top of `packages/cairn-core/package.json#name`,
+  `packages/cairn-frontend-claudecode/package.json`, and
+  `pnpm-workspace.yaml` markers. Wired into the MCP path
+  (`cairn_init_run` Phase 1 detect) — adoption refuses with a
+  `cairn-source-repo` envelope. `CAIRN_SELF_ADOPT=1` env override
+  for legitimate dogfood. Phases 8/9/10/12 + `parallel-8910` short-
+  circuit when `is_self_adopt` is true so the recursive-ingest
+  scenario (Cairn's own docs / source comments / CLAUDE.md / essay
+  comments) cannot run against the source tree.
+- **11 new smokes** lock the new contracts:
+  `smoke-task-lifecycle`, `smoke-task-resume`, `smoke-doc-claims`,
+  `smoke-doc-source-drift`, `smoke-gc-autotrigger`,
+  `smoke-wsl-git-init`, `smoke-skill-budget`,
+  `smoke-bootstrap-retry`, `smoke-shipped-voice`,
+  `smoke-multidev-resolution`, `smoke-self-adopt-skip`.
+
+### Changed
+
+- **Cross-platform home directory** moved from `~/.local/cairn/` to
+  `~/.cairn/` on every platform. Single hard cutover — no migration
+  code, no fallback shim, no XDG environment variable. Touches
+  trace dir, mirror checkout, models cache, and the related docs.
+- **TSK id format** is now `TSK-<slug>-<7-hex>` where the suffix is
+  the first 7 hex characters of `sha256(slug + crypto.randomUUID())`.
+  Slug capped at 4 words. No counter file, no rollover. Hard
+  cutover — citation regex tightened to the new format only;
+  pre-cutover task dirs are deleted by the operator.
+- **Statusline shim install path** now uses
+  `basename(CLAUDE_PLUGIN_ROOT)` instead of a hardcoded
+  `isaacriehm-cairn` slug. Statusline command and the
+  `cairn-adopt` Step 1.5 wire-detection both glob
+  `~/.claude/plugins/cache/*/.active-version-path` so plugin slug
+  renames don't break the statusline.
+- **`bootstrap-guard.ts` remediation** rewritten — replaces
+  `node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" join` with an
+  `cairn_bootstrap_retry` MCP tool reference + a Claude Code
+  restart hint. Plugin spec §11 honored at the failure path.
+  `cairn-attention` Step 0 calls the new MCP tool on
+  `BOOTSTRAP_REQUIRED`; explicitly bans `cli.mjs` and `cairn join`
+  references in chat output.
+- **Operator-personal voice removed from shipped skills.** Stripped
+  the `caveman-ultra style for chat replies` bullet from
+  `cairn-adopt/SKILL.md`, `cairn-attention/SKILL.md`,
+  `cairn-direction/SKILL.md`, and `agents/reviewer.md`. Replaced
+  with a uniform pointer to `.cairn/ground/brand/voice.md`
+  (already loaded by `spec-delta` on SessionStart). Adopters now
+  get neutral skills regardless of operator's local profile.
+- **Tightened init-pipeline typing.** `PhaseOutputs` is now a typed
+  interface mapping each `PhaseId` to its concrete result type.
+  Three result types (`IngestionResult`,
+  `IngestSourceCommentsResultPersisted`, `RunRulesMergeResult`)
+  split into discriminated unions (Run + Skipped variants) so the
+  self-adopt skip path is type-safe by construction. All 21
+  `state.outputs[…] as <Type>` casts dropped; zero
+  `as unknown as` casts in `packages/cairn-core/src/`. Two
+  duration-stamp mutation blocks rewritten via `Object.assign` +
+  `in` guard.
+- **Direction skill pivot detection.** `cairn-direction` Step 0.5
+  surfaces an inline A/B/C (`complete first` / `pivot — archive
+  current task` / `keep current, new as sub-task`) when the
+  operator's prompt diverges from the active task's title noun-set
+  by ≥50%. Closes the "tasks never complete" dead-end.
+- **Workspace grew to five packages** with the addition of
+  `cairn-state` (ground-state schemas + low-level I/O). Smoke gate
+  grew from 27 to 38; typed MCP tool count grew from 25 to 29.
+  README, CLAUDE.md, ARCHITECTURE.md, and the user-facing reference
+  reconciled.
+
+### Fixed
+
+- **Task lifecycle dead-end.** Tasks now graduate through phases;
+  the GC `completion-integrity` pass is no longer dead code.
+  Direction skill no longer skips forever after the first task.
+- **README + CLAUDE.md drift** reconciled (5 packages, 38-smoke
+  gate, 29 typed MCP tools, 5 hooks).
+- **WSL+PowerShell git-permission failure** auto-resolved on
+  adoption; smoke locks the contract.
+- **Pre-commit + commit-msg hook resolution** verified to prefer
+  `.cli-path` before `command -v cairn`; smoke locks the contract.
+
 ## [0.7.3] — 2026-05-09
 
 ### Fixed

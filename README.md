@@ -69,7 +69,7 @@ pre-commit and again at CI.
 paths instead of the agent grepping vaguely or fabricating them.
 
 Plus four runtime layers that keep those stores live: an **MCP
-server** (25 typed tools), a **Claude Code plugin** (skills + hooks +
+server** (29 typed tools), a **Claude Code plugin** (skills + hooks +
 reviewer agent), **sensors** (4 layers of automated diff checks), and
 a **CLI** for bootstrap and debug.
 
@@ -258,15 +258,15 @@ on the next GC sweep.
 
 ### Tooling surfaces
 
-- **MCP server** — 25 typed tools across read, write, history,
+- **MCP server** — 29 typed tools across read, write, history,
   attention, init, and search. Used by the plugin and any other MCP
   client.
 - **CLI** — `cairn init / join / mcp / gc / scope / doctor / fix /
   attention / align / baseline / hook / sensor-run / tag / trace /
   status-line`.
-- **Claude Code plugin** — manifest + 5 hooks (SessionStart, Stop,
-  UserPromptSubmit, PostToolUse(Read), PostToolUse(Write|Edit)) + 3
-  skills + 1 reviewer agent + 3 commands.
+- **Claude Code plugin** — manifest + 5 hooks (SessionStart, SessionEnd,
+  Stop, UserPromptSubmit, PostToolUse(Read|Write|Edit)) + 3 skills +
+  1 reviewer agent + 3 commands.
 - **Cairn Lens** — VS Code / Cursor extension. Hover, gutter icons,
   code lens, optional DEC Explorer sidebar. Resolves `§INV-NNNN`,
   `§DEC-NNNN`, `TODO(TSK-…)` inline. Read-only — same ground state,
@@ -341,7 +341,8 @@ Full contract: [`docs/FILESYSTEM_LAYOUT.md`](docs/FILESYSTEM_LAYOUT.md).
 ```
 packages/
 ├── cairn/                       umbrella + CLI bin (`cairn …`)
-├── cairn-core/                  state, MCP server, sensors, hooks, init pipeline
+├── cairn-core/                  MCP server, sensors, hooks, init pipeline
+├── cairn-state/                 ground-state schemas + low-level I/O
 ├── cairn-frontend-claudecode/   Claude Code plugin (manifest, hooks, skills, agents, commands)
 └── cairn-lens/                  VS Code / Cursor extension (.vsix)
 ```
@@ -364,7 +365,7 @@ packages/
 | Doc                                                          | What                                                          |
 | ------------------------------------------------------------ | ------------------------------------------------------------- |
 | [System Overview](docs/SYSTEM_OVERVIEW.md)                   | End-to-end surface map + Mermaid diagram of all flows.        |
-| [Architecture](docs/ARCHITECTURE.md)                         | Locked layered model, four-package boundary.                  |
+| [Architecture](docs/ARCHITECTURE.md)                         | Locked layered model, five-package boundary.                  |
 | [Plugin Architecture](docs/PLUGIN_ARCHITECTURE.md)           | Adoption phases, hooks, multi-dev enforcement, question bar.  |
 | [MCP Surface](docs/MCP_SURFACE.md)                           | Tool-by-tool reference.                                       |
 | [Filesystem Layout](docs/FILESYSTEM_LAYOUT.md)               | `.cairn/` directory contract.                                 |
@@ -376,7 +377,7 @@ git clone https://github.com/isaacriehm/cairn
 cd cairn
 pnpm install
 pnpm build
-pnpm smokes        # 21-smoke gate. all green on a clean tree.
+pnpm smokes        # 38-smoke gate. all green on a clean tree.
 ```
 
 Other root scripts: `pnpm typecheck`, `pnpm clean`, `pnpm smokes:all`
@@ -397,20 +398,19 @@ your listing is over budget, Claude Code drops the lowest-priority
 descriptions — `cairn-direction` is a frequent victim, which means
 the auto-invoke trigger gate never sees the prompt.
 
-Diagnose with `/doctor`. If it reports `N descriptions dropped`, raise
-the budget in `~/.claude/settings.json`:
+**Adoption handles this for you.** Phase 1 detect raises
+`skillListingBudgetFraction` to `0.03` in `~/.claude/settings.json`
+(fits cairn + ~30 user skills on Sonnet). The bump is silent,
+idempotent, and only fires when the existing value is missing or
+below the floor — operator overrides at or above `0.03` are
+preserved. Restart Claude Code after first adoption to pick up the
+new budget.
 
-```jsonc
-{
-  "skillListingBudgetFraction": 0.03  // 3% — fits cairn + ~30 user skills on Sonnet
-}
-```
-
-Restart Claude Code. `/doctor` should now show `0 dropped`. If you
-prefer to keep the 1% budget, disable user-level skills you don't use
-(the `/skills` UI toggles each one), or add `skillOverrides` entries
-in settings.json to set them to `"user-invocable-only"` (hidden from
-the auto-invoke listing, still reachable via `/<name>`).
+If you ever need to verify, run `/doctor`. It should report
+`0 dropped`. If a value above `0.03` still shows dropped descriptions,
+disable user-level skills you don't use (the `/skills` UI toggles
+each one) or set `"user-invocable-only"` in `skillOverrides` (hidden
+from the auto-invoke listing, still reachable via `/<name>`).
 
 ## Status
 

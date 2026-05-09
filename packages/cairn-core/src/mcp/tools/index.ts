@@ -5,6 +5,7 @@ import { attentionDedupTool } from "./attention-dedup.js";
 import { attentionRestoreTool } from "./attention-restore.js";
 import { attentionServeTool } from "./attention-serve.js";
 import { attentionWaitTool } from "./attention-wait.js";
+import { bootstrapRetryTool } from "./bootstrap-retry.js";
 import { bulkAcceptAttentionTool } from "./bulk-accept-attention.js";
 import { canonicalForTopicTool } from "./canonical-for-topic.js";
 import { decisionGetTool } from "./decision-get.js";
@@ -24,7 +25,10 @@ import { resolveAttentionTool } from "./resolve-attention.js";
 import { searchTool } from "./search.js";
 import { searchCandidatesTool } from "./search-candidates.js";
 import { supersedesChainTool } from "./supersedes-chain.js";
+import { resumeTool } from "./resume.js";
+import { taskCompleteTool } from "./task-complete.js";
 import { taskCreateTool } from "./task-create.js";
+import { taskJournalAppendTool } from "./task-journal-append.js";
 import { timelineTool } from "./timeline.js";
 
 export const allTools: ToolDef<never>[] = [
@@ -47,7 +51,11 @@ export const allTools: ToolDef<never>[] = [
   // Write
   recordDecisionTool,
   taskCreateTool,
+  taskCompleteTool,
+  taskJournalAppendTool,
   archiveTool,
+  // Read — resume layer
+  resumeTool,
   // Write — phase 6 candidate surface
   rejectCandidateTool,
   // Write — plugin-era
@@ -59,6 +67,8 @@ export const allTools: ToolDef<never>[] = [
   attentionWaitTool,
   // Write — Layer C SessionStart drain
   alignDrainTool,
+  // Write — bootstrap recovery (replaces CLI exposure in BOOTSTRAP_REQUIRED)
+  bootstrapRetryTool,
   // Write — init pipeline (v0.7.2 single-umbrella surface)
   initResumeTool,
   initRunTool,

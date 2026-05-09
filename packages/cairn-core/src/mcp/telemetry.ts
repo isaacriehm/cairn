@@ -8,7 +8,7 @@ import type { McpContext } from "./context.js";
  *   - .cairn/runs/active/<runId>/mcp-calls.jsonl     when ctx.runId set
  *   - .cairn/staleness/mcp-calls.jsonl               otherwise
  *
- * Also mirrors a compact row into the unified `~/.local/cairn/trace/`
+ * Also mirrors a compact row into the unified `~/.cairn/trace/`
  * sink so `cairn trace` aggregates MCP calls alongside hook + claude
  * subprocess events.
  */
