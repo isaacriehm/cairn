@@ -32,14 +32,14 @@ const CachedEntrySchema = z.object({
     text: z.string(),
     parsed: z.unknown().optional(),
     durationMs: z.number(),
-    tier: z.enum(["h1", "h2", "h3", "haiku", "sonnet", "opus"]),
+    tier: z.enum(["haiku", "sonnet", "opus"]),
     model: z.string(),
     envelope: z.record(z.string(), z.unknown()).optional(),
     usage: z.object({
       input_tokens: z.number(),
       output_tokens: z.number(),
-      cache_read_tokens: z.number().nullable().optional(),
-      cache_creation_tokens: z.number().nullable().optional(),
+      cache_read_input_tokens: z.number().optional(),
+      cache_creation_input_tokens: z.number().optional(),
     }).optional(),
   }),
 });
@@ -96,6 +96,7 @@ export function cacheLookup(
     // Convert zod tier back to RunClaudeResult tier
     const tier = parsed.result.tier as RunClaudeResult["tier"];
     
+    const u = parsed.result.usage;
     return {
       text: parsed.result.text,
       ...(parsed.result.parsed !== undefined ? { parsed: parsed.result.parsed } : {}),
@@ -103,12 +104,12 @@ export function cacheLookup(
       tier,
       model: parsed.result.model,
       ...(parsed.result.envelope !== undefined ? { envelope: parsed.result.envelope as Record<string, unknown> } : {}),
-      ...(parsed.result.usage !== undefined ? {
+      ...(u !== undefined ? {
         usage: {
-          input_tokens: parsed.result.usage.input_tokens,
-          output_tokens: parsed.result.usage.output_tokens,
-          cache_read_tokens: parsed.result.usage.cache_read_tokens ?? null,
-          cache_creation_tokens: parsed.result.usage.cache_creation_tokens ?? null,
+          input_tokens: u.input_tokens,
+          output_tokens: u.output_tokens,
+          ...(u.cache_read_input_tokens !== undefined ? { cache_read_input_tokens: u.cache_read_input_tokens } : {}),
+          ...(u.cache_creation_input_tokens !== undefined ? { cache_creation_input_tokens: u.cache_creation_input_tokens } : {}),
         }
       } : {}),
     };
