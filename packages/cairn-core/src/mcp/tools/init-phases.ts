@@ -1,7 +1,7 @@
 /**
  * MCP tools for the v0.3.5 init pipeline.
  *
- * Twelve `cairn_init_phase_<id>` tools — one per PHASE_IDS entry —
+ * Thirteen `cairn_init_phase_<id>` tools — one per PHASE_IDS entry —
  * plus `cairn_init_resume`. The cairn-adopt skill drives the
  * pipeline by:
  *   1. cairn_init_resume          → { status, nextPhase, repoRoot }

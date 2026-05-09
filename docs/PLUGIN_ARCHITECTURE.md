@@ -540,7 +540,7 @@ Forces dev2 through the bootstrap before any Cairn feature engages.
 
 ### Adoption commits
 
-Phase 12 (pre-commit hook install) becomes "git hooks + CI workflow + bootstrap docs". Files committed:
+Phase 13 (pre-commit hook install) becomes "git hooks + CI workflow + bootstrap docs". Files committed:
 
 ```
 .cairn/git-hooks/pre-commit            — sensor runner
@@ -552,7 +552,7 @@ package.json prepare script            — auto-bootstrap on install (Node proje
 
 ### Pre-adoption commits
 
-When adopting an existing project with prior history, the CI gate's `--diff origin/main..HEAD` only checks the PR's net change, not the entire prior history. Pre-existing violations don't block — they go to baseline (Phase 8 audit). Future commits are gated.
+When adopting an existing project with prior history, the CI gate's `--diff origin/main..HEAD` only checks the PR's net change, not the entire prior history. Pre-existing violations don't block — they go to baseline (Phase 11 audit). Future commits are gated.
 
 ## §18 Resolved during draft (cross-references)
 
@@ -560,7 +560,7 @@ The following decisions were made during drafting and folded into the relevant s
 
 | Topic | Resolution | Section |
 |-------|------------|---------|
-| Source-comment detection threshold | Block > 3 lines OR > 200 chars OR JSDoc with > 30 words of prose; deterministic (no LLM); 20 blocks/Haiku batch for classification | §6 Phase 7b, §15 |
+| Source-comment detection threshold | Block > 3 lines OR > 200 chars OR JSDoc with > 30 words of prose; deterministic (no LLM); 20 blocks/Haiku batch for classification | §6 Phase 9, §15 |
 | Comment replacement | Mechanical string substitution, never LLM-rewritten | §15 |
 | Pre-write safety | Skip dirty files (offer stash/skip/overwrite); backup originals to `.cairn/backups/source/<rel>.original` | §15 |
 | Subagent output | Each subagent's output streams verbatim; reviewer produces final attestation summary | §8, §11 |
@@ -585,9 +585,9 @@ The plugin pivot landed across ten steps. Per-step deliverables:
 4. **Plugin scaffold** — `cairn-frontend-claudecode/` manifest, `.mcp.json`, `hooks/hooks.json`, hook bin entrypoints under `cairn-core/dist/hooks/`.
 5. **Skills + slash commands** — cairn-adopt, cairn-direction, cairn-attention; `/cairn-init`, `/cairn-direction`.
 6. **Reviewer subagent + `cairn_resolve_attention` + Stop scan** — `agents/reviewer.md`, MCP tool for inline A/B/C resolution, Stop hook scans for tasks pending review.
-7. **Heavy adoption pipeline** — Phase 7b source-comment ingestion, 7c rules merge, Phase 10 strip-replace primitives.
+7. **Heavy adoption pipeline** — Phase 9 source-comment ingestion, Phase 10 rules merge, Phase 12 strip-replace primitives.
 8. **Multi-developer enforcement** — versioned git hooks, `cairn join` bootstrap, CI gate, plugin degraded mode, Stop-hook bypass detection.
-9. **End-to-end smoke + visual init wiring** — adopted-fixture E2E smoke, daily-flow E2E smoke, Phase 7b/7c/12 wired into the init.ts visual pipeline.
+9. **End-to-end smoke + visual init wiring** — adopted-fixture E2E smoke, daily-flow E2E smoke, Phase 9/10/13 wired into the init.ts visual pipeline.
 10. **Pre-publish prep** — gitleaks scan, content audit, README rewrite, name + LICENSE.
 
 The build is feature-complete at v0.1.0. Subsequent work tracks via the
