@@ -4,6 +4,40 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] — 2026-05-09
+
+### Fixed
+
+- **Hook payloads now declare the correct `hookEventName`.** Claude
+  Code 2.1+ validates that a hook's stdout
+  `hookSpecificOutput.hookEventName` matches the event the hook was
+  invoked for, and rejects mismatches with `Hook returned incorrect
+  event name`. The shared `emitShapeB` helper hardcoded
+  `"PostToolUse"` for every caller, so the SessionStart adoption
+  banner — and any other Shape-B output routed through `payload.ts`
+  from a non-PostToolUse hook — was silently dropped by the runtime.
+  `emitShapeB` now takes a typed `hookEventName` parameter; the five
+  shared-helper callers (`session-start` ×2, `session-end`,
+  `write-guardian`, `read-enricher`) pass the correct event name.
+
+### Changed
+
+- **Stripped private-doc back-references from source comments.**
+  Pre-public-release sweep removed 9 references to operator-private
+  planning artifacts (`PRIMER.md §N`, `INTEGRATION_PLAN.md §N`, the
+  v0.5.0 deferred-work plan) across 8 source / smoke-script files.
+  Comment content is unchanged in substance; only the dangling
+  pointers are gone.
+
+### Added
+
+- **User-facing guide** at `docs/guide/`. Six prose docs walking an
+  experienced developer through Cairn from first install through
+  daily use, decision design, and team enforcement: `concepts.md`,
+  `daily-flow.md`, `adoption.md`, `decisions.md`, `multi-dev.md`,
+  `reference.md`. README documentation table split into "User guide"
+  and "Technical specs" sections.
+
 ## [0.7.0] — 2026-05-07
 
 ### Added
