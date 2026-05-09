@@ -1,12 +1,15 @@
 #!/usr/bin/env tsx
 /**
- * smoke-init-mcp-tools — verify the v0.2.0 init tools are registered
+ * smoke-init-mcp-tools — verify the v0.7.2 init tools are registered
  * with correct names + handlers and dispatch to the right phase.
  *
- * The cairn-adopt skill drives the pipeline by calling these tools by
- * name; a typo in the registered name would manifest as a runtime
- * "tool not found" deep inside a session, so we lock the surface in
- * a smoke.
+ * Two umbrella tools drive the pipeline:
+ *   1. `cairn_init_resume` → { status, nextPhase, repoRoot }
+ *   2. `cairn_init_run({ phase, state?, answer? })` → { status, ... }
+ *
+ * The cairn-adopt skill calls these by name; a typo in the registered
+ * name would manifest as a runtime "tool not found" deep inside a
+ * session, so we lock the surface in a smoke.
  */
 
 import { execSync } from "node:child_process";
@@ -64,36 +67,50 @@ function mkCtx(repoRoot: string): McpContext {
   } as McpContext;
 }
 
-function expectedToolName(id: PhaseId): string {
-  return `cairn_init_phase_${id.replace(/-/g, "_")}`;
+function findTool(name: string): { handler: (ctx: McpContext, input: unknown) => Promise<unknown>; description: string } {
+  const tool = allTools.find((t) => t.name === name);
+  assert(tool !== undefined, `tool ${name} missing from allTools`);
+  return tool!;
 }
 
 async function runSmoke(): Promise<void> {
   console.log("smoke-init-mcp-tools — start");
 
-  // ── Step 1 — all 11 phase tools + the resume tool registered ────
+  // ── Step 1 — both umbrella init tools registered ────────────────
+  // v0.7.2 collapsed the per-phase tools into a single
+  // `cairn_init_run({ phase })` dispatcher. Surface is two tools.
   {
     const names = new Set(allTools.map((t) => t.name));
     assert(
       names.has("cairn_init_resume"),
-      `Step 1: cairn_init_resume must be registered`,
+      "Step 1: cairn_init_resume must be registered",
     );
+    assert(
+      names.has("cairn_init_run"),
+      "Step 1: cairn_init_run must be registered",
+    );
+    // Per-phase tools are gone — verify they aren't lingering.
     for (const id of PHASE_IDS) {
-      const name = expectedToolName(id);
-      assert(names.has(name), `Step 1: ${name} must be registered`);
+      const stale = `cairn_init_phase_${id.replace(/-/g, "_")}`;
+      assert(
+        !names.has(stale),
+        `Step 1: legacy ${stale} must NOT be registered (collapsed into cairn_init_run in v0.7.2)`,
+      );
     }
-    console.log(`  ✓ Step 1 — ${PHASE_IDS.length + 1} init tools registered`);
+    assert(
+      !names.has("cairn_init_phases_8_9_10_parallel"),
+      "Step 1: legacy cairn_init_phases_8_9_10_parallel must NOT be registered (folded into cairn_init_run for phase 8 in v0.7.2)",
+    );
+    console.log("  ✓ Step 1 — cairn_init_resume + cairn_init_run registered, legacy per-phase tools removed");
   }
 
   // ── Step 2 — cairn_init_resume on empty repo → ready / 1-detect ─
-  // v0.3.5: resume tool returns slim { status, nextPhase, repoRoot }
-  // (no state echo — state lives on disk so MCP responses stay
-  // under the spillover-to-file token cap on real monorepos).
+  // Resume tool returns slim { status, nextPhase, repoRoot } —
+  // no state echo (state lives on disk so MCP responses stay under
+  // the spillover-to-file token cap on real monorepos).
   {
     const repo = mkRepo();
-    const tool = allTools.find((t) => t.name === "cairn_init_resume");
-    assert(tool !== undefined, "Step 2: resume tool missing");
-    if (tool === undefined) return;
+    const tool = findTool("cairn_init_resume");
     const result = (await tool.handler(mkCtx(repo), {})) as {
       status: string;
       nextPhase: string | null;
@@ -109,18 +126,16 @@ async function runSmoke(): Promise<void> {
     console.log("  ✓ Step 2 — cairn_init_resume → ready / 1-detect");
   }
 
-  // ── Step 3 — phase tool dispatches + persists state ─────────────
-  // v0.3.5: phase tool response is slim { status, nextPhase } —
-  // outputs land on disk, not in the echo. Smoke verifies the
-  // on-disk state captures the phase output.
+  // ── Step 3 — cairn_init_run dispatches + persists state ─────────
+  // Phase tool response is slim { status, nextPhase } — outputs land
+  // on disk, not in the echo. Smoke verifies the on-disk state
+  // captures the phase output.
   {
     const repo = mkRepo();
     const ctx = mkCtx(repo);
-    const tool = allTools.find((t) => t.name === "cairn_init_phase_1_detect");
-    assert(tool !== undefined, "Step 3: phase tool missing");
-    if (tool === undefined) return;
+    const tool = findTool("cairn_init_run");
     const state = freshPhaseState(repo);
-    const result = (await tool.handler(ctx, { state })) as {
+    const result = (await tool.handler(ctx, { phase: "1-detect", state })) as {
       status: string;
       nextPhase?: string | null;
     };
@@ -130,7 +145,6 @@ async function runSmoke(): Promise<void> {
       !("state" in (result as Record<string, unknown>)),
       "Step 3: phase response must NOT echo full state (slim contract)",
     );
-    // State file persisted.
     assert(
       existsSync(phaseStateAbsPath(repo)),
       `Step 3: ${phaseStateAbsPath(repo)} should be written`,
@@ -142,28 +156,20 @@ async function runSmoke(): Promise<void> {
       persisted.outputs["1-detect"] !== undefined,
       "Step 3: persisted state missing 1-detect outputs",
     );
-    console.log("  ✓ Step 3 — phase tool dispatches + persists state");
+    console.log("  ✓ Step 3 — cairn_init_run dispatches + persists state");
   }
 
-  // ── Step 3b — phase tool reads state from disk when state arg omitted ─
-  // v0.3.5 contract: callers pass {} (or {answer}) — wrapper loads
-  // state from .cairn/init-state.json. Smoke covers the disk-load path.
+  // ── Step 3b — cairn_init_run reads state from disk when state arg omitted
+  // Skill default: callers pass { phase, answer? } — wrapper loads
+  // state from .cairn/init-state.json.
   {
     const repo = mkRepo();
     const ctx = mkCtx(repo);
-    const detectTool = allTools.find(
-      (t) => t.name === "cairn_init_phase_1_detect",
-    );
-    const walkerTool = allTools.find(
-      (t) => t.name === "cairn_init_phase_2_walker",
-    );
-    assert(detectTool !== undefined, "Step 3b: 1-detect tool missing");
-    assert(walkerTool !== undefined, "Step 3b: 2-walker tool missing");
-    if (detectTool === undefined || walkerTool === undefined) return;
+    const tool = findTool("cairn_init_run");
     // Run 1-detect with explicit state to seed disk; then call 2-walker
     // with no state arg and verify it picks up from .cairn/init-state.json.
-    await detectTool.handler(ctx, { state: freshPhaseState(repo) });
-    const result = (await walkerTool.handler(ctx, {})) as {
+    await tool.handler(ctx, { phase: "1-detect", state: freshPhaseState(repo) });
+    const result = (await tool.handler(ctx, { phase: "2-walker" })) as {
       status: string;
       nextPhase?: string | null;
     };
@@ -182,18 +188,16 @@ async function runSmoke(): Promise<void> {
       persisted.outputs["2-walker"] !== undefined,
       "Step 3b: 2-walker output should be persisted after disk-load run",
     );
-    console.log("  ✓ Step 3b — phase tool loads state from disk when arg omitted");
+    console.log("  ✓ Step 3b — cairn_init_run loads state from disk when state arg omitted");
   }
 
-  // ── Step 3c — phase tool with no disk state and no arg returns
-  //              VALIDATION_FAILED rather than crashing.
+  // ── Step 3c — cairn_init_run with no disk state and no state arg
+  // returns VALIDATION_FAILED rather than crashing.
   {
     const repo = mkRepo();
     const ctx = mkCtx(repo);
-    const tool = allTools.find((t) => t.name === "cairn_init_phase_1_detect");
-    assert(tool !== undefined, "Step 3c: tool missing");
-    if (tool === undefined) return;
-    const payload = (await tool.handler(ctx, {})) as {
+    const tool = findTool("cairn_init_run");
+    const payload = (await tool.handler(ctx, { phase: "1-detect" })) as {
       error?: { code: string; message: string };
     };
     assert(
@@ -209,28 +213,24 @@ async function runSmoke(): Promise<void> {
   }
 
   // ── Step 3d — error path does NOT clobber disk state.
-  // v0.3.5 fix: prior versions persisted result.state unconditionally,
-  // so an error response with input-state echo would overwrite a
-  // 90KB mapper run with whatever shape the caller sent in. Verify
-  // disk state is unchanged after an error response.
+  // Prior versions persisted result.state unconditionally, so an
+  // error response with input-state echo would overwrite a 90KB
+  // mapper run with whatever shape the caller sent in. Verify disk
+  // state is unchanged after an error response.
   {
     const repo = mkRepo();
     const ctx = mkCtx(repo);
-    const detectTool = allTools.find(
-      (t) => t.name === "cairn_init_phase_1_detect",
-    );
-    assert(detectTool !== undefined, "Step 3d: tool missing");
-    if (detectTool === undefined) return;
+    const tool = findTool("cairn_init_run");
     // Seed disk with valid 1-detect output.
-    await detectTool.handler(ctx, { state: freshPhaseState(repo) });
+    await tool.handler(ctx, { phase: "1-detect", state: freshPhaseState(repo) });
     const before = readFileSync(phaseStateAbsPath(repo), "utf8");
-    // Force an error: call 1-detect again with currentPhase="5-brand"
+    // Force an error: call 1-detect again with currentPhase="5-pilot"
     // (mismatch).
     const bogus: PhaseState = {
       ...freshPhaseState(repo),
-      currentPhase: "5-brand",
+      currentPhase: "5-pilot",
     };
-    const errResult = (await detectTool.handler(ctx, { state: bogus })) as {
+    const errResult = (await tool.handler(ctx, { phase: "1-detect", state: bogus })) as {
       error?: { code: string };
     };
     assert(
@@ -249,14 +249,12 @@ async function runSmoke(): Promise<void> {
   {
     const repo = mkRepo();
     const ctx = mkCtx(repo);
-    const tool = allTools.find((t) => t.name === "cairn_init_phase_1_detect");
-    assert(tool !== undefined, "Step 4: phase tool missing");
-    if (tool === undefined) return;
+    const tool = findTool("cairn_init_run");
     const state: PhaseState = {
       ...freshPhaseState(repo),
-      currentPhase: "5-brand", // wrong
+      currentPhase: "5-pilot", // wrong
     };
-    const payload = (await tool.handler(ctx, { state })) as {
+    const payload = (await tool.handler(ctx, { phase: "1-detect", state })) as {
       error?: { code: string; message: string };
     };
     assert(
@@ -276,11 +274,9 @@ async function runSmoke(): Promise<void> {
     const repoA = mkRepo();
     const repoB = mkRepo();
     const ctx = mkCtx(repoA);
-    const tool = allTools.find((t) => t.name === "cairn_init_phase_1_detect");
-    assert(tool !== undefined, "Step 5: phase tool missing");
-    if (tool === undefined) return;
+    const tool = findTool("cairn_init_run");
     const state = freshPhaseState(repoB); // different repo
-    const payload = (await tool.handler(ctx, { state })) as {
+    const payload = (await tool.handler(ctx, { phase: "1-detect", state })) as {
       error?: { code: string; message: string };
     };
     assert(
@@ -299,26 +295,22 @@ async function runSmoke(): Promise<void> {
     console.log("  ✓ Step 5 — repoRoot mismatch rejected");
   }
 
-  // ── Step 6 — tool descriptions reference operator-facing intent ─
-  // Each phase tool's description must give the cairn-adopt skill
-  // enough hint to surface a one-line status line. Lock the shape.
+  // ── Step 6 — cairn_init_run description references the umbrella intent
+  // The skill's prompt cites the tool description; lock the shape so
+  // a refactor doesn't accidentally drop the phase-routing hint.
   {
-    for (const id of PHASE_IDS) {
-      const tool = allTools.find(
-        (t) => t.name === `cairn_init_phase_${id.replace(/-/g, "_")}`,
-      );
-      assert(tool !== undefined, `Step 6: tool for ${id} missing`);
-      if (tool === undefined) continue;
+    const tool = findTool("cairn_init_run");
+    assert(
+      tool.description.length > 60,
+      `Step 6: cairn_init_run description too short, got ${tool.description.length} chars`,
+    );
+    for (const term of ["phase", "8-docs-ingest", "11-baseline"]) {
       assert(
-        tool.description.includes(`Phase ${id}`),
-        `Step 6: ${tool.name} description should mention "Phase ${id}", got ${tool.description.slice(0, 60)}`,
-      );
-      assert(
-        tool.description.length > 40,
-        `Step 6: ${tool.name} description too short`,
+        tool.description.toLowerCase().includes(term.toLowerCase()),
+        `Step 6: cairn_init_run description should mention "${term}", got: ${tool.description}`,
       );
     }
-    console.log(`  ✓ Step 6 — phase tool descriptions cover all ${PHASE_IDS.length} phases`);
+    console.log("  ✓ Step 6 — cairn_init_run description covers phase routing + parallel fold");
   }
 
   console.log("smoke-init-mcp-tools — pass");

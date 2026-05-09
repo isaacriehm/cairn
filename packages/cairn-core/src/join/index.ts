@@ -289,7 +289,11 @@ function writeCliPathFile(repoRoot: string): JoinStep {
     };
   }
   const isModule = /\.[mc]?js$/.test(cliArgv);
-  const invocation = isModule ? `node ${cliArgv}` : cliArgv;
+  // Quote the path so eval'ing the .cli-path content from a hook
+  // survives a CLI install location with spaces (operators with
+  // spaces anywhere in their home, or local-marketplace plugin caches
+  // resolved through symlinked dev paths).
+  const invocation = isModule ? `node "${cliArgv}"` : `"${cliArgv}"`;
   const path = join(repoRoot, ".cairn", ".cli-path");
   try {
     mkdirSync(join(repoRoot, ".cairn"), { recursive: true });

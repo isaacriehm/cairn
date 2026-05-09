@@ -268,7 +268,7 @@ Write tools wrap their work in the per-write flock helper from `cairn-core/src/l
       "hooks": [
         {
           "type": "command",
-          "command": "node ${CLAUDE_PLUGIN_ROOT}/../cairn-core/dist/hooks/session-start.js"
+          "command": "node \"${CLAUDE_PLUGIN_ROOT}/../cairn-core/dist/hooks/session-start.js\""
         }
       ]
     }
@@ -278,7 +278,7 @@ Write tools wrap their work in the per-write flock helper from `cairn-core/src/l
       "hooks": [
         {
           "type": "command",
-          "command": "node ${CLAUDE_PLUGIN_ROOT}/../cairn-core/dist/hooks/stop.js"
+          "command": "node \"${CLAUDE_PLUGIN_ROOT}/../cairn-core/dist/hooks/stop.js\""
         }
       ]
     }
@@ -289,7 +289,7 @@ Write tools wrap their work in the per-write flock helper from `cairn-core/src/l
       "hooks": [
         {
           "type": "command",
-          "command": "node ${CLAUDE_PLUGIN_ROOT}/../cairn-core/dist/hooks/post-tool-use/read-enricher.js"
+          "command": "node \"${CLAUDE_PLUGIN_ROOT}/../cairn-core/dist/hooks/post-tool-use/read-enricher.js\""
         }
       ]
     }

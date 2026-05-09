@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook session-start"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook session-start"
           }
         ]
       }
@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook session-end"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook session-end"
           }
         ]
       }
@@ -25,7 +25,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook stop"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook stop"
           }
         ]
       }
@@ -35,7 +35,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook user-prompt-submit"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook user-prompt-submit"
           }
         ]
       }
@@ -46,7 +46,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook read-enrich"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook read-enrich"
           }
         ]
       },
@@ -55,7 +55,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook post-write"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook post-write"
           }
         ]
       }

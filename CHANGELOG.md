@@ -4,6 +4,41 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.3] — 2026-05-09
+
+### Fixed
+
+- **Hook commands now survive `${CLAUDE_PLUGIN_ROOT}` paths with
+  spaces.** When the plugin is installed via a local marketplace
+  pointing at a path that contains spaces, every hook in
+  `hooks/hooks.json` failed at the shell with
+  `Cannot find module '<path-prefix-up-to-first-space>'`. Wrapped
+  the path expansion in `"…"` across the seven hook commands, the
+  `check-layout.mjs` build validator, the `smoke-plugin-layout`
+  smoke, the `cairn join` `.cli-path` writer (which is `eval`'d by
+  the per-clone pre-commit hook), and the three example hook entries
+  in `docs/PLUGIN_ARCHITECTURE.md`.
+
+### Changed
+
+- **MCP init surface collapsed from 15 tools to 2.** The 13
+  `cairn_init_phase_<id>` per-phase tools and the separate
+  `cairn_init_phases_8_9_10_parallel` tool were folded into the
+  umbrella `cairn_init_run({ phase, answer? })`. Phase 8
+  (`8-docs-ingest`) internally fans out to phases 8/9/10 in parallel
+  and advances to `11-baseline`; the cairn-adopt skill no longer
+  needs a special-case branch for the parallel gate. Cuts ~5k tokens
+  of MCP listing bloat.
+
+  **Breaking** for any external script calling
+  `cairn_init_phase_<id>` or `cairn_init_phases_8_9_10_parallel`
+  directly. Migration: call `cairn_init_run({ phase: "<id>" })`
+  instead.
+
+- **MCP tool count** in README, ARCHITECTURE, MCP_SURFACE, and
+  the user-facing reference guide updated to reflect the new 25-tool
+  surface.
+
 ## [0.7.1] — 2026-05-09
 
 ### Fixed

@@ -94,15 +94,20 @@ if (hooksFile) {
     }
     // Walk every command. Each invokes the bundled CLI at the plugin's
     // own cache dir — no npx, no PATH dependency.
+    // Quoted form is required — `${CLAUDE_PLUGIN_ROOT}` may resolve
+    // to a path containing spaces (local-marketplace dev installs or
+    // any operator with spaces in their home). Without the surrounding
+    // `"…"` the shell splits on whitespace and `node` fails to
+    // resolve the module path.
     const ALLOWED = new Set([
-      "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook session-start",
-      "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook session-end",
-      "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook stop",
-      "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook user-prompt-submit",
-      "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook read-enrich",
-      "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook write-guard",
-      "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook sot-align",
-      "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook post-write",
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook session-start',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook session-end',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook stop',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook user-prompt-submit',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook read-enrich',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook write-guard',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook sot-align',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook post-write',
     ]);
     const visit = (event, entries) => {
       for (const entry of entries) {
