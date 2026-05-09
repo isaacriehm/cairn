@@ -29,6 +29,7 @@ import { runGeneratorDrift } from "./generator-drift.js";
 import { runQualityGradesUpdate } from "./quality-update.js";
 import { runScopeCoverage } from "./scope-coverage.js";
 import { runStubCatalogHits } from "./stub-hits.js";
+import { runAttestedCommitsGc } from "./attested-commits.js";
 import type {
   GcAutoMergeClass,
   GcCommitProposal,
@@ -81,6 +82,7 @@ export async function runGcSweep(opts: RunGcSweepOptions): Promise<GcSweepResult
     "scope-coverage": 0,
     "completion-integrity": 0,
     "citation-integrity": 0,
+    "attested-commits-pruning": 0,
   };
 
   // 1. Frontmatter freshness.
@@ -163,6 +165,14 @@ export async function runGcSweep(opts: RunGcSweepOptions): Promise<GcSweepResult
     const r = runCitationIntegrity({ repoRoot: opts.repoRoot });
     findings.push(...r.findings);
     passDurations["citation-integrity"] = Date.now() - t0;
+  }
+
+  // 9. Attested commits pruning.
+  {
+    const t0 = Date.now();
+    const r = runAttestedCommitsGc({ repoRoot: opts.repoRoot });
+    findings.push(...r.findings);
+    passDurations["attested-commits-pruning"] = Date.now() - t0;
   }
 
   // Re-classify proposals against project globs (passes set defaults; this

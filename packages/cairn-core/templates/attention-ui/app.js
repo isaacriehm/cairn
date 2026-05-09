@@ -9,6 +9,9 @@
 
 const HEARTBEAT_MS = 5_000;
 
+const params = new URLSearchParams(window.location.search);
+const token = params.get("token");
+
 const state = {
   drafts: [],
   clusters: [],
@@ -21,9 +24,15 @@ const state = {
 /* ── api helpers ───────────────────────────────────────────────── */
 
 async function api(path, opts = {}) {
-  const res = await fetch(path, {
+  const url = new URL(path, window.location.origin);
+  if (token) url.searchParams.set("token", token);
+
+  const res = await fetch(url.toString(), {
     method: opts.method ?? "GET",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+    },
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
   return res.json();
@@ -139,7 +148,21 @@ function renderDrafts() {
   pane.innerHTML = state.drafts
     .map((d, i) => renderDraftCard(d, i === state.focusedDraftIdx))
     .join("");
-  attachDraftHandlers();
+  // No need for attachDraftHandlers() here, we use delegation now.
+  scrollFocusedIntoView();
+}
+
+function updateFocus() {
+  const pane = document.getElementById("draft-list");
+  if (!pane) return;
+  const cards = pane.querySelectorAll(".draft-card[data-id]");
+  cards.forEach((el, i) => {
+    if (i === state.focusedDraftIdx) {
+      el.classList.add("focus");
+    } else {
+      el.classList.remove("focus");
+    }
+  });
   scrollFocusedIntoView();
 }
 
@@ -201,37 +224,39 @@ function renderEditor(d) {
   `;
 }
 
-function attachDraftHandlers() {
-  document.querySelectorAll(".draft-card[data-id]").forEach((el) => {
-    const id = el.dataset.id;
-    el.querySelectorAll("button[data-action]").forEach((btn) => {
-      btn.addEventListener("click", async (ev) => {
-        ev.stopPropagation();
-        const action = btn.dataset.action;
-        if (action === "accept") return acceptDraft(id);
-        if (action === "reject") return rejectDraft(id);
-        if (action === "edit") {
-          state.editing = { id };
-          render();
-          return;
-        }
-        if (action === "save-edit") return saveEdit(id);
-        if (action === "cancel-edit") {
-          state.editing = null;
-          render();
-          return;
-        }
-      });
-    });
-    el.addEventListener("click", () => {
-      const idx = state.drafts.findIndex((d) => d.id === id);
-      if (idx >= 0) {
-        state.focusedDraftIdx = idx;
-        render();
-      }
-    });
-  });
-}
+// Event Delegation for Draft List
+document.getElementById("draft-list").addEventListener("click", async (ev) => {
+  const btn = ev.target.closest("button[data-action]");
+  const card = ev.target.closest(".draft-card[data-id]");
+  
+  if (btn && card) {
+    ev.stopPropagation();
+    const id = card.dataset.id;
+    const action = btn.dataset.action;
+    if (action === "accept") return acceptDraft(id);
+    if (action === "reject") return rejectDraft(id);
+    if (action === "edit") {
+      state.editing = { id };
+      render();
+      return;
+    }
+    if (action === "save-edit") return saveEdit(id);
+    if (action === "cancel-edit") {
+      state.editing = null;
+      render();
+      return;
+    }
+  }
+
+  if (card) {
+    const id = card.dataset.id;
+    const idx = state.drafts.findIndex((d) => d.id === id);
+    if (idx >= 0) {
+      state.focusedDraftIdx = idx;
+      updateFocus();
+    }
+  }
+});
 
 function scrollFocusedIntoView() {
   const focused = document.querySelector(".draft-card.focus");
@@ -368,10 +393,10 @@ document.addEventListener("keydown", (ev) => {
       state.drafts.length - 1,
       state.focusedDraftIdx + 1,
     );
-    render();
+    updateFocus();
   } else if (key === "k") {
     state.focusedDraftIdx = Math.max(0, state.focusedDraftIdx - 1);
-    render();
+    updateFocus();
   } else if (key === "a") {
     const d = state.drafts[state.focusedDraftIdx];
     if (d) acceptDraft(d.id);

@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { logger } from "../logger.js";
@@ -23,7 +25,18 @@ export async function startMcpServer(opts: StartServerOptions): Promise<{
   const { ctx } = opts;
   const server = new McpServer({ name: "cairn-mcp", version: VERSION });
 
+  // Finding 2: Unload init tools post-adoption to save context window.
+  // Adoption is "complete" if config.yaml exists but init-state.json
+  // (the v0.3.5 state machine sentinel) is gone.
+  const isAdopted =
+    existsSync(join(ctx.repoRoot, ".cairn", "config.yaml")) &&
+    !existsSync(join(ctx.repoRoot, ".cairn", "init-state.json"));
+
   for (const tool of allTools) {
+    if (isAdopted && tool.name.startsWith("cairn_init_")) {
+      continue;
+    }
+
     server.registerTool(
       tool.name,
       {

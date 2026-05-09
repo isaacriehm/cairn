@@ -74,20 +74,13 @@ export async function getDiff(args: {
   const git = simpleGit({ baseDir: args.mirrorPath });
 
   // Tracked changes: diff against shaPin, name-status only first.
-  const tracked = await git.raw([
-    "diff",
-    "--name-status",
-    "--find-renames",
-    args.shaPin,
-  ]);
-  const trackedRows = parseNameStatus(tracked);
-
   // Untracked: anything new not in `git diff` against the SHA but present now.
-  const untrackedRaw = await git.raw([
-    "ls-files",
-    "--others",
-    "--exclude-standard",
+  const [tracked, untrackedRaw] = await Promise.all([
+    git.raw(["diff", "--name-status", "--find-renames", args.shaPin]),
+    git.raw(["ls-files", "--others", "--exclude-standard"]),
   ]);
+
+  const trackedRows = parseNameStatus(tracked);
   const untracked = untrackedRaw
     .split("\n")
     .map((s: string) => s.trim())
@@ -101,48 +94,86 @@ export async function getDiff(args: {
     trackedRows.filter((r) => r.status === "A").map((r) => r.path),
   );
 
+  const limit = pLimit(10);
   const out: DiffEntry[] = [];
 
-  for (const row of trackedNonAdded) {
-    const abs = join(args.mirrorPath, row.path);
-    if (row.status === "D") {
-      const before = await showAtSha(git, args.shaPin, row.path);
-      const entry: DiffEntry = { path: row.path, status: "deleted" };
-      if (before !== undefined) entry.beforeContent = before;
-      out.push(entry);
-    } else if (row.status === "M") {
-      const before = await showAtSha(git, args.shaPin, row.path);
-      const after = await readMaybe(abs);
-      const entry: DiffEntry = { path: row.path, status: "modified" };
-      if (before !== undefined) entry.beforeContent = before;
-      if (after !== undefined) entry.afterContent = after;
-      out.push(entry);
-    } else if (row.status === "R") {
-      const fromPath = row.fromPath ?? "";
-      const before = await showAtSha(git, args.shaPin, fromPath);
-      const after = await readMaybe(abs);
-      const entry: DiffEntry = {
-        path: row.path,
-        status: "renamed",
-        fromPath,
-      };
-      if (before !== undefined) entry.beforeContent = before;
-      if (after !== undefined) entry.afterContent = after;
-      out.push(entry);
-    }
-  }
+  const tasks = trackedNonAdded.map((row) =>
+    limit(async () => {
+      const abs = join(args.mirrorPath, row.path);
+      if (row.status === "D") {
+        const before = await showAtSha(git, args.shaPin, row.path);
+        const entry: DiffEntry = { path: row.path, status: "deleted" };
+        if (before !== undefined) entry.beforeContent = before;
+        out.push(entry);
+      } else if (row.status === "M") {
+        const [before, after] = await Promise.all([
+          showAtSha(git, args.shaPin, row.path),
+          readMaybe(abs),
+        ]);
+        const entry: DiffEntry = { path: row.path, status: "modified" };
+        if (before !== undefined) entry.beforeContent = before;
+        if (after !== undefined) entry.afterContent = after;
+        out.push(entry);
+      } else if (row.status === "R") {
+        const fromPath = row.fromPath ?? "";
+        const [before, after] = await Promise.all([
+          showAtSha(git, args.shaPin, fromPath),
+          readMaybe(abs),
+        ]);
+        const entry: DiffEntry = {
+          path: row.path,
+          status: "renamed",
+          fromPath,
+        };
+        if (before !== undefined) entry.beforeContent = before;
+        if (after !== undefined) entry.afterContent = after;
+        out.push(entry);
+      }
+    }),
+  );
 
   // New files: union of `git diff` "A" entries and ls-files untracked.
   const newPaths = new Set<string>([...trackedAddedPaths, ...untracked]);
   for (const path of newPaths) {
-    const after = await readMaybe(join(args.mirrorPath, path));
-    const entry: DiffEntry = { path, status: "added" };
-    if (after !== undefined) entry.afterContent = after;
-    out.push(entry);
+    tasks.push(
+      limit(async () => {
+        const after = await readMaybe(join(args.mirrorPath, path));
+        const entry: DiffEntry = { path, status: "added" };
+        if (after !== undefined) entry.afterContent = after;
+        out.push(entry);
+      }),
+    );
   }
+
+  await Promise.all(tasks);
 
   out.sort((a, b) => a.path.localeCompare(b.path));
   return out;
+}
+
+/** Simple concurrency limiter. */
+function pLimit(concurrency: number) {
+  const queue: Array<() => void> = [];
+  let activeCount = 0;
+
+  const next = () => {
+    activeCount--;
+    if (queue.length > 0) {
+      queue.shift()!();
+    }
+  };
+
+  return async <T>(fn: () => Promise<T>): Promise<T> => {
+    if (activeCount >= concurrency) {
+      await new Promise<void>((resolve) => queue.push(resolve));
+    }
+    activeCount++;
+    try {
+      return await fn();
+    } finally {
+      next();
+    }
+  };
 }
 
 /** True iff any changed file's path matches any of the supplied globs. */

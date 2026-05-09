@@ -96,9 +96,11 @@ function runSmoke(): void {
       "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook session-start",
       "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook session-end",
       "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook stop",
+      "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook user-prompt-submit",
       "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook read-enrich",
       "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook write-guard",
       "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook sot-align",
+      "node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs hook post-write",
     ]);
     for (const event of ["SessionStart", "SessionEnd", "Stop", "PostToolUse"] as const) {
       for (const entry of hooks[event]) {
@@ -193,6 +195,7 @@ function runSmoke(): void {
       "runStopHook",
       "runReadEnricher",
       "runWriteGuardian",
+      "runPostWriteHook",
     ]) {
       assert(typeof ns[symbol] === "function", `Step 5: cairn-core must export ${symbol}`);
     }

@@ -43,7 +43,7 @@ every deferred tool the rest of the skill needs. The cairn MCP tools
 back to inline prose questions and the contract breaks.
 
 ```
-ToolSearch(select:mcp__plugin_cairn_cairn__cairn_task_create,mcp__plugin_cairn_cairn__cairn_decisions_in_scope,mcp__plugin_cairn_cairn__cairn_invariants_in_scope,mcp__plugin_cairn_cairn__cairn_canonical_for_topic,mcp__plugin_cairn_cairn__cairn_search,AskUserQuestion)
+ToolSearch(select:mcp__plugin_cairn_cairn__cairn_task_create,mcp__plugin_cairn_cairn__cairn_in_scope,mcp__plugin_cairn_cairn__cairn_canonical_for_topic,mcp__plugin_cairn_cairn__cairn_search,AskUserQuestion)
 ```
 
 After this call, all phase tools + the question tool are loaded for
@@ -118,8 +118,7 @@ Return to Step 3.
 
 Call these MCP tools in parallel before deciding anything:
 
-- `cairn_decisions_in_scope({globs: <heuristic glob list from prompt>})`
-- `cairn_invariants_in_scope({globs: same})`
+- `cairn_in_scope({path_globs: <heuristic glob list from prompt>})`
 - `cairn_canonical_for_topic({topic: <main topic keyword from prompt>})`
 - `cairn_search({query: <prompt nouns>})` — for fuzzy lookups when
   the prompt names a symbol or feature
@@ -191,6 +190,7 @@ cairn_task_create({
   out_of_scope: [<explicit non-goals>],
   acceptance: [<what done looks like>],
   module: <pilot module slug or top-level dir touched>,
+  needs_review: <true if complex or load-bearing; false for trivial fixes>,
 })
 ```
 
@@ -242,7 +242,7 @@ runtime above this skill) parses it and issues `Task` calls:
 ## Dispatch plan
 
 Tightened spec: `.cairn/tasks/active/<task_id>/spec.tightened.md`
-Reviewer: spawn LAST after all dispatched subagents complete.
+Reviewer: spawn LAST after all dispatched subagents complete (only if `needs_review: true`).
 
 ```dispatch
 - subagent: general-purpose
@@ -279,7 +279,7 @@ it on future Reads.
   context-free.
 - Spec file lives under `.cairn/tasks/active/`; never under
   `.cairn/ground/`.
-- Reviewer subagent is always spawned LAST when there are 2+ chunks.
+- Reviewer subagent is spawned LAST only when `needs_review: true` in the spec.
 - When dispatching subagents OR implementing inline, instruct
   follow-up markers in source as `// TODO(TSK-<task_id>)` — never
   bare `TODO` (the citation scanner only resolves the cite form).

@@ -4,7 +4,8 @@
  * funnel through `withWriteLock`.
  */
 
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { readFile, writeFile, rename, rm, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
@@ -22,11 +23,13 @@ import { parseFrontmatterRecord } from "../../ground/frontmatter.js";
 import { withWriteLock } from "../../lock.js";
 import { writeInvalidationEvent } from "../../events/index.js";
 import { logger } from "../../logger.js";
-import { renameSync, rmSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import type { ProjectGlobs } from "../../sensors/types.js";
 
 const log = logger("attention.serve.api");
+
+const MAX_BODY_BYTES = 5 * 1024 * 1024; // 5MB
+const BODY_TIMEOUT_MS = 10_000;
 
 interface Counters {
   accepted: number;
@@ -39,6 +42,7 @@ interface ApiCtx {
   repoRoot: string;
   counters: Counters;
   touch: () => void;
+  token: string;
   onDone: () => void;
 }
 
@@ -52,25 +56,35 @@ export async function handleApi(
 ): Promise<void> {
   ctx.touch();
   const url = req.url ?? "/";
+  const parsedUrl = new URL(url, `http://${req.headers.host || "localhost"}`);
+  
+  // Security: Validate Token
+  const queryToken = parsedUrl.searchParams.get("token");
+  const authHeader = req.headers["authorization"];
+  const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  
+  if (queryToken !== ctx.token && bearerToken !== ctx.token) {
+    return sendJson(res, 403, { ok: false, error: "forbidden: invalid token" });
+  }
 
   try {
-    if (url === "/api/state" && req.method === "GET") {
+    if (parsedUrl.pathname === "/api/state" && req.method === "GET") {
       return sendJson(res, 200, await buildState(ctx));
     }
-    if (url === "/api/heartbeat" && req.method === "POST") {
+    if (parsedUrl.pathname === "/api/heartbeat" && req.method === "POST") {
       return sendJson(res, 200, { ok: true });
     }
-    if (url === "/api/done" && req.method === "POST") {
+    if (parsedUrl.pathname === "/api/done" && req.method === "POST") {
       ctx.onDone();
       return sendJson(res, 200, { ok: true, ...ctx.counters });
     }
-    if (url === "/api/bulk-accept" && req.method === "POST") {
+    if (parsedUrl.pathname === "/api/bulk-accept" && req.method === "POST") {
       const body = await readJsonBody(req);
       const threshold = parseThreshold(body?.threshold);
       const dryRun = body?.dryRun === true;
       const result = await bulkAcceptObvious({
         repoRoot: ctx.repoRoot,
-        globs: loadGlobs(ctx.repoRoot),
+        globs: await loadGlobs(ctx.repoRoot),
         threshold,
         dryRun,
       });
@@ -80,7 +94,7 @@ export async function handleApi(
       if (!dryRun) ctx.counters.accepted += result.decsAccepted;
       return sendJson(res, 200, { ok: true, ...result });
     }
-    if (url === "/api/cluster/merge" && req.method === "POST") {
+    if (parsedUrl.pathname === "/api/cluster/merge" && req.method === "POST") {
       const body = await readJsonBody(req);
       const survivor = String(body?.survivor_id ?? "");
       const members = Array.isArray(body?.member_ids) ? body.member_ids : [];
@@ -99,7 +113,7 @@ export async function handleApi(
     }
 
     // /api/draft/:id/<accept|reject|edit>
-    const draftMatch = url.match(/^\/api\/draft\/(DEC-[0-9a-f]{7,})\/(accept|reject|edit)$/);
+    const draftMatch = parsedUrl.pathname.match(/^\/api\/draft\/(DEC-[0-9a-f]{7,})\/(accept|reject|edit)$/);
     if (draftMatch !== null && req.method === "POST") {
       const id = draftMatch[1] as string;
       const action = draftMatch[2] as string;
@@ -148,9 +162,29 @@ async function readJsonBody(
 ): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    req.on("data", (c) => chunks.push(c as Buffer));
-    req.on("error", reject);
+    let bytesReceived = 0;
+
+    const timeout = setTimeout(() => {
+      req.destroy();
+      reject(new Error("body timeout"));
+    }, BODY_TIMEOUT_MS);
+
+    req.on("data", (c) => {
+      bytesReceived += c.length;
+      if (bytesReceived > MAX_BODY_BYTES) {
+        clearTimeout(timeout);
+        req.destroy();
+        reject(new Error("body too large"));
+        return;
+      }
+      chunks.push(c as Buffer);
+    });
+    req.on("error", (err) => {
+      clearTimeout(timeout);
+      reject(err);
+    });
     req.on("end", () => {
+      clearTimeout(timeout);
       const raw = Buffer.concat(chunks).toString("utf8");
       if (raw.length === 0) return resolve({});
       try {
@@ -168,11 +202,11 @@ function parseThreshold(raw: unknown): DraftConfidence {
   return "high";
 }
 
-function loadGlobs(repoRoot: string): ProjectGlobs {
+async function loadGlobs(repoRoot: string): Promise<ProjectGlobs> {
   const cfgPath = join(repoRoot, ".cairn", "config.yaml");
   if (!existsSync(cfgPath)) return {};
   try {
-    const parsed = parseYaml(readFileSync(cfgPath, "utf8"));
+    const parsed = parseYaml(await readFile(cfgPath, "utf8"));
     if (typeof parsed !== "object" || parsed === null) return {};
     const cfg = parsed as Record<string, unknown>;
     const globs: ProjectGlobs = {};
@@ -219,7 +253,7 @@ async function buildState(ctx: ApiCtx): Promise<unknown> {
       const abs = join(inboxDir, e.name);
       let raw: string;
       try {
-        raw = readFileSync(abs, "utf8");
+        raw = await readFile(abs, "utf8");
       } catch {
         continue;
       }
@@ -275,17 +309,17 @@ async function acceptDraft(
   if (!existsSync(inboxPath)) {
     return { ok: false, error: `no draft at ${inboxPath}` };
   }
-  return await withWriteLock(repoRoot, () => {
-    mkdirSync(dirname(acceptedPath), { recursive: true });
-    const draft = readFileSync(inboxPath, "utf8");
+  return await withWriteLock(repoRoot, async () => {
+    await mkdir(dirname(acceptedPath), { recursive: true });
+    const draft = await readFile(inboxPath, "utf8");
     const meta = parseDraftMeta(draft);
     const promoted = draft.replace(
       /^status:\s*draft(?:-from-[a-z-]+)?\b/m,
       "status: accepted",
     );
-    writeFileSync(acceptedPath, promoted, "utf8");
+    await writeFile(acceptedPath, promoted, "utf8");
     try {
-      rmSync(inboxPath, { force: true });
+      await rm(inboxPath, { force: true });
     } catch {
       /* best-effort */
     }
@@ -322,8 +356,8 @@ async function rejectDraft(repoRoot: string, id: string): Promise<boolean> {
   const inboxPath = join(decDir, "_inbox", `${id}.draft.md`);
   const rejectedPath = join(decDir, "_inbox", `${id}.rejected.md`);
   if (!existsSync(inboxPath)) return false;
-  return await withWriteLock(repoRoot, () => {
-    renameSync(inboxPath, rejectedPath);
+  return await withWriteLock(repoRoot, async () => {
+    await rename(inboxPath, rejectedPath);
     try {
       writeInvalidationEvent(repoRoot, {
         kind: "decision_rejected",
@@ -352,8 +386,8 @@ async function editDraft(
   if (newTitle === null && newRationale === null) {
     return { ok: false, error: "no fields to update" };
   }
-  return await withWriteLock(repoRoot, () => {
-    let raw = readFileSync(inboxPath, "utf8");
+  return await withWriteLock(repoRoot, async () => {
+    let raw = await readFile(inboxPath, "utf8");
     if (newTitle !== null) {
       raw = raw.replace(/^title:.*$/m, `title: ${JSON.stringify(newTitle)}`);
       raw = raw.replace(
@@ -368,7 +402,7 @@ async function editDraft(
       const fm = fmMatch?.[0] ?? "";
       raw = `${fm}\n# ${id}\n\n## Proposed rationale\n\n${newRationale}\n`;
     }
-    writeFileSync(inboxPath, raw, "utf8");
+    await writeFile(inboxPath, raw, "utf8");
     return { ok: true };
   });
 }

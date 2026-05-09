@@ -69,7 +69,7 @@ export function buildLegend(
       "  If a passage states an active rule the operator has committed to,",
     );
     lines.push(
-      "  call cairn_propose_decision({ slug }) to surface it for operator review.",
+      "  call cairn_record_decision({ slug }) to surface it for operator review.",
     );
     lines.push(
       "  Do NOT propose for narrative, plans, or status content.",

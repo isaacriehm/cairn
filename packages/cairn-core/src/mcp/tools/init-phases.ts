@@ -70,13 +70,19 @@ const phaseStateSchema = z.object({
   schemaVersion: z.literal(1),
 });
 
-const initPhaseInput = {
+const phaseRunInput = {
+  phase: phaseIdEnum,
   // State is optional — phase tools read .cairn/init-state.json by
   // default. Callers can still pass an explicit state object (e.g.
   // smoke tests) but the cairn-adopt skill should pass nothing here.
   state: phaseStateSchema.optional(),
   // Operator answer for needs_input phases. The wrapper splices this
   // into state.answer before invoking the phase runner.
+  answer: z.string().optional(),
+};
+
+const initPhaseInput = {
+  state: phaseStateSchema.optional(),
   answer: z.string().optional(),
 };
 
@@ -137,105 +143,105 @@ function toSlim(result: PhaseResult): SlimPhaseResponse {
   return { status: "error", error: result.error };
 }
 
+async function handlePhaseRun(
+  ctx: McpContext,
+  id: PhaseId,
+  input: { state?: PhaseState; answer?: string },
+): Promise<unknown> {
+  // Resolve state: prefer the explicit arg (smoke tests, debug
+  // tooling), fall back to disk (cairn-adopt skill default).
+  let state: PhaseState | null = input.state ?? null;
+  if (state === null) {
+    state = readPhaseState(ctx.repoRoot);
+  }
+  if (state === null) {
+    return mcpError(
+      "VALIDATION_FAILED",
+      `cairn_init_run for phase ${id} found no init state at .cairn/init-state.json. Call cairn_init_resume to start a fresh pipeline.`,
+    );
+  }
+  // Sanity: the tool's id must match the phase id baked into state.
+  if (state.currentPhase !== id) {
+    return mcpError(
+      "VALIDATION_FAILED",
+      `cairn_init_run for phase ${id} requires state.currentPhase=${id}, got ${state.currentPhase}`,
+    );
+  }
+  // The state's repoRoot drives the phase, but we sanity-check it
+  // against the MCP context's repoRoot so a misaddressed call
+  // (e.g. an old state file from a different repo) gets caught.
+  if (state.repoRoot !== ctx.repoRoot) {
+    return mcpError(
+      "VALIDATION_FAILED",
+      `state.repoRoot ${state.repoRoot} does not match MCP context ${ctx.repoRoot}`,
+    );
+  }
+  // Splice the operator's answer into state for needs_input phases.
+  const stateForRun: PhaseState =
+    input.answer !== undefined && input.answer.length > 0
+      ? { ...state, answer: input.answer }
+      : state;
+  const runner = RUNNERS[id];
+  // Coarse-grained statusline coverage
+  const isLongPhase =
+    id === "3-mapper" ||
+    id === "6-docs-ingest" ||
+    id === "7b-source-comments" ||
+    id === "7c-rules-merge";
+  if (!isLongPhase) {
+    writeProgress(state.repoRoot, {
+      phase: id,
+      batch: 1,
+      total: 1,
+      startedAt: Date.now(),
+    });
+  }
+  const t0 = performance.now();
+  const result = await runner(stateForRun);
+  const durationMs = Math.round(performance.now() - t0);
+  clearProgress(state.repoRoot);
+  // Stamp `duration_ms` on the phase's output entry
+  if (result.status !== "error") {
+    const phaseOut = result.state.outputs[id];
+    if (typeof phaseOut === "object" && phaseOut !== null) {
+      const obj = phaseOut as Record<string, unknown>;
+      if (obj["duration_ms"] === undefined) {
+        obj["duration_ms"] = durationMs;
+      }
+    }
+  }
+  // Persist state ONLY on non-error results.
+  if (result.status !== "error") {
+    try {
+      writePhaseState(result.state);
+    } catch (err) {
+      return mcpError(
+        "INTERNAL_ERROR",
+        `failed to persist init state: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+  return toSlim(result);
+}
+
+function makePhaseRunTool(): ToolDef<any> {
+  return {
+    name: "cairn_init_run",
+    description: "Run a specific initialization phase. Call cairn_init_resume to find the next phase, then invoke this tool with that phase ID. Supports sequential execution of the 13-phase adoption pipeline.",
+    inputSchema: phaseRunInput,
+    handler: async (ctx, input) => {
+      return handlePhaseRun(ctx, input.phase as PhaseId, input);
+    },
+  };
+}
+
 function makePhaseTool(id: PhaseId): ToolDef<PhaseToolInput> {
   return {
     name: `cairn_init_phase_${normalizeId(id)}`,
     description: phaseDescription(id),
     inputSchema: initPhaseInput,
     handler: async (ctx, input) => {
-      // Resolve state: prefer the explicit arg (smoke tests, debug
-      // tooling), fall back to disk (cairn-adopt skill default).
-      let state: PhaseState | null = input.state ?? null;
-      if (state === null) {
-        state = readPhaseState(ctx.repoRoot);
-      }
-      if (state === null) {
-        return mcpError(
-          "VALIDATION_FAILED",
-          `cairn_init_phase_${normalizeId(id)} found no init state at .cairn/init-state.json. Call cairn_init_resume to start a fresh pipeline.`,
-        );
-      }
-      // Sanity: the tool's id must match the phase id baked into state.
-      if (state.currentPhase !== id) {
-        return mcpError(
-          "VALIDATION_FAILED",
-          `cairn_init_phase_${normalizeId(id)} requires state.currentPhase=${id}, got ${state.currentPhase}`,
-        );
-      }
-      // The state's repoRoot drives the phase, but we sanity-check it
-      // against the MCP context's repoRoot so a misaddressed call
-      // (e.g. an old state file from a different repo) gets caught.
-      if (state.repoRoot !== ctx.repoRoot) {
-        return mcpError(
-          "VALIDATION_FAILED",
-          `state.repoRoot ${state.repoRoot} does not match MCP context ${ctx.repoRoot}`,
-        );
-      }
-      // Splice the operator's answer into state for needs_input phases.
-      // The runner clears `state.answer` once it has consumed it (via
-      // `advancePhase`), so passing an answer to a phase that doesn't
-      // expect one is a no-op rather than a hazard.
-      const stateForRun: PhaseState =
-        input.answer !== undefined && input.answer.length > 0
-          ? { ...state, answer: input.answer }
-          : state;
-      const runner = RUNNERS[id];
-      // Coarse-grained statusline coverage: every phase gets at least
-      // one heartbeat write (batch=1, total=1) at entry so the operator
-      // sees the current phase id mid-init even for fast phases. The
-      // long phases (3-mapper, 6-docs-ingest, 7b-source-comments,
-      // 7c-rules-merge) overwrite with finer-grained per-batch progress
-      // from inside the runner. clearProgress at the end of every
-      // phase ensures stale heartbeats don't survive into the next.
-      const isLongPhase =
-        id === "3-mapper" ||
-        id === "6-docs-ingest" ||
-        id === "7b-source-comments" ||
-        id === "7c-rules-merge";
-      if (!isLongPhase) {
-        writeProgress(state.repoRoot, {
-          phase: id,
-          batch: 1,
-          total: 1,
-          startedAt: Date.now(),
-        });
-      }
-      const t0 = performance.now();
-      const result = await runner(stateForRun);
-      const durationMs = Math.round(performance.now() - t0);
-      clearProgress(state.repoRoot);
-      // Stamp `duration_ms` on the phase's output entry so init-state.json
-      // carries an ETA-auditable record for every phase, not just the ones
-      // that bother to track time internally (3-mapper). The result.state
-      // returned by the runner is freshly constructed; mutating its
-      // current-phase entry is safe and doesn't ripple to prior phases.
-      if (result.status !== "error") {
-        const phaseOut = result.state.outputs[id];
-        if (typeof phaseOut === "object" && phaseOut !== null) {
-          const obj = phaseOut as Record<string, unknown>;
-          if (obj["duration_ms"] === undefined) {
-            obj["duration_ms"] = durationMs;
-          }
-        }
-      }
-      // Persist state ONLY on non-error results. An error path returns
-      // the input state echo unchanged; persisting it would clobber
-      // the on-disk state file with whatever shape the caller sent in
-      // (in v0.3.4 a malformed state nuked a 90KB mapper run this way).
-      if (result.status !== "error") {
-        try {
-          writePhaseState(result.state);
-        } catch (err) {
-          return mcpError(
-            "INTERNAL_ERROR",
-            `failed to persist init state: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        }
-      }
-      // The state file lingers after terminal phase 12-multidev so the
-      // cairn-adopt skill can read outputs for its final summary
-      // banner. Cleanup is a manual concern (cairn doctor / re-init).
-      return toSlim(result);
+      return handlePhaseRun(ctx, id, input);
     },
   };
 }
@@ -367,5 +373,6 @@ function makeParallel678Tool(): ToolDef<PhaseToolInput> {
 export const initPhaseTools: ToolDef<PhaseToolInput>[] = PHASE_IDS.map(
   (id) => makePhaseTool(id),
 );
+export const initRunTool: ToolDef<any> = makePhaseRunTool();
 export const initParallel678Tool: ToolDef<PhaseToolInput> = makeParallel678Tool();
 export const initResumeTool: ToolDef<ResumeToolInput> = makeResumeTool();

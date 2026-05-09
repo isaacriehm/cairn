@@ -1525,24 +1525,9 @@ export async function runSotAlign(): Promise<void> {
       emitShapeB("");
       return;
     }
-    const relPath = computeRelPath(repoRoot, filePath);
-    // Skip cairn's own state surface — strip-replace + ledger writes
-    // would re-trigger the hook in a loop.
-    if (relPath === ".cairn" || relPath.startsWith(".cairn/")) {
-      emitShapeB("");
-      return;
-    }
-    // Skip files outside the repo root.
-    if (relPath.startsWith("../")) {
-      emitShapeB("");
-      return;
-    }
-    const sessionId =
-      typeof payload.session_id === "string" && payload.session_id.length > 0
-        ? payload.session_id
-        : null;
-    const result = await alignFile({ repoRoot, filePath: relPath, sessionId });
-    emitShapeB(summarize(result));
+
+    const result = await executeSotAlign(payload, repoRoot);
+    emitShapeB(result);
   } catch (err) {
     log.warn(
       { err: err instanceof Error ? err.message : String(err) },
@@ -1550,6 +1535,28 @@ export async function runSotAlign(): Promise<void> {
     );
     emitShapeB("");
   }
+}
+
+export async function executeSotAlign(
+  payload: ClaudePostToolUsePayload,
+  repoRoot: string,
+): Promise<string> {
+  const filePath = payload.tool_input?.file_path;
+  if (typeof filePath !== "string" || filePath.length === 0) return "";
+
+  const relPath = computeRelPath(repoRoot, filePath);
+  // Skip cairn's own state surface
+  if (relPath === ".cairn" || relPath.startsWith(".cairn/")) return "";
+  // Skip files outside the repo root.
+  if (relPath.startsWith("../")) return "";
+
+  const sessionId =
+    typeof payload.session_id === "string" && payload.session_id.length > 0
+      ? payload.session_id
+      : null;
+
+  const result = await alignFile({ repoRoot, filePath: relPath, sessionId });
+  return summarize(result);
 }
 
 /* -------------------------------------------------------------------------- */

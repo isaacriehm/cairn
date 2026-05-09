@@ -4,7 +4,7 @@ description: One-time Cairn adoption pipeline for a new project.
 when_to_use: |
   Use when operator opens Claude Code in project without `.cairn/`
   AND Cairn not declined. Drives one-time adoption inline via
-  cairn_init_phase_* MCP tools as state machine — each phase returns
+  cairn_init_run MCP tool as state machine — each phase returns
   complete (advance) or needs_input (AskUserQuestion, thread answer,
   re-invoke). Skip when `.cairn/` exists or operator picked "never".
 allowed-tools: Skill(cairn:cairn-attention)
@@ -26,7 +26,7 @@ silently no-ops in `select:`). `AskUserQuestion` is built-in and stays
 unprefixed.
 
 ```
-ToolSearch(select:mcp__plugin_cairn_cairn__cairn_init_resume,mcp__plugin_cairn_cairn__cairn_init_phase_1_detect,mcp__plugin_cairn_cairn__cairn_init_phase_2_walker,mcp__plugin_cairn_cairn__cairn_init_phase_3_mapper,mcp__plugin_cairn_cairn__cairn_init_phase_3b_seed,mcp__plugin_cairn_cairn__cairn_init_phase_4_pilot,mcp__plugin_cairn_cairn__cairn_init_phase_5_brand,mcp__plugin_cairn_cairn__cairn_init_phase_6_docs_ingest,mcp__plugin_cairn_cairn__cairn_init_phase_7b_source_comments,mcp__plugin_cairn_cairn__cairn_init_phase_7c_rules_merge,mcp__plugin_cairn_cairn__cairn_init_phases_678_parallel,mcp__plugin_cairn_cairn__cairn_init_phase_8_baseline,mcp__plugin_cairn_cairn__cairn_init_phase_10_strip,mcp__plugin_cairn_cairn__cairn_init_phase_12_multidev,mcp__plugin_cairn_cairn__cairn_decision_get,mcp__plugin_cairn_cairn__cairn_resolve_attention,mcp__plugin_cairn_cairn__cairn_bulk_accept_attention,mcp__plugin_cairn_cairn__cairn_attention_dedup,AskUserQuestion)
+ToolSearch(select:mcp__plugin_cairn_cairn__cairn_init_resume,mcp__plugin_cairn_cairn__cairn_init_run,mcp__plugin_cairn_cairn__cairn_init_phases_678_parallel,mcp__plugin_cairn_cairn__cairn_decision_get,mcp__plugin_cairn_cairn__cairn_resolve_attention,mcp__plugin_cairn_cairn__cairn_bulk_accept_attention,mcp__plugin_cairn_cairn__cairn_attention_dedup,AskUserQuestion)
 ```
 
 After this single call all phase tools + the question tool + the
@@ -181,16 +181,19 @@ while nextPhase != null:
         # shared DEC + INV id Sets. One MCP call covers all three;
         # nextPhase comes back as "8-baseline".
         tool_name = "cairn_init_phases_678_parallel"
+        args = {}
     else:
-        tool_name = `cairn_init_phase_${nextPhase.replace(/-/g, "_")}`
-    result = call tool_name({})            # no args; tool reads state from disk
+        tool_name = "cairn_init_run"
+        args = { "phase": nextPhase }
+
+    result = call tool_name(args)            # tool reads state from disk
     switch (result.status):
       case "needs_input":
         answer = AskUserQuestion(result.question.prompt, result.question.options)
         # Pass result.question.options.map(o => o.detail) as the
         # AskUserQuestion description field so the operator sees the
         # secondary hint inline with each choice.
-        result = call tool_name({ answer: answer.id })
+        result = call tool_name({ ...args, answer: answer.id })
         # second call returns "complete" | "error"; fall through.
       case "complete":
         nextPhase = result.nextPhase
