@@ -49,5 +49,6 @@ export async function runSessionEndHook(): Promise<void> {
   }
 
   const out: SessionEndShapeBOutput = { continue: true };
-  emitShapeB("");
+  void out;
+  emitShapeB("", "SessionEnd");
 }

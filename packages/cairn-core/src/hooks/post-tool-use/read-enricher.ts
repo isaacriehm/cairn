@@ -89,7 +89,7 @@ export async function runReadEnricher(): Promise<void> {
 
     if (payload.tool_name !== "Read") {
       outcome = { skip: "non-read-tool", tool_name: payload.tool_name };
-      emitShapeB("");
+      emitShapeB("", "PostToolUse");
       return;
     }
     const filePath = payload.tool_input?.file_path;
@@ -101,7 +101,7 @@ export async function runReadEnricher(): Promise<void> {
         content_present: content !== undefined,
         content_chars: content?.length ?? 0,
       };
-      emitShapeB("");
+      emitShapeB("", "PostToolUse");
       return;
     }
 
@@ -110,14 +110,14 @@ export async function runReadEnricher(): Promise<void> {
     repoRootForTrace = repoRoot;
     if (repoRoot === null) {
       outcome = { skip: "not-adopted", cwd };
-      emitShapeB("");
+      emitShapeB("", "PostToolUse");
       return;
     }
 
     const relPath = relative(repoRoot, resolve(cwd, filePath));
     if (isBinary(content)) {
       outcome = { skip: "binary", path: relPath };
-      emitShapeB("");
+      emitShapeB("", "PostToolUse");
       return;
     }
 
@@ -148,12 +148,12 @@ export async function runReadEnricher(): Promise<void> {
       legend_chars: legend?.length ?? 0,
     };
 
-    emitShapeB(legend ?? "");
+    emitShapeB(legend ?? "", "PostToolUse");
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     outcome = { error: message };
     log.error({ err: message }, "read-enricher hook failed");
-    emitShapeB("");
+    emitShapeB("", "PostToolUse");
   } finally {
     if (repoRootForTrace !== null) {
       appendTelemetry({
