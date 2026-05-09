@@ -4,7 +4,7 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.8.0] — 2026-05-09
 
 Major reliability + UX pass ahead of v1: task lifecycle now graduates
 end-to-end, statusline carries a positive heartbeat, doc-vs-runtime
