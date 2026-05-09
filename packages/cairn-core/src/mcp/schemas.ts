@@ -10,11 +10,6 @@ export const decisionGetInput = {
   id: z.string().regex(/^DEC-[0-9a-f]{7,}$/, "decision id must match DEC-<hash7>"),
 };
 
-export const decisionsInScopeInput = {
-  path_globs: z.array(z.string()).min(1),
-  status: z.array(z.enum(["draft", "accepted", "superseded", "archived"])).optional(),
-};
-
 export const decisionsForSymbolInput = {
   file: z.string().min(1),
   symbol: z.string().min(1),
@@ -44,9 +39,10 @@ export const invariantGetInput = {
   id: z.string().regex(/^INV-[0-9a-f]{7,}$/, "invariant id must match INV-<hash7>"),
 };
 
-export const invariantsInScopeInput = {
+export const inScopeInput = {
   path_globs: z.array(z.string()).min(1),
-  status: z.array(z.enum(["active", "superseded"])).optional(),
+  types: z.array(z.enum(["decision", "invariant"])).optional(),
+  status: z.array(z.string()).optional(),
 };
 
 // ── Read tools — 3-layer progressive retrieval ─────────────────────────────
@@ -104,13 +100,15 @@ export const taskCreateInput = {
   out_of_scope: z.array(z.string().min(1)).optional(),
   acceptance: z.array(z.string().min(1)).optional(),
   module: z.string().optional(),
+  needs_review: z.boolean().optional(),
 };
 
 export const recordDecisionInput = {
   id: z.string().regex(/^DEC-[0-9a-f]{7,}$/).optional(),
-  title: z.string().min(1),
-  summary: z.string().min(1),
-  scope_globs: z.array(z.string()).min(1),
+  slug: z.string().optional(),
+  title: z.string().optional(),
+  summary: z.string().optional(),
+  scope_globs: z.array(z.string()).optional(),
   supersedes: z.string().optional(),
   assertions: z.array(z.unknown()).optional(),
   human_review_hint: z.string().optional(),
@@ -226,20 +224,6 @@ export const searchCandidatesInput = {
 };
 
 /**
- * `cairn_propose_decision` — promote a topic-index candidate (slug)
- * into a DEC draft under `_inbox/`. Body is ALWAYS verbatim via
- * `readSotBody` — the AI may only supply a `title` (and an optional
- * `kind` hint). Drift-checks against `entry.content_hash` so a stale
- * topic-index can never silently anchor a draft to an out-of-date
- * source paragraph.
- */
-export const proposeDecisionInput = {
-  slug: z.string().min(1),
-  title: z.string().min(1).optional(),
-  kind: z.enum(["decision", "rule"]).optional(),
-};
-
-/**
  * `cairn_reject_candidate` — append the slug to `.cairn/ground/_rejected.yaml`
  * so phase 6 / `cairn ingest` skip it on the next pass and the
  * read-enrich hint stops resurfacing it. Dedupe by slug; first writer
@@ -249,4 +233,3 @@ export const rejectCandidateInput = {
   slug: z.string().min(1),
   reason: z.string().min(1),
 };
-

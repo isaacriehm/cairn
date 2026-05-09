@@ -94,7 +94,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
 export const rejectCandidateTool: ToolDef<Input> = {
   name: "cairn_reject_candidate",
   description:
-    "Mark a topic-index slug as not-a-decision in `.cairn/ground/_rejected.yaml`. Phase 6 / cairn ingest / cairn_propose_decision skip rejected slugs. Dedup by slug; first writer wins the reason string. Use when the candidate is research, narrative, plan, status, or otherwise not a binding rule.",
+    "Mark a topic-index slug as not-a-decision in `.cairn/ground/_rejected.yaml`. Phase 6 / cairn ingest skip rejected slugs. Dedup by slug; first writer wins the reason string. Use when the candidate is research, narrative, plan, status, or otherwise not a binding rule.",
   inputSchema: rejectCandidateInput,
   handler,
 };

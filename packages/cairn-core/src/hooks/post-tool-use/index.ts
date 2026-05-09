@@ -23,15 +23,16 @@ export type {
 } from "./ledger-cache.js";
 export { buildLegend } from "./legend-builder.js";
 export type { ScopeIndexHint } from "./legend-builder.js";
-export { runWriteGuardian } from "./write-guardian.js";
+export { runWriteGuardian, executeWriteGuardian } from "./write-guardian.js";
 export { scanForCopyLeakage } from "./copy-scanner.js";
 export type { CopyIssue } from "./copy-scanner.js";
 export { readCopySafetyConfig } from "./allowlist-reader.js";
 export type { CopySafetyConfig } from "./allowlist-reader.js";
-export { alignFile, runSotAlign } from "./sot-align.js";
+export { alignFile, runSotAlign, executeSotAlign } from "./sot-align.js";
 export type {
   AlignFileArgs,
   AlignFileResult,
   CreationVerdict,
   DedupVerdict,
 } from "./sot-align.js";
+export { runPostWriteHook } from "./post-write.js";

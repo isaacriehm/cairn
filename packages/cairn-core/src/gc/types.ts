@@ -31,7 +31,8 @@ export type GcPassId =
   | "quality-grades"
   | "scope-coverage"
   | "completion-integrity"
-  | "citation-integrity";
+  | "citation-integrity"
+  | "attested-commits-pruning";
 
 export type GcFindingKind =
   | "frontmatter_stale"

@@ -240,6 +240,20 @@ function readTaskPhase(taskDir: string): string | null {
   return null;
 }
 
+function checkNeedsReview(specPath: string): boolean {
+  try {
+    const raw = readFileSync(specPath, "utf8");
+    const fmMatch = raw.match(/^---\r?\n([\s\S]*?)\n---/);
+    if (!fmMatch) return true;
+    const fm = fmMatch[1] ?? "";
+    const m = fm.match(/^needs_review:\s*(true|false)/m);
+    if (m && m[1] === "false") return false;
+    return true;
+  } catch {
+    return true;
+  }
+}
+
 function scanPendingReviews(repoRoot: string): PendingReview[] {
   const activeDir = join(repoRoot, ".cairn", "tasks", "active");
   if (!existsSync(activeDir)) return [];
@@ -259,6 +273,10 @@ function scanPendingReviews(repoRoot: string): PendingReview[] {
     if (!existsSync(tightenedSpec)) continue;
     const attestation = join(taskDir, "attestation.yaml");
     if (existsSync(attestation)) continue;
+
+    // Finding 4: Opt-in reviewer. Default to true, skip if explicitly false.
+    if (!checkNeedsReview(tightenedSpec)) continue;
+
     // Phase gate — `running` / `tightening` / etc. are not review-ready.
     const phase = readTaskPhase(taskDir);
     if (phase !== null && !REVIEW_READY_PHASES.has(phase)) continue;

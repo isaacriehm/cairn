@@ -113,7 +113,7 @@ function previewBody(body: string): string {
 export const searchCandidatesTool: ToolDef<Input> = {
   name: "cairn_search_candidates",
   description:
-    "List unpromoted topic-index candidates (slugs whose `dec_id` is null). Filter by `query` (substring on title/body), `scope` (glob on sot_source), or `kind` (marker_kind). Returned slugs feed `cairn_propose_decision` and `cairn_reject_candidate`.",
+    "List unpromoted topic-index candidates (slugs whose `dec_id` is null). Filter by `query` (substring on title/body), `scope` (glob on sot_source), or `kind` (marker_kind). Returned slugs feed `cairn_record_decision({ slug })` and `cairn_reject_candidate`.",
   inputSchema: searchCandidatesInput,
   handler,
 };

@@ -29,6 +29,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { randomBytes } from "node:crypto";
 import {
   existsSync,
   readFileSync,
@@ -83,6 +84,7 @@ export interface AttentionServeOptions {
 export interface AttentionServeHandle {
   port: number;
   url: string;
+  token: string;
   sentinelPath: string;
   /** Resolves once the server has shut down (operator clicked Done or idled out). */
   done: Promise<DoneState>;
@@ -110,6 +112,8 @@ export async function startAttentionServer(
 ): Promise<AttentionServeHandle> {
   const idleTimeoutMs = opts.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
   const sentinelPath = join(opts.repoRoot, ".cairn", "cache", "attention-done.json");
+  const token = randomBytes(16).toString("hex");
+
   // Pre-clear any stale sentinel so the caller's wait loop isn't
   // tricked by a previous run's payload.
   try {
@@ -170,6 +174,7 @@ export async function startAttentionServer(
       repoRoot: opts.repoRoot,
       counters,
       touch,
+      token,
       onDone: () => beginShutdown("done"),
     });
   });
@@ -185,7 +190,7 @@ export async function startAttentionServer(
   const addr = server.address();
   const port =
     typeof addr === "object" && addr !== null ? addr.port : opts.port;
-  const url = `http://127.0.0.1:${port}/`;
+  const url = `http://127.0.0.1:${port}/?token=${token}`;
 
   idleTimer = setInterval(() => {
     if (Date.now() - lastActivity >= idleTimeoutMs) {
@@ -209,6 +214,7 @@ export async function startAttentionServer(
   const handle: AttentionServeHandle = {
     port,
     url,
+    token,
     sentinelPath,
     done: donePromise,
     close: async () => {
@@ -225,6 +231,7 @@ interface HandleRequestCtx {
   repoRoot: string;
   counters: { accepted: number; rejected: number; merged: number; edited: number };
   touch: () => void;
+  token: string;
   onDone: () => void;
 }
 
@@ -235,17 +242,26 @@ async function handleRequest(
 ): Promise<void> {
   ctx.touch();
   const url = req.url ?? "/";
+  const parsedUrl = new URL(url, `http://${req.headers.host || "localhost"}`);
 
-  if (url === "/" || url === "/index.html") {
+  // Static assets are open, but we check token on entry index.html or API
+  if (parsedUrl.pathname === "/" || parsedUrl.pathname === "/index.html") {
+    const queryToken = parsedUrl.searchParams.get("token");
+    if (queryToken !== ctx.token) {
+      res.statusCode = 403;
+      res.end("forbidden: missing or invalid token");
+      return;
+    }
     return serveStatic(res, "index.html", "text/html; charset=utf-8");
   }
-  if (url === "/static/app.js") {
+
+  if (parsedUrl.pathname === "/static/app.js") {
     return serveStatic(res, "app.js", "application/javascript; charset=utf-8");
   }
-  if (url === "/static/app.css") {
+  if (parsedUrl.pathname === "/static/app.css") {
     return serveStatic(res, "app.css", "text/css; charset=utf-8");
   }
-  if (url.startsWith("/api/")) {
+  if (parsedUrl.pathname.startsWith("/api/")) {
     return handleApi(req, res, ctx);
   }
   res.statusCode = 404;

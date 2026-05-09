@@ -264,6 +264,11 @@ function renderScopeSection(scopeHint: ScopeIndexHint): string {
   return lines.join("\n");
 }
 
+export interface WriteGuardianResult {
+  kind: "hint" | "block" | "none";
+  message?: string;
+}
+
 export async function runWriteGuardian(): Promise<void> {
   try {
     const raw = await readHookStdin();
@@ -284,99 +289,97 @@ export async function runWriteGuardian(): Promise<void> {
       return;
     }
 
-    let content = pickContent(payload.tool_response);
-    if (
-      (content === undefined || content.length === 0) &&
-      toolName === "Edit"
-    ) {
-      const ns = payload.tool_input?.new_string;
-      if (typeof ns === "string" && ns.length > 0) content = ns;
-    }
-    if (content === undefined || content.length === 0) {
-      emitShapeB("");
-      return;
-    }
-
     const repoRoot = resolveRepoRoot(filePath);
     if (repoRoot === null) {
       emitShapeB("");
       return;
     }
 
-    const relPath = computeRelPath(repoRoot, filePath);
-    const config = readCopySafetyConfig(repoRoot);
-    const inGlobs =
-      config.enabled && matchAnyGlob(relPath, config.globs);
-
-    let issues: CopyIssue[] = [];
-    if (inGlobs) {
-      const raw = scanForCopyLeakage(content, filePath);
-      issues = filterAllowed(raw, config);
+    const result = await executeWriteGuardian(payload, repoRoot);
+    if (result.kind === "block") {
+      emitBlock(result.message ?? "blocked");
+    } else {
+      emitShapeB(result.message ?? "");
     }
-
-    // Deterministic scope-index sync — fold any §INV/§DEC tokens in the
-    // just-written content into this file's scope-index entry so the
-    // in-scope MCP tools never lag behind source-cite reality between
-    // SessionStart rescans. Defer-fail: scope sync must NEVER block
-    // the write hint, so wrap and swallow errors.
-    try {
-      syncFileScopeFromContent(repoRoot, relPath, content);
-    } catch {
-      // ignore — guardian is a hint, scope sync is best-effort
-    }
-
-    const cachedEntry = getScopeIndexEntry(repoRoot, relPath);
-    // Suppress the scope reminder when the entry exists but has no
-    // rules attached — printing a header with no items below is just
-    // visual noise. Mirrors legend-builder's guard.
-    const scopeHint: ScopeIndexHint | null =
-      cachedEntry !== null &&
-      (cachedEntry.decisions.length > 0 || cachedEntry.invariants.length > 0)
-        ? {
-            decisions: cachedEntry.decisions,
-            invariants: cachedEntry.invariants,
-          }
-        : null;
-
-    const sessionId =
-      typeof payload.session_id === "string" ? payload.session_id : null;
-
-    // Bypass detection: Edit on tracked source without a tightened
-    // active task. Strong-deterministic signal via `decision: "block"`
-    // so the model treats it as an error, not a hint. One block per
-    // session per untightened-state — sentinel dedupes follow-up edits.
-    if (
-      isProjectTrackedFile(repoRoot, relPath) &&
-      !hasTightenedActiveTask(repoRoot) &&
-      !bypassAlreadyWarned(repoRoot, sessionId)
-    ) {
-      markBypassWarned(repoRoot, sessionId);
-      emitBlock(renderBypassBlockReason(relPath));
-      return;
-    }
-
-    const sections: string[] = [];
-    if (issues.length > 0) {
-      sections.push(renderCopySafetySection(basename(filePath), issues));
-    }
-    if (scopeHint !== null) {
-      sections.push(renderScopeSection(scopeHint));
-    }
-
-    if (sections.length === 0) {
-      emitShapeB("");
-      return;
-    }
-
-    const block =
-      sections.join("\n\n") + "\n\nWrite succeeded. Review before committing.";
-    emitShapeB(block);
   } catch {
-    // Defer-fail gracefully — guardian is a hint, NOT a gate.
-    try {
-      emitShapeB("");
-    } catch {
-      // Last-resort: nothing we can do.
-    }
+    emitShapeB("");
   }
+}
+
+export async function executeWriteGuardian(
+  payload: ClaudePostToolUsePayload,
+  repoRoot: string,
+): Promise<WriteGuardianResult> {
+  const toolName = payload.tool_name;
+  const filePath =
+    typeof payload.tool_input?.file_path === "string"
+      ? payload.tool_input.file_path
+      : undefined;
+
+  if (filePath === undefined) return { kind: "none" };
+
+  let content = pickContent(payload.tool_response);
+  if (
+    (content === undefined || content.length === 0) &&
+    toolName === "Edit"
+  ) {
+    const ns = payload.tool_input?.new_string;
+    if (typeof ns === "string" && ns.length > 0) content = ns;
+  }
+  if (content === undefined || content.length === 0) return { kind: "none" };
+
+  const relPath = computeRelPath(repoRoot, filePath);
+  const config = readCopySafetyConfig(repoRoot);
+  const inGlobs =
+    config.enabled && matchAnyGlob(relPath, config.globs);
+
+  let issues: CopyIssue[] = [];
+  if (inGlobs) {
+    const raw = scanForCopyLeakage(content, filePath);
+    issues = filterAllowed(raw, config);
+  }
+
+  // Deterministic scope-index sync
+  try {
+    syncFileScopeFromContent(repoRoot, relPath, content);
+  } catch {
+    // ignore
+  }
+
+  const cachedEntry = getScopeIndexEntry(repoRoot, relPath);
+  const scopeHint: ScopeIndexHint | null =
+    cachedEntry !== null &&
+    (cachedEntry.decisions.length > 0 || cachedEntry.invariants.length > 0)
+      ? {
+          decisions: cachedEntry.decisions,
+          invariants: cachedEntry.invariants,
+        }
+      : null;
+
+  const sessionId =
+    typeof payload.session_id === "string" ? payload.session_id : null;
+
+  // Bypass detection
+  if (
+    isProjectTrackedFile(repoRoot, relPath) &&
+    !hasTightenedActiveTask(repoRoot) &&
+    !bypassAlreadyWarned(repoRoot, sessionId)
+  ) {
+    markBypassWarned(repoRoot, sessionId);
+    return { kind: "block", message: renderBypassBlockReason(relPath) };
+  }
+
+  const sections: string[] = [];
+  if (issues.length > 0) {
+    sections.push(renderCopySafetySection(basename(filePath), issues));
+  }
+  if (scopeHint !== null) {
+    sections.push(renderScopeSection(scopeHint));
+  }
+
+  if (sections.length === 0) return { kind: "none" };
+
+  const block =
+    sections.join("\n\n") + "\n\nWrite succeeded. Review before committing.";
+  return { kind: "hint", message: block };
 }

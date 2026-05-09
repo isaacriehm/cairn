@@ -214,7 +214,7 @@ const x = 1;
       `Step 5b: legend should report the count, got ${legend}`,
     );
     assert(
-      legend.includes("cairn_propose_decision"),
+      legend.includes("cairn_record_decision"),
       `Step 5b: legend should mention the propose tool, got ${legend}`,
     );
     assert(

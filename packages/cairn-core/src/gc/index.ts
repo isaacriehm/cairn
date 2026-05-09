@@ -66,6 +66,11 @@ export type {
   QualityUpdateOptions,
   QualityUpdateResult,
 } from "./quality-update.js";
+export { runAttestedCommitsGc } from "./attested-commits.js";
+export type {
+  AttestedCommitsGcOptions,
+  AttestedCommitsGcResult,
+} from "./attested-commits.js";
 export { runScopeCoverage } from "./scope-coverage.js";
 export type {
   ScopeCoverageOptions,

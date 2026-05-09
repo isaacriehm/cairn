@@ -18,6 +18,7 @@ interface Input {
   out_of_scope?: string[];
   acceptance?: string[];
   module?: string;
+  needs_review?: boolean;
 }
 
 /**
@@ -61,6 +62,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
   mkdirSync(taskDir, { recursive: true });
 
   const generatedAt = new Date().toISOString();
+  const needsReview = input.needs_review ?? true;
 
   const specFrontmatter = {
     id: taskId,
@@ -72,6 +74,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     target_path_globs: input.target_path_globs,
     in_scope_decisions: input.in_scope_decisions ?? [],
     in_scope_invariants: input.in_scope_invariants ?? [],
+    needs_review: needsReview,
   };
 
   const specBody = [
