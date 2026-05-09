@@ -56,14 +56,16 @@ import {
 } from "node:fs";
 import { createHash } from "node:crypto";
 import { dirname, join, relative } from "node:path";
-import { writeFileSafe } from "@isaacriehm/cairn-state";
 import { stringify as stringifyYaml } from "yaml";
+import { z } from "zod";
 import { readHookStdin } from "../runners/payload.js";
 import { resolveRepoRoot } from "../../session-start/index.js";
 import { runClaude } from "../../claude/index.js";
 import {
+  anchorMapPath,
   bindDec,
   bodyContentHash,
+  type CommentBlock,
   decisionsDir,
   deriveLedgerDecId,
   deriveLedgerInvId,
@@ -83,11 +85,11 @@ import {
   writeSotBindings,
   writeSotCache,
   writeTopicIndex,
+  writeFileSafe,
   type SotCache,
   type SotCacheEntry,
 } from "@isaacriehm/cairn-state";
 import { writeDecisionsLedger, writeInvariantsLedger } from "@isaacriehm/cairn-state";
-import { type CommentBlock } from "../../init/source-comments/index.js";
 import {
   applyStripReplace,
   formatBareCitation,
@@ -113,6 +115,24 @@ import {
 } from "../sot-align-common.js";
 
 const log = logger("hooks.post-tool-use.sot-align");
+
+
+const VerdictCacheSchema = z.object({
+  verdict: z.string(),
+  ts: z.string().optional(),
+}).passthrough();
+
+const ClaudePostToolUsePayloadSchema = z.object({
+  session_id: z.string().optional(),
+  cwd: z.string().optional(),
+  hook_event_name: z.string().optional(),
+  tool_name: z.string().optional(),
+  tool_input: z.object({
+    file_path: z.string().optional(),
+  }).optional(),
+}).passthrough();
+
+type ClaudePostToolUsePayload = z.infer<typeof ClaudePostToolUsePayloadSchema>;
 
 const CAPTURE_SOURCE = "layer-a-sot-align";
 
@@ -275,9 +295,8 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
   if (blocks.length === 0) return result;
 
   const cache = readSotCache(repoRoot);
-  const cacheEntries = (Object.values(cache.entries) as SotCacheEntry[]).filter(
-    (e) => e.tokens.length > 0,
-  );
+  const cacheEntries = Object.values(cache.entries)
+    .filter((e): e is SotCacheEntry => e !== undefined && e.tokens.length > 0);
 
   const stripItems: ReplaceItem[] = [];
   // `undoLogEntries` shadows `stripItems` 1:1 — each push to one
@@ -780,6 +799,27 @@ Reply ONLY the JSON: { "verdict": "same" | "different" | "ambiguous" }.
 Be conservative on "same" — only flag when the two blocks make the same
 binding statement with compatible wording.`;
 
+const DedupP1Schema = z.object({
+  verdict: z.enum(["same", "different", "ambiguous"]),
+});
+
+const DedupP2Schema = z.object({
+  verdict: z.enum(["same", "different", "augments", "ambiguous"]),
+  reasoning: z.string().optional(),
+});
+
+const DeltaExtractSchema = z.object({
+  delta: z.string(),
+});
+
+const DeltaClassifySchema = z.object({
+  kind: z.enum(["constraint", "rationale"]),
+});
+
+const CreationVerdictSchema = z.object({
+  verdict: z.enum(["decision", "constraint", "descriptive", "ambiguous"]),
+});
+
 async function runDedupJudgePass1(args: {
   blockBody: string;
   candidate: { id: string; body: string };
@@ -808,11 +848,9 @@ async function runDedupJudgePass1(args: {
       timeoutMs: PER_HAIKU_TIMEOUT_MS,
       isolateAmbientContext: true,
     });
-    const parsed = result.parsed;
-    if (typeof parsed !== "object" || parsed === null) return "ambiguous";
-    const v = (parsed as Record<string, unknown>)["verdict"];
-    if (v === "same" || v === "different") return v;
-    return "ambiguous";
+    const parsed = DedupP1Schema.safeParse(result.parsed);
+    if (!parsed.success) return "ambiguous";
+    return parsed.data.verdict;
   } catch (err) {
     log.warn(
       { err: err instanceof Error ? err.message : String(err) },
@@ -895,11 +933,9 @@ async function runDedupJudgePass2(args: {
       timeoutMs: PER_HAIKU_TIMEOUT_MS,
       isolateAmbientContext: true,
     });
-    const parsed = result.parsed;
-    if (typeof parsed !== "object" || parsed === null) return "ambiguous";
-    const v = (parsed as Record<string, unknown>)["verdict"];
-    if (v === "same" || v === "different" || v === "augments") return v;
-    return "ambiguous";
+    const parsed = DedupP2Schema.safeParse(result.parsed);
+    if (!parsed.success) return "ambiguous";
+    return parsed.data.verdict;
   } catch (err) {
     log.warn(
       { err: err instanceof Error ? err.message : String(err) },
@@ -959,10 +995,9 @@ async function runDeltaExtract(args: {
       timeoutMs: PER_HAIKU_TIMEOUT_MS,
       isolateAmbientContext: true,
     });
-    const parsed = result.parsed;
-    if (typeof parsed !== "object" || parsed === null) return "NO_DELTA";
-    const d = (parsed as Record<string, unknown>)["delta"];
-    return typeof d === "string" ? d : "NO_DELTA";
+    const parsed = DeltaExtractSchema.safeParse(result.parsed);
+    if (!parsed.success) return "NO_DELTA";
+    return parsed.data.delta;
   } catch (err) {
     log.warn(
       { err: err instanceof Error ? err.message : String(err) },
@@ -1011,11 +1046,9 @@ async function runDeltaClassify(args: {
       timeoutMs: PER_HAIKU_TIMEOUT_MS,
       isolateAmbientContext: true,
     });
-    const parsed = result.parsed;
-    if (typeof parsed !== "object" || parsed === null) return "rationale";
-    const k = (parsed as Record<string, unknown>)["kind"];
-    if (k === "constraint" || k === "rationale") return k;
-    return "rationale";
+    const parsed = DeltaClassifySchema.safeParse(result.parsed);
+    if (!parsed.success) return "rationale";
+    return parsed.data.kind;
   } catch (err) {
     log.warn(
       { err: err instanceof Error ? err.message : String(err) },
@@ -1078,7 +1111,7 @@ async function runCreationJudgePass1(args: {
     });
     const parsed = result.parsed;
     if (typeof parsed !== "object" || parsed === null) return "descriptive";
-    const v = (parsed as Record<string, unknown>)["verdict"];
+    const v = (parsed as { verdict?: unknown }).verdict;
     if (
       v === "decision" ||
       v === "constraint" ||
@@ -1155,7 +1188,7 @@ async function runCreationJudgePass2(args: {
     });
     const parsed = result.parsed;
     if (typeof parsed !== "object" || parsed === null) return "descriptive";
-    const v = (parsed as Record<string, unknown>)["verdict"];
+    const v = (parsed as { verdict?: unknown }).verdict;
     if (
       v === "decision" ||
       v === "constraint" ||
@@ -1353,8 +1386,9 @@ function readVerdictCache(
   if (!existsSync(path)) return null;
   try {
     const raw = readFileSync(path, "utf8");
-    const parsed = JSON.parse(raw) as { verdict?: string };
-    return typeof parsed.verdict === "string" ? parsed.verdict : null;
+    const parsedRaw = JSON.parse(raw);
+    const result = VerdictCacheSchema.safeParse(parsedRaw);
+    return result.success ? result.data.verdict : null;
   } catch {
     return null;
   }
@@ -1450,14 +1484,6 @@ function pushAlignBlip(
 /* Hook runner — `cairn hook sot-align`                                       */
 /* -------------------------------------------------------------------------- */
 
-interface ClaudePostToolUsePayload {
-  session_id?: string;
-  cwd?: string;
-  hook_event_name?: string;
-  tool_name?: string;
-  tool_input?: { file_path?: string };
-}
-
 interface PostToolUseShapeBOutput {
   continue: boolean;
   hookSpecificOutput: {
@@ -1481,8 +1507,9 @@ function emitShapeB(additionalContext: string): void {
 function parsePayload(text: string): ClaudePostToolUsePayload {
   if (text.trim().length === 0) return {};
   try {
-    const parsed = JSON.parse(text) as ClaudePostToolUsePayload;
-    return typeof parsed === "object" && parsed !== null ? parsed : {};
+    const raw: unknown = JSON.parse(text);
+    const result = ClaudePostToolUsePayloadSchema.safeParse(raw);
+    return result.success ? result.data : {};
   } catch {
     return {};
   }

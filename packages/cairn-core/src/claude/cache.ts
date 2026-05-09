@@ -3,55 +3,48 @@
  *
  * Adoption re-runs are common — operators bail out, restart, or
  * `cairn init --force` on the same repo before drift catches up. Each
- * re-run otherwise burns the operator's coding-plan quota on identical
- * LLM calls. This module memoizes responses keyed on the full
- * input fingerprint (tier + model + system + prompt + jsonSchema). 30-day
- * TTL — long enough to cover typical adoption-iterate cycles, short
- * enough that semantic prompt changes invalidate stale entries.
+ * re-run otherwise burns the operator's coding-plan quota on
+ * identical Haiku classification calls.
  *
- * Cache files live under `.cairn/cache/<tier>/<sha256>.json`. The path
- * is added to `.cairn/.gitignore` at adoption time so cached responses
- * never enter version control.
- *
- * The cache is opt-in per call via `runClaude({ cacheable: true })`.
- * Callers should only enable it for pure idempotent classification work
- * — anything that depends on filesystem state at call time (e.g.
- * reviewer subagent diffs) must never be cached.
+ * This module provides a simple on-disk response cache keyed by
+ * `{tier, system, prompt, jsonSchema}`. Entries expire after 30 days.
  */
 
-import { createHash } from "node:crypto";
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  unlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { createHash } from "node:crypto";
+import { z } from "zod";
 import { logger } from "../logger.js";
-import type { ClaudeUsage, RunClaudeOptions, RunClaudeResult } from "./types.js";
+import { haikuCacheDir } from "@isaacriehm/cairn-state";
+import type { RunClaudeOptions, RunClaudeResult } from "./runner.js";
 
 const log = logger("claude.cache");
 
 /** 30-day cache window. */
 const DEFAULT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
-interface CachedEntry {
-  v: 1;
-  createdAt: number;
-  ttlMs: number;
-  key: string;
-  /** Minimal result subset — full envelope echoed back so consumers see the same shape. */
-  result: {
-    text: string;
-    parsed?: unknown;
-    durationMs: number;
-    tier: string;
-    model: string;
-    envelope?: Record<string, unknown>;
-    usage?: ClaudeUsage;
-  };
-}
+const CachedEntrySchema = z.object({
+  v: z.literal(1),
+  createdAt: z.number(),
+  ttlMs: z.number(),
+  key: z.string(),
+  result: z.object({
+    text: z.string(),
+    parsed: z.unknown().optional(),
+    durationMs: z.number(),
+    tier: z.enum(["h1", "h2", "h3", "haiku", "sonnet", "opus"]),
+    model: z.string(),
+    envelope: z.record(z.string(), z.unknown()).optional(),
+    usage: z.object({
+      input_tokens: z.number(),
+      output_tokens: z.number(),
+      cache_read_tokens: z.number().nullable().optional(),
+      cache_creation_tokens: z.number().nullable().optional(),
+    }).optional(),
+  }),
+});
+
+type CachedEntry = z.infer<typeof CachedEntrySchema>;
 
 /** Compute the cache key for a given runClaude invocation. */
 function computeCacheKey(opts: RunClaudeOptions): string {
@@ -59,18 +52,19 @@ function computeCacheKey(opts: RunClaudeOptions): string {
     opts.tier,
     opts.system ?? "",
     opts.prompt,
-    opts.jsonSchema !== undefined ? JSON.stringify(opts.jsonSchema) : "",
+    opts.jsonSchema ? JSON.stringify(opts.jsonSchema) : "",
   ];
-  return createHash("sha256").update(parts.join("\0")).digest("hex");
+  return createHash("sha256").update(parts.join("|")).digest("hex");
 }
 
 function cachePath(repoRoot: string, tier: string, key: string): string {
-  return join(repoRoot, ".cairn", "cache", tier, `${key}.json`);
+  const dir = haikuCacheDir(repoRoot);
+  return join(dir, tier, `${key}.json`);
 }
 
 /**
- * Read a cached response if one exists and is within TTL. Returns null
- * on miss, expired entry, or unreadable cache file.
+ * Check if a Claude call has a valid on-disk response. Returns null on
+ * miss or corruption.
  */
 export function cacheLookup(
   repoRoot: string,
@@ -79,34 +73,48 @@ export function cacheLookup(
   const key = computeCacheKey(opts);
   const path = cachePath(repoRoot, opts.tier, key);
   if (!existsSync(path)) return null;
-  let parsed: CachedEntry;
+  
   try {
-    parsed = JSON.parse(readFileSync(path, "utf8")) as CachedEntry;
+    const raw = readFileSync(path, "utf8");
+    const parsedRaw: unknown = JSON.parse(raw);
+    const result = CachedEntrySchema.safeParse(parsedRaw);
+    if (!result.success) return null;
+    
+    const parsed = result.data;
+    const ageMs = Date.now() - parsed.createdAt;
+    if (ageMs > parsed.ttlMs) {
+      // Best-effort eviction
+      try {
+        unlinkSync(path);
+      } catch {
+        /* best-effort */
+      }
+      return null;
+    }
+    log.info({ key, ageMs, tier: opts.tier }, "cache hit");
+    
+    // Convert zod tier back to RunClaudeResult tier
+    const tier = parsed.result.tier as RunClaudeResult["tier"];
+    
+    return {
+      text: parsed.result.text,
+      ...(parsed.result.parsed !== undefined ? { parsed: parsed.result.parsed } : {}),
+      durationMs: parsed.result.durationMs,
+      tier,
+      model: parsed.result.model,
+      ...(parsed.result.envelope !== undefined ? { envelope: parsed.result.envelope as Record<string, unknown> } : {}),
+      ...(parsed.result.usage !== undefined ? {
+        usage: {
+          input_tokens: parsed.result.usage.input_tokens,
+          output_tokens: parsed.result.usage.output_tokens,
+          cache_read_tokens: parsed.result.usage.cache_read_tokens ?? null,
+          cache_creation_tokens: parsed.result.usage.cache_creation_tokens ?? null,
+        }
+      } : {}),
+    };
   } catch {
     return null;
   }
-  if (parsed.v !== 1 || typeof parsed.createdAt !== "number") return null;
-  const ageMs = Date.now() - parsed.createdAt;
-  if (ageMs > parsed.ttlMs) {
-    // Best-effort eviction so the cache doesn't grow unboundedly with
-    // expired entries; the next write will recreate the dir if needed.
-    try {
-      unlinkSync(path);
-    } catch {
-      /* best-effort */
-    }
-    return null;
-  }
-  log.info({ key, ageMs, tier: opts.tier }, "cache hit");
-  return {
-    text: parsed.result.text,
-    ...(parsed.result.parsed !== undefined ? { parsed: parsed.result.parsed } : {}),
-    durationMs: parsed.result.durationMs,
-    tier: parsed.result.tier as RunClaudeResult["tier"],
-    model: parsed.result.model,
-    ...(parsed.result.envelope !== undefined ? { envelope: parsed.result.envelope } : {}),
-    ...(parsed.result.usage !== undefined ? { usage: parsed.result.usage } : {}),
-  };
 }
 
 /**
@@ -117,18 +125,15 @@ export function cacheStore(
   repoRoot: string,
   opts: RunClaudeOptions,
   result: RunClaudeResult,
-  ttlMs: number = DEFAULT_TTL_MS,
 ): void {
   const key = computeCacheKey(opts);
   const path = cachePath(repoRoot, opts.tier, key);
   try {
-    if (!existsSync(dirname(path))) {
-      mkdirSync(dirname(path), { recursive: true });
-    }
+    mkdirSync(dirname(path), { recursive: true });
     const entry: CachedEntry = {
       v: 1,
       createdAt: Date.now(),
-      ttlMs,
+      ttlMs: DEFAULT_TTL_MS,
       key,
       result: {
         text: result.text,
@@ -142,8 +147,9 @@ export function cacheStore(
     };
     writeFileSync(path, JSON.stringify(entry), "utf8");
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     log.warn(
-      { err: err instanceof Error ? err.message : String(err) },
+      { err: message },
       "cache write failed",
     );
   }

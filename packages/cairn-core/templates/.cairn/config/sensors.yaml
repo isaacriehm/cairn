@@ -38,7 +38,7 @@ sensors:
 
   # ── Layer C — project structural / contract sensors ──────────────────────
   - id: route-handler-non-empty
-    layer: D
+    layer: C
     kind: structural
     description: "For every route/controller method, body must contain non-trivial implementation (not just `return null` / empty / throw not-implemented)."
     triggers:
@@ -48,7 +48,7 @@ sensors:
     fail_severity: hard
 
   - id: dto-no-fake-fields
-    layer: D
+    layer: C
     kind: structural
     description: "DTO/schema fields that are declared optional and always evaluate undefined fail this sensor — they look thorough without doing work."
     triggers:
@@ -91,12 +91,12 @@ sensors:
 
   # ── Reviewer subagent (SessionStart Drain) ───────────────────────────────────────────
   - id: reviewer-subagent
-    layer: C
+    layer: D
     kind: inferential
     description: "Same model as implementer; fresh context. Reads only spec.tightened.md + diff + decisions ledger + in-scope assertions. Anti-completionist framing. For high-stakes runs, also enforces query-scope completeness."
     model_strategy: same_as_implementer
     triggers:
-      - all_layer_d_sensors_passed
+      - all_layer_c_sensors_passed
     fail_severity: soft
 
   # ── Layer E — high-stakes E2E / demo ─────────────────────────────────────

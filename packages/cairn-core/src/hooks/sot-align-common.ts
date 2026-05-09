@@ -9,9 +9,14 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { jaccard } from "../text/jaccard.js";
-import { walkSourceComments, type CommentBlock } from "../init/source-comments/index.js";
-import { decisionsDir, invariantsDir, type SotCacheEntry } from "@isaacriehm/cairn-state";
+import { jaccard, tokenize } from "../text/jaccard.js";
+import {
+  decisionsDir,
+  invariantsDir,
+  type CommentBlock,
+  type SotCacheEntry,
+} from "@isaacriehm/cairn-state";
+import { walkSourceComments } from "../init/source-comments/walker.js";
 
 /* -------------------------------------------------------------------------- */
 /* Tunables — shared between Layer A and Layer B                              */

@@ -25,7 +25,7 @@ import {
   scanBypassedCommits,
   type BypassedCommit,
 } from "../bypass-detection.js";
-import { isDeferActive, readDeferState } from "../defer.js";
+import { isCurrentlyDeferred, readDeferState } from "../defer.js";
 import { resolveRepoRoot } from "../../session-start/index.js";
 import {
   readEventsMarker,
@@ -36,7 +36,7 @@ import {
   emitShapeB,
   parseHookPayload,
   readHookStdin,
-  recordHookTelemetry,
+  appendTelemetry,
 } from "./payload.js";
 
 /** Init in progress means `.cairn/init-state.json` exists at repoRoot. */
@@ -123,8 +123,8 @@ export async function runStopHook(): Promise<void> {
           const reviewDefer = readDeferState(repoRoot, "review");
           const suppressed =
             reviewDefer !== null &&
-            isDeferActive(reviewDefer, now, {
-              kind: "task_ids",
+            isCurrentlyDeferred(reviewDefer, {
+              kind: "tasks",
               values: pendingReviews.map((p) => p.task_id),
             });
           if (suppressed) {
@@ -146,7 +146,7 @@ export async function runStopHook(): Promise<void> {
           const bypassDefer = readDeferState(repoRoot, "bypass");
           const suppressed =
             bypassDefer !== null &&
-            isDeferActive(bypassDefer, now, {
+            isCurrentlyDeferred(bypassDefer, {
               kind: "shas",
               values: bypassed.map((b) => b.sha),
             });
@@ -189,14 +189,14 @@ export async function runStopHook(): Promise<void> {
     reason.length > 0
       ? { decision: "block", reason: clampReason(reason) }
       : { continue: true };
-  emitShapeB(out);
+  process.stdout.write(JSON.stringify(out) + "\n");
 
-  recordHookTelemetry({
-    hook: "stop",
-    repoRoot,
+  appendTelemetry({
+    repoRoot: repoRoot!,
     sessionId,
-    source: null,
+    kind: "stop",
     durationMs: Date.now() - startedAt,
+    source: payload.source ?? "unknown",
     warnings,
     extra: {
       events_drained: drained.length,

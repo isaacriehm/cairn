@@ -23,6 +23,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import * as vscode from "vscode";
+import { setStateLogger } from "@isaacriehm/cairn-state";
 import { DecExplorerProvider } from "./panel/dec-explorer.js";
 import { CitationCodeLensProvider } from "./providers/citation-lens-provider.js";
 import { CitationDecorationManager } from "./providers/decoration-provider.js";
@@ -60,9 +61,17 @@ export function activate(context: vscode.ExtensionContext): void {
   // "Cairn Lens: Diagnose" to figure out why.
   const channel = vscode.window.createOutputChannel("Cairn Lens", {
     log: true,
-  }) as unknown as LensLogChannel & vscode.Disposable;
-  context.subscriptions.push(channel as unknown as vscode.Disposable);
+  });
+  context.subscriptions.push(channel);
   attachLensLogChannel(channel);
+
+  // Initialize the state package logger to forward to our lensLog.
+  setStateLogger({
+    debug: (obj, msg) => lensLog(`${msg} ${JSON.stringify(obj)}`, "debug"),
+    info: (obj, msg) => lensLog(`${msg} ${JSON.stringify(obj)}`, "info"),
+    warn: (obj, msg) => lensLog(`${msg} ${JSON.stringify(obj)}`, "warn"),
+    error: (obj, msg) => lensLog(`${msg} ${JSON.stringify(obj)}`, "error"),
+  });
 
   const version = readExtensionVersion(context);
   lensLog(`activate() — Cairn Lens v${version}`);
@@ -370,9 +379,15 @@ function runDiagnose(
   lensLog(
     `host: ${vscode.env.appName} ${vscode.version} (machineId=${vscode.env.machineId.slice(0, 8)}…)`,
   );
-  lensLog(
-    `engine pin: ${(context.extension.packageJSON as { engines?: { vscode?: string } }).engines?.vscode ?? "unknown"}`,
-  );
+  const pkg: unknown = context.extension.packageJSON;
+  let vscodePin = "unknown";
+  if (typeof pkg === "object" && pkg !== null && "engines" in pkg) {
+    const engines: unknown = pkg.engines;
+    if (typeof engines === "object" && engines !== null && "vscode" in engines && typeof engines.vscode === "string") {
+      vscodePin = engines.vscode;
+    }
+  }
+  lensLog(`engine pin: ${vscodePin}`);
   lensLog(`process: node ${process.version} on ${process.platform}/${process.arch}`);
   lensLog(`cwd: ${process.cwd()}`);
 

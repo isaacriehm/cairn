@@ -38,17 +38,6 @@ export async function runPhase9SourceComments(state: PhaseState): Promise<PhaseR
   try {
     const result: IngestSourceCommentsResult = await runSourceCommentsIngestion({
       repoRoot: state.repoRoot,
-      globs,
-      ...(pilotModule !== undefined ? { pilotModule } : {}),
-      onBatchProgress: (row) =>
-        writeProgress(state.repoRoot, {
-          phase: "9-source-comments",
-          batch: row.index + 1,
-          total: row.total,
-          classified: row.classified,
-          failed: row.failed,
-          startedAt,
-        }),
     });
     writeSourceCommentsWalkFile(state.repoRoot, result);
     const persisted = to7bResultPersisted(result);

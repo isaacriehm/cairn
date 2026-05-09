@@ -120,9 +120,9 @@ export function applyStripReplace(args: StripReplaceArgs): StripReplaceResult {
   for (const [file, items] of byFile) {
     const abs = join(args.repoRoot, file);
     if (!existsSync(abs)) {
-      const skipped = items.map((it) => ({
+      const skipped: { blockId: string; reason: SkipReason }[] = items.map((it) => ({
         blockId: it.blockId,
-        reason: "missing-file" as SkipReason,
+        reason: "missing-file",
       }));
       outcomes.push({
         file,
@@ -160,7 +160,7 @@ export function applyStripReplace(args: StripReplaceArgs): StripReplaceResult {
             itemsApplied: 0,
             itemsSkipped: items.map((it) => ({
               blockId: it.blockId,
-              reason: "dirty-skipped" as SkipReason,
+              reason: "dirty-skipped",
             })),
             fileSkipReason: "dirty-skipped",
           });
@@ -399,8 +399,9 @@ function stashFile(repoRoot: string, relFile: string, dryRun: boolean): boolean 
     );
     return true;
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     log.warn(
-      { file: relFile, err: err instanceof Error ? err.message : String(err) },
+      { file: relFile, err: message },
       "git stash failed",
     );
     return false;

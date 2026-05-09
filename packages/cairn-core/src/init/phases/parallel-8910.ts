@@ -129,19 +129,8 @@ export async function runPhases8910Parallel(
   const srcRes = await runPhaseSafely("source-comments-failed", async () =>
     runSourceCommentsIngestion({
       repoRoot: state.repoRoot,
-      globs,
       ...(pilotModule !== undefined ? { pilotModule } : {}),
-      existingDecIds: sharedDecIds,
-      existingInvIds: sharedInvIds,
-      onBatchProgress: (row) =>
-        writeProgress(state.repoRoot, {
-          phase: "9-source-comments",
-          batch: row.index + 1,
-          total: row.total,
-          classified: row.classified,
-          failed: row.failed,
-          startedAt,
-        }),
+      dryRun: false,
     }),
   );
   if ("error" in srcRes) {
@@ -152,15 +141,7 @@ export async function runPhases8910Parallel(
   const rulesRes = await runPhaseSafely("rules-merge-failed", async () =>
     runRulesMerge({
       repoRoot: state.repoRoot,
-      existingDecIds: sharedDecIds,
-      existingInvIds: sharedInvIds,
-      onSectionProgress: (row) =>
-        writeProgress(state.repoRoot, {
-          phase: "10-rules-merge",
-          batch: row.index,
-          total: row.total,
-          startedAt,
-        }),
+      dryRun: false,
     }),
   );
   if ("error" in rulesRes) {

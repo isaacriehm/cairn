@@ -3,48 +3,45 @@
  *
  * Used by the topic-index resolver to decide whether two prose blocks
  * with high Jaccard similarity but distinct content fingerprints are
- * actually about the same decision/topic. Verbatim collisions never
- * reach this — they're settled deterministically by slug equality.
- *
- * The prompt is intentionally minimal so the judge can answer in a
- * single token (`same` / `different`). Fall back to "different" on any
- * timeout / parse failure so the resolver doesn't aggressively merge
- * topics it isn't sure about — false-positive merges hide real DECs.
+ * actually about the same decision/topic.
  */
 
+import { logger } from "../../logger.js";
 import { runClaude } from "../../claude/index.js";
 import { ClaudeError } from "../../claude/error.js";
-import { logger } from "../../logger.js";
-import type { SemanticJudge, SemanticVerdict } from "./resolve.js";
+import type { ProseBlock, SemanticJudge, SemanticVerdict } from "./resolve.js";
+import { z } from "zod";
 
 const log = logger("init.topic-index.judge");
 
-const SYSTEM = "You decide whether two prose blocks describe the SAME decision/topic. Reply with exactly one word: same or different.";
-
-const VERDICT_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  required: ["verdict"],
-  properties: {
-    verdict: { type: "string", enum: ["same", "different"] },
-  },
-} as const;
-
-// Per-call wall budget. Sized for `claude --print` cold-start + Haiku
-// JSON-schema reply at the upper end of normal latency. Shorter budgets
-// (e.g. 8s) trip on every cold subprocess and surface as exit 143
-// timeout storms; the resolver's circuit breaker bails the whole phase
-// on repeated timeouts so this generous per-call budget can't compound.
-const TIMEOUT_MS = 45_000;
+const VerdictSchema = z.object({
+  verdict: z.enum(["same", "different"]),
+}).passthrough();
 
 export interface JudgeOptions {
   repoRoot?: string;
-  /** Disable Haiku and always return "different" (used by smoke runs). */
   offline?: boolean;
 }
 
+const SYSTEM =
+  "You decide whether two prose blocks describe the SAME decision/topic. Reply with exactly one word: same or different.";
+
+const VERDICT_SCHEMA = {
+  type: "object",
+  properties: {
+    verdict: { enum: ["same", "different"] },
+  },
+  required: ["verdict"],
+  additionalProperties: false,
+};
+
+const TIMEOUT_MS = 20_000;
+
+/**
+ * Return a semantic judge implementation that calls Haiku.
+ */
 export function makeHaikuJudge(opts: JudgeOptions = {}): SemanticJudge {
-  return async ({ a, b }) => {
+  return async ({ a, b }): Promise<SemanticVerdict> => {
     if (opts.offline === true) return "different";
     const prompt = [
       "Block A:",
@@ -68,10 +65,9 @@ export function makeHaikuJudge(opts: JudgeOptions = {}): SemanticJudge {
         ...(opts.repoRoot !== undefined ? { repoRoot: opts.repoRoot, cacheable: true } : {}),
       });
       const parsed = result.parsed;
-      if (typeof parsed !== "object" || parsed === null) return "different";
-      const verdictRaw = (parsed as Record<string, unknown>)["verdict"];
-      const verdict: SemanticVerdict = verdictRaw === "same" ? "same" : "different";
-      return verdict;
+      const resultParsed = VerdictSchema.safeParse(parsed);
+      if (!resultParsed.success) return "different";
+      return resultParsed.data.verdict;
     } catch (err) {
       // Surface ClaudeError (timeout / rate_limit / overloaded / auth) to
       // the resolver so it can trip its circuit breaker and stop calling

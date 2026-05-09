@@ -144,7 +144,10 @@ function isProcessAlive(pid: number): boolean {
     process.kill(pid, 0);
     return true;
   } catch (err) {
-    return (err as NodeJS.ErrnoException).code === "EPERM";
+    if (err instanceof Error && "code" in err && err.code === "EPERM") {
+      return true;
+    }
+    return false;
   }
 }
 

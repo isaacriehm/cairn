@@ -18,7 +18,7 @@
  * that fail-loud-on-noise get disabled which defeats the purpose.
  */
 
-import { matchAnyGlob } from "@isaacriehm/cairn-state";
+import { lineOf, matchAnyGlob } from "@isaacriehm/cairn-state";
 import type { DiffEntry, SensorFinding, SensorResult } from "./types.js";
 
 const ROUTE_SENSOR_ID = "route-handler-non-empty";
@@ -207,10 +207,5 @@ function isRouteHandlerFile(path: string, text: string): boolean {
 }
 
 /** 1-based line number from a character offset. */
-function lineOf(text: string, charIndex: number): number {
-  let line = 1;
-  for (let i = 0; i < charIndex && i < text.length; i++) {
-    if (text.charCodeAt(i) === 10) line += 1;
-  }
-  return line;
-}
+
+

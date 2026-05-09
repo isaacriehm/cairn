@@ -4,21 +4,8 @@
  * Spec: PLUGIN_ARCHITECTURE §9 (MCP write tools — plugin-era addition).
  *
  * The cairn-attention skill calls this after the operator picks an
- * option. It maps `kind × choice` onto the canonical resolution
- * pathway:
- *
- * | kind                | choice | resolution                                  |
- * |---------------------|--------|---------------------------------------------|
- * | decision_draft      | a      | accept — move `_inbox/<id>.draft.md` → `<id>.md`, status=accepted |
- * | decision_draft      | b      | reject — rename draft to .rejected.md (id reserved forever) |
- * | decision_draft      | c      | edit-pending — return draft body (no write) |
- * | baseline_finding    | a      | triage-now — no-op (skill opens the file)   |
- * | baseline_finding    | b      | suppress — append to baseline/suppressions.yaml |
- * | baseline_finding    | c      | defer — no-op                               |
- * | invalidation_event  | a      | refresh — re-read in-scope DECs/§INVs        |
- * | invalidation_event  | b      | continue-under-old — no-op                  |
- * | invalidation_event  | c      | abort — caller archives task (no-op here)   |
- * | drift               | a/b/c  | acknowledged (drift surface not yet active) |
+ * option. It maps the option (a/b/c/d) to a ground-state write (promote
+ * draft, suppress finding, record resolution event).
  */
 
 import {
@@ -33,62 +20,84 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
-import { writeFileSafe } from "@isaacriehm/cairn-state";
 import { createHash } from "node:crypto";
 import { stringify as stringifyYaml } from "yaml";
+import { z } from "zod";
+import type { McpContext } from "../context.js";
 import {
-  parseDraftMeta,
-  restoreDec,
-  runDecSourceStrip,
-  type DraftMeta,
-  type StripOutcomeSummary,
-} from "../../attention/index.js";
-import { writeInvalidationEvent } from "../../events/index.js";
-import {
-  alignmentPendingDir,
-  archivedConflictsDir,
+  anchorMapPath,
   bindDec,
   bodyContentHash,
   conflictsDir,
-  decisionsDir,
-  deleteSotCacheEntry,
-  deriveLedgerDecId,
-  deriveLedgerInvId,
-  invariantsDir,
-  parseFrontmatterRecord,
+  emptyAnchorMap,
+  emptySotBindings,
+  readAnchorMap,
   readSotBindings,
   readSotCache,
+  readTopicIndex,
   recordDriftEvent,
+  setAnchor,
   setSotCacheEntry,
-  unbindDec,
+  topicSlug,
+  writeAnchorMap,
   writeSotBindings,
   writeSotCache,
+  decisionsDir,
+  decisionsLedgerPath,
+  invariantsDir,
+  invariantsLedgerPath,
+  writeDecisionsLedger,
+  writeInvariantsLedger,
+  parseFrontmatterRecord,
+  deleteSotCacheEntry,
+  unbindDec,
+  alignmentPendingDir,
+  archivedConflictsDir,
+  deriveLedgerDecId,
+  deriveLedgerInvId,
+  writeFileSafe,
 } from "@isaacriehm/cairn-state";
+import { writeInvalidationEvent } from "../../events/index.js";
+import { withWriteLock } from "../../lock.js";
+import { requireBootstrap } from "../bootstrap-guard.js";
+import { mcpError } from "./types.js";
+import type { ToolDef } from "./types.js";
+import {
+  parseDraftMeta,
+  runDecSourceStrip,
+  type StripOutcomeSummary,
+} from "../../attention/source-strip.js";
+import { restoreDec } from "../../attention/restore.js";
 import { tokenize } from "../../text/jaccard.js";
 import {
   applyStripReplace,
   formatBareCitation,
   type ReplaceItem,
-} from "../../init/source-comments/index.js";
-import { writeDecisionsLedger, writeInvariantsLedger } from "@isaacriehm/cairn-state";
-import {
-  clearDeferState,
-  writeDeferState,
-  type DeferKind,
-} from "../../hooks/defer.js";
-import { withWriteLock } from "../../lock.js";
+} from "../../init/source-comments/strip-replace.js";
+import { writeDeferState, clearDeferState, type DeferKind } from "../../hooks/defer.js";
 import { logger } from "../../logger.js";
-import type { McpContext } from "../context.js";
-import { requireBootstrap } from "../bootstrap-guard.js";
-import { mcpError } from "../errors.js";
-import { resolveAttentionInput } from "../schemas.js";
-import type { ToolDef } from "./types.js";
 
-const log = logger("mcp.resolve-attention");
+const log = logger("mcp.tools.resolve-attention");
+
+const resolveAttentionInput = {
+  kind: z.enum([
+    "decision_draft",
+    "baseline_finding",
+    "invalidation_event",
+    "drift",
+    "bypass",
+    "review",
+    "conflict",
+    "alignment_pending",
+  ]),
+  item_id: z.string(),
+  choice: z.enum(["a", "b", "c", "d"]),
+  rationale: z.string().optional(),
+  defer_hours: z.number().optional(),
+  flagged_items: z.array(z.string()).optional(),
+};
 
 interface Input {
-  item_id: string;
-  choice: "a" | "b" | "c" | "d";
   kind:
     | "decision_draft"
     | "baseline_finding"
@@ -98,23 +107,17 @@ interface Input {
     | "review"
     | "conflict"
     | "alignment_pending";
-  flagged_items?: string[];
-  defer_hours?: number;
+  item_id: string;
+  choice: "a" | "b" | "c" | "d";
   rationale?: string;
+  defer_hours?: number;
+  flagged_items?: string[];
 }
 
 async function handler(ctx: McpContext, input: Input): Promise<unknown> {
   const block = requireBootstrap(ctx.repoRoot);
   if (block !== null) return block;
-  // The fourth choice slot is only meaningful for conflict resolution.
-  // Reject `d` on every other kind so the schema's permissive enum
-  // doesn't quietly fall through.
-  if (input.choice === "d" && input.kind !== "conflict") {
-    return mcpError(
-      "VALIDATION_FAILED",
-      `choice "d" is only valid for kind=conflict, got kind=${input.kind}`,
-    );
-  }
+
   switch (input.kind) {
     case "decision_draft":
       return resolveDecisionDraft(ctx, input);
@@ -122,29 +125,17 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
       return resolveBaselineFinding(ctx, input);
     case "invalidation_event":
       return resolveInvalidationEvent(ctx, input);
-    case "drift":
-      return {
-        ok: true,
-        resolved_kind: "drift_acknowledged",
-        note: "drift resolution surface not yet implemented (step 7+); item left in queue",
-      };
     case "bypass":
-      return resolveBypass(ctx, input);
+      return resolveStopSignal(ctx, input, "bypass");
     case "review":
-      return resolveReview(ctx, input);
+      return resolveStopSignal(ctx, input, "review");
     case "conflict":
       return resolveConflict(ctx, input);
     case "alignment_pending":
       return resolveAlignmentPending(ctx, input);
+    default:
+      return mcpError("VALIDATION_FAILED", `unknown kind: ${input.kind}`);
   }
-}
-
-function resolveBypass(ctx: McpContext, input: Input): Promise<unknown> {
-  return resolveStopSignal(ctx, input, "bypass");
-}
-
-function resolveReview(ctx: McpContext, input: Input): Promise<unknown> {
-  return resolveStopSignal(ctx, input, "review");
 }
 
 /**
@@ -165,11 +156,15 @@ function resolveStopSignal(
 
   if (input.choice === "c") {
     return withWriteLock(ctx.repoRoot, () => {
-      const state = writeDeferState(ctx.repoRoot, kind, {
-        flagged_shas: kind === "bypass" ? flagged : [],
-        flagged_task_ids: kind === "review" ? flagged : [],
-        ...(input.defer_hours !== undefined ? { hours: input.defer_hours } : {}),
+      const statePath = writeDeferState(ctx.repoRoot, kind, {
+        flaggedShas: kind === "bypass" ? flagged : [],
+        flaggedTaskIds: kind === "review" ? flagged : [],
       });
+      // read back to get the calculated expiry
+      const state = JSON.parse(readFileSync(statePath, "utf8")) as {
+        deferred_at: string;
+        deferred_for_hours: number;
+      };
       return {
         ok: true,
         resolved_kind: `${kind}_deferred`,
@@ -220,13 +215,6 @@ async function resolveDecisionDraft(ctx: McpContext, input: Input): Promise<unkn
   const rejectedPath = join(decDir, "_inbox", `${input.item_id}.rejected.md`);
   const acceptedPath = join(decDir, `${input.item_id}.md`);
 
-  // Auto-restore: when the draft is missing but the same id sits as a
-  // rejected or already-accepted entry, transparently roll it back to
-  // a draft so the operator's choice (a/b/c) lands in one MCP call
-  // instead of needing an explicit `cairn_attention_restore` first.
-  // Idempotent re-accept on a still-canonical accepted DEC is the same
-  // shape as accepting a fresh draft — rebuild ledger, no double-strip
-  // (already-stripped check inside runDecSourceStrip).
   let autoRestoredFrom: "rejected" | "accepted" | null = null;
   if (!existsSync(inboxPath)) {
     if (existsSync(rejectedPath) || existsSync(acceptedPath)) {
@@ -250,22 +238,20 @@ async function resolveDecisionDraft(ctx: McpContext, input: Input): Promise<unkn
   }
 
   if (input.choice === "c") {
-    // Edit-pending: return the draft body so the skill can hand it to
-    // the operator's editor flow. No state change.
     const body = readFileSync(inboxPath, "utf8");
     const editBase = {
       ok: true,
-      resolved_kind: "decision_edit_pending",
+      resolved_kind: "decision_edit_pending" as const,
       item_id: input.item_id,
       draft_path: `.cairn/ground/decisions/_inbox/${input.item_id}.draft.md`,
       body,
-    } as const;
+    };
     return autoRestoredFrom === null
       ? editBase
       : { ...editBase, auto_restored_from: autoRestoredFrom };
   }
 
-  return withWriteLock(ctx.repoRoot, () => {
+  return withWriteLock(ctx.repoRoot, async () => {
     if (input.choice === "a") {
       const acceptedPath = join(decDir, `${input.item_id}.md`);
       mkdirSync(dirname(acceptedPath), { recursive: true });
@@ -273,23 +259,16 @@ async function resolveDecisionDraft(ctx: McpContext, input: Input): Promise<unkn
       const draftMeta = parseDraftMeta(draft);
       const promoted = promoteDraftStatus(draft);
       writeFileSync(acceptedPath, promoted, "utf8");
-      // Remove the draft after promoting so the inbox stays clean.
-      // The canonical accepted file at <decDir>/<id>.md is the
-      // recoverable copy if the rmSync interrupts.
       try {
         rmSync(inboxPath, { force: true });
       } catch {
-        // ignore — best effort, the accepted file is what matters
+        // ignore
       }
       try {
         emitEvent(ctx, "decision_accepted", input.item_id, `.cairn/ground/decisions/${input.item_id}.md`);
       } catch {
-        // event emission must never roll back the resolution
+        // ignore
       }
-      // Rebuild `.cairn/ground/decisions/decisions.ledger.yaml` from
-      // every accepted DEC on disk. Cairn Lens reads the ledger to
-      // resolve `// DEC-NNNN` citations inline; without this rebuild
-      // the ledger sits empty and lens renders nothing.
       try {
         writeDecisionsLedger({ repoRoot: ctx.repoRoot });
       } catch (err) {
@@ -308,10 +287,10 @@ async function resolveDecisionDraft(ctx: McpContext, input: Input): Promise<unkn
       }
       const base = {
         ok: true,
-        resolved_kind: "decision_accepted",
+        resolved_kind: "decision_accepted" as const,
         item_id: input.item_id,
         accepted_path: `.cairn/ground/decisions/${input.item_id}.md`,
-      } as const;
+      };
       const withStrip =
         stripOutcome === null ? base : { ...base, source_strip: stripOutcome };
       return autoRestoredFrom === null
@@ -319,8 +298,7 @@ async function resolveDecisionDraft(ctx: McpContext, input: Input): Promise<unkn
         : { ...withStrip, auto_restored_from: autoRestoredFrom };
     }
 
-    // choice === "b" — reject. Rename to .rejected.md so scanExistingDecisionIds
-    // keeps the id in the high-water mark and it is never recycled.
+    // choice === "b" — reject.
     renameSync(inboxPath, rejectedPath);
     const rejectedRel = `.cairn/ground/decisions/_inbox/${input.item_id}.rejected.md`;
     try {
@@ -330,7 +308,7 @@ async function resolveDecisionDraft(ctx: McpContext, input: Input): Promise<unkn
     }
     return {
       ok: true,
-      resolved_kind: "decision_rejected",
+      resolved_kind: "decision_rejected" as const,
       item_id: input.item_id,
       rejected_path: rejectedRel,
       ...(input.rationale !== undefined ? { rationale: input.rationale } : {}),
@@ -359,9 +337,6 @@ function resolveBaselineFinding(ctx: McpContext, input: Input): Promise<unknown>
   return withWriteLock(ctx.repoRoot, () => {
     const suppressionsPath = join(ctx.repoRoot, ".cairn", "baseline", "suppressions.yaml");
     mkdirSync(dirname(suppressionsPath), { recursive: true });
-    // Empty / missing file → seed the YAML root key so the appended
-    // entries land under a valid `suppressions:` list. statSync may
-    // throw on race; treat any error as "needs header".
     let needsHeader = !existsSync(suppressionsPath);
     if (!needsHeader) {
       try {
@@ -392,16 +367,10 @@ function resolveBaselineFinding(ctx: McpContext, input: Input): Promise<unknown>
   });
 }
 
-/* -------------------------------------------------------------------------- */
-/* Conflict resolution (plan §5.4.1)                                          */
-/* -------------------------------------------------------------------------- */
-
 interface EntityRef {
   id: string;
   kind: "DEC" | "INV";
-  /** Repo-relative path of the ground file. */
   rel: string;
-  /** Absolute path of the ground file. */
   abs: string;
 }
 
@@ -411,9 +380,7 @@ interface ConflictFile {
   filename: string;
   aRef: EntityRef;
   bRef: EntityRef;
-  /** Frontmatter parsed from the conflict yaml. */
   fm: Record<string, unknown>;
-  /** Conflict body (prose A + prose B + reasoning), useful for merge. */
   body: string;
 }
 
@@ -519,20 +486,6 @@ function deleteConflictFile(conflict: ConflictFile): void {
   }
 }
 
-/**
- * Plan §5.4.1 — losing-side prose stays in its source file
- * post-resolution; the doc / CLAUDE.md / AGENTS.md narrative is
- * preserved as-is. The original sot_path entry is now bound to a
- * superseded / archived id, so phase 5b's next walk would re-emit a
- * fresh DEC with the same content-addressed id (loop). Recording an
- * `orphan_path` drift event surfaces the prose to the operator's
- * attention queue so they can pick: re-cite the winner manually,
- * promote it to a fresh DEC, or delete the orphan paragraph.
- *
- * The drift event includes `dec_id` pointing at the just-superseded
- * entity so the attention surface can render context (which side won,
- * what the orphan body looks like).
- */
 function recordOrphanDriftEvents(
   repoRoot: string,
   refs: { ref: EntityRef; parsed: ParsedEntity | null }[],
@@ -568,7 +521,7 @@ function rebuildLedgers(repoRoot: string): void {
   } catch (err) {
     log.warn(
       { err: err instanceof Error ? err.message : String(err) },
-      "decisions ledger rebuild failed after conflict resolution",
+      "decisions ledger rebuild failed",
     );
   }
   try {
@@ -576,18 +529,11 @@ function rebuildLedgers(repoRoot: string): void {
   } catch (err) {
     log.warn(
       { err: err instanceof Error ? err.message : String(err) },
-      "invariants ledger rebuild failed after conflict resolution",
+      "invariants ledger rebuild failed",
     );
   }
 }
 
-/**
- * Drop superseded / archived losers from sot-bindings + sot-cache so
- * Layer A's pre-filter doesn't pick them as candidates and phase 5b
- * doesn't loop on a path bound to a now-superseded id. The orphan_path
- * drift event (recorded separately for sot_kind="path" losers) remains
- * the operator-facing surface to recover the orphaned prose.
- */
 function cleanLosersFromSotState(
   repoRoot: string,
   losers: EntityRef[],
@@ -610,28 +556,16 @@ function cleanLosersFromSotState(
   if (!mutated) return;
   try {
     writeSotBindings(repoRoot, bindings);
-  } catch (err) {
-    log.warn(
-      { err: err instanceof Error ? err.message : String(err) },
-      "sot-bindings rewrite failed during conflict resolution cleanup",
-    );
+  } catch {
+    /* ignore */
   }
   try {
     writeSotCache(repoRoot, cache);
-  } catch (err) {
-    log.warn(
-      { err: err instanceof Error ? err.message : String(err) },
-      "sot-cache rewrite failed during conflict resolution cleanup",
-    );
+  } catch {
+    /* ignore */
   }
 }
 
-/**
- * Bind + cache a merged entity that was just written to ground. Mirrors
- * the bind/cache wiring in `emitFreshDec` so Layer A's pre-filter sees
- * the merged DEC as a Tier-2 candidate immediately, instead of waiting
- * for the next SessionStart drain to rebuild sot-cache.
- */
 function bindAndCacheMergedEntity(
   repoRoot: string,
   mergedId: string,
@@ -641,11 +575,8 @@ function bindAndCacheMergedEntity(
   bindings = bindDec(bindings, mergedId, "ledger");
   try {
     writeSotBindings(repoRoot, bindings);
-  } catch (err) {
-    log.warn(
-      { err: err instanceof Error ? err.message : String(err) },
-      "sot-bindings rewrite failed for merged entity",
-    );
+  } catch {
+    /* ignore */
   }
   let cache = readSotCache(repoRoot);
   cache = setSotCacheEntry(cache, mergedId, {
@@ -658,17 +589,10 @@ function bindAndCacheMergedEntity(
   });
   try {
     writeSotCache(repoRoot, cache);
-  } catch (err) {
-    log.warn(
-      { err: err instanceof Error ? err.message : String(err) },
-      "sot-cache rewrite failed for merged entity",
-    );
+  } catch {
+    /* ignore */
   }
 }
-
-/* -------------------------------------------------------------------------- */
-/* Alignment-pending resolution (plan §4.1.A / §4.1.B)                        */
-/* -------------------------------------------------------------------------- */
 
 interface AlignmentPendingState {
   abs: string;
@@ -695,11 +619,8 @@ function loadAlignmentPending(
     return null;
   }
   const { fm, body } = parseFrontmatterRecord(raw);
-  // Block prose lives between the first ```/``` fence pair under the
-  // "## Block ..." heading. Pick the first fenced block.
   const blockMatch = body.match(/##\s+Block[^\n]*\n+```\n([\s\S]*?)\n```/);
   const blockProse = blockMatch?.[1]?.trim() ?? "";
-  // Existing entity body (tier2-ambiguous only) lives in a second fenced block.
   const existingId =
     typeof fm["existing_id"] === "string" ? (fm["existing_id"] as string) : null;
   let existingBody: string | null = null;
@@ -764,7 +685,6 @@ async function resolveAlignmentPending(
         );
       }
       if (input.choice === "a") {
-        // Same — cite existing.
         const replacement = formatBareCitation(lang, state.existingId);
         const item = buildPendingReplaceItem(state.fm, state.blockProse, replacement);
         if (item !== null) applyStripReplace({
@@ -781,10 +701,6 @@ async function resolveAlignmentPending(
         };
       }
       if (input.choice === "b") {
-        // Augments — emit sibling DEC linked via `related`. Source gets
-        // both cites stacked. (Operator-driven augments emit a DEC
-        // sibling; constraint augments still flow through the Layer A
-        // delta classifier on a future Write.)
         const id = emitOperatorAugmentSibling(ctx.repoRoot, {
           source_file: sourceFile,
           source_offset: startLine,
@@ -817,7 +733,6 @@ async function resolveAlignmentPending(
         };
       }
       if (input.choice === "c") {
-        // New decision — emit fresh DEC, source carries new cite only.
         const id = emitFreshDec(ctx.repoRoot, {
           source_file: sourceFile,
           source_offset: startLine,
@@ -846,7 +761,6 @@ async function resolveAlignmentPending(
         };
       }
       if (input.choice === "d") {
-        // Replace — new becomes canonical, existing superseded.
         const id = emitFreshDec(ctx.repoRoot, {
           source_file: sourceFile,
           source_offset: startLine,
@@ -854,7 +768,6 @@ async function resolveAlignmentPending(
           captureSuffix: "operator-replace",
           related: state.existingId,
         });
-        // Mark existing as superseded.
         const existingRef = entityRefFor(ctx.repoRoot, state.existingId);
         const parsed = readEntity(existingRef);
         if (parsed !== null) {
@@ -920,8 +833,6 @@ async function resolveAlignmentPending(
         };
       }
       if (input.choice === "c" || input.choice === "d") {
-        // Descriptive / none-of-these — drop the pending file. Source
-        // stays untouched (operator's narrative preserved).
         rmSync(state.abs, { force: true });
         return {
           ok: true,
@@ -1027,11 +938,11 @@ async function resolveConflict(ctx: McpContext, input: Input): Promise<unknown> 
   if (conflict === null) {
     return mcpError(
       "FILE_NOT_FOUND",
-      `no conflict file for item_id=${input.item_id} (expected .cairn/ground/conflicts/${input.item_id}.md)`,
+      `no conflict file for item_id=${input.item_id}`,
     );
   }
 
-  return withWriteLock(ctx.repoRoot, () => {
+  return withWriteLock(ctx.repoRoot, async () => {
     const winner = input.choice === "a" ? conflict.aRef : conflict.bRef;
     const loser = input.choice === "a" ? conflict.bRef : conflict.aRef;
 
@@ -1042,7 +953,7 @@ async function resolveConflict(ctx: McpContext, input: Input): Promise<unknown> 
       if (!winnerOk || !loserOk) {
         return mcpError(
           "VALIDATION_FAILED",
-          `conflict resolution failed: missing entity (winner=${winnerOk ? "ok" : "missing"}, loser=${loserOk ? "ok" : "missing"})`,
+          `conflict resolution failed: missing entity`,
         );
       }
       recordOrphanDriftEvents(ctx.repoRoot, [{ ref: loser, parsed: loserBefore }]);
@@ -1060,7 +971,7 @@ async function resolveConflict(ctx: McpContext, input: Input): Promise<unknown> 
           source: { session_id: ctx.sessionId ?? null, tool: "cairn_resolve_attention" },
         });
       } catch {
-        /* best-effort */
+        /* ignore */
       }
       return {
         ok: true,
@@ -1104,7 +1015,7 @@ async function resolveConflict(ctx: McpContext, input: Input): Promise<unknown> 
           source: { session_id: ctx.sessionId ?? null, tool: "cairn_resolve_attention" },
         });
       } catch {
-        /* best-effort */
+        /* ignore */
       }
       return {
         ok: true,
@@ -1118,11 +1029,11 @@ async function resolveConflict(ctx: McpContext, input: Input): Promise<unknown> 
       };
     }
 
-    // choice === "d" — archive both. Conflict file moves to _archived/.
+    // choice === "d" — archive both.
     const aBefore = readEntity(conflict.aRef);
     const bBefore = readEntity(conflict.bRef);
-    const aOk = setSupersededBy(ctx.repoRoot, conflict.aRef, conflict.bRef.id, "archived");
-    const bOk = setSupersededBy(ctx.repoRoot, conflict.bRef, conflict.aRef.id, "archived");
+    setSupersededBy(ctx.repoRoot, conflict.aRef, conflict.bRef.id, "archived");
+    setSupersededBy(ctx.repoRoot, conflict.bRef, conflict.aRef.id, "archived");
     recordOrphanDriftEvents(ctx.repoRoot, [
       { ref: conflict.aRef, parsed: aBefore },
       { ref: conflict.bRef, parsed: bBefore },
@@ -1147,13 +1058,7 @@ async function resolveConflict(ctx: McpContext, input: Input): Promise<unknown> 
         source: { session_id: ctx.sessionId ?? null, tool: "cairn_resolve_attention" },
       });
     } catch {
-      /* best-effort */
-    }
-    if (!aOk || !bOk) {
-      log.warn(
-        { aOk, bOk, item_id: input.item_id },
-        "archive-both: one or both entities missing on disk",
-      );
+      /* ignore */
     }
     return {
       ok: true,
@@ -1167,14 +1072,6 @@ async function resolveConflict(ctx: McpContext, input: Input): Promise<unknown> 
   });
 }
 
-interface MergeError {
-  error: ReturnType<typeof mcpError>;
-}
-interface MergeOk {
-  mergedId: string;
-  mergedRel: string;
-}
-
 function mergeConflict(
   repoRoot: string,
   conflict: ConflictFile,
@@ -1186,14 +1083,11 @@ function mergeConflict(
     return {
       error: mcpError(
         "VALIDATION_FAILED",
-        `merge requires both entities present on disk (a=${a !== null}, b=${b !== null})`,
+        `merge requires both entities present on disk`,
       ),
     };
   }
   const now = new Date().toISOString();
-  // Merged entity inherits the kind of A (the freshly captured side).
-  // Mixed DEC/INV merges produce a DEC by convention — the merged
-  // entity carries combined narrative, not a single hard constraint.
   const mergedKind: "DEC" | "INV" =
     conflict.aRef.kind === "INV" && conflict.bRef.kind === "INV" ? "INV" : "DEC";
   const mergedId = synthesizeMergedId(repoRoot, mergedKind);
@@ -1246,21 +1140,13 @@ function mergeConflict(
     mergedAbs,
     `---\n${stringifyYaml(mergedFm).trimEnd()}\n---\n${mergedBody}`,
   );
-  // Both old entries get superseded_by → new merged id.
   setSupersededBy(repoRoot, conflict.aRef, mergedId, "superseded");
   setSupersededBy(repoRoot, conflict.bRef, mergedId, "superseded");
-  // Bind + cache the merged entity so Layer A picks it up on the next
-  // PostToolUse without waiting for SessionStart drain.
   bindAndCacheMergedEntity(repoRoot, mergedId, mergedBody);
   return { mergedId, mergedRel };
 }
 
 function synthesizeMergedId(repoRoot: string, kind: "DEC" | "INV"): string {
-  // Content-addressed style — derive from the timestamp + a counter so
-  // re-runs in the same millisecond don't collide. We don't have the
-  // verbatim merged-body hash easily reachable here without circular
-  // dependencies; the timestamp gives us a stable-enough seed since
-  // merges are operator-driven and infrequent.
   const dir = kind === "DEC" ? decisionsDir(repoRoot) : invariantsDir(repoRoot);
   const existing = new Set<string>();
   if (existsSync(dir)) {
@@ -1271,7 +1157,7 @@ function synthesizeMergedId(repoRoot: string, kind: "DEC" | "INV"): string {
         }
       }
     } catch {
-      /* best-effort */
+      /* ignore */
     }
   }
   const seed = `merge-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
@@ -1289,17 +1175,11 @@ function hashHex(input: string): string {
 }
 
 function resolveInvalidationEvent(_ctx: McpContext, input: Input): Promise<unknown> {
-  // Per spec §7: A=refresh, B=continue-under-old, C=abort. The marker
-  // stamping + scope refresh happens in the calling skill, since it
-  // owns the session id. This tool just acknowledges the resolution
-  // so the skill can record it.
   const map: Record<"a" | "b" | "c", string> = {
     a: "refresh",
     b: "continue_under_old",
     c: "abort",
   };
-  // The "d" slot is filtered out for non-conflict kinds in the top
-  // dispatcher, so this cast is safe.
   const choice = input.choice as "a" | "b" | "c";
   return Promise.resolve({
     ok: true,
@@ -1310,12 +1190,6 @@ function resolveInvalidationEvent(_ctx: McpContext, input: Input): Promise<unkno
 }
 
 function promoteDraftStatus(body: string): string {
-  // Frontmatter `status: draft*` → `status: accepted`. Best-effort
-  // regex — covers every draft marker the init pipeline emits:
-  //   - `draft` (legacy / generic)
-  //   - `draft-from-init-docs` (phase 6)
-  //   - `draft-from-source-comment` (phase 7b)
-  //   - `draft-from-rules-merge` (phase 7c)
   return body.replace(/^status:\s*draft(?:-from-[a-z-]+)?\b/m, "status: accepted");
 }
 
@@ -1340,3 +1214,12 @@ export const resolveAttentionTool: ToolDef<Input> = {
   inputSchema: resolveAttentionInput,
   handler,
 };
+
+interface MergeError {
+  error: ReturnType<typeof mcpError>;
+}
+interface MergeOk {
+  mergedId: string;
+  mergedRel: string;
+}
+

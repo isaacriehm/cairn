@@ -6,19 +6,20 @@
  */
 
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
-import { homedir } from "node:os";
-import { join, resolve } from "node:path";
-import { appendTrace } from "../../trace/index.js";
+import { dirname, join } from "node:path";
+import { z } from "zod";
 
 export const CAIRN_HOOK_VERSION = "0.2.0";
 
-export interface ClaudeHookPayload {
-  session_id?: string;
-  transcript_path?: string;
-  cwd?: string;
-  hook_event_name?: string;
-  source?: string;
-}
+const ClaudeHookPayloadSchema = z.object({
+  session_id: z.string().optional(),
+  transcript_path: z.string().optional(),
+  cwd: z.string().optional(),
+  hook_event_name: z.string().optional(),
+  source: z.string().optional(),
+}).passthrough();
+
+export type ClaudeHookPayload = z.infer<typeof ClaudeHookPayloadSchema>;
 
 export function readHookStdin(): Promise<string> {
   return new Promise((resolveP) => {
@@ -27,72 +28,58 @@ export function readHookStdin(): Promise<string> {
     process.stdin.on("end", () => {
       resolveP(Buffer.concat(chunks).toString("utf8"));
     });
-    process.stdin.on("error", () => {
-      resolveP("");
-    });
-    if (process.stdin.isTTY) {
-      // No piped input — Claude Code always pipes; this only matters in
-      // dev/test invocations.
-      resolveP("");
-    }
   });
 }
 
 export function parseHookPayload(text: string): ClaudeHookPayload {
   if (text.trim().length === 0) return {};
   try {
-    const parsed = JSON.parse(text) as ClaudeHookPayload;
-    return typeof parsed === "object" && parsed !== null ? parsed : {};
+    const raw: unknown = JSON.parse(text);
+    const result = ClaudeHookPayloadSchema.safeParse(raw);
+    return result.success ? result.data : {};
   } catch {
     return {};
   }
 }
 
-export function emitShapeB(output: object): void {
-  process.stdout.write(JSON.stringify(output));
-  process.stdout.write("\n");
-}
-
-export interface HookTelemetryRow {
-  hook: string;
-  repoRoot: string | null;
-  sessionId: string | null;
-  source: string | null;
-  durationMs: number;
-  warnings: string[];
-  /** Free-form fields merged into the telemetry row. */
-  extra?: Record<string, unknown>;
-}
-
 /**
- * Append a telemetry row to `~/.local/cairn/state/<hook>.jsonl`.
- * Telemetry must never throw — failures are swallowed.
+ * Write Shape-B JSON to stdout and exit.
+ * Claude Code expects exactly this JSON on stdout to continue.
  */
-export function recordHookTelemetry(row: HookTelemetryRow): void {
-  const ts = new Date().toISOString();
-  const body = {
-    ts,
-    hook_version: CAIRN_HOOK_VERSION,
-    hook: row.hook,
-    ...(row.sessionId !== null ? { session_id: row.sessionId } : {}),
-    ...(row.source !== null ? { source: row.source } : {}),
-    ...(row.repoRoot !== null ? { repo_root: row.repoRoot } : {}),
-    duration_ms: row.durationMs,
-    warnings: row.warnings,
-    ...(row.extra ?? {}),
+export function emitShapeB(context: string): never {
+  const payload = {
+    continue: true,
+    hookSpecificOutput: {
+      hookEventName: "PostToolUse", // matches Claude's generic expectation
+      additionalContext: context,
+    },
   };
-  try {
-    const dir = resolve(homedir(), ".local", "cairn", "state");
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    const path = join(dir, `${row.hook}.jsonl`);
-    appendFileSync(path, `${JSON.stringify(body)}\n`, "utf8");
-  } catch {
-    // Telemetry must never block the hook.
+  process.stdout.write(JSON.stringify(payload));
+  process.exit(0);
+}
+
+/** Truncated append-only telemetry sink. */
+export function appendTelemetry(row: {
+  repoRoot: string;
+  sessionId: string | null;
+  kind: string;
+  durationMs: number;
+  source: string | null;
+  warnings: string[];
+  extra?: Record<string, unknown>;
+}): void {
+  const dir = join(row.repoRoot, ".cairn", "state", "telemetry");
+  if (!existsSync(dir)) {
+    try {
+      mkdirSync(dir, { recursive: true });
+    } catch {
+      return;
+    }
   }
-  appendTrace({
-    ts,
-    source: "hook",
-    kind: row.hook,
+  const path = join(dir, "hooks.jsonl");
+  const entry = {
+    ts: new Date().toISOString(),
+    kind: row.kind,
     repo_root: row.repoRoot,
     session_id: row.sessionId,
     duration_ms: row.durationMs,
@@ -101,5 +88,10 @@ export function recordHookTelemetry(row: HookTelemetryRow): void {
       warnings: row.warnings,
       ...(row.extra ?? {}),
     },
-  });
+  };
+  try {
+    appendFileSync(path, `${JSON.stringify(entry)}\n`, "utf8");
+  } catch {
+    /* ignore */
+  }
 }

@@ -16,7 +16,7 @@
 
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, posix, resolve } from "node:path";
-import { walkCanonical } from "@isaacriehm/cairn-state";
+import { lineOf, walkCanonical } from "@isaacriehm/cairn-state";
 import type { GcFinding } from "./types.js";
 
 const PASS_ID = "doc-gardening" as const;
@@ -160,10 +160,4 @@ function fileExists(repoRoot: string, rel: string): boolean {
   }
 }
 
-function lineOf(text: string, charIndex: number): number {
-  let line = 1;
-  for (let i = 0; i < charIndex && i < text.length; i++) {
-    if (text.charCodeAt(i) === 10 /* \n */) line += 1;
-  }
-  return line;
-}
+

@@ -19,14 +19,14 @@ import { selectProfile } from "../profiles/index.js";
 import type { Profile } from "../profiles/types.js";
 import type { ProjectGlobs, SensorLanguage } from "../sensors/types.js";
 import { applyCommit } from "./apply.js";
-import { verifyBatchCanary, type BatchCanaryResult } from "./canary.js";
+import { runGcCanary, type GcCanaryResult } from "./canary.js";
 import { runCitationIntegrity } from "./citation-integrity.js";
 import { classifyAutoMerge } from "./classify.js";
 import { runCompletionIntegrity } from "./completion-integrity.js";
 import { runDocGardening } from "./doc-gardening.js";
 import { runFrontmatterFreshness } from "./frontmatter.js";
 import { runGeneratorDrift } from "./generator-drift.js";
-import { runQualityGradesUpdate } from "./quality-update.js";
+import { runQualityUpdate } from "./quality-update.js";
 import { runScopeCoverage } from "./scope-coverage.js";
 import { runStubCatalogHits } from "./stub-hits.js";
 import { runAttestedCommitsGc } from "./attested-commits.js";
@@ -112,7 +112,7 @@ export async function runGcSweep(opts: RunGcSweepOptions): Promise<GcSweepResult
   // 3. Stub catalog hits.
   {
     const t0 = Date.now();
-    const r = runStubCatalogHits({
+    const r = await runStubCatalogHits({
       repoRoot: opts.repoRoot,
       ...(opts.languages !== undefined ? { languages: opts.languages } : {}),
     });
@@ -134,7 +134,7 @@ export async function runGcSweep(opts: RunGcSweepOptions): Promise<GcSweepResult
   // 5. Quality grades.
   {
     const t0 = Date.now();
-    const r = runQualityGradesUpdate({
+    const r = await runQualityUpdate({
       repoRoot: opts.repoRoot,
       ...(opts.qualityRecentRunCount !== undefined ? { recentRunCount: opts.qualityRecentRunCount } : {}),
     });
@@ -162,7 +162,7 @@ export async function runGcSweep(opts: RunGcSweepOptions): Promise<GcSweepResult
   // 8. Citation integrity.
   {
     const t0 = Date.now();
-    const r = runCitationIntegrity({ repoRoot: opts.repoRoot });
+    const r = await runCitationIntegrity({ repoRoot: opts.repoRoot });
     findings.push(...r.findings);
     passDurations["citation-integrity"] = Date.now() - t0;
   }
@@ -250,11 +250,12 @@ export async function runGcBatch(opts: RunGcBatchOptions): Promise<GcBatchResult
     });
   }
 
-  let canaryResult: BatchCanaryResult | undefined;
+  let canaryResult: GcCanaryResult | undefined;
   let rolledBack = false;
   if (canaryEnabled && applied.length >= 2) {
-    canaryResult = verifyBatchCanary({ repoRoot: opts.repoRoot });
+    canaryResult = await runGcCanary({ repoRoot: opts.repoRoot });
     if (!canaryResult.ok) {
+
       // Roll back to pre-batch SHA — undoes every commit applied in this
       // batch atomically.
       await git.reset(["--hard", preBatchSha]);

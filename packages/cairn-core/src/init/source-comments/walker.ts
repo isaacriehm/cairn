@@ -19,11 +19,13 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import { extname, join, relative } from "node:path";
+import { toPosix } from "@isaacriehm/cairn-state";
 import {
   type CommentBlock,
   type CommentKind,
   type CommentLang,
 } from "@isaacriehm/cairn-state";
+export type { CommentBlock, CommentKind, CommentLang };
 
 const SOURCE_EXTENSIONS = new Set<string>([
   ".ts",
@@ -203,30 +205,23 @@ function listFromGit(repoRoot: string): string[] | null {
   }
 }
 
+import { walkFs } from "@isaacriehm/cairn-state";
+
 function listFromFs(repoRoot: string): string[] {
   const out: string[] = [];
-  walkFs(repoRoot, repoRoot, out);
+  walkFs({
+    dir: repoRoot,
+    repoRoot,
+    onDir: (rel: string, abs: string, ent: import("node:fs").Dirent) => {
+      if (ent.name.startsWith(".") && SKIP_DIRS.has(ent.name)) return false;
+      if (SKIP_DIRS.has(ent.name)) return false;
+      return true;
+    },
+    onFile: (rel: string) => {
+      out.push(rel);
+    },
+  });
   return out;
-}
-
-function walkFs(repoRoot: string, dir: string, out: string[]): void {
-  let entries: import("node:fs").Dirent[];
-  try {
-    entries = readdirSync(dir, { withFileTypes: true, encoding: "utf8" });
-  } catch {
-    return;
-  }
-  for (const e of entries) {
-    if (e.name.startsWith(".") && SKIP_DIRS.has(e.name)) continue;
-    if (SKIP_DIRS.has(e.name)) continue;
-    const abs = join(dir, e.name);
-    if (e.isDirectory()) {
-      walkFs(repoRoot, abs, out);
-      continue;
-    }
-    if (!e.isFile()) continue;
-    out.push(toPosix(relative(repoRoot, abs)));
-  }
 }
 
 function pathInSkipDir(rel: string): boolean {
@@ -235,9 +230,7 @@ function pathInSkipDir(rel: string): boolean {
   return false;
 }
 
-function toPosix(p: string): string {
-  return p.replace(/\\/g, "/");
-}
+
 
 /* -------------------------------------------------------------------------- */
 /* Lang detection                                                             */

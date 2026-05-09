@@ -151,15 +151,15 @@ export async function getDiff(args: {
   return out;
 }
 
-/** Simple concurrency limiter. */
-function pLimit(concurrency: number) {
+function pLimit(concurrency: number): <T>(fn: () => Promise<T>) => Promise<T> {
   const queue: Array<() => void> = [];
   let activeCount = 0;
 
-  const next = () => {
+  const next = (): void => {
     activeCount--;
-    if (queue.length > 0) {
-      queue.shift()!();
+    const cb = queue.shift();
+    if (cb !== undefined) {
+      cb();
     }
   };
 

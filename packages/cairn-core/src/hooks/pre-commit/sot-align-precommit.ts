@@ -116,8 +116,8 @@ export function alignStagedTree(args: PreCommitAlignArgs): PreCommitAlignResult 
     args.readStagedContent ?? ((root, file) => readStagedFromGit(root, file));
 
   const cache = readSotCache(repoRoot);
-  const cacheEntries = (Object.values(cache.entries) as SotCacheEntry[]).filter(
-    (e) => e.tokens.length > 0,
+  const cacheEntries = Object.values(cache.entries).filter(
+    (e): e is SotCacheEntry => e.tokens.length > 0,
   );
   if (cacheEntries.length === 0) {
     // No DECs/INVs to compare against yet — fresh adoption.

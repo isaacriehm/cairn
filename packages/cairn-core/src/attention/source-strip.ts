@@ -21,6 +21,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
+import { z } from "zod";
 import {
   applyStripReplace,
   formatBareCitation,
@@ -28,6 +29,42 @@ import {
   type StripReplaceResult,
 } from "../init/source-comments/strip-replace.js";
 import { logger } from "../logger.js";
+
+const DraftMetaSchema = z.object({
+  blockId: z.string().nullable().optional(),
+  sourceFile: z.string().nullable().optional(),
+  capture_source: z.string().nullable().optional(),
+  title: z.string().nullable().optional(),
+}).passthrough();
+
+export interface DraftMeta {
+  blockId: string | null;
+  sourceFile: string | null;
+  captureSource: string | null;
+  title: string | null;
+}
+
+const AuditBlockSchema = z.object({
+  block_id: z.string(),
+  file: z.string(),
+  lang: z.string(),
+  start_offset: z.number(),
+  end_offset: z.number(),
+  raw: z.string().nullish(),
+});
+
+const AuditFileSchema = z.object({
+  blocks: z.array(AuditBlockSchema),
+}).passthrough();
+
+interface AuditBlock {
+  block_id: string;
+  file: string;
+  lang: string;
+  start_offset: number;
+  end_offset: number;
+  raw: string | null;
+}
 
 /**
  * Look up the current byte range of `expectedRaw` in `file` (relative to
@@ -64,31 +101,24 @@ function findCurrentRange(
 
 const log = logger("attention.source-strip");
 
-export interface DraftMeta {
-  blockId: string | null;
-  sourceFile: string | null;
-  captureSource: string | null;
-  title: string | null;
-}
-
 export function parseDraftMeta(body: string): DraftMeta | null {
   const match = /^---\n([\s\S]*?)\n---/.exec(body);
   if (match === null) return null;
-  let parsed: unknown;
   try {
-    parsed = parseYaml(match[1] ?? "");
+    const raw: unknown = parseYaml(match[1] ?? "");
+    const result = DraftMetaSchema.safeParse(raw);
+    if (!result.success) return null;
+    
+    const obj = result.data;
+    return {
+      blockId: obj.blockId ?? null,
+      sourceFile: obj.sourceFile ?? null,
+      captureSource: obj.capture_source ?? null,
+      title: obj.title ?? null,
+    };
   } catch {
     return null;
   }
-  if (parsed === null || typeof parsed !== "object") return null;
-  const obj = parsed as Record<string, unknown>;
-  return {
-    blockId: typeof obj["blockId"] === "string" ? obj["blockId"] : null,
-    sourceFile: typeof obj["sourceFile"] === "string" ? obj["sourceFile"] : null,
-    captureSource:
-      typeof obj["capture_source"] === "string" ? obj["capture_source"] : null,
-    title: typeof obj["title"] === "string" ? obj["title"] : null,
-  };
 }
 
 export interface StripOutcomeSummary {
@@ -99,49 +129,17 @@ export interface StripOutcomeSummary {
   reason?: string;
 }
 
-interface AuditBlock {
-  block_id: string;
-  file: string;
-  lang: string;
-  start_offset: number;
-  end_offset: number;
-  raw?: string;
-}
-
 function extractAuditBlocks(body: unknown): AuditBlock[] {
-  if (body === null || typeof body !== "object") return [];
-  const obj = body as Record<string, unknown>;
-  const raw = obj["blocks"];
-  if (!Array.isArray(raw)) return [];
-  const out: AuditBlock[] = [];
-  for (const entry of raw) {
-    if (entry === null || typeof entry !== "object") continue;
-    const e = entry as Record<string, unknown>;
-    const block_id = e["block_id"];
-    const file = e["file"];
-    const lang = e["lang"];
-    const start_offset = e["start_offset"];
-    const end_offset = e["end_offset"];
-    const rawText = e["raw"];
-    if (
-      typeof block_id !== "string" ||
-      typeof file !== "string" ||
-      typeof lang !== "string" ||
-      typeof start_offset !== "number" ||
-      typeof end_offset !== "number"
-    ) {
-      continue;
-    }
-    out.push({
-      block_id,
-      file,
-      lang,
-      start_offset,
-      end_offset,
-      ...(typeof rawText === "string" ? { raw: rawText } : {}),
-    });
-  }
-  return out;
+  const result = AuditFileSchema.safeParse(body);
+  if (!result.success) return [];
+  return result.data.blocks.map((b) => ({
+    block_id: b.block_id,
+    file: b.file,
+    lang: b.lang,
+    start_offset: b.start_offset,
+    end_offset: b.end_offset,
+    raw: b.raw ?? null,
+  }));
 }
 
 export function findLatestSourceCommentsAudit(repoRoot: string): string | null {
@@ -267,7 +265,7 @@ export function runDecSourceStrip(args: {
     startOffset,
     endOffset,
     replacement,
-    ...(block.raw !== undefined ? { expectedRaw: block.raw } : {}),
+    ...(block.raw !== null ? { expectedRaw: block.raw } : {}),
   });
   const item = buildItem(block.start_offset, block.end_offset);
   let result: StripReplaceResult;
@@ -307,7 +305,7 @@ export function runDecSourceStrip(args: {
     // re-issue with the current range. Only attempted on
     // range-mismatch — every other reason (missing-file, dirty-skipped,
     // overlap) needs operator action, not a coordinate retry.
-    if (reason === "range-mismatch" && block.raw !== undefined) {
+    if (reason === "range-mismatch" && block.raw !== null) {
       const current = findCurrentRange(args.repoRoot, block.file, block.raw);
       if (current !== null) {
         const retryItem = buildItem(current.startOffset, current.endOffset);

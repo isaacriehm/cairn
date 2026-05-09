@@ -8,6 +8,7 @@
  * Per PRIMER §10 Layer A. Catalog grows additively via /oops dialog (L25).
  */
 
+import { lineOf } from "@isaacriehm/cairn-state";
 import type {
   DiffEntry,
   SensorFinding,
@@ -97,13 +98,7 @@ export function detectStubMatches(args: {
 }
 
 /** Convert a character offset within `text` to a 1-based line number. */
-function lineOf(text: string, charIndex: number): number {
-  let line = 1;
-  for (let i = 0; i < charIndex && i < text.length; i++) {
-    if (text.charCodeAt(i) === 10 /* \n */) line += 1;
-  }
-  return line;
-}
+
 
 /** Run the Layer A sensor against a diff. */
 export function runStubCatalog(args: {

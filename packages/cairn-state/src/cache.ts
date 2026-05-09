@@ -9,6 +9,7 @@ import { createHash } from "node:crypto";
 import { existsSync, openSync, readFileSync, readSync, closeSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
+import { z } from "zod";
 import { fileCandidatesMapPath } from "./paths.js";
 import { FileCandidatesMap } from "./schemas.js";
 import {
@@ -20,6 +21,20 @@ import {
 } from "./scope-index.js";
 
 export type { ScopeIndexEntry } from "./scope-index.js";
+
+const DecisionLedgerEntrySchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  status: z.string().optional(),
+  superseded_by: z.string().optional(),
+}).passthrough();
+
+const InvariantLedgerEntrySchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  status: z.string().optional(),
+  superseded_by: z.string().optional(),
+}).passthrough();
 
 export interface LedgerSnapshot {
   invariantsByid: Map<
@@ -123,7 +138,9 @@ function invariantsLedgerFile(repoRoot: string): string {
   );
 }
 
-export function getInvariantsLedger(repoRoot: string): LedgerSnapshot | null {
+export function getInvariantsLedger(
+  repoRoot: string,
+): LedgerSnapshot | null {
   const path = invariantsLedgerFile(repoRoot);
   if (!existsSync(path)) return null;
   let mtimeMs: number;
@@ -142,33 +159,27 @@ export function getInvariantsLedger(repoRoot: string): LedgerSnapshot | null {
 
   let parsed: unknown;
   try {
-    parsed = parseYaml(readFileSync(path, "utf8"));
+    const raw = readFileSync(path, "utf8");
+    parsed = parseYaml(raw);
   } catch {
     return null;
   }
-  if (!Array.isArray(parsed)) return null;
+  const result = z.array(InvariantLedgerEntrySchema).safeParse(parsed);
+  if (!result.success) return null;
 
   const map = new Map<
     string,
     { title: string; status: string; superseded_by?: string }
   >();
-  for (const raw of parsed) {
-    if (typeof raw !== "object" || raw === null) continue;
-    const r = raw as Record<string, unknown>;
-    const id = typeof r["id"] === "string" ? (r["id"] as string) : null;
-    const title = typeof r["title"] === "string" ? (r["title"] as string) : "";
-    const status =
-      typeof r["status"] === "string" ? (r["status"] as string) : "active";
-    const supersededByRaw = r["superseded_by"];
-    const supersededBy =
-      typeof supersededByRaw === "string" && supersededByRaw.length > 0
-        ? supersededByRaw
-        : undefined;
-    if (id === null) continue;
+  for (const entry of result.data) {
+    const id = entry.id;
+    const title = entry.title;
+    const status = entry.status ?? "active";
+    const supersededBy = entry.superseded_by;
     map.set(id, {
       title,
       status,
-      ...(supersededBy !== undefined ? { superseded_by: supersededBy } : {}),
+      ...(typeof supersededBy === "string" && supersededBy.length > 0 ? { superseded_by: supersededBy } : {}),
     });
   }
 
@@ -208,33 +219,27 @@ export function getDecisionsLedger(
 
   let parsed: unknown;
   try {
-    parsed = parseYaml(readFileSync(path, "utf8"));
+    const raw = readFileSync(path, "utf8");
+    parsed = parseYaml(raw);
   } catch {
     return null;
   }
-  if (!Array.isArray(parsed)) return null;
+  const result = z.array(DecisionLedgerEntrySchema).safeParse(parsed);
+  if (!result.success) return null;
 
   const map = new Map<
     string,
     { title: string; status: string; superseded_by?: string }
   >();
-  for (const raw of parsed) {
-    if (typeof raw !== "object" || raw === null) continue;
-    const r = raw as Record<string, unknown>;
-    const id = typeof r["id"] === "string" ? (r["id"] as string) : null;
-    const title = typeof r["title"] === "string" ? (r["title"] as string) : "";
-    const status =
-      typeof r["status"] === "string" ? (r["status"] as string) : "accepted";
-    const supersededByRaw = r["superseded_by"];
-    const supersededBy =
-      typeof supersededByRaw === "string" && supersededByRaw.length > 0
-        ? supersededByRaw
-        : undefined;
-    if (id === null) continue;
+  for (const entry of result.data) {
+    const id = entry.id;
+    const title = entry.title;
+    const status = entry.status ?? "accepted";
+    const supersededBy = entry.superseded_by;
     map.set(id, {
       title,
       status,
-      ...(supersededBy !== undefined ? { superseded_by: supersededBy } : {}),
+      ...(typeof supersededBy === "string" && supersededBy.length > 0 ? { superseded_by: supersededBy } : {}),
     });
   }
 

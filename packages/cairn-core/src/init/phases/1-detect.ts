@@ -13,7 +13,7 @@ import type { PhaseResult, PhaseState } from "./types.js";
 
 export async function runPhase1Detect(state: PhaseState): Promise<PhaseResult> {
   try {
-    const detection = await detectAll(state.repoRoot);
+    const detection = await detectAll({ repoRoot: state.repoRoot });
     const next: PhaseState = {
       ...state,
       outputs: { ...state.outputs, "1-detect": detection },

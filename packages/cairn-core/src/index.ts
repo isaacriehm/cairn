@@ -17,10 +17,16 @@ import { fileURLToPath } from "node:url";
 function readVersion(): string {
   if (typeof __CAIRN_VERSION__ === "string") return __CAIRN_VERSION__;
   const _here = dirname(fileURLToPath(import.meta.url));
-  const _pkg = JSON.parse(
-    readFileSync(join(_here, "..", "package.json"), "utf8"),
-  ) as { version: string };
-  return _pkg.version;
+  try {
+    const raw = readFileSync(join(_here, "..", "package.json"), "utf8");
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed === "object" && parsed !== null && "version" in parsed && typeof parsed.version === "string") {
+      return parsed.version;
+    }
+  } catch {
+    /* fallback to unknown */
+  }
+  return "unknown";
 }
 export const VERSION: string = readVersion();
 
@@ -42,7 +48,7 @@ export * from "@isaacriehm/cairn-state";
 export {
   clearDeferState,
   deferStatePath,
-  isDeferActive,
+  isCurrentlyDeferred,
   readDeferState,
   writeDeferState,
 } from "./hooks/defer.js";

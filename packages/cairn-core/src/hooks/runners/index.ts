@@ -23,6 +23,6 @@ export {
   emitShapeB,
   parseHookPayload,
   readHookStdin,
-  recordHookTelemetry,
+  appendTelemetry,
 } from "./payload.js";
-export type { ClaudeHookPayload, HookTelemetryRow } from "./payload.js";
+export type { ClaudeHookPayload } from "./payload.js";

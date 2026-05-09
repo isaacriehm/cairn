@@ -5,16 +5,33 @@
  * sorted ascending. Used by the plugin Stop hook to surface only events
  * that landed during the current session.
  *
- * `gcStaleEvents(repoRoot, opts?)` — drops events older than 7 days.
- * Wired into the standard sweep so the events directory stays bounded.
+ * `gcStaleEvents(repoRoot)` — prune events older than 7 days.
+ * Wired into the standard sweep so the events directory stays lean.
  */
 
-import { existsSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
+import { z } from "zod";
 import { eventsDir } from "./paths.js";
-import type { InvalidationEvent, InvalidationEventRef } from "./writer.js";
+import type { InvalidationEvent } from "./writer.js";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
+const InvalidationEventRefSchema = z.object({
+  kind: z.enum(["decision", "invariant", "task", "path"]),
+  id: z.string(),
+});
+
+const InvalidationEventSchema = z.object({
+  ts: z.number(),
+  kind: z.string(),
+  refs: z.array(InvalidationEventRefSchema),
+  path: z.string().optional(),
+  source: z.object({
+    session_id: z.string().nullable(),
+    tool: z.string(),
+  }),
+});
 
 export interface EventsSinceArgs {
   repoRoot: string;
@@ -26,10 +43,14 @@ export interface EventsSinceArgs {
 
 export interface EventsSinceResult {
   events: InvalidationEvent[];
-  /** Files we tried to read but couldn't parse — surfaced for telemetry. */
+  /** File names that failed to parse (corruption or stale schema). */
   malformed: string[];
 }
 
+/**
+ * Scan for all event JSON files in the ground and return those newer
+ * than `sinceMs`.
+ */
 export function eventsSince(args: EventsSinceArgs): EventsSinceResult {
   const dir = eventsDir(args.repoRoot);
   const events: InvalidationEvent[] = [];
@@ -54,11 +75,13 @@ export function eventsSince(args: EventsSinceArgs): EventsSinceResult {
       malformed.push(e.name);
       continue;
     }
-    if (!isInvalidationEvent(parsed)) {
+    const result = InvalidationEventSchema.safeParse(parsed);
+    if (!result.success) {
       malformed.push(e.name);
       continue;
     }
-    if (parsed.ts > args.sinceMs) events.push(parsed);
+    const event = result.data as InvalidationEvent;
+    if (event.ts > args.sinceMs) events.push(event);
   }
 
   events.sort((a, b) => a.ts - b.ts);
@@ -70,85 +93,58 @@ export function eventsSince(args: EventsSinceArgs): EventsSinceResult {
 
 export interface GcStaleEventsArgs {
   repoRoot: string;
-  /** Default 7 days. */
-  maxAgeMs?: number;
-  /** Override Date.now() — tests use this. */
-  now?: () => number;
 }
 
 export interface GcStaleEventsResult {
   removed: string[];
-  kept: string[];
+  kept: number;
 }
 
 /**
- * Remove event files older than `maxAgeMs` (default 7 days). Uses each
- * file's parsed `ts` when present; falls back to `mtimeMs` otherwise.
+ * Delete event JSONs with `ts < (now - 7 days)`.
  */
 export function gcStaleEvents(args: GcStaleEventsArgs): GcStaleEventsResult {
   const dir = eventsDir(args.repoRoot);
-  const removed: string[] = [];
-  const kept: string[] = [];
-  if (!existsSync(dir)) return { removed, kept };
-
-  const maxAge = args.maxAgeMs ?? SEVEN_DAYS_MS;
-  const now = args.now ? args.now() : Date.now();
+  if (!existsSync(dir)) return { removed: [], kept: 0 };
   const entries = readdirSync(dir, { withFileTypes: true, encoding: "utf8" });
+  const cutoff = Date.now() - SEVEN_DAYS_MS;
+  const removed: string[] = [];
+  let kept = 0;
+
   for (const e of entries) {
     if (!e.isFile() || !e.name.endsWith(".json")) continue;
     const abs = join(dir, e.name);
     let ts: number | null = null;
     try {
-      const parsed = JSON.parse(readFileSync(abs, "utf8")) as Partial<InvalidationEvent>;
-      if (typeof parsed?.ts === "number") ts = parsed.ts;
+      const raw = readFileSync(abs, "utf8");
+      const parsed: unknown = JSON.parse(raw);
+      const result = InvalidationEventSchema.partial().safeParse(parsed);
+      if (result.success && result.data.ts !== undefined) {
+        ts = result.data.ts;
+      }
     } catch {
       ts = null;
     }
     if (ts === null) {
       try {
-        ts = statSync(abs).mtimeMs;
-      } catch {
-        ts = 0;
-      }
-    }
-    if (now - ts >= maxAge) {
-      try {
-        rmSync(abs, { force: true });
+        unlinkSync(abs);
         removed.push(e.name);
       } catch {
-        kept.push(e.name);
+        /* ignore */
+      }
+      continue;
+    }
+
+    if (ts < cutoff) {
+      try {
+        unlinkSync(abs);
+        removed.push(e.name);
+      } catch {
+        /* ignore */
       }
     } else {
-      kept.push(e.name);
+      kept += 1;
     }
   }
   return { removed, kept };
-}
-
-function isInvalidationEvent(x: unknown): x is InvalidationEvent {
-  if (x === null || typeof x !== "object") return false;
-  const o = x as Record<string, unknown>;
-  if (typeof o["ts"] !== "number") return false;
-  if (typeof o["kind"] !== "string") return false;
-  if (!Array.isArray(o["refs"])) return false;
-  for (const r of o["refs"]) if (!isRef(r)) return false;
-  const source = o["source"];
-  if (source === null || typeof source !== "object") return false;
-  const s = source as Record<string, unknown>;
-  if (s["session_id"] !== null && typeof s["session_id"] !== "string") return false;
-  if (typeof s["tool"] !== "string") return false;
-  if (o["path"] !== undefined && typeof o["path"] !== "string") return false;
-  return true;
-}
-
-function isRef(x: unknown): x is InvalidationEventRef {
-  if (x === null || typeof x !== "object") return false;
-  const o = x as Record<string, unknown>;
-  return (
-    typeof o["id"] === "string" &&
-    (o["kind"] === "decision" ||
-      o["kind"] === "invariant" ||
-      o["kind"] === "task" ||
-      o["kind"] === "path")
-  );
 }

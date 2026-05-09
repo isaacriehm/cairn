@@ -4,11 +4,12 @@
  * funnel through `withWriteLock`.
  */
 
-import { existsSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { readFile, writeFile, rename, rm, mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { parse as parseYaml } from "yaml";
+import { z } from "zod";
 import { bulkAcceptObvious } from "../bulk-accept.js";
 import type { DraftConfidence } from "../scoring.js";
 import { findDuplicateClusters, type DraftRef } from "../dedup.js";
@@ -17,19 +18,43 @@ import { runDecSourceStrip, parseDraftMeta } from "../source-strip.js";
 import {
   decisionsDir,
   decisionsLedgerPath,
+  writeDecisionsLedger,
+  parseFrontmatterRecord,
 } from "@isaacriehm/cairn-state";
-import { writeDecisionsLedger } from "@isaacriehm/cairn-state";
-import { parseFrontmatterRecord } from "@isaacriehm/cairn-state";
 import { withWriteLock } from "../../lock.js";
 import { writeInvalidationEvent } from "../../events/index.js";
 import { logger } from "../../logger.js";
-import { dirname } from "node:path";
 import type { ProjectGlobs } from "../../sensors/types.js";
 
 const log = logger("attention.serve.api");
 
 const MAX_BODY_BYTES = 5 * 1024 * 1024; // 5MB
 const BODY_TIMEOUT_MS = 10_000;
+
+const BulkAcceptInput = z.object({
+  threshold: z.enum(["high", "medium", "low"]).optional(),
+  dryRun: z.boolean().optional(),
+});
+
+const ClusterMergeInput = z.object({
+  survivor_id: z.string(),
+  member_ids: z.array(z.string()).optional(),
+});
+
+const EditDraftInput = z.object({
+  title: z.string().optional(),
+  body_markdown: z.string().optional(),
+});
+
+const ConfigSchema = z.object({
+  project_globs: z.object({
+    route_handler_globs: z.array(z.string()).optional(),
+    dto_globs: z.array(z.string()).optional(),
+    generator_source_globs: z.array(z.string()).optional(),
+    high_stakes_globs: z.array(z.string()).optional(),
+  }).optional(),
+  off_limits: z.array(z.string()).optional(),
+}).passthrough();
 
 interface Counters {
   accepted: number;
@@ -79,44 +104,51 @@ export async function handleApi(
       return sendJson(res, 200, { ok: true, ...ctx.counters });
     }
     if (parsedUrl.pathname === "/api/bulk-accept" && req.method === "POST") {
-      const body = await readJsonBody(req);
-      const threshold = parseThreshold(body?.threshold);
-      const dryRun = body?.dryRun === true;
+      const bodyRaw = await readJsonBody(req);
+      const parsed = BulkAcceptInput.safeParse(bodyRaw);
+      if (!parsed.success) {
+        return sendJson(res, 400, { ok: false, error: "invalid input" });
+      }
+      const threshold = parsed.data.threshold ?? "high";
+      const dryRun = parsed.data.dryRun === true;
       const result = await bulkAcceptObvious({
         repoRoot: ctx.repoRoot,
         globs: await loadGlobs(ctx.repoRoot),
         threshold,
         dryRun,
       });
-      // Counters track committed accepts only — dry-run previews must
-      // not bump them or the toolbar count drifts after a cancelled
-      // confirmation dialog.
       if (!dryRun) ctx.counters.accepted += result.decsAccepted;
       return sendJson(res, 200, { ok: true, ...result });
     }
     if (parsedUrl.pathname === "/api/cluster/merge" && req.method === "POST") {
-      const body = await readJsonBody(req);
-      const survivor = String(body?.survivor_id ?? "");
-      const members = Array.isArray(body?.member_ids) ? body.member_ids : [];
+      const bodyRaw = await readJsonBody(req);
+      const parsed = ClusterMergeInput.safeParse(bodyRaw);
+      if (!parsed.success) {
+        return sendJson(res, 400, { ok: false, error: "invalid input" });
+      }
+      const survivor = parsed.data.survivor_id;
+      const members = parsed.data.member_ids ?? [];
       if (!survivor.startsWith("DEC-")) {
         return sendJson(res, 400, { ok: false, error: "missing survivor_id" });
       }
-      let rejected = 0;
+      let rejectedCount = 0;
       for (const m of members) {
-        const id = String(m);
-        if (id === survivor) continue;
-        const ok = await rejectDraft(ctx.repoRoot, id);
-        if (ok) rejected += 1;
+        if (m === survivor) continue;
+        const ok = await rejectDraft(ctx.repoRoot, m);
+        if (ok) rejectedCount += 1;
       }
-      ctx.counters.merged += rejected;
-      return sendJson(res, 200, { ok: true, survivor_id: survivor, rejected });
+      ctx.counters.merged += rejectedCount;
+      return sendJson(res, 200, { ok: true, survivor_id: survivor, rejected: rejectedCount });
     }
 
     // /api/draft/:id/<accept|reject|edit>
     const draftMatch = parsedUrl.pathname.match(/^\/api\/draft\/(DEC-[0-9a-f]{7,})\/(accept|reject|edit)$/);
     if (draftMatch !== null && req.method === "POST") {
-      const id = draftMatch[1] as string;
-      const action = draftMatch[2] as string;
+      const id = draftMatch[1];
+      const action = draftMatch[2];
+      if (id === undefined || action === undefined) {
+        return sendJson(res, 400, { ok: false, error: "invalid path" });
+      }
       if (action === "accept") {
         const out = await acceptDraft(ctx.repoRoot, id);
         if (out.ok) ctx.counters.accepted += 1;
@@ -128,8 +160,12 @@ export async function handleApi(
         return sendJson(res, ok ? 200 : 400, { ok });
       }
       if (action === "edit") {
-        const body = await readJsonBody(req);
-        const result = await editDraft(ctx.repoRoot, id, body);
+        const bodyRaw = await readJsonBody(req);
+        const parsed = EditDraftInput.safeParse(bodyRaw);
+        if (!parsed.success) {
+          return sendJson(res, 400, { ok: false, error: "invalid input" });
+        }
+        const result = await editDraft(ctx.repoRoot, id, parsed.data);
         if (result.ok) ctx.counters.edited += 1;
         return sendJson(res, result.ok ? 200 : 400, result);
       }
@@ -159,7 +195,7 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
 
 async function readJsonBody(
   req: IncomingMessage,
-): Promise<Record<string, unknown>> {
+): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let bytesReceived = 0;
@@ -170,6 +206,9 @@ async function readJsonBody(
     }, BODY_TIMEOUT_MS);
 
     req.on("data", (c) => {
+      if (!(c instanceof Buffer)) {
+        return;
+      }
       bytesReceived += c.length;
       if (bytesReceived > MAX_BODY_BYTES) {
         clearTimeout(timeout);
@@ -177,7 +216,7 @@ async function readJsonBody(
         reject(new Error("body too large"));
         return;
       }
-      chunks.push(c as Buffer);
+      chunks.push(c);
     });
     req.on("error", (err) => {
       clearTimeout(timeout);
@@ -188,7 +227,7 @@ async function readJsonBody(
       const raw = Buffer.concat(chunks).toString("utf8");
       if (raw.length === 0) return resolve({});
       try {
-        const parsed = JSON.parse(raw);
+        const parsed: unknown = JSON.parse(raw);
         resolve(typeof parsed === "object" && parsed !== null ? parsed : {});
       } catch {
         resolve({});
@@ -197,42 +236,29 @@ async function readJsonBody(
   });
 }
 
-function parseThreshold(raw: unknown): DraftConfidence {
-  if (raw === "high" || raw === "medium" || raw === "low") return raw;
-  return "high";
-}
-
 async function loadGlobs(repoRoot: string): Promise<ProjectGlobs> {
   const cfgPath = join(repoRoot, ".cairn", "config.yaml");
   if (!existsSync(cfgPath)) return {};
   try {
-    const parsed = parseYaml(await readFile(cfgPath, "utf8"));
-    if (typeof parsed !== "object" || parsed === null) return {};
-    const cfg = parsed as Record<string, unknown>;
+    const raw = await readFile(cfgPath, "utf8");
+    const parsed = parseYaml(raw);
+    const result = ConfigSchema.safeParse(parsed);
+    if (!result.success) return {};
+    
+    const cfg = result.data;
     const globs: ProjectGlobs = {};
-    const projectGlobs = cfg["project_globs"];
-    if (typeof projectGlobs === "object" && projectGlobs !== null) {
-      const pg = projectGlobs as Record<string, unknown>;
-      const route = arrayOfStrings(pg["route_handler_globs"]);
-      if (route.length > 0) globs.route_handler_globs = route;
-      const dto = arrayOfStrings(pg["dto_globs"]);
-      if (dto.length > 0) globs.dto_globs = dto;
-      const gen = arrayOfStrings(pg["generator_source_globs"]);
-      if (gen.length > 0) globs.generator_source_globs = gen;
-      const high = arrayOfStrings(pg["high_stakes_globs"]);
-      if (high.length > 0) globs.high_stakes_globs = high;
+    const projectGlobs = cfg.project_globs;
+    if (projectGlobs !== undefined) {
+      if (projectGlobs.route_handler_globs) globs.route_handler_globs = projectGlobs.route_handler_globs;
+      if (projectGlobs.dto_globs) globs.dto_globs = projectGlobs.dto_globs;
+      if (projectGlobs.generator_source_globs) globs.generator_source_globs = projectGlobs.generator_source_globs;
+      if (projectGlobs.high_stakes_globs) globs.high_stakes_globs = projectGlobs.high_stakes_globs;
     }
-    const off = arrayOfStrings(cfg["off_limits"]);
-    if (off.length > 0) globs.off_limits = off;
+    if (cfg.off_limits) globs.off_limits = cfg.off_limits;
     return globs;
   } catch {
     return {};
   }
-}
-
-function arrayOfStrings(v: unknown): string[] {
-  if (!Array.isArray(v)) return [];
-  return v.filter((x): x is string => typeof x === "string");
 }
 
 interface DraftSummary extends DraftRef {
@@ -276,7 +302,7 @@ async function buildState(ctx: ApiCtx): Promise<unknown> {
         title,
         sourceFile: stringField(fm, "sourceFile") ?? "",
         source: stringField(fm, "capture_source") ?? "",
-        confidence: stringField(fm, "capture_confidence"),
+        confidence: stringField(fm, "capture_confidence") as DraftConfidence | null,
         body,
         proposedRationale: stringField(fm, "proposedRationale"),
         mtimeMs,
@@ -375,14 +401,13 @@ async function rejectDraft(repoRoot: string, id: string): Promise<boolean> {
 async function editDraft(
   repoRoot: string,
   id: string,
-  body: Record<string, unknown>,
+  input: z.infer<typeof EditDraftInput>,
 ): Promise<{ ok: boolean; error?: string }> {
   const decDir = decisionsDir(repoRoot);
   const inboxPath = join(decDir, "_inbox", `${id}.draft.md`);
   if (!existsSync(inboxPath)) return { ok: false, error: "draft missing" };
-  const newTitle = typeof body.title === "string" ? body.title : null;
-  const newRationale =
-    typeof body.body_markdown === "string" ? body.body_markdown : null;
+  const newTitle = input.title ?? null;
+  const newRationale = input.body_markdown ?? null;
   if (newTitle === null && newRationale === null) {
     return { ok: false, error: "no fields to update" };
   }

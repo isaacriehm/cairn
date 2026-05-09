@@ -4,52 +4,80 @@ import { logger } from "../logger.js";
 import { appendTrace } from "../trace/index.js";
 import { cacheLookup, cacheStore } from "./cache.js";
 import { ClaudeError, classifyClaudeError } from "./error.js";
-import type { ClaudeTier, RunClaudeOptions, RunClaudeResult } from "./types.js";
+import { z } from "zod";
 
 const log = logger("claude.runner");
 
-/** Cap previewed text in trace so payloads stay scannable (full body still in stderr/stdout if needed). */
-const TRACE_PREVIEW_CHARS = 600;
-function preview(s: string): string {
-  if (s.length <= TRACE_PREVIEW_CHARS) return s;
-  return `${s.slice(0, TRACE_PREVIEW_CHARS)}…(+${s.length - TRACE_PREVIEW_CHARS} chars)`;
+const ClaudeEnvelopeSchema = z.object({
+  result: z.string().optional(),
+  structured_output: z.unknown().optional(),
+  usage: z.object({
+    input_tokens: z.number(),
+    output_tokens: z.number(),
+    cache_read_tokens: z.number().optional(),
+    cache_creation_tokens: z.number().optional(),
+  }).optional(),
+}).passthrough();
+
+export type ClaudeTier = "h1" | "h2" | "h3" | "haiku" | "sonnet" | "opus";
+
+export interface ClaudeUsage {
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number | null;
+  cache_creation_tokens: number | null;
 }
 
-/** Tier → model alias passed to `claude --model`. */
-const TIER_MODEL: Record<ClaudeTier, string> = {
-  haiku: "haiku",
-  sonnet: "sonnet",
-  opus: "opus",
-};
+export interface RunClaudeOptions {
+  tier: ClaudeTier;
+  prompt: string;
+  system?: string;
+  jsonSchema?: object;
+  timeoutMs?: number;
+  repoRoot?: string;
+  sessionId?: string;
+  purpose?: string;
+  cacheable?: boolean;
+  /** Force bypass global context (@CLAUDE.md, ~/.claude/) — recommended for internal tasks. */
+  isolateAmbientContext?: boolean;
+}
 
-/**
- * Global concurrency cap for Claude CLI subprocesses to prevent OS thread
- * exhaustion / OOM during high-volume Haiku batching.
- */
-const MAX_CONCURRENT_CLAUDE = 8;
-let currentClaudeCalls = 0;
-const claudeQueue: (() => void)[] = [];
+export interface RunClaudeResult {
+  text: string;
+  parsed?: unknown;
+  durationMs: number;
+  tier: ClaudeTier;
+  model: string;
+  envelope?: Record<string, unknown>;
+  usage?: ClaudeUsage;
+}
 
-async function acquireClaudeSlot(): Promise<void> {
-  if (currentClaudeCalls < MAX_CONCURRENT_CLAUDE) {
-    currentClaudeCalls++;
-    return;
+const DEFAULT_TIMEOUT_MS = 60_000;
+const MAX_CONCURRENT_CALLS = 3;
+
+let activeCalls = 0;
+const callQueue: (() => void)[] = [];
+
+function acquireClaudeSlot(): Promise<void> {
+  if (activeCalls < MAX_CONCURRENT_CALLS) {
+    activeCalls++;
+    return Promise.resolve();
   }
   return new Promise((resolve) => {
-    claudeQueue.push(resolve);
+    callQueue.push(resolve);
   });
 }
 
 function releaseClaudeSlot(): void {
-  currentClaudeCalls--;
-  const next = claudeQueue.shift();
-  if (next) {
-    currentClaudeCalls++;
+  activeCalls--;
+  const next = callQueue.shift();
+  if (next !== undefined) {
+    activeCalls++;
     next();
   }
 }
 
-/** Returns true when `claude --version` succeeds. Used at startup + smoke. */
+/** Check if Claude Code is available on PATH. */
 export function claudeIsAvailable(): boolean {
   try {
     const result = spawnSync("claude", ["--version"], { encoding: "utf8" });
@@ -60,102 +88,53 @@ export function claudeIsAvailable(): boolean {
 }
 
 /**
- * Run a single non-interactive Claude Code call via subprocess.
- *
- * Auth path: relies on the operator's existing Claude Code login (OAuth /
- * keychain). No `--bare`, no `ANTHROPIC_API_KEY`. The whole point is to use
- * the operator's Claude Code coding-plan subscription quota.
+ * Single entry point for all LLM calls. Invokes the `claude` CLI via
+ * stdin/stdout. Serializes concurrency to avoid local resource exhaustion.
  */
-export async function runClaude(opts: RunClaudeOptions): Promise<RunClaudeResult> {
-  // Cache lookup happens before subprocess spawn so a hit short-circuits
-  // the whole flow including the trace request event.
+export async function runClaude(
+  opts: RunClaudeOptions,
+): Promise<RunClaudeResult> {
   if (opts.cacheable === true && opts.repoRoot !== undefined) {
-    const hit = cacheLookup(opts.repoRoot, opts);
-    if (hit !== null) return hit;
+    const cached = cacheLookup(opts.repoRoot, opts);
+    if (cached !== null) return cached;
   }
 
   await acquireClaudeSlot();
   try {
-    const model = TIER_MODEL[opts.tier];
-    const args = [
-      "--print",
-      "--output-format",
-      "json",
-      "--no-session-persistence",
-      "--model",
-      model,
-    ];
-    if (opts.system !== undefined) {
-      args.push("--system-prompt", opts.system);
-    }
+    const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    const startedAt = Date.now();
+
+    const args = ["-p", opts.isolateAmbientContext === true ? "none" : "auto"];
+    if (opts.system !== undefined) args.push("--system", opts.system);
     if (opts.jsonSchema !== undefined) {
       args.push("--json-schema", JSON.stringify(opts.jsonSchema));
     }
-    // Isolate ambient context: drop user-level CLAUDE.md, project-hierarchy
-    // CLAUDE.md, MCP tools, and plugin slash commands so the call sees only
-    // the caller-supplied prompt + system. Subprocess runs from
-    // `os.tmpdir()` so no CLAUDE.md ancestor chain auto-loads. Caller still
-    // pays for whatever they explicitly include in the prompt.
-    if (opts.isolateAmbientContext === true) {
-      args.push(
-        "--setting-sources",
-        "project,local",
-        "--tools",
-        "",
-        "--disable-slash-commands",
-      );
-    }
-    if (opts.extraArgs && opts.extraArgs.length > 0) {
-      args.push(...opts.extraArgs);
-    }
 
-    const startedAt = Date.now();
-    const ctrl = new AbortController();
-    const timeoutMs = opts.timeoutMs ?? 120_000;
-    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-
-    appendTrace({
-      ts: new Date().toISOString(),
-      source: "claude",
-      kind: "request",
-      repo_root: opts.repoRoot ?? null,
-      session_id: opts.sessionId ?? null,
-      payload: {
-        tier: opts.tier,
-        model,
-        purpose: opts.purpose ?? null,
-        prompt_chars: opts.prompt.length,
-        system_chars: opts.system?.length ?? 0,
-        json_schema: opts.jsonSchema !== undefined,
-        prompt_preview: preview(opts.prompt),
-        ...(opts.system !== undefined ? { system_preview: preview(opts.system) } : {}),
-      },
-    });
-
-    // Subprocess cwd: when isolating ambient context, route to os.tmpdir()
-    // so the CLAUDE.md ancestor chain doesn't auto-load. Otherwise honor
-    // the caller's cwd (mapper needs the repo cwd for tool access).
-    const subprocessCwd =
-      opts.isolateAmbientContext === true
-        ? tmpdir()
-        : opts.cwd ?? process.cwd();
+    const model = `claude-code/${opts.tier}`; // conceptual model name for telemetry
 
     return await new Promise<RunClaudeResult>((resolve, reject) => {
       const child = spawn("claude", args, {
-        cwd: subprocessCwd,
+        cwd: opts.repoRoot ?? tmpdir(),
         stdio: ["pipe", "pipe", "pipe"],
-        signal: ctrl.signal,
       });
+
+      const timer = setTimeout(() => {
+        child.kill("SIGTERM");
+      }, timeoutMs);
+
       const stdoutChunks: Buffer[] = [];
       const stderrChunks: Buffer[] = [];
+
+      child.stdout.on("data", (c: Buffer) => stdoutChunks.push(c));
+      child.stderr.on("data", (c: Buffer) => stderrChunks.push(c));
+
       let settled = false;
-      child.stdout.on("data", (chunk: Buffer) => stdoutChunks.push(chunk));
-      child.stderr.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
-      child.on("error", (err) => {
+
+      child.on("error", (err: Error) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        const isAbort = (err as { name?: string }).name === "AbortError";
+        const isAbort = err.name === "AbortError";
         if (isAbort) {
           const message = `claude timed out after ${timeoutMs}ms`;
           appendTrace({
@@ -179,15 +158,17 @@ export async function runClaude(opts: RunClaudeOptions): Promise<RunClaudeResult
         }
         reject(err);
       });
-      child.on("close", (code) => {
+
+      child.on("close", (code: number | null) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
         const stdout = Buffer.concat(stdoutChunks).toString("utf8");
         const stderr = Buffer.concat(stderrChunks).toString("utf8");
         if (code !== 0) {
-          const message = `claude exited ${code}${stderr ? `: ${stderr.trim()}` : ""}`;
-          const kind = classifyClaudeError({ message, exitCode: code, stderr });
+          const exitCode = code ?? 1;
+          const message = `claude exited ${exitCode}${stderr ? `: ${stderr.trim()}` : ""}`;
+          const kind = classifyClaudeError({ message, exitCode, stderr });
           appendTrace({
             ts: new Date().toISOString(),
             source: "claude",
@@ -201,94 +182,103 @@ export async function runClaude(opts: RunClaudeOptions): Promise<RunClaudeResult
               model,
               purpose: opts.purpose ?? null,
               error_kind: kind,
-              exit_code: code,
+              exit_code: exitCode,
               stderr_preview: preview(stderr),
             },
           });
-          reject(new ClaudeError({ message, kind, exitCode: code, stderr }));
+          reject(new ClaudeError({ message, kind, exitCode, stderr }));
           return;
         }
-        let envelope: Record<string, unknown>;
+        
         try {
-          envelope = JSON.parse(stdout) as Record<string, unknown>;
+          const parsedStdout: unknown = JSON.parse(stdout);
+          const result = ClaudeEnvelopeSchema.safeParse(parsedStdout);
+          if (!result.success) {
+            reject(
+              new ClaudeError({
+                message: `claude output JSON invalid: ${stdout.slice(0, 200)}`,
+                kind: "other",
+                exitCode: code ?? 0,
+                stderr,
+              }),
+            );
+            return;
+          }
+          const envelope = result.data;
+          const text = envelope.result ?? "";
+          let parsed: unknown;
+          if (opts.jsonSchema !== undefined) {
+            if (envelope.structured_output !== undefined) {
+              parsed = envelope.structured_output;
+            } else if (text.length > 0) {
+              try {
+                parsed = JSON.parse(text);
+              } catch (err) {
+                log.warn(
+                  { err: String(err), preview: text.slice(0, 200) },
+                  "claude json output parse failed despite --json-schema",
+                );
+              }
+            }
+          }
+          const usage = envelope.usage !== undefined ? {
+            input_tokens: envelope.usage.input_tokens,
+            output_tokens: envelope.usage.output_tokens,
+            cache_read_tokens: envelope.usage.cache_read_tokens ?? null,
+            cache_creation_tokens: envelope.usage.cache_creation_tokens ?? null,
+          } : undefined;
+          const durationMs = Date.now() - startedAt;
+          log.info(
+            {
+              model,
+              durationMs,
+              input_tokens: usage?.input_tokens,
+              output_tokens: usage?.output_tokens,
+            },
+            "claude call complete",
+          );
+          appendTrace({
+            ts: new Date().toISOString(),
+            source: "claude",
+            kind: "response",
+            repo_root: opts.repoRoot ?? null,
+            session_id: opts.sessionId ?? null,
+            duration_ms: durationMs,
+            ok: true,
+            payload: {
+              tier: opts.tier,
+              model,
+              purpose: opts.purpose ?? null,
+              input_tokens: usage?.input_tokens ?? null,
+              output_tokens: usage?.output_tokens ?? null,
+              response_chars: text.length,
+              response_preview: preview(text),
+              parsed_present: parsed !== undefined,
+            },
+          });
+          const runResult: RunClaudeResult = {
+            text,
+            ...(parsed !== undefined ? { parsed } : {}),
+            durationMs,
+            tier: opts.tier,
+            model,
+            envelope: envelope as Record<string, unknown>,
+            ...(usage !== undefined ? { usage } : {}),
+          };
+          if (opts.cacheable === true && opts.repoRoot !== undefined) {
+            cacheStore(opts.repoRoot, opts, runResult);
+          }
+          resolve(runResult);
         } catch {
           reject(
             new ClaudeError({
               message: `claude output not JSON: ${stdout.slice(0, 200)}`,
               kind: "other",
-              exitCode: code,
+              exitCode: code ?? 0,
               stderr,
             }),
           );
-          return;
         }
-        const text = typeof envelope["result"] === "string" ? envelope["result"] : "";
-        let parsed: unknown;
-        if (opts.jsonSchema !== undefined) {
-          // The CLI puts schema-validated payload in `structured_output`, not
-          // in `result` (which holds the conversational ack). Prefer that;
-          // fall back to parsing the result text in case future versions
-          // change the placement.
-          if (envelope["structured_output"] !== undefined) {
-            parsed = envelope["structured_output"];
-          } else if (text.length > 0) {
-            try {
-              parsed = JSON.parse(text);
-            } catch (err) {
-              log.warn(
-                { err: String(err), preview: text.slice(0, 200) },
-                "claude json output parse failed despite --json-schema",
-              );
-            }
-          }
-        }
-        const usageRaw = envelope["usage"];
-        const usage =
-          typeof usageRaw === "object" && usageRaw !== null
-            ? (usageRaw as Record<string, number>)
-            : undefined;
-        const durationMs = Date.now() - startedAt;
-        log.info(
-          {
-            model,
-            durationMs,
-            input_tokens: usage?.["input_tokens"],
-            output_tokens: usage?.["output_tokens"],
-          },
-          "claude call complete",
-        );
-        appendTrace({
-          ts: new Date().toISOString(),
-          source: "claude",
-          kind: "response",
-          repo_root: opts.repoRoot ?? null,
-          session_id: opts.sessionId ?? null,
-          duration_ms: durationMs,
-          ok: true,
-          payload: {
-            tier: opts.tier,
-            model,
-            purpose: opts.purpose ?? null,
-            input_tokens: usage?.["input_tokens"] ?? null,
-            output_tokens: usage?.["output_tokens"] ?? null,
-            response_chars: text.length,
-            response_preview: preview(text),
-            parsed_present: parsed !== undefined,
-          },
-        });
-        const result: RunClaudeResult = {
-          text,
-          ...(parsed !== undefined ? { parsed } : {}),
-          durationMs,
-          tier: opts.tier,
-          model,
-          envelope,
-          ...(usage !== undefined ? { usage } : {}),
-        };
-        if (opts.cacheable === true && opts.repoRoot !== undefined) {
-          cacheStore(opts.repoRoot, opts, result);
-        }
-        resolve(result);
       });
 
       child.stdin.write(opts.prompt);
@@ -297,4 +287,11 @@ export async function runClaude(opts: RunClaudeOptions): Promise<RunClaudeResult
   } finally {
     releaseClaudeSlot();
   }
+}
+
+/** Truncated preview for trace. */
+const TRACE_PREVIEW_CHARS = 600;
+function preview(s: string): string {
+  if (s.length <= TRACE_PREVIEW_CHARS) return s;
+  return `${s.slice(0, TRACE_PREVIEW_CHARS)}…(+${s.length - TRACE_PREVIEW_CHARS} chars)`;
 }

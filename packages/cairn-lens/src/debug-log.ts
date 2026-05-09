@@ -19,11 +19,11 @@ type LensLogLevel = "trace" | "debug" | "info" | "warn" | "error";
 export interface LensLogChannel {
   appendLine(line: string): void;
   show(preserveFocus?: boolean): void;
-  trace?: (message: string, ...rest: unknown[]) => void;
-  debug?: (message: string, ...rest: unknown[]) => void;
-  info?: (message: string, ...rest: unknown[]) => void;
-  warn?: (message: string, ...rest: unknown[]) => void;
-  error?: (message: string, ...rest: unknown[]) => void;
+  trace(message: string, ...rest: unknown[]): void;
+  debug(message: string, ...rest: unknown[]): void;
+  info(message: string, ...rest: unknown[]): void;
+  warn(message: string, ...rest: unknown[]): void;
+  error(message: string, ...rest: unknown[]): void;
 }
 
 let channel: LensLogChannel | null = null;

@@ -40,10 +40,8 @@ import {
 } from "node:fs";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { writeFileSafe } from "@isaacriehm/cairn-state";
-import { z, type ZodType } from "zod";
-import { runClaude, claudeIsAvailable } from "../claude/index.js";
 import {
+  type CommentBlock,
   bodyContentHash,
   haikuCacheDir,
   layerADeferredLogPath,
@@ -52,7 +50,10 @@ import {
   recordDriftEvent,
   type SotCacheEntry,
   writeAlignmentPending,
+  writeFileSafe,
 } from "@isaacriehm/cairn-state";
+import { z, type ZodType } from "zod";
+import { runClaude, claudeIsAvailable } from "../claude/index.js";
 import {
   applyStripReplace,
   formatBareCitation,
@@ -66,7 +67,6 @@ import {
   readEntityBody,
   topKCandidates,
 } from "../hooks/sot-align-common.js";
-import type { CommentBlock } from "../init/source-comments/index.js";
 import { logger } from "../logger.js";
 import { pushEvent, setHaikuAvailable } from "../status-line/event-queue.js";
 import { tokenize } from "../text/jaccard.js";
@@ -257,9 +257,8 @@ export async function runDrain(args: DrainArgs): Promise<DrainResult> {
   }
 
   const cache = readSotCache(repoRoot);
-  const cacheEntries = (Object.values(cache.entries) as SotCacheEntry[]).filter(
-    (e) => e.tokens.length > 0,
-  );
+  const cacheEntries = Object.values(cache.entries)
+    .filter((e): e is SotCacheEntry => e !== undefined && e.tokens.length > 0);
 
   const cited: ReplaceItem[] = [];
   const survivingEntries: NormalizedEntry[] = [];
@@ -498,6 +497,10 @@ function capBody(body: string): string {
     : body;
 }
 
+const VerdictSchema = z.object({
+  verdict: z.enum(["same", "different", "ambiguous"]),
+});
+
 async function runDrainJudge(args: {
   blockBody: string;
   candidate: { id: string; body: string };
@@ -526,11 +529,9 @@ async function runDrainJudge(args: {
       timeoutMs: PER_HAIKU_TIMEOUT_MS,
       isolateAmbientContext: true,
     });
-    const parsed = result.parsed;
-    if (typeof parsed !== "object" || parsed === null) return "ambiguous";
-    const v = (parsed as Record<string, unknown>)["verdict"];
-    if (v === "same" || v === "different") return v;
-    return "ambiguous";
+    const parsed = VerdictSchema.safeParse(result.parsed);
+    if (!parsed.success) return "ambiguous";
+    return parsed.data.verdict;
   } catch (err) {
     log.warn(
       { err: err instanceof Error ? err.message : String(err) },
@@ -557,10 +558,10 @@ function readVerdictCache(
   const path = verdictCachePath(repoRoot, blockBody, scopeKey);
   if (!existsSync(path)) return null;
   try {
-    const parsed = JSON.parse(readFileSync(path, "utf8")) as { verdict?: unknown };
-    const v = parsed.verdict;
-    if (v === "same" || v === "different" || v === "ambiguous") return v;
-    return null;
+    const raw = JSON.parse(readFileSync(path, "utf8"));
+    const parsed = VerdictSchema.safeParse(raw);
+    if (!parsed.success) return null;
+    return parsed.data.verdict;
   } catch {
     return null;
   }

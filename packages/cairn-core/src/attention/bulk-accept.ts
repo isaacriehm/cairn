@@ -32,7 +32,6 @@ import {
   existsSync,
   readFileSync,
   readdirSync,
-  renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -106,25 +105,25 @@ export async function bulkAcceptObvious(
 
   // ── DEC drafts ────────────────────────────────────────────────────
   const inboxDir = join(decisionsDir(args.repoRoot), "_inbox");
-  const decResult = {
-    decsScanned: 0,
-    decsAccepted: 0,
-    decsByConfidence: { high: 0, medium: 0, low: 0 } as Record<DraftConfidence, number>,
-    acceptedIds: [] as string[],
-    sourceStripFilesModified: 0,
-    sourceStripItemsApplied: 0,
-    sourceStripSkipped: [] as { id: string; reason: string }[],
-  };
+  
+  const decsByConfidence: Record<DraftConfidence, number> = { high: 0, medium: 0, low: 0 };
+  const acceptedIds: string[] = [];
+  const sourceStripSkipped: { id: string; reason: string }[] = [];
+  
+  let decsScanned = 0;
+  let decsAccepted = 0;
+  let sourceStripFilesModified = 0;
+  let sourceStripItemsApplied = 0;
 
   if (existsSync(inboxDir)) {
     const entries = readdirSync(inboxDir, { withFileTypes: true });
     const drafts = entries.filter(
       (e) => e.isFile() && e.name.endsWith(".draft.md"),
     );
-    decResult.decsScanned = drafts.length;
+    decsScanned = drafts.length;
 
     if (drafts.length > 0) {
-      await withWriteLock(args.repoRoot, () => {
+      await withWriteLock(args.repoRoot, async () => {
         for (const e of drafts) {
           const abs = join(inboxDir, e.name);
           let raw: string;
@@ -163,7 +162,7 @@ export async function bulkAcceptObvious(
             globs: args.globs,
             ...(args.pilotModule !== undefined ? { pilotModule: args.pilotModule } : {}),
           });
-          decResult.decsByConfidence[score] += 1;
+          decsByConfidence[score] += 1;
 
           // Stamp confidence on the in-memory frontmatter. The actual write
           // back to disk is gated below — we don't re-stamp drafts the
@@ -207,34 +206,34 @@ export async function bulkAcceptObvious(
                   decId: id,
                   meta: {
                     blockId,
-                    sourceFile: stringField(stampedFm, "sourceFile"),
+                    sourceFile: stringField(stampedFm, "sourceFile") ?? "",
                     captureSource,
-                    title: stringField(stampedFm, "title"),
+                    title: stringField(stampedFm, "title") ?? "",
                   },
                 });
-                decResult.sourceStripFilesModified +=
+                sourceStripFilesModified +=
                   stripOutcome.files_modified;
-                decResult.sourceStripItemsApplied +=
+                sourceStripItemsApplied +=
                   stripOutcome.items_applied;
                 if (
                   stripOutcome.attempted &&
                   stripOutcome.items_applied === 0 &&
                   stripOutcome.reason !== undefined
                 ) {
-                  decResult.sourceStripSkipped.push({
+                  sourceStripSkipped.push({
                     id,
                     reason: stripOutcome.reason,
                   });
                 } else if (!stripOutcome.attempted && stripOutcome.reason !== undefined) {
-                  decResult.sourceStripSkipped.push({
+                  sourceStripSkipped.push({
                     id,
                     reason: stripOutcome.reason,
                   });
                 }
               }
             }
-            decResult.decsAccepted += 1;
-            decResult.acceptedIds.push(id);
+            decsAccepted += 1;
+            acceptedIds.push(id);
           } else {
             // Stay in inbox. Only persist the stamp on first scoring —
             // a re-run of bulk-accept (e.g. operator clicks "accept
@@ -248,7 +247,7 @@ export async function bulkAcceptObvious(
         }
         // Rebuild the ledger once at the end so accepted DECs surface
         // in `cairn_decisions_in_scope` immediately.
-        if (!dry && decResult.decsAccepted > 0) {
+        if (!dry && decsAccepted > 0) {
           try {
             writeDecisionsLedger({ repoRoot: args.repoRoot });
           } catch {
@@ -263,19 +262,18 @@ export async function bulkAcceptObvious(
   // Already at status: active on disk. Just stamp confidence so the
   // attention skill can hide / down-weight low-confidence ones.
   const invDir = invariantsDir(args.repoRoot);
-  const invResult = {
-    invariantsScanned: 0,
-    invariantsByConfidence: { high: 0, medium: 0, low: 0 } as Record<DraftConfidence, number>,
-  };
+  const invariantsByConfidence: Record<DraftConfidence, number> = { high: 0, medium: 0, low: 0 };
+  let invariantsScanned = 0;
+
   if (existsSync(invDir)) {
     const invEntries = readdirSync(invDir, { withFileTypes: true });
     const invFiles = invEntries.filter(
       (e) => e.isFile() && /^INV-[0-9a-f]{7,}\.md$/.test(e.name),
     );
-    invResult.invariantsScanned = invFiles.length;
+    invariantsScanned = invFiles.length;
 
     if (invFiles.length > 0 && !dry) {
-      await withWriteLock(args.repoRoot, () => {
+      await withWriteLock(args.repoRoot, async () => {
         for (const e of invFiles) {
           const abs = join(invDir, e.name);
           let raw: string;
@@ -309,7 +307,7 @@ export async function bulkAcceptObvious(
             globs: args.globs,
             ...(args.pilotModule !== undefined ? { pilotModule: args.pilotModule } : {}),
           });
-          invResult.invariantsByConfidence[score] += 1;
+          invariantsByConfidence[score] += 1;
           const prevConf = stringField(fm, "capture_confidence");
           // Tight check: only valid enum values count as already-stamped.
           // An empty string or hand-edited garbage is treated as unstamped
@@ -355,14 +353,21 @@ export async function bulkAcceptObvious(
           globs: args.globs,
           ...(args.pilotModule !== undefined ? { pilotModule: args.pilotModule } : {}),
         });
-        invResult.invariantsByConfidence[score] += 1;
+        invariantsByConfidence[score] += 1;
       }
     }
   }
 
   return {
-    ...decResult,
-    ...invResult,
+    decsScanned,
+    decsAccepted,
+    decsByConfidence,
+    acceptedIds,
+    sourceStripFilesModified,
+    sourceStripItemsApplied,
+    sourceStripSkipped,
+    invariantsScanned,
+    invariantsByConfidence,
     dryRun: dry,
   };
 }
@@ -386,12 +391,12 @@ function stringField(
 }
 
 function extractSection(body: string, header: string): string {
-  // Find `## <header>` and return content until the next `## ` block.
   const re = new RegExp(`##\\s+${escapeRegex(header)}\\s*\\n([\\s\\S]*?)(?=\\n##\\s|$)`, "i");
   const m = body.match(re);
-  if (m === null || m[1] === undefined) return "";
-  // Strip surrounding code-fence markers if the section is fenced.
-  return m[1].replace(/^\s*```[a-z0-9]*\n?/i, "").replace(/```\s*$/, "").trim();
+  if (m === null) return "";
+  const captured = m[1];
+  if (captured === undefined) return "";
+  return captured.replace(/^\s*```[a-z0-9]*\n?/i, "").replace(/```\s*$/, "").trim();
 }
 
 function escapeRegex(s: string): string {
@@ -399,6 +404,9 @@ function escapeRegex(s: string): string {
 }
 
 function atOrAbove(score: DraftConfidence, threshold: DraftConfidence): boolean {
-  const order: Record<DraftConfidence, number> = { low: 0, medium: 1, high: 2 };
-  return order[score] >= order[threshold];
+  const order: Record<string, number> = { low: 0, medium: 1, high: 2 };
+  const scoreVal = order[score];
+  const thresholdVal = order[threshold];
+  if (scoreVal === undefined || thresholdVal === undefined) return false;
+  return scoreVal >= thresholdVal;
 }

@@ -81,21 +81,6 @@ export type {
   RunRulesMergeResult,
 } from "./rules-merge/index.js";
 export type {
-  ClassifyArgs as SourceCommentClassifyArgs,
-  ClassifyResult as SourceCommentClassifyResult,
-  CommentBlock,
-  CommentClassKind,
-  CommentClassification,
-  CommentKind,
-  CommentLang,
-  DirtyDecision,
-  FileOutcome as StripReplaceFileOutcome,
-  IngestSourceCommentsArgs,
-  IngestSourceCommentsResult,
-  ReplaceItem,
-  SkipReason as StripReplaceSkipReason,
-  StripReplaceArgs,
-  StripReplaceResult,
   WalkOptions as SourceCommentWalkOptions,
   WalkResult as SourceCommentWalkResult,
 } from "./source-comments/index.js";

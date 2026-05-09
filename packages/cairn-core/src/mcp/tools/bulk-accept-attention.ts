@@ -38,6 +38,18 @@ interface BulkAcceptInput {
   dryRun?: boolean;
 }
 
+const ConfigSchema = z.object({
+  project_globs: z.object({
+    route_handler_globs: z.array(z.string()).optional(),
+    dto_globs: z.array(z.string()).optional(),
+    generator_source_globs: z.array(z.string()).optional(),
+    high_stakes_globs: z.array(z.string()).optional(),
+  }).optional(),
+  high_stakes_globs: z.array(z.string()).optional(),
+  off_limits: z.array(z.string()).optional(),
+  pilot_module: z.string().optional(),
+}).passthrough();
+
 function loadProjectGlobs(repoRoot: string): {
   globs: ProjectGlobs;
   pilotModule?: string;
@@ -52,34 +64,25 @@ function loadProjectGlobs(repoRoot: string): {
   } catch {
     return { globs: {} };
   }
-  if (typeof parsed !== "object" || parsed === null) return { globs: {} };
-  const cfg = parsed as Record<string, unknown>;
+  const result = ConfigSchema.safeParse(parsed);
+  if (!result.success) return { globs: {} };
+  
+  const cfg = result.data;
   const globs: ProjectGlobs = {};
-  const pickList = (v: unknown): string[] | undefined => {
-    if (!Array.isArray(v)) return undefined;
-    return v.filter((x): x is string => typeof x === "string");
-  };
-  const high = pickList(cfg["high_stakes_globs"]);
-  if (high !== undefined) globs.high_stakes_globs = high;
-  const off = pickList(cfg["off_limits"]);
-  if (off !== undefined) globs.off_limits = off;
-  const projectGlobs = cfg["project_globs"];
-  if (typeof projectGlobs === "object" && projectGlobs !== null) {
-    const pg = projectGlobs as Record<string, unknown>;
-    const route = pickList(pg["route_handler_globs"]);
-    if (route !== undefined) globs.route_handler_globs = route;
-    const dto = pickList(pg["dto_globs"]);
-    if (dto !== undefined) globs.dto_globs = dto;
-    const gen = pickList(pg["generator_source_globs"]);
-    if (gen !== undefined) globs.generator_source_globs = gen;
-    const hi = pickList(pg["high_stakes_globs"]);
-    if (hi !== undefined && globs.high_stakes_globs === undefined) {
-      globs.high_stakes_globs = hi;
+  if (cfg.high_stakes_globs) globs.high_stakes_globs = cfg.high_stakes_globs;
+  if (cfg.off_limits) globs.off_limits = cfg.off_limits;
+  
+  const pg = cfg.project_globs;
+  if (pg !== undefined) {
+    if (pg.route_handler_globs) globs.route_handler_globs = pg.route_handler_globs;
+    if (pg.dto_globs) globs.dto_globs = pg.dto_globs;
+    if (pg.generator_source_globs) globs.generator_source_globs = pg.generator_source_globs;
+    if (pg.high_stakes_globs && globs.high_stakes_globs === undefined) {
+      globs.high_stakes_globs = pg.high_stakes_globs;
     }
   }
-  const pilot =
-    typeof cfg["pilot_module"] === "string" ? (cfg["pilot_module"] as string) : undefined;
-  return pilot !== undefined ? { globs, pilotModule: pilot } : { globs };
+  
+  return cfg.pilot_module !== undefined ? { globs, pilotModule: cfg.pilot_module } : { globs };
 }
 
 export const bulkAcceptAttentionTool: ToolDef<BulkAcceptInput> = {

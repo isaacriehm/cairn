@@ -9,18 +9,6 @@
 export { runReadEnricher } from "./read-enricher.js";
 export { scanCitations } from "./citation-scanner.js";
 export type { ScannedCitations, CitationMatch } from "./citation-scanner.js";
-export {
-  getDecisionsLedger,
-  getFileCandidateCount,
-  getInvariantsLedger,
-  getScopeIndexEntry,
-  lookupTask,
-} from "@isaacriehm/cairn-state";
-export type {
-  LedgerSnapshot,
-  ScopeIndexEntry,
-  TaskLookupResult,
-} from "@isaacriehm/cairn-state";
 export { buildLegend } from "./legend-builder.js";
 export type { ScopeIndexHint } from "./legend-builder.js";
 export { runWriteGuardian, executeWriteGuardian } from "./write-guardian.js";

@@ -3,24 +3,30 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import type { McpContext } from "../context.js";
-import { groundDir, parseFrontmatter } from "@isaacriehm/cairn-state";
-import { mcpError } from "../errors.js";
-import { canonicalForTopicInput } from "../schemas.js";
+import { groundDir } from "@isaacriehm/cairn-state";
+import { mcpError } from "./types.js";
 import type { ToolDef } from "./types.js";
+import { z } from "zod";
+
+const TopicEntrySchema = z.object({
+  topic: z.string(),
+  canonical_path: z.string(),
+  audience: z.string().optional(),
+});
+
+const TopicsFileSchema = z.object({
+  version: z.number(),
+  topics: z.array(TopicEntrySchema),
+});
+
+type TopicEntry = z.infer<typeof TopicEntrySchema>;
+
+const canonicalForTopicInput = {
+  topic: z.string(),
+};
 
 interface Input {
   topic: string;
-}
-
-interface TopicEntry {
-  topic: string;
-  canonical_path: string;
-  audience?: string;
-}
-
-interface TopicsFile {
-  version: number;
-  topics: TopicEntry[];
 }
 
 async function handler(ctx: McpContext, input: Input): Promise<unknown> {
@@ -28,35 +34,47 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
   if (!existsSync(file)) {
     return mcpError(
       "TOPIC_NOT_REGISTERED",
-      `No canonical-map registered (topics.yaml not found at ${file})`,
+      `Topic "${input.topic}" is not registered. Curated registry only — do NOT invent topics.`,
     );
   }
-  const parsedFile = parseYaml(readFileSync(file, "utf8")) as TopicsFile | null;
-  const list: TopicEntry[] = parsedFile?.topics ?? [];
+
+  let list: TopicEntry[] = [];
+  try {
+    const raw = readFileSync(file, "utf8");
+    const parsed = parseYaml(raw);
+    const result = TopicsFileSchema.safeParse(parsed);
+    if (result.success) {
+      list = result.data.topics;
+    }
+  } catch {
+    /* list = [] */
+  }
   const entry = list.find((t) => t.topic === input.topic);
   if (!entry) {
     return mcpError(
       "TOPIC_NOT_REGISTERED",
       `Topic "${input.topic}" is not registered. Curated registry only — do NOT invent topics.`,
-      { available: list.map((t) => t.topic) },
     );
   }
-  const docPath = join(ctx.repoRoot, entry.canonical_path.split("#")[0] ?? entry.canonical_path);
-  if (!existsSync(docPath) || !statSync(docPath).isFile()) {
+
+  const absPath = join(ctx.repoRoot, entry.canonical_path);
+  if (!existsSync(absPath)) {
     return mcpError(
-      "FILE_NOT_FOUND",
-      `Topic registered, but canonical_path does not exist: ${entry.canonical_path}`,
+      "CANONICAL_SOURCE_MISSING",
+      `Authoritative source for "${input.topic}" missing at ${entry.canonical_path}. Re-run cairn scope rebuild.`,
     );
   }
-  const buf = readFileSync(docPath);
-  const sha256 = createHash("sha256").update(buf).digest("hex");
-  const fm = parseFrontmatter(buf.toString("utf8")).frontmatter;
+
+  const stat = statSync(absPath);
+  const body = readFileSync(absPath, "utf8");
+  const sha256 = createHash("sha256").update(body).digest("hex");
+
   return {
     topic: entry.topic,
     canonical_path: entry.canonical_path,
     sha256,
-    verified_at: fm?.["verified-at"] ?? null,
-    audience: entry.audience ?? fm?.audience ?? null,
+    verified_at: stat.mtime.toISOString(),
+    audience: entry.audience ?? "ai-only",
   };
 }
 

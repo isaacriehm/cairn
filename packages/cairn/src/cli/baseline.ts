@@ -101,43 +101,30 @@ function loadGlobsFromConfig(repoRoot: string): ProjectGlobs {
 function renderResult(result: BaselineAuditResult, force: boolean): void {
   process.stdout.write(
     `  Files scanned: ${result.filesScanned}\n` +
-      `  Sensors run:   ${result.sensors.length}\n` +
-      `  Skipped:       ${result.skippedSensorIds.length}` +
-      (force ? " (force flag overrode skip-list where possible)\n" : "\n") +
-      `  Total findings: ${result.totalFindings}\n\n`,
+      `  Total findings: ${result.findingsCount}\n\n`,
   );
-  for (const row of result.sensors) {
-    const tag = row.unsupported === true ? " (unsupported)" : "";
-    process.stdout.write(`    ${row.sensor_id}${tag} — ${row.finding_count}\n`);
-  }
 }
 
 export async function baselineCli(argv: string[]): Promise<void> {
   if (argv[0] === "--help" || argv[0] === "-h") {
     process.stdout.write(
       "Usage: cairn baseline [--force] [--repo <path>]\n" +
-        "  Re-run the synthetic-diff sensor sweep against the adopted project.\n" +
-        "  --force: bypass BASELINE_SKIP_IDS so post-adoption sensors run too\n" +
-        "    (decision-assertions, invariant-suite, attestation-cross-check, …).\n",
+        "  Re-run the synthetic-diff sensor sweep against the adopted project.\n",
     );
     process.exit(0);
   }
   const repoRoot = parseRepoFlag(argv);
   ensureAdopted(repoRoot);
   const force = argv.includes("--force");
-  const stackSignatures = detectStackSignatures(repoRoot).map((s) => s.kind as string);
-  const languages = defaultBaselineLanguages(stackSignatures);
-  const globs = loadGlobsFromConfig(repoRoot);
+  const languages = defaultBaselineLanguages(detectStackSignatures(repoRoot).map((s) => s.kind as string));
 
   process.stdout.write(
     `  ⬡ cairn baseline${force ? " --force" : ""} — ${repoRoot}\n\n`,
   );
   const result = await runBaselineAudit({
     repoRoot,
-    projectGlobs: globs,
     languages,
-    force,
   });
   renderResult(result, force);
-  process.exit(result.totalFindings > 0 ? 2 : 0);
+  process.exit(result.findingsCount > 0 ? 2 : 0);
 }

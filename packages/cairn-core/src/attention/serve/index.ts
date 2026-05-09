@@ -130,7 +130,9 @@ export async function startAttentionServer(
     lastActivity = Date.now();
   };
 
-  let resolveDone!: (state: DoneState) => void;
+  let resolveDone: (state: DoneState) => void = () => {
+    /* sentinel */
+  };
   const donePromise = new Promise<DoneState>((resolve) => {
     resolveDone = resolve;
   });

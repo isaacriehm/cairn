@@ -104,7 +104,7 @@ export function writeInvalidationEvent(
       });
       return { filePath, event };
     } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code;
+      const code = err instanceof Error && "code" in err ? (err as { code: string }).code : null;
       if (code !== "EEXIST" || attempts >= 4) throw err;
       const suffix = randomBytes(2).toString("hex");
       filename = `${tsStr}-${safeKind}-${suffix}.json`;

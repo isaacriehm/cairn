@@ -77,13 +77,22 @@ export async function initCli(argv: string[]): Promise<void> {
     process.exit(1);
   }
 
+  let autoE2e: "now" | "defer" | "skip" | undefined;
+  if (noPrompt) {
+    if (autoE2eRaw === "now" || autoE2eRaw === "defer" || autoE2eRaw === "skip") {
+      autoE2e = autoE2eRaw;
+    } else {
+      autoE2e = "defer";
+    }
+  }
+
   await runInit({
     repoRoot,
     ...(slugOverride !== undefined ? { slugOverride } : {}),
     mode: noPrompt ? "auto" : "interactive",
     force,
     skipMapper,
-    ...(noPrompt ? { autoE2e: autoE2eRaw as "now" | "defer" | "skip" } : {}),
+    ...(autoE2e !== undefined ? { autoE2e } : {}),
     ...(noPrompt ? { autoProceed: "a" as const } : {}),
   });
 }

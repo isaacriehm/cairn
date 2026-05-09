@@ -61,6 +61,7 @@ import {
   readRejectedYaml,
   readTopicIndex,
   setTopic,
+  walkFs,
   writeFileCandidatesMap,
   writeTopicIndex,
   type AnchorMap,
@@ -205,37 +206,26 @@ export function discoverDocs(repoRoot: string): DocCandidate[] {
   const docsDir = join(repoRoot, "docs");
   if (!existsSync(docsDir)) return [];
   const out: DocCandidate[] = [];
-  walkDocsDir(docsDir, repoRoot, out);
+  walkFs({
+    dir: docsDir,
+    repoRoot,
+    skipDirs: SKIP_DIRS,
+    onFile: (rel: string, abs: string, ent: Dirent) => {
+      if (!ent.name.endsWith(".md")) return;
+      let st;
+      try {
+        st = statSync(abs);
+      } catch {
+        return;
+      }
+      out.push({
+        path: rel,
+        size: st.size,
+        group: dirGroup(rel),
+      });
+    },
+  });
   return out;
-}
-
-function walkDocsDir(dir: string, repoRoot: string, out: DocCandidate[]): void {
-  let entries: Dirent[];
-  try {
-    entries = readdirSync(dir, { withFileTypes: true, encoding: "utf8" });
-  } catch {
-    return;
-  }
-  for (const ent of entries) {
-    if (SKIP_DIRS.has(ent.name)) continue;
-    const abs = join(dir, ent.name);
-    if (ent.isDirectory()) {
-      walkDocsDir(abs, repoRoot, out);
-      continue;
-    }
-    if (!ent.isFile() || !ent.name.endsWith(".md")) continue;
-    let st;
-    try {
-      st = statSync(abs);
-    } catch {
-      continue;
-    }
-    out.push({
-      path: relative(repoRoot, abs),
-      size: st.size,
-      group: dirGroup(relative(repoRoot, abs)),
-    });
-  }
 }
 
 function dirGroup(rel: string): string {

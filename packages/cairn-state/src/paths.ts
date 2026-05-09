@@ -1,6 +1,13 @@
 import { join } from "node:path";
 
 /**
+ * Convert a path to POSIX format (using forward slashes).
+ */
+export function toPosix(p: string): string {
+  return p.replace(/\\/g, "/");
+}
+
+/**
  * Canonical-zone glob roots, relative to the adopted project's repo root.
  *
  * Per FILESYSTEM_LAYOUT.md §2.1. These paths are project-agnostic (every

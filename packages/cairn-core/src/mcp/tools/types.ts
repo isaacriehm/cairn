@@ -9,3 +9,13 @@ export interface ToolDef<Input> {
   inputSchema: ToolInputShape;
   handler: (ctx: McpContext, input: Input) => Promise<unknown>;
 }
+
+export function mcpError(code: string, message: string): unknown {
+  return {
+    isError: true,
+    error: {
+      code,
+      message,
+    },
+  };
+}

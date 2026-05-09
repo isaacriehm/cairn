@@ -15,8 +15,9 @@
  * Returns absolute + repo-relative paths that exist. Caller drives the rest.
  */
 
-import { existsSync, readdirSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { existsSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { toPosix, walkFs } from "@isaacriehm/cairn-state";
 
 export interface RuleSourceFile {
   /** Repo-relative POSIX path. */
@@ -47,42 +48,26 @@ export function discoverRuleSources(repoRoot: string): RuleSourceFile[] {
 
   const rulesDir = join(repoRoot, ".claude", "rules");
   if (existsSync(rulesDir)) {
-    walkRules(rulesDir, repoRoot, out);
-  }
-  return out;
-}
-
-function walkRules(dir: string, repoRoot: string, out: RuleSourceFile[]): void {
-  let entries: import("node:fs").Dirent[];
-  try {
-    entries = readdirSync(dir, { withFileTypes: true, encoding: "utf8" });
-  } catch {
-    return;
-  }
-  for (const e of entries) {
-    if (e.name.startsWith(".")) continue;
-    const abs = join(dir, e.name);
-    if (e.isDirectory()) {
-      walkRules(abs, repoRoot, out);
-      continue;
-    }
-    if (!e.isFile()) continue;
-    if (!e.name.toLowerCase().endsWith(".md")) continue;
-    let st;
-    try {
-      st = statSync(abs);
-    } catch {
-      continue;
-    }
-    out.push({
-      path: toPosix(relative(repoRoot, abs)),
-      absPath: abs,
-      kind: "rule",
-      size: st.size,
+    walkFs({
+      dir: rulesDir,
+      repoRoot,
+      onFile: (rel, abs, e) => {
+        if (e.name.startsWith(".")) return;
+        if (!e.name.toLowerCase().endsWith(".md")) return;
+        let st;
+        try {
+          st = statSync(abs);
+        } catch {
+          return;
+        }
+        out.push({
+          path: rel,
+          absPath: abs,
+          kind: "rule",
+          size: st.size,
+        });
+      },
     });
   }
-}
-
-function toPosix(p: string): string {
-  return p.replace(/\\/g, "/");
+  return out;
 }

@@ -3,27 +3,37 @@
  *
  * Pure filesystem reads + a status.json check. No LLM. No subprocess fan-out.
  * Returns a structured `DoctorReport` the CLI renders. Exit-code mapping:
- *   0 — all checks pass
- *   1 — at least one error (missing core file, broken layout)
- *   2 — at least one warning (drafty brand, empty scope, GC overdue, …)
- *
- * Spec: docs/PLUGIN_ARCHITECTURE.md §6 (adoption output).
+ *   0 — all checks OK
+ *   1 — at least one error
+ *   2 — at least one warning (but no errors)
  */
 
-import {
-  type Dirent,
-  existsSync,
-  readdirSync,
-  readFileSync,
-  statSync,
-} from "node:fs";
-import { basename, delimiter, join, resolve as resolvePath } from "node:path";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { which } from "../sensors/shell.js";
 import { parse as parseYaml } from "yaml";
 import {
   buildDecisionsLedger,
   buildInvariantsLedger,
+  matchAnyGlob,
 } from "@isaacriehm/cairn-state";
 import { normalizeProjectName } from "../paths/index.js";
+import { z } from "zod";
+
+const ScopeIndexSchema = z.object({
+  files: z.record(z.string(), z.unknown()).optional(),
+}).passthrough();
+
+const SensorSchema = z.object({
+  id: z.string().optional(),
+  fail_severity: z.string().optional(),
+  command: z.string().optional(),
+}).passthrough();
+
+const SensorsConfigSchema = z.object({
+  sensors: z.array(SensorSchema).optional(),
+  disabled_per_project: z.array(z.string()).optional(),
+}).passthrough();
 
 export type DoctorStatus = "ok" | "warn" | "error" | "info";
 
@@ -32,177 +42,82 @@ export interface DoctorCheck {
   /** Short label rendered in the report. */
   label: string;
   status: DoctorStatus;
-  /** One-line detail rendered next to the icon. */
+  /** Detailed reason / remediation instruction. */
   detail: string;
-  /** When non-null, the exact command the operator can run to fix this. */
+  /** Command to fix the issue (if any). */
   fixCommand?: string;
 }
 
 export interface DoctorReport {
   projectName: string;
-  repoRoot: string;
   checks: DoctorCheck[];
   errors: number;
   warnings: number;
 }
 
-export interface RunDoctorOptions {
-  repoRoot: string;
-}
-
-export function runDoctor(opts: RunDoctorOptions): DoctorReport {
-  const repoRoot = opts.repoRoot;
-  const projectName = normalizeProjectName(basename(repoRoot));
+export function runDoctor(opts: { repoRoot: string }): DoctorReport {
   const checks: DoctorCheck[] = [];
 
-  // ── Core checks ────────────────────────────────────────────────────
-  // .claude/settings.json hooks are no longer written into adopted
-  // projects — the Claude Code plugin owns hooks via its own
-  // hooks/hooks.json, so a check here would always fire false negatives.
-  checks.push(checkCairnLayout(repoRoot));
-  // Project-level `.mcp.json` is forbidden in plugin-mode (the plugin's
-  // bundled `.mcp.json` is the single registration source). Skipping
-  // the check here avoids false errors in CI on plugin-adopted
-  // projects. CLI-only adopters still get registration via `cairn init`
-  // writing the bundle's manifest fields.
+  // 1. Core checks (adoption state)
+  checks.push(checkCairnDir(opts.repoRoot));
+  checks.push(checkWorkflowMd(opts.repoRoot));
 
-  // ── Ground state checks ────────────────────────────────────────────
-  checks.push(checkDecisions(repoRoot));
-  checks.push(checkBrandOverview(repoRoot));
-  checks.push(checkScopeIndex(repoRoot));
+  // 2. Ground state
+  checks.push(checkScopeIndex(opts.repoRoot));
+  checks.push(checkLedger(opts.repoRoot, "decisions"));
+  checks.push(checkLedger(opts.repoRoot, "invariants"));
 
-  // ── Sensor presence ────────────────────────────────────────────────
-  for (const c of checkSensorAvailability(repoRoot)) checks.push(c);
+  // 3. Sensors
+  checks.push(...checkSensorAvailability(opts.repoRoot));
 
-  let errors = 0;
-  let warnings = 0;
-  for (const c of checks) {
-    if (c.status === "error") errors++;
-    else if (c.status === "warn") warnings++;
-  }
+  const errors = checks.filter((c) => c.status === "error").length;
+  const warnings = checks.filter((c) => c.status === "warn").length;
 
-  return { projectName, repoRoot, checks, errors, warnings };
+  return {
+    projectName: detectProjectName(opts.repoRoot),
+    checks,
+    errors,
+    warnings,
+  };
 }
 
-// ── Core checks ──────────────────────────────────────────────────────
+// ── Checks ───────────────────────────────────────────────────────────
 
-function checkCairnLayout(repoRoot: string): DoctorCheck {
-  const groundDir = join(repoRoot, ".cairn", "ground");
-  if (!existsSync(groundDir)) {
+function checkCairnDir(repoRoot: string): DoctorCheck {
+  const path = join(repoRoot, ".cairn");
+  if (!existsSync(path)) {
     return {
       group: "core",
       label: ".cairn/",
       status: "error",
-      detail: "missing — run cairn init",
+      detail: "not found — this is not a cairn-adopted repo",
       fixCommand: "cairn init",
     };
-  }
-  let count = 0;
-  const stack: string[] = [groundDir];
-  while (stack.length > 0) {
-    const dir = stack.pop();
-    if (dir === undefined) break;
-    let entries: Dirent[];
-    try {
-      entries = readdirSync(dir, { withFileTypes: true, encoding: "utf8" });
-    } catch {
-      continue;
-    }
-    for (const e of entries) {
-      const abs = join(dir, e.name);
-      if (e.isDirectory()) {
-        if (e.name === "_inbox") continue;
-        stack.push(abs);
-      } else if (e.isFile()) {
-        count++;
-      }
-    }
   }
   return {
     group: "core",
     label: ".cairn/",
     status: "ok",
-    detail: `layout complete (${count} ground files)`,
+    detail: "present",
   };
 }
 
-// ── Ground state checks ──────────────────────────────────────────────
-
-function checkDecisions(repoRoot: string): DoctorCheck {
-  let accepted = 0;
-  let drafts = 0;
-  try {
-    accepted = buildDecisionsLedger({ repoRoot }).length;
-  } catch {
-    return {
-      group: "ground",
-      label: "decisions",
-      status: "warn",
-      detail: "ledger build failed",
-    };
-  }
-  const inboxDir = join(repoRoot, ".cairn", "ground", "decisions", "_inbox");
-  if (existsSync(inboxDir)) {
-    try {
-      const entries: Dirent[] = readdirSync(inboxDir, {
-        withFileTypes: true,
-        encoding: "utf8",
-      });
-      for (const e of entries) {
-        if (e.isFile() && e.name.endsWith(".draft.md")) drafts++;
-      }
-    } catch {
-      // ignore
-    }
-  }
-  // Count active invariants for the same line.
-  let invariants = 0;
-  try {
-    invariants = buildInvariantsLedger({ repoRoot }).length;
-  } catch {
-    // ignore
-  }
-  if (drafts > 0) {
-    return {
-      group: "ground",
-      label: "decisions",
-      status: "warn",
-      detail: `${accepted} accepted, ${invariants} invariants, ${drafts} drafts pending`,
-      fixCommand: "cairn attention",
-    };
-  }
-  return {
-    group: "ground",
-    label: "decisions",
-    status: "ok",
-    detail: `${accepted} accepted, ${invariants} invariants, no drafts pending`,
-  };
-}
-
-function checkBrandOverview(repoRoot: string): DoctorCheck {
-  const path = join(repoRoot, ".cairn", "ground", "brand", "overview.md");
+function checkWorkflowMd(repoRoot: string): DoctorCheck {
+  const path = join(repoRoot, ".cairn", "config", "workflow.md");
   if (!existsSync(path)) {
     return {
-      group: "ground",
-      label: "brand/overview",
-      status: "warn",
+      group: "core",
+      label: "workflow.md",
+      status: "error",
       detail: "missing — re-run cairn init",
       fixCommand: "cairn init --force",
     };
   }
-  // Brand overview is operator-paced — `status: draft` is the
-  // expected post-adoption state until the operator fills in voice
-  // + tone. Doctor reports it informationally (status: ok) so CI
-  // workflows pass while the operator still has work to do.
-  const status = readFrontmatterStatus(path) ?? "(none)";
   return {
-    group: "ground",
-    label: "brand/overview",
+    group: "core",
+    label: "workflow.md",
     status: "ok",
-    detail:
-      status === "current" || status === "accepted"
-        ? `status:${status}`
-        : `status:${status} — fill in when ready (operator-paced)`,
+    detail: "present",
   };
 }
 
@@ -219,11 +134,13 @@ function checkScopeIndex(repoRoot: string): DoctorCheck {
   }
   let count = 0;
   try {
-    const parsed = parseYaml(readFileSync(path, "utf8")) as unknown;
-    if (typeof parsed === "object" && parsed !== null) {
-      const filesRaw = (parsed as Record<string, unknown>)["files"];
-      if (typeof filesRaw === "object" && filesRaw !== null) {
-        count = Object.keys(filesRaw as Record<string, unknown>).length;
+    const raw = readFileSync(path, "utf8");
+    const parsed: unknown = parseYaml(raw);
+    const result = ScopeIndexSchema.safeParse(parsed);
+    if (result.success) {
+      const files = result.data.files;
+      if (files !== undefined) {
+        count = Object.keys(files).length;
       }
     }
   } catch {
@@ -252,7 +169,44 @@ function checkScopeIndex(repoRoot: string): DoctorCheck {
   };
 }
 
-// ── Sensors ──────────────────────────────────────────────────────────
+function checkLedger(
+  repoRoot: string,
+  kind: "decisions" | "invariants",
+): DoctorCheck {
+  const path = join(repoRoot, ".cairn", "ground", kind, `${kind}.ledger.yaml`);
+  if (!existsSync(path)) {
+    return {
+      group: "ground",
+      label: `${kind}.ledger`,
+      status: "warn",
+      detail: "missing — rebuilding...",
+      fixCommand: "cairn fix",
+    };
+  }
+  let count = 0;
+  try {
+    if (kind === "decisions") {
+      count = buildDecisionsLedger({ repoRoot }).length;
+    } else {
+      count = buildInvariantsLedger({ repoRoot }).length;
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      group: "ground",
+      label: `${kind}.ledger`,
+      status: "error",
+      detail: `unreadable: ${message}`,
+      fixCommand: "cairn fix",
+    };
+  }
+  return {
+    group: "ground",
+    label: `${kind}.ledger`,
+    status: "ok",
+    detail: `${count} active entry/ies`,
+  };
+}
 
 function checkSensorAvailability(repoRoot: string): DoctorCheck[] {
   const path = join(repoRoot, ".cairn", "config", "sensors.yaml");
@@ -280,23 +234,16 @@ function checkSensorAvailability(repoRoot: string): DoctorCheck[] {
       },
     ];
   }
-  if (typeof parsed !== "object" || parsed === null) return [];
-  const sensorsRaw = (parsed as Record<string, unknown>)["sensors"];
-  if (!Array.isArray(sensorsRaw)) return [];
-  const disabled = (parsed as Record<string, unknown>)["disabled_per_project"];
-  const disabledSet = new Set<string>(
-    Array.isArray(disabled)
-      ? (disabled as unknown[]).filter(
-          (x): x is string => typeof x === "string",
-        )
-      : [],
-  );
+  const result = SensorsConfigSchema.safeParse(parsed);
+  if (!result.success) return [];
+  
+  const sensorsRaw = result.data.sensors ?? [];
+  const disabled = result.data.disabled_per_project ?? [];
+  const disabledSet = new Set<string>(disabled);
 
   const checks: DoctorCheck[] = [];
-  for (const raw of sensorsRaw) {
-    if (typeof raw !== "object" || raw === null) continue;
-    const r = raw as Record<string, unknown>;
-    const id = typeof r["id"] === "string" ? (r["id"] as string) : null;
+  for (const r of sensorsRaw) {
+    const id = r.id ?? null;
     if (id === null) continue;
     if (disabledSet.has(id)) {
       checks.push({
@@ -307,10 +254,8 @@ function checkSensorAvailability(repoRoot: string): DoctorCheck[] {
       });
       continue;
     }
-    const failSeverity =
-      typeof r["fail_severity"] === "string" ? (r["fail_severity"] as string) : "soft";
-    const command =
-      typeof r["command"] === "string" ? (r["command"] as string) : null;
+    const failSeverity = r.fail_severity ?? "soft";
+    const command = r.command ?? null;
     if (command !== null && command.length > 0) {
       const found = which(command);
       if (!found) {
@@ -333,29 +278,28 @@ function checkSensorAvailability(repoRoot: string): DoctorCheck[] {
   return checks;
 }
 
-function which(binary: string): boolean {
-  const pathEnv = process.env["PATH"];
-  if (typeof pathEnv !== "string" || pathEnv.length === 0) return false;
-  for (const dir of pathEnv.split(delimiter)) {
-    if (dir.length === 0) continue;
-    const candidate = resolvePath(dir, binary);
+// ── Helpers ──────────────────────────────────────────────────────────
+
+function detectProjectName(repoRoot: string): string {
+  const path = join(repoRoot, "package.json");
+  if (existsSync(path)) {
     try {
-      if (statSync(candidate).isFile()) return true;
+      const pkg = JSON.parse(readFileSync(path, "utf8")) as { name?: string };
+      if (pkg.name) return normalizeProjectName(pkg.name);
     } catch {
-      // continue
+      /* ignore */
     }
   }
-  return false;
+  return normalizeProjectName(repoRoot.split("/").pop() || "this-project");
 }
 
-// ── Shared helpers ───────────────────────────────────────────────────
-
-function readFrontmatterStatus(path: string): string | null {
+/** Lightweight frontmatter peek without full parser dependency. */
+export function peekStatus(path: string): string | null {
   try {
     const text = readFileSync(path, "utf8");
-    const m = text.match(/^---\n([\s\S]*?\n)---/);
-    if (!m) return null;
-    const fm = m[1] ?? "";
+    const m = text.match(/^---\n([\s\S]*?)\n---/);
+    if (!m || m[1] === undefined) return null;
+    const fm = m[1];
     const sm = fm.match(/^status:\s*(\S+)\s*$/m);
     return sm && sm[1] ? sm[1] : null;
   } catch {

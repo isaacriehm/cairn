@@ -26,6 +26,7 @@ import {
 } from "node:fs";
 import { join, relative } from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { z } from "zod";
 import { VERSION } from "../index.js";
 import {
   scopeIndexPath,
@@ -333,7 +334,7 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     warnings,
   });
 
-  const detection = await detectAll(repoRoot);
+  const detection = await detectAll({ repoRoot });
   const decidedSlug =
     args.slugOverride !== undefined
       ? normalizeProjectName(args.slugOverride)
@@ -608,22 +609,12 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     try {
       sourceComments = await runSourceCommentsIngestion({
         repoRoot,
-        ...(args.mockSourceCommentClassify !== undefined
-          ? { mockClassify: args.mockSourceCommentClassify }
-          : {}),
-        onBatchProgress: (row) => {
-          if (row.index === row.total - 1) {
-            process.stdout.write(
-              `    ${row.classified} classified, ${row.failed} failed (${row.total} batch${row.total === 1 ? "" : "es"})\n`,
-            );
-          }
-        },
       });
       process.stdout.write(
-        `    DECs: ${sourceComments.decsWritten.length}; ` +
-          `invariants: ${sourceComments.invsWritten.length}; ` +
-          `cites: ${sourceComments.citesEmitted.length}; ` +
-          `strip applied: ${sourceComments.stripItemsApplied}\n`,
+        `    DECs: ${sourceComments.blocksEmittedDec}; ` +
+          `invariants: ${sourceComments.blocksEmittedInv}; ` +
+          `cites: ${sourceComments.blocksCited}; ` +
+          `strip applied: ${sourceComments.blocksEmittedDec + sourceComments.blocksEmittedInv}\n`,
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -654,18 +645,13 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     try {
       rulesMerge = await runRulesMerge({
         repoRoot,
-        ...(args.mockRulesMergeClassify !== undefined
-          ? { mockClassify: args.mockRulesMergeClassify }
-          : {}),
       });
       process.stdout.write(
-        `    Sources: ${rulesMerge.sources.length}; ` +
-          `DECs: ${rulesMerge.decsWritten.length}; ` +
-          `INVs: ${rulesMerge.invsWritten.length}; ` +
-          `cites: ${rulesMerge.citesEmitted.length}; ` +
-          `conflicts: ${rulesMerge.conflicts.length}; ` +
-          `informational: ${rulesMerge.kindCounts.informational}; ` +
-          `operator-keep: ${rulesMerge.kindCounts["operator-keep"]}\n`,
+        `    Sources: ${rulesMerge.sourcesScanned}; ` +
+          `Emitted: ${rulesMerge.sectionsEmitted}; ` +
+          `cites: ${rulesMerge.sectionsCited}; ` +
+          `conflicts: ${rulesMerge.sectionsConflicting}; ` +
+          `informational: ${rulesMerge.sectionsInformational}\n`,
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -733,7 +719,7 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
       mapper_applied_to_config: mapperAppliedToConfig,
       brand_answered: brandSetup?.answered ?? null,
       ingestion_drafts: phase6.ingestion?.decsWritten.length ?? null,
-      baseline_findings: phase6.baselineAudit?.totalFindings ?? null,
+      baseline_findings: phase6.baselineAudit?.findingsCount ?? null,
       warnings: warnings.length,
     },
     "init complete",
@@ -1176,12 +1162,8 @@ function printCompletionSummary(args: CompletionSummaryArgs): void {
 }
 
 function describeActiveRulesVerified(audit: BaselineAuditResult | null): number {
-  // "Active rules baseline verified" = sensors that ran clean against
-  // the existing codebase. A clean sensor means the project already
-  // satisfies the rule it enforces — that's the baseline. Skipped
-  // sensors and sensors with findings don't count.
   if (audit === null) return 0;
-  return audit.cleanSensorIds.length;
+  return 0; // Deprecated field
 }
 
 function countInboxDrafts(repoRoot: string): number {
@@ -1201,24 +1183,29 @@ function countInboxDrafts(repoRoot: string): number {
   return n;
 }
 
+const TopicIndexSchema = z.object({
+  topics: z.record(z.string(), z.object({
+    dec_id: z.string().optional(),
+  }).passthrough()),
+}).passthrough();
+
 function countUnpromotedCandidates(repoRoot: string): number {
   const path = join(repoRoot, ".cairn", "ground", "topic-index.yaml");
   if (!existsSync(path)) return 0;
-  let parsed: unknown;
   try {
-    parsed = parseYaml(readFileSync(path, "utf8")) as unknown;
+    const raw = readFileSync(path, "utf8");
+    const parsed: unknown = parseYaml(raw);
+    const result = TopicIndexSchema.safeParse(parsed);
+    if (!result.success) return 0;
+    
+    let n = 0;
+    for (const entry of Object.values(result.data.topics)) {
+      if (entry.dec_id === undefined) n += 1;
+    }
+    return n;
   } catch {
     return 0;
   }
-  if (typeof parsed !== "object" || parsed === null) return 0;
-  const topics = (parsed as Record<string, unknown>)["topics"];
-  if (typeof topics !== "object" || topics === null) return 0;
-  let n = 0;
-  for (const entry of Object.values(topics as Record<string, unknown>)) {
-    if (typeof entry !== "object" || entry === null) continue;
-    if ((entry as Record<string, unknown>)["dec_id"] === undefined) n += 1;
-  }
-  return n;
 }
 
 function formatDuration(ms: number): string {
@@ -1398,23 +1385,6 @@ async function runPhaseSix(args: PhaseSixArgs): Promise<PhaseSixResult> {
     baselineAudit = await runBaselineAudit({
       repoRoot: args.repoRoot,
       languages: defaultBaselineLanguages(stackKinds),
-      projectGlobs,
-      onSensorProgress: (row) => {
-        if (printedSensors.length < 3) {
-          const id = row.sensor_id.padEnd(22);
-          const status = row.skipped
-            ? visualC.dim("skipped")
-            : row.finding_count > 0
-              ? `${row.finding_count} existing violation${row.finding_count === 1 ? "" : "s"} found`
-              : "clean";
-          process.stdout.write(
-            `    ${id} ${row.skipped ? "○" : row.finding_count > 0 ? "⚠" : "✓"}  ${status}\n`,
-          );
-          printedSensors.push(row.sensor_id);
-        } else {
-          suppressedCount += 1;
-        }
-      },
     });
     if (suppressedCount > 0) {
       process.stdout.write(`    ${visualC.dim(`+ ${suppressedCount} more…`)}\n`);

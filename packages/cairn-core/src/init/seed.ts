@@ -12,12 +12,12 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
-  readdirSync,
   statSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { walkFs } from "@isaacriehm/cairn-state";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /**
@@ -69,12 +69,17 @@ const SEED_TOP_LEVEL_ALLOWLIST: ReadonlySet<string> = new Set([
 export function seedCairnLayout(opts: SeedOptions): SeedResult {
   const written: string[] = [];
   const collisions: string[] = [];
-  for (const name of readdirSync(TEMPLATES_ROOT)) {
-    if (!SEED_TOP_LEVEL_ALLOWLIST.has(name)) continue;
-    const subRoot = join(TEMPLATES_ROOT, name);
-    if (!statSync(subRoot).isDirectory()) continue;
-    walk(subRoot, (absSrc) => {
-      const rel = relative(TEMPLATES_ROOT, absSrc);
+  walkFs({
+    dir: TEMPLATES_ROOT,
+    onDir: (rel) => {
+      if (rel === ".") return true;
+      const top = rel.split("/")[0]!;
+      return SEED_TOP_LEVEL_ALLOWLIST.has(top);
+    },
+    onFile: (rel, absSrc) => {
+      const top = rel.split("/")[0]!;
+      if (!SEED_TOP_LEVEL_ALLOWLIST.has(top)) return;
+
       const absDst = join(opts.repoRoot, rel);
       if (existsSync(absDst) && opts.force !== true) {
         collisions.push(rel);
@@ -94,8 +99,8 @@ export function seedCairnLayout(opts: SeedOptions): SeedResult {
         }
       }
       written.push(rel);
-    });
-  }
+    },
+  });
   return { written_files: written, collisions };
 }
 
@@ -130,18 +135,6 @@ function applyPlaceholders(args: {
     .replace(/<project_name>:/g, `${args.projectSlug}:`)
     .replace(/`<project_name>`/g, `\`${args.projectSlug}\``)
     .replace(/<project_name>/g, args.projectSlug);
-}
-
-function walk(dir: string, onFile: (abs: string) => void): void {
-  for (const name of readdirSync(dir)) {
-    const abs = join(dir, name);
-    const s = statSync(abs);
-    if (s.isDirectory()) {
-      walk(abs, onFile);
-    } else if (s.isFile()) {
-      onFile(abs);
-    }
-  }
 }
 
 /** Exposed for the smoke test — locate the templates root from runtime. */

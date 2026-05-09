@@ -11,7 +11,7 @@ import {
   emitShapeB,
   parseHookPayload,
   readHookStdin,
-  recordHookTelemetry,
+  appendTelemetry,
 } from "./payload.js";
 
 interface SessionEndShapeBOutput {
@@ -36,18 +36,18 @@ export async function runSessionEndHook(): Promise<void> {
         `cleanup_failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+
+    appendTelemetry({
+      repoRoot: repoRoot as string,
+      sessionId,
+      kind: "session-end",
+      durationMs: Date.now() - startedAt,
+      source: null,
+      warnings,
+      extra: { removed },
+    });
   }
 
   const out: SessionEndShapeBOutput = { continue: true };
-  emitShapeB(out);
-
-  recordHookTelemetry({
-    hook: "session-end",
-    repoRoot,
-    sessionId,
-    source: null,
-    durationMs: Date.now() - startedAt,
-    warnings,
-    extra: { removed },
-  });
+  emitShapeB("");
 }

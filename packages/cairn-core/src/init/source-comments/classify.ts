@@ -22,6 +22,16 @@
  *     missing fields default to safe values
  */
 
+import { z } from "zod";
+
+const BatchEntrySchema = z.object({
+  block_id: z.string(),
+  kind: z.enum(["rationale", "constraint", "citation", "license", "other"]),
+}).passthrough();
+
+const BatchResultSchema = z.object({
+  results: z.array(BatchEntrySchema),
+}).passthrough();
 import { runClaude } from "../../claude/index.js";
 import { ClaudeError } from "../../claude/error.js";
 import { logger } from "../../logger.js";

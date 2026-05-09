@@ -344,6 +344,52 @@ function writeInvariantFile(args: WriteEntityArgs): void {
   log.debug({ abs, id: args.id }, "wrote invariant");
 }
 
+export function emitDec(args: {
+  repoRoot: string;
+  title: string;
+  body: string;
+  topicSlug: string;
+  sourceFile: string;
+}): { id: string } {
+  const capture_source = "cairn-init";
+  const sot_path = "ledger";
+  const id = deriveDecId({ sot_path, title: args.title, capture_source });
+  writeDecisionFile({
+    repoRoot: args.repoRoot,
+    id,
+    title: args.title,
+    body: args.body,
+    sot_kind: "ledger",
+    sot_path,
+    source_file: args.sourceFile,
+    capture_source,
+  });
+  return { id };
+}
+
+export function emitInv(args: {
+  repoRoot: string;
+  title: string;
+  body: string;
+  topicSlug: string;
+  sourceFile: string;
+}): { id: string } {
+  const capture_source = "cairn-init";
+  const sot_path = "ledger";
+  const id = deriveInvId({ sot_path, title: args.title, capture_source });
+  writeInvariantFile({
+    repoRoot: args.repoRoot,
+    id,
+    title: args.title,
+    body: args.body,
+    sot_kind: "ledger",
+    sot_path,
+    source_file: args.sourceFile,
+    capture_source,
+  });
+  return { id };
+}
+
 function renderEntity(args: WriteEntityArgs & { kind: "DEC" | "INV" }): string {
   const now = new Date().toISOString();
   const fm: Record<string, unknown> = {

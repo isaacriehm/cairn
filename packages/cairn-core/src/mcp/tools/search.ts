@@ -97,14 +97,15 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
         if (!target) continue;
         const raw = readFileSync(target, "utf8");
         const parsed = parseFrontmatter(raw);
-        const fm = parsed.frontmatter as { id?: string } | null;
-        if (!fm?.id) continue;
-        const titleLine = parsed.body.match(/^#\s+(.+)$/m)?.[1] ?? fm.id;
+        const fm = parsed.frontmatter;
+        const id = typeof fm?.id === "string" ? fm.id : null;
+        if (id === null) continue;
+        const titleLine = parsed.body.match(/^#\s+(.+)$/m)?.[1] ?? id;
         const titleHit = titleLine.toLowerCase().includes(q);
         const bodyHit = parsed.body.toLowerCase().includes(q);
         if (!titleHit && !bodyHit) continue;
         out.push({
-          id: fm.id,
+          id,
           kind: "task",
           title: titleLine,
           path: relative(ctx.repoRoot, target).replace(/\\/g, "/"),

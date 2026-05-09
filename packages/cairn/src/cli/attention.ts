@@ -137,6 +137,27 @@ function listDrafts(repoRoot: string): DraftEntry[] {
   return out;
 }
 
+import { z } from "zod";
+
+const BaselineFindingSchema = z.object({
+  path: z.string().optional(),
+  line: z.number().optional(),
+  message: z.string().optional(),
+  severity: z.enum(["hard", "soft"]).optional(),
+}).passthrough();
+
+const BaselineSensorSchema = z.object({
+  sensor_id: z.string().optional(),
+  findings: z.array(BaselineFindingSchema).optional(),
+}).passthrough();
+
+const BaselineAuditSchema = z.object({
+  run_at: z.string().optional(),
+  total_findings: z.number().optional(),
+  files_scanned: z.number().optional(),
+  sensors: z.array(BaselineSensorSchema).optional(),
+}).passthrough();
+
 function readLatestBaseline(repoRoot: string): BaselineSummary | null {
   const dir = join(repoRoot, ".cairn", "baseline");
   if (!existsSync(dir)) return null;
@@ -158,34 +179,27 @@ function readLatestBaseline(repoRoot: string): BaselineSummary | null {
   } catch {
     return null;
   }
-  if (typeof parsed !== "object" || parsed === null) return null;
-  const obj = parsed as Record<string, unknown>;
-  const runAt = typeof obj["run_at"] === "string" ? (obj["run_at"] as string) : null;
-  const totalFindings =
-    typeof obj["total_findings"] === "number" ? (obj["total_findings"] as number) : 0;
-  const filesScanned =
-    typeof obj["files_scanned"] === "number" ? (obj["files_scanned"] as number) : 0;
+  const result = BaselineAuditSchema.safeParse(parsed);
+  if (!result.success) return null;
+  
+  const obj = result.data;
+  const runAt = obj.run_at ?? null;
+  const totalFindings = obj.total_findings ?? 0;
+  const filesScanned = obj.files_scanned ?? 0;
   const bySensor = new Map<string, BaselineFinding[]>();
-  if (Array.isArray(obj["sensors"])) {
-    for (const raw of obj["sensors"]) {
-      if (typeof raw !== "object" || raw === null) continue;
-      const r = raw as Record<string, unknown>;
-      const sensorId = typeof r["sensor_id"] === "string" ? (r["sensor_id"] as string) : "";
+  if (obj.sensors !== undefined) {
+    for (const r of obj.sensors) {
+      const sensorId = r.sensor_id ?? "";
       if (sensorId.length === 0) continue;
-      const findingsRaw = Array.isArray(r["findings"]) ? r["findings"] : [];
+      const findingsRaw = r.findings ?? [];
       const findings: BaselineFinding[] = [];
-      for (const f of findingsRaw) {
-        if (typeof f !== "object" || f === null) continue;
-        const fr = f as Record<string, unknown>;
+      for (const fr of findingsRaw) {
         findings.push({
           sensor_id: sensorId,
-          path: typeof fr["path"] === "string" ? (fr["path"] as string) : "",
-          line: typeof fr["line"] === "number" ? (fr["line"] as number) : 0,
-          message: typeof fr["message"] === "string" ? (fr["message"] as string) : "",
-          severity:
-            fr["severity"] === "hard" || fr["severity"] === "soft"
-              ? (fr["severity"] as "hard" | "soft")
-              : "soft",
+          path: fr.path ?? "",
+          line: fr.line ?? 0,
+          message: fr.message ?? "",
+          severity: fr.severity === "hard" ? "hard" : "soft",
         });
       }
       if (findings.length > 0) bySensor.set(sensorId, findings);

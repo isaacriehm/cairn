@@ -36,7 +36,6 @@ export async function runPhase11Baseline(state: PhaseState): Promise<PhaseResult
   try {
     const result: BaselineAuditResult = await runBaselineAudit({
       repoRoot: state.repoRoot,
-      projectGlobs: globs,
       languages,
     });
     const next: PhaseState = {

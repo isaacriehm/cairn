@@ -74,7 +74,8 @@ export async function joinCli(argv: string[]): Promise<void> {
       );
     }
     for (const step of result.steps) {
-      const glyph = STATUS_GLYPH[step.status] ?? "·";
+      const statusValue: string = step.status;
+      const glyph = STATUS_GLYPH[statusValue] ?? "·";
       console.log(`  ${glyph} ${step.step.padEnd(20)}  ${step.detail}`);
     }
     if (result.bootstrapped) {

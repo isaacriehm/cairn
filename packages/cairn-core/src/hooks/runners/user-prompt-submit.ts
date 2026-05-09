@@ -31,13 +31,17 @@ const MAX_FILE_BYTES = 512_000;
 // Match `@<path>` only when `@` follows whitespace or is at start of
 // prompt — filters out emails, twitter-style mentions, etc. Path
 // chars: word, dot, slash, hyphen.
+import { z } from "zod";
+
 const AT_PATH_RE = /(?:^|\s)@([\w./-]+)/g;
 
-interface UserPromptSubmitPayload {
-  session_id?: string;
-  cwd?: string;
-  prompt?: string;
-}
+const UserPromptSubmitPayloadSchema = z.object({
+  session_id: z.string().optional(),
+  cwd: z.string().optional(),
+  prompt: z.string().optional(),
+}).passthrough();
+
+type UserPromptSubmitPayload = z.infer<typeof UserPromptSubmitPayloadSchema>;
 
 interface UserPromptSubmitShapeBOutput {
   continue: boolean;

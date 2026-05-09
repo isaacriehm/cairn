@@ -16,11 +16,29 @@ import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { simpleGit } from "simple-git";
 import { parse as parseYaml } from "yaml";
+import { z } from "zod";
 import {
   buildDecisionsLedger,
   buildInvariantsLedger,
   matchAnyGlob,
 } from "@isaacriehm/cairn-state";
+
+const DecisionLedgerEntrySchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  status: z.string(),
+  scope_globs: z.array(z.string()).optional(),
+  supersedes: z.string().nullable().optional(),
+  superseded_by: z.string().nullable().optional(),
+}).passthrough();
+
+const InvariantLedgerEntrySchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  status: z.string(),
+  source_decision: z.string().nullable().optional(),
+  superseded_by: z.string().nullable().optional(),
+}).passthrough();
 
 const TASK_PATH_CAP = 100;
 
@@ -102,30 +120,67 @@ export async function buildSpecDelta(
   const cutoffDate = new Date(oldest.date);
 
   // Step 4: read ledgers at HEAD.
-  let headDecisions: DecisionLedgerEntryLike[];
-  let headInvariants: InvariantLedgerEntryLike[];
+  let headDecisions: DecisionLedgerEntryLike[] = [];
+  let headInvariants: InvariantLedgerEntryLike[] = [];
   try {
-    headDecisions = buildDecisionsLedger({ repoRoot }) as DecisionLedgerEntryLike[];
+    const rawDec = buildDecisionsLedger({ repoRoot });
+    const decResult = z.array(DecisionLedgerEntrySchema).safeParse(rawDec);
+    if (decResult.success) {
+      headDecisions = decResult.data.map((d) => ({
+        id: d.id,
+        title: d.title,
+        status: d.status,
+        ...(d.scope_globs ? { scope_globs: d.scope_globs } : {}),
+        ...(d.supersedes ? { supersedes: d.supersedes } : {}),
+        ...(d.superseded_by ? { superseded_by: d.superseded_by } : {}),
+      }));
+    }
   } catch {
-    headDecisions = [];
+    /* headDecisions = [] */
   }
   try {
-    headInvariants = buildInvariantsLedger({ repoRoot }) as InvariantLedgerEntryLike[];
+    const rawInv = buildInvariantsLedger({ repoRoot });
+    const invResult = z.array(InvariantLedgerEntrySchema).safeParse(rawInv);
+    if (invResult.success) {
+      headInvariants = invResult.data.map((i) => ({
+        id: i.id,
+        title: i.title,
+        status: i.status,
+        ...(i.source_decision ? { source_decision: i.source_decision } : {}),
+        ...(i.superseded_by ? { superseded_by: i.superseded_by } : {}),
+      }));
+    }
   } catch {
-    headInvariants = [];
+    /* headInvariants = [] */
   }
 
   // Step 5: read ledgers at cutoff via `git show`.
-  const cutoffDecisions = await readLedgerAtSha<DecisionLedgerEntryLike>(
+  const cutoffDecisionsRaw = await readLedgerAtSha<z.infer<typeof DecisionLedgerEntrySchema>>(
     git,
     cutoffFullSha,
-    ".cairn/ground/decisions/decisions.ledger.yaml",
+    ".cairn/ground/decisions/decisions.ledger.yaml"
   );
-  const cutoffInvariants = await readLedgerAtSha<InvariantLedgerEntryLike>(
+  const cutoffDecisions: DecisionLedgerEntryLike[] = cutoffDecisionsRaw.map((d) => ({
+    id: d.id,
+    title: d.title,
+    status: d.status,
+    ...(d.scope_globs ? { scope_globs: d.scope_globs } : {}),
+    ...(d.supersedes ? { supersedes: d.supersedes } : {}),
+    ...(d.superseded_by ? { superseded_by: d.superseded_by } : {}),
+  }));
+
+  const cutoffInvariantsRaw = await readLedgerAtSha<z.infer<typeof InvariantLedgerEntrySchema>>(
     git,
     cutoffFullSha,
-    ".cairn/ground/invariants/invariants.ledger.yaml",
+    ".cairn/ground/invariants/invariants.ledger.yaml"
   );
+  const cutoffInvariants: InvariantLedgerEntryLike[] = cutoffInvariantsRaw.map((i) => ({
+    id: i.id,
+    title: i.title,
+    status: i.status,
+    ...(i.source_decision ? { source_decision: i.source_decision } : {}),
+    ...(i.superseded_by ? { superseded_by: i.superseded_by } : {}),
+  }));
 
   // Build lookup map of HEAD decisions for invariant scope resolution.
   const headDecisionById = new Map<string, DecisionLedgerEntryLike>();

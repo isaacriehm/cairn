@@ -204,9 +204,9 @@ async function handlePhaseRun(
   if (result.status !== "error") {
     const phaseOut = result.state.outputs[id];
     if (typeof phaseOut === "object" && phaseOut !== null) {
-      const obj = phaseOut as Record<string, unknown>;
-      if (obj["duration_ms"] === undefined) {
-        obj["duration_ms"] = durationMs;
+      const obj = phaseOut as { duration_ms?: unknown };
+      if (obj.duration_ms === undefined) {
+        (obj as { duration_ms: number }).duration_ms = durationMs;
       }
     }
   }
@@ -373,6 +373,7 @@ function makeParallel8910Tool(): ToolDef<PhaseToolInput> {
 export const initPhaseTools: ToolDef<PhaseToolInput>[] = PHASE_IDS.map(
   (id) => makePhaseTool(id),
 );
-export const initRunTool: ToolDef<any> = makePhaseRunTool();
+export const initRunTool: ToolDef<unknown> = makePhaseRunTool();
 export const initParallel8910Tool: ToolDef<PhaseToolInput> = makeParallel8910Tool();
 export const initResumeTool: ToolDef<ResumeToolInput> = makeResumeTool();
+;

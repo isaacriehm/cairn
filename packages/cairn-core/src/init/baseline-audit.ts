@@ -3,468 +3,164 @@
  *
  * Runs every sensor that can operate without an LLM call or an external
  * command against a synthetic "every file added at SHA-zero" diff. Each
- * finding is pre-Cairn debt, not a hard failure: the audit yaml is
- * surfaced through `cairn attention` later.
+ * finding is pre-Cairn debt, not a hard failure. Findings land in
+ * `.cairn/baseline/sensor-audit-<ISO>.yaml`.
+ *
+ * Spec: docs/CONTEXT_CONTINUITY_SPEC.md §8.
  */
 
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { writeFileSafe } from "@isaacriehm/cairn-state";
 import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
-import { dirname, join } from "node:path";
-import { simpleGit } from "simple-git";
-import { stringify as stringifyYaml, parse as parseYaml } from "yaml";
-import {
-  loadSensorRegistry,
-  loadStubCatalog,
-  runDtoNoFakeFields,
-  runRouteHandlerNonEmpty,
   runStubCatalog,
-  type DiffEntry,
-  type ProjectGlobs,
-  type SensorFinding,
+  runRouteHandlerNonEmpty,
+  runDtoNoFakeFields,
+  loadStubCatalog,
+  loadSensorRegistry,
   type SensorLanguage,
   type SensorResult,
 } from "../sensors/index.js";
 import { logger } from "../logger.js";
+import { walkSourceTree } from "../gc/walk-source.js";
+import type { DiffEntry } from "../sensors/types.js";
+import { z } from "zod";
 
 const log = logger("init.baseline-audit");
+
+const AuditFileSchema = z.object({
+  run_at: z.string().optional(),
+}).passthrough();
 
 const MAX_FILE_BYTES = 1_000_000; // skip lock files / minified bundles
 
 /**
  * Hard cap on baseline-audit file count. The per-sensor finding-collection
  * pass is O(files × sensors), and `buildSyntheticDiff` holds every file's
- * full text in a single in-memory array. Above this cap we deterministically
- * sort by path and slice; the audit yaml records the truncation. Operator
- * can re-run after narrowing pilot scope or running `cairn scope rebuild`
- * with a focused subset.
+ * content in memory. 1000 files is a safe ceiling for typical project src/
+ * without blowing heap or taking > 10s.
  */
-const BASELINE_FILE_CAP = 5_000;
-const SOURCE_EXTS = new Set([
-  ".ts",
-  ".tsx",
-  ".cts",
-  ".mts",
-  ".js",
-  ".jsx",
-  ".cjs",
-  ".mjs",
-  ".py",
-  ".rb",
-  ".go",
-  ".rs",
-  ".sql",
-]);
-
-const SKIP_DIR_SEGMENTS = new Set([
-  "node_modules",
-  "dist",
-  "build",
-  "out",
-  ".next",
-  ".turbo",
-  ".cache",
-  "coverage",
-  ".cairn",
-  ".archive",
-  ".git",
-]);
-
-/** Sensors we never run during baseline — they need inputs init can't supply. */
-const BASELINE_SKIP_IDS = new Set([
-  "attestation-cross-check",
-  "generator-drift",
-  "decision-assertions",
-  "invariant-suite",
-  "reviewer-subagent",
-  "e2e-real-db",
-  "uat-headless-chrome",
-  "frontmatter-freshness",
-  "local-dirty-overlap",
-]);
+const BASELINE_FILE_CAP = 1000;
 
 export interface BaselineAuditFinding {
-  sensor_id: string;
   path: string;
   line: number;
-  message: string;
   severity: "hard" | "soft";
+  message: string;
 }
 
 export interface BaselineAuditSensorRow {
   sensor_id: string;
-  finding_count: number;
   findings: BaselineAuditFinding[];
-  /** Set when the sensor's runnable implementation is missing — captured for transparency. */
-  unsupported?: boolean;
-}
-
-export interface BaselineAuditResult {
-  /** Absolute path to the audit yaml. */
-  auditPath: string;
-  /** Repo-relative path used in completion summary. */
-  auditRelPath: string;
-  /** ISO timestamp captured at write time. */
-  runAt: string;
-  /** One row per sensor that was attempted. */
-  sensors: BaselineAuditSensorRow[];
-  /** Sum of finding counts (severity:soft + hard). */
-  totalFindings: number;
-  /** Number of source files synthesized into the audit diff. */
-  filesScanned: number;
-  /** Total source files available before the file cap was applied. */
-  filesAvailable: number;
-  /** True when the file count hit BASELINE_FILE_CAP and was sliced. */
-  truncatedAtFileCap: boolean;
-  /** Sensor IDs that ran clean. */
-  cleanSensorIds: string[];
-  /** Sensor IDs that produced at least one finding. */
-  dirtySensorIds: string[];
-  /** Sensor IDs skipped (LLM/external/etc). */
-  skippedSensorIds: string[];
 }
 
 export interface RunBaselineAuditArgs {
   repoRoot: string;
-  /** Globs the route-handler / dto sensors scope to — usually mapper output. */
-  projectGlobs: ProjectGlobs;
-  /** Languages active for this profile. Defaults derived from stack signatures. */
   languages: SensorLanguage[];
-  /** Per-sensor progress callback. */
-  onSensorProgress?: (row: {
-    sensor_id: string;
-    finding_count: number;
-    skipped: boolean;
-    error: string | null;
-  }) => void;
-  /** Skip filesystem write — smokes only. */
-  dryRun?: boolean;
-  /**
-   * When true, bypass the `BASELINE_SKIP_IDS` skip-list so sensors that
-   * normally need post-init inputs (attestation-cross-check, generator-drift,
-   * decision-assertions, invariant-suite, etc.) still get a best-effort
-   * pass. Useful for `cairn baseline --force` post-adoption review when
-   * those sensors finally have ground state to chew on.
-   */
-  force?: boolean;
 }
 
-/* -------------------------------------------------------------------------- */
-/* Synthetic diff                                                             */
-/* -------------------------------------------------------------------------- */
-
-async function listRepoSourceFiles(repoRoot: string): Promise<string[]> {
-  // git ls-files honors .gitignore. --cached + untracked + recurse into submodules.
-  try {
-    const git = simpleGit({ baseDir: repoRoot });
-    const cached = await git.raw([
-      "ls-files",
-      "--cached",
-      "--recurse-submodules",
-    ]);
-    const others = await git.raw([
-      "ls-files",
-      "--others",
-      "--exclude-standard",
-    ]);
-    const combined = `${cached}\n${others}`;
-    return uniqueFilter(combined);
-  } catch (err) {
-    log.warn(
-      { err: err instanceof Error ? err.message : String(err) },
-      "git ls-files failed; baseline audit will scan an empty fileset",
-    );
-    return [];
-  }
+export interface BaselineAuditResult {
+  auditPath: string;
+  findingsCount: number;
+  filesScanned: number;
+  durationMs: number;
 }
 
-function uniqueFilter(blob: string): string[] {
-  const out = new Set<string>();
-  for (const raw of blob.split("\n")) {
-    const path = raw.trim();
-    if (path.length === 0) continue;
-    if (path.includes("..")) continue;
-    if (path.split("/").some((seg) => SKIP_DIR_SEGMENTS.has(seg))) continue;
-    if (!hasSourceExt(path)) continue;
-    out.add(path);
-  }
-  return Array.from(out);
-}
-
-function hasSourceExt(path: string): boolean {
-  const dot = path.lastIndexOf(".");
-  if (dot === -1) return false;
-  return SOURCE_EXTS.has(path.slice(dot).toLowerCase());
-}
-
-function buildSyntheticDiff(repoRoot: string, paths: string[]): DiffEntry[] {
-  const out: DiffEntry[] = [];
-  for (const path of paths) {
-    const abs = join(repoRoot, path);
-    let st;
-    try {
-      st = statSync(abs);
-    } catch {
-      continue;
-    }
-    if (!st.isFile()) continue;
-    if (st.size > MAX_FILE_BYTES) continue;
-    let text: string;
-    try {
-      text = readFileSync(abs, "utf8");
-    } catch {
-      continue;
-    }
-    out.push({ path, status: "added", afterContent: text });
-  }
-  return out;
-}
-
-/* -------------------------------------------------------------------------- */
-/* Sensor dispatcher                                                          */
-/* -------------------------------------------------------------------------- */
-
-interface SensorDispatchOutcome {
-  result: SensorResult | null;
-  unsupported: boolean;
-  errorMessage: string | null;
-}
-
-function runOneBaselineSensor(args: {
-  id: string;
-  diff: DiffEntry[];
-  repoRoot: string;
-  languages: SensorLanguage[];
-  projectGlobs: ProjectGlobs;
-}): SensorDispatchOutcome {
-  try {
-    if (args.id === "stub-pattern-catalog") {
-      const catalog = loadStubCatalog(args.repoRoot);
-      return {
-        result: runStubCatalog({
-          diff: args.diff,
-          catalog,
-          languages: args.languages,
-        }),
-        unsupported: false,
-        errorMessage: null,
-      };
-    }
-    if (args.id === "route-handler-non-empty") {
-      return {
-        result: runRouteHandlerNonEmpty({
-          diff: args.diff,
-          globs: args.projectGlobs.route_handler_globs,
-        }),
-        unsupported: false,
-        errorMessage: null,
-      };
-    }
-    if (args.id === "dto-no-fake-fields") {
-      return {
-        result: runDtoNoFakeFields({
-          diff: args.diff,
-          globs: args.projectGlobs.dto_globs,
-        }),
-        unsupported: false,
-        errorMessage: null,
-      };
-    }
-    return { result: null, unsupported: true, errorMessage: null };
-  } catch (err) {
-    return {
-      result: null,
-      unsupported: false,
-      errorMessage: err instanceof Error ? err.message : String(err),
-    };
-  }
-}
-
-/* -------------------------------------------------------------------------- */
-/* Orchestrator                                                               */
-/* -------------------------------------------------------------------------- */
-
+/** Run the baseline sensor sweep. */
 export async function runBaselineAudit(
   args: RunBaselineAuditArgs,
 ): Promise<BaselineAuditResult> {
-  const registry = safeLoadRegistry(args.repoRoot);
-  const disabled = new Set(registry?.disabled_per_project ?? []);
-  const sensorIds: string[] = (registry?.sensors ?? [])
-    .map((s) => s.id)
-    .filter((id) => id.length > 0)
-    .filter((id) => !disabled.has(id));
+  const startedAt = Date.now();
+  const dir = join(args.repoRoot, ".cairn", "baseline");
+  mkdirSync(dir, { recursive: true });
 
-  // Stable sort: registry order preserved.
-  const allFilePaths = (await listRepoSourceFiles(args.repoRoot)).sort();
-  const filesAvailable = allFilePaths.length;
-  const truncatedAtFileCap = filesAvailable > BASELINE_FILE_CAP;
-  const filePaths = truncatedAtFileCap
-    ? allFilePaths.slice(0, BASELINE_FILE_CAP)
-    : allFilePaths;
-  if (truncatedAtFileCap) {
-    log.warn(
-      { filesAvailable, cap: BASELINE_FILE_CAP },
-      "baseline audit truncated to file cap; sample mode",
-    );
-  }
-  const diff = buildSyntheticDiff(args.repoRoot, filePaths);
+  // 1. Build synthetic "add all" diff.
+  const files = walkSourceTree(args.repoRoot);
+  const syntheticDiff: DiffEntry[] = [];
+  let filesScanned = 0;
 
-  const sensors: BaselineAuditSensorRow[] = [];
-  const skippedSensorIds: string[] = [];
-  const cleanSensorIds: string[] = [];
-  const dirtySensorIds: string[] = [];
-  let total = 0;
-
-  for (const id of sensorIds) {
-    if (BASELINE_SKIP_IDS.has(id) && args.force !== true) {
-      skippedSensorIds.push(id);
-      sensors.push({
-        sensor_id: id,
-        finding_count: 0,
-        findings: [],
-        unsupported: true,
+  for (const rel of files) {
+    if (filesScanned >= BASELINE_FILE_CAP) break;
+    const abs = join(args.repoRoot, rel);
+    try {
+      const st = statSync(abs);
+      if (st.size > MAX_FILE_BYTES) continue;
+      const content = readFileSync(abs, "utf8");
+      syntheticDiff.push({
+        path: rel,
+        status: "added",
+        afterContent: content,
       });
-      args.onSensorProgress?.({
-        sensor_id: id,
-        finding_count: 0,
-        skipped: true,
-        error: null,
-      });
+      filesScanned += 1;
+    } catch {
       continue;
     }
-    const outcome = runOneBaselineSensor({
-      id,
-      diff,
-      repoRoot: args.repoRoot,
+  }
+
+  // 2. Load catalogs and registry.
+  const stubCatalog = loadStubCatalog(args.repoRoot);
+  const registry = loadSensorRegistry(args.repoRoot);
+  const results: SensorResult[] = [];
+
+  // 3. Run sensors.
+  // Layer A: Stub catalog
+  results.push(
+    runStubCatalog({
+      diff: syntheticDiff,
+      catalog: stubCatalog,
       languages: args.languages,
-      projectGlobs: args.projectGlobs,
-    });
-    if (outcome.unsupported || outcome.result === null) {
-      skippedSensorIds.push(id);
-      sensors.push({
-        sensor_id: id,
-        finding_count: 0,
-        findings: [],
-        unsupported: true,
-      });
-      args.onSensorProgress?.({
-        sensor_id: id,
-        finding_count: 0,
-        skipped: true,
-        error: outcome.errorMessage,
-      });
-      continue;
-    }
-    const row: BaselineAuditSensorRow = {
-      sensor_id: id,
-      finding_count: outcome.result.findings.length,
-      findings: outcome.result.findings.map(toBaselineFinding),
-    };
-    sensors.push(row);
-    total += row.finding_count;
-    if (row.finding_count === 0) cleanSensorIds.push(id);
-    else dirtySensorIds.push(id);
-    args.onSensorProgress?.({
-      sensor_id: id,
-      finding_count: row.finding_count,
-      skipped: false,
-      error: null,
-    });
-  }
+    }),
+  );
 
-  // Allow inferred languages to widen detection if caller passed an empty list
-  // (some adoption paths may fail to detect any). Detection per file kicks
-  // back in on the next baseline run, which is cheap.
-  if (args.languages.length === 0 && diff.length > 0) {
-    log.warn(
-      { sample: diff[0]?.path },
-      "baseline audit ran with empty languages list; stub-pattern catalog matched nothing",
-    );
-  }
+  // Layer C: Structural
+  const routeGlobs = registry.sensors.find((s) => s.id === "route-handler-non-empty")?.glob_keys;
+  results.push(
+    runRouteHandlerNonEmpty({
+      diff: syntheticDiff,
+      globs: routeGlobs ?? [],
+    }),
+  );
+  const dtoGlobs = registry.sensors.find((s) => s.id === "dto-no-fake-fields")?.glob_keys;
+  results.push(
+    runDtoNoFakeFields({
+      diff: syntheticDiff,
+      globs: dtoGlobs ?? [],
+    }),
+  );
 
-  const runAt = new Date().toISOString();
-  const auditRelPath = `.cairn/baseline/sensor-audit-${runAt
-    .replace(/[:.]/g, "-")
-    .slice(0, 19)}.yaml`;
-  const auditPath = join(args.repoRoot, auditRelPath);
+  // 4. Summarize and write.
+  const findingsCount = results.reduce((n, r) => n + r.findings.length, 0);
+  const nowIso = new Date().toISOString();
+  const filename = `sensor-audit-${nowIso.replace(/[:.]/g, "-")}.yaml`;
+  const auditPath = join(dir, filename);
 
-  if (args.dryRun !== true) {
-    writeAudit(auditPath, {
-      run_at: runAt,
-      sensors: sensors.map((s) => ({
-        sensor_id: s.sensor_id,
-        finding_count: s.finding_count,
-        findings: s.findings,
-        ...(s.unsupported === true ? { unsupported: true } : {}),
+  const payload = {
+    run_at: nowIso,
+    languages: args.languages,
+    files_scanned: filesScanned,
+    total_findings: findingsCount,
+    sensors: results.map((r) => ({
+      sensor_id: r.sensor_id,
+      findings: r.findings.map((f) => ({
+        path: f.path,
+        line: f.line,
+        severity: f.severity,
+        message: f.message,
       })),
-      total_findings: total,
-      files_scanned: diff.length,
-      files_available: filesAvailable,
-      ...(truncatedAtFileCap
-        ? { truncated_at_file_cap: BASELINE_FILE_CAP }
-        : {}),
-    });
-  }
+    })),
+  };
+
+  writeFileSafe(auditPath, stringifyYaml(payload));
 
   return {
     auditPath,
-    auditRelPath,
-    runAt,
-    sensors,
-    totalFindings: total,
-    filesScanned: diff.length,
-    filesAvailable,
-    truncatedAtFileCap,
-    cleanSensorIds,
-    dirtySensorIds,
-    skippedSensorIds,
+    findingsCount,
+    filesScanned,
+    durationMs: Date.now() - startedAt,
   };
 }
 
-function safeLoadRegistry(
-  repoRoot: string,
-): ReturnType<typeof loadSensorRegistry> | null {
-  try {
-    return loadSensorRegistry(repoRoot);
-  } catch (err) {
-    log.warn(
-      { err: err instanceof Error ? err.message : String(err) },
-      "loadSensorRegistry failed; baseline audit returns empty",
-    );
-    return null;
-  }
-}
-
-function toBaselineFinding(f: SensorFinding): BaselineAuditFinding {
-  return {
-    sensor_id: f.sensor_id,
-    path: f.path ?? "",
-    line: f.line ?? 0,
-    message: f.message,
-    severity: f.severity,
-  };
-}
-
-function writeAudit(absPath: string, payload: Record<string, unknown>): void {
-  const dir = dirname(absPath);
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  writeFileSync(absPath, stringifyYaml(payload), "utf8");
-}
-
-/* -------------------------------------------------------------------------- */
-/* Helpers exported for first-session detection                               */
-/* -------------------------------------------------------------------------- */
-
-/**
- * Returns the path of the most recent baseline audit yaml, or null when the
- * baseline directory is empty/missing. Used by the SessionStart onboarding
- * injection to decide whether to fire.
- */
 export function findLatestBaselineAudit(repoRoot: string): {
   path: string;
   runAt: string | null;
@@ -485,8 +181,12 @@ export function findLatestBaselineAudit(repoRoot: string): {
   const abs = join(dir, latest);
   let runAt: string | null = null;
   try {
-    const parsed = parseYaml(readFileSync(abs, "utf8")) as Record<string, unknown>;
-    if (typeof parsed["run_at"] === "string") runAt = parsed["run_at"] as string;
+    const raw = readFileSync(abs, "utf8");
+    const parsed: unknown = parseYaml(raw);
+    const result = AuditFileSchema.safeParse(parsed);
+    if (result.success) {
+      runAt = result.data.run_at ?? null;
+    }
   } catch {
     runAt = null;
   }
@@ -521,4 +221,3 @@ export function defaultBaselineLanguages(
   out.add("sql");
   return Array.from(out);
 }
-

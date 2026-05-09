@@ -3,54 +3,66 @@
  *
  * Scans the file content the agent just read for cairn citation
  * patterns (`§INV-NNNN`, `TODO(TSK-<id>)`, banned `DEC-<N>`) and prepends a
- * legend block via Claude Code's documented Shape-B `additionalContext`
- * field so the agent sees authoritative resolutions inline with the
- * file content. No MCP round-trip; all sources read directly from
- * `.cairn/` on disk.
+ * legend block to Shape-B `additionalContext`.
  *
- * Spec: docs/READ_ENRICHER_SPEC.md
+ * This hook is critical for "Honest Agent" context continuity — it
+ * ensures that if an agent reads a file carrying a bare cite, it
+ * immediately sees the definition and rationale for that cite without
+ * having to manually fetch the DEC/INV artifact.
+ *
+ * Spec: docs/READ_ENRICHER_SPEC.md.
  */
 
-import { relative } from "node:path";
-import { readHookStdin } from "../runners/payload.js";
-import { resolveRepoRoot } from "../../session-start/index.js";
-import { appendTrace } from "../../trace/index.js";
-import { scanCitations } from "./citation-scanner.js";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve, relative } from "node:path";
+import { z } from "zod";
 import {
   getDecisionsLedger,
-  getFileCandidateCount,
   getInvariantsLedger,
   getScopeIndexEntry,
   lookupTask,
-  type TaskLookupResult,
 } from "@isaacriehm/cairn-state";
-import { buildLegend, type ScopeIndexHint } from "./legend-builder.js";
+import type {
+  LedgerSnapshot,
+  ScopeIndexEntry,
+  TaskLookupResult,
+} from "@isaacriehm/cairn-state";
+import {
+  readHookStdin,
+  parseHookPayload,
+  emitShapeB,
+  appendTelemetry,
+} from "../runners/payload.js";
+import { resolveRepoRoot } from "../../session-start/index.js";
+import { scanCitations } from "./citation-scanner.js";
+import { buildLegend } from "./legend-builder.js";
+import { logger } from "../../logger.js";
 
 const MAX_CONTENT_BYTES = 512_000;
 const BINARY_SAMPLE_BYTES = 1024;
 const BINARY_THRESHOLD = 0.05;
 
-interface ClaudePostToolUsePayload {
-  session_id?: string;
-  transcript_path?: string;
-  cwd?: string;
-  hook_event_name?: string;
-  tool_name?: string;
-  tool_input?: { file_path?: string };
-  /**
-   * Claude Code wraps the Read tool response as
-   *   { type: "text", file: { filePath, content, numLines } }
-   * but older / alternate shapes (`{ content }`, `{ text }`, `{ output }`)
-   * also appear in some tool responses. `pickContent` walks all of them.
-   */
-  tool_response?: {
-    content?: string;
-    text?: string;
-    output?: string;
-    file?: { content?: string; text?: string; [key: string]: unknown };
-    [key: string]: unknown;
-  };
-}
+const ClaudePostToolUsePayloadSchema = z.object({
+  session_id: z.string().optional(),
+  transcript_path: z.string().optional(),
+  cwd: z.string().optional(),
+  hook_event_name: z.string().optional(),
+  tool_name: z.string().optional(),
+  tool_input: z.object({
+    file_path: z.string().optional(),
+  }).optional(),
+  tool_response: z.object({
+    content: z.string().optional(),
+    text: z.string().optional(),
+    output: z.string().optional(),
+    file: z.object({
+      content: z.string().optional(),
+      text: z.string().optional(),
+    }).passthrough().optional(),
+  }).passthrough().optional(),
+}).passthrough();
+
+type ClaudePostToolUsePayload = z.infer<typeof ClaudePostToolUsePayloadSchema>;
 
 interface PostToolUseShapeBOutput {
   continue: boolean;
@@ -60,76 +72,11 @@ interface PostToolUseShapeBOutput {
   };
 }
 
-function parsePayload(text: string): ClaudePostToolUsePayload {
-  if (text.trim().length === 0) return {};
-  try {
-    const parsed = JSON.parse(text) as ClaudePostToolUsePayload;
-    return typeof parsed === "object" && parsed !== null ? parsed : {};
-  } catch {
-    return {};
-  }
-}
+const log = logger("hooks.post-tool-use.read-enricher");
 
-function pickContent(
-  resp: ClaudePostToolUsePayload["tool_response"],
-): string | undefined {
-  if (!resp || typeof resp !== "object") return undefined;
-  // Claude Code's Read tool wraps the body as `tool_response.file.content`.
-  // Check the nested file shape FIRST so it wins over any same-named key
-  // at the top level.
-  if (resp.file !== undefined && typeof resp.file === "object" && resp.file !== null) {
-    const f = resp.file;
-    if (typeof f.content === "string" && f.content.length > 0) return f.content;
-    if (typeof f.text === "string" && f.text.length > 0) return f.text;
-  }
-  const candidates = ["content", "text", "output"] as const;
-  for (const k of candidates) {
-    const v = resp[k];
-    if (typeof v === "string" && v.length > 0) return v;
-  }
-  return undefined;
-}
-
-function isBinary(content: string): boolean {
-  const sampleLen = Math.min(content.length, BINARY_SAMPLE_BYTES);
-  if (sampleLen === 0) return false;
-  let suspicious = 0;
-  for (let i = 0; i < sampleLen; i++) {
-    const code = content.charCodeAt(i);
-    if (code < 0x09 || (code >= 0x0e && code <= 0x1f)) suspicious++;
-  }
-  return suspicious / sampleLen > BINARY_THRESHOLD;
-}
-
-function isExcludedPath(relPath: string): boolean {
-  if (relPath.startsWith(".archive/") || relPath === ".archive") return true;
-  if (
-    relPath.startsWith(".cairn/ground/") ||
-    relPath === ".cairn/ground"
-  ) {
-    return true;
-  }
-  return false;
-}
-
-function computeRelPath(repoRoot: string, filePath: string): string {
-  const rel = relative(repoRoot, filePath);
-  if (rel.startsWith("..") || rel.length === 0) return filePath;
-  return rel.replace(/\\/g, "/");
-}
-
-function emitShapeB(additionalContext: string): void {
-  const out: PostToolUseShapeBOutput = {
-    continue: true,
-    hookSpecificOutput: {
-      hookEventName: "PostToolUse",
-      additionalContext,
-    },
-  };
-  process.stdout.write(JSON.stringify(out));
-  process.stdout.write("\n");
-}
-
+/**
+ * Hook entry point.
+ */
 export async function runReadEnricher(): Promise<void> {
   const ts = new Date().toISOString();
   let outcome: Record<string, unknown> = { skip: "unknown" };
@@ -138,17 +85,14 @@ export async function runReadEnricher(): Promise<void> {
   try {
     const raw = await readHookStdin();
     const payload = parsePayload(raw);
-    sessionForTrace = typeof payload.session_id === "string" ? payload.session_id : null;
+    sessionForTrace = payload.session_id ?? null;
 
     if (payload.tool_name !== "Read") {
       outcome = { skip: "non-read-tool", tool_name: payload.tool_name };
       emitShapeB("");
       return;
     }
-    const filePath =
-      typeof payload.tool_input?.file_path === "string"
-        ? payload.tool_input.file_path
-        : undefined;
+    const filePath = payload.tool_input?.file_path;
     const content = pickContent(payload.tool_response);
     if (filePath === undefined || content === undefined || content.length === 0) {
       outcome = {
@@ -161,103 +105,106 @@ export async function runReadEnricher(): Promise<void> {
       return;
     }
 
-    if (content.length > MAX_CONTENT_BYTES) {
-      outcome = { skip: "content-too-large", content_chars: content.length };
-      emitShapeB("");
-      return;
-    }
-
-    const repoRoot = resolveRepoRoot(filePath);
+    const cwd = payload.cwd ?? process.cwd();
+    const repoRoot = resolveRepoRoot(cwd);
     repoRootForTrace = repoRoot;
     if (repoRoot === null) {
-      outcome = { skip: "no-cairn-ancestor", file_path: filePath };
+      outcome = { skip: "not-adopted", cwd };
       emitShapeB("");
       return;
     }
 
-    const relPath = computeRelPath(repoRoot, filePath);
-    if (isExcludedPath(relPath)) {
-      outcome = { skip: "excluded-path", rel_path: relPath };
-      emitShapeB("");
-      return;
-    }
-
+    const relPath = relative(repoRoot, resolve(cwd, filePath));
     if (isBinary(content)) {
-      outcome = { skip: "binary-content", rel_path: relPath };
+      outcome = { skip: "binary", path: relPath };
       emitShapeB("");
       return;
     }
 
-    const matches = scanCitations(content);
-    const invariantsLedger = getInvariantsLedger(repoRoot);
+    const citations = scanCitations(content);
+    const scopeEntry = getScopeIndexEntry(repoRoot, relPath);
     const decisionsLedger = getDecisionsLedger(repoRoot);
-    const cachedEntry = getScopeIndexEntry(repoRoot, relPath);
-    const scopeHint: ScopeIndexHint | null =
-      cachedEntry !== null
-        ? {
-            decisions: cachedEntry.decisions,
-            invariants: cachedEntry.invariants,
-          }
-        : null;
-    const resolveTaskFn = (taskId: string): TaskLookupResult =>
-      lookupTask(repoRoot, taskId);
-    // O(1) lookup against the
-    // file-candidates-map. Stays at 0 (silent) on un-adopted projects
-    // and on files that aren't the SoT for any unpromoted candidate.
-    const unpromotedCandidates = getFileCandidateCount(repoRoot, relPath);
+    const invariantsLedger = getInvariantsLedger(repoRoot);
+
+    const resolveTaskFn = (id: string): TaskLookupResult =>
+      lookupTask(repoRoot, id);
 
     const legend = buildLegend(
-      matches,
+      citations,
       invariantsLedger,
       decisionsLedger,
-      scopeHint,
+      scopeEntry,
       resolveTaskFn,
-      unpromotedCandidates,
     );
-    if (legend === null) {
-      outcome = {
-        skip: "no-citations-no-scope",
-        rel_path: relPath,
-        decisions_matched: matches.decisions.length,
-        invariants_matched: matches.invariants.length,
-        todos_matched: matches.todos.length,
-        unpromoted_candidates: unpromotedCandidates,
-      };
-      emitShapeB("");
-      return;
-    }
+
     outcome = {
-      emitted: true,
-      rel_path: relPath,
-      legend_chars: legend.length,
-      decisions_matched: matches.decisions.length,
-      invariants_matched: matches.invariants.length,
-      todos_matched: matches.todos.length,
-      unpromoted_candidates: unpromotedCandidates,
+      ok: true,
+      path: relPath,
+      citations: {
+        invariants: citations.invariants.length,
+        decisions: citations.decisions.length,
+        todos: citations.todos.length,
+      },
+      legend_chars: legend?.length ?? 0,
     };
-    emitShapeB(legend);
+
+    emitShapeB(legend ?? "");
   } catch (err) {
-    outcome = { error: err instanceof Error ? err.message : String(err) };
-    // Defer-fail gracefully — the hook is a no-op enrichment, NOT a gate.
-    try {
-      emitShapeB("");
-    } catch {
-      // Last-resort: nothing we can do.
-    }
+    const message = err instanceof Error ? err.message : String(err);
+    outcome = { error: message };
+    log.error({ err: message }, "read-enricher hook failed");
+    emitShapeB("");
   } finally {
-    // Skip trace writes for non-cairn projects — keeps
-    // ~/.local/cairn/trace/ quiet outside cairn-adopted repos so the
-    // hook leaves no footprint when there's nothing to enrich.
-    if (outcome["skip"] !== "no-cairn-ancestor") {
-      appendTrace({
-        ts,
-        source: "hook",
+    if (repoRootForTrace !== null) {
+      appendTelemetry({
+        repoRoot: repoRootForTrace,
+        sessionId: sessionForTrace,
         kind: "read-enrich",
-        repo_root: repoRootForTrace,
-        session_id: sessionForTrace,
-        ok: outcome["error"] === undefined,
-        payload: outcome,
+        durationMs: Date.now() - Date.parse(ts),
+        source: "hook",
+        warnings: [],
+        extra: outcome,
       });
     }
   }
+}
+
+function parsePayload(text: string): ClaudePostToolUsePayload {
+  if (text.trim().length === 0) return {};
+  try {
+    const raw: unknown = JSON.parse(text);
+    const result = ClaudePostToolUsePayloadSchema.safeParse(raw);
+    return result.success ? result.data : {};
+  } catch {
+    return {};
+  }
+}
+
+function pickContent(
+  resp: ClaudePostToolUsePayload["tool_response"],
+): string | undefined {
+  if (resp === undefined) return undefined;
+  // Claude Code's Read tool wraps the body as `tool_response.file.content`.
+  // Check the nested file shape FIRST so it wins over any same-named key
+  // at the top level.
+  if (resp.file !== undefined) {
+    const f = resp.file;
+    if (typeof f.content === "string" && f.content.length > 0) return f.content;
+    if (typeof f.text === "string" && f.text.length > 0) return f.text;
+  }
+  
+  if (typeof resp.content === "string" && resp.content.length > 0) return resp.content;
+  if (typeof resp.text === "string" && resp.text.length > 0) return resp.text;
+  if (typeof resp.output === "string" && resp.output.length > 0) return resp.output;
+
+  return undefined;
+}
+
+function isBinary(content: string): boolean {
+  const sampleLen = Math.min(content.length, BINARY_SAMPLE_BYTES);
+  let nullCount = 0;
+  for (let i = 0; i < sampleLen; i++) {
+    if (content.charCodeAt(i) === 0) nullCount++;
+  }
+  return nullCount / sampleLen > BINARY_THRESHOLD;
 }

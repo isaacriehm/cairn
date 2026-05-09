@@ -172,9 +172,8 @@ export async function runFixAlign(args: FixAlignArgs): Promise<FixAlignResult> {
   const filesVisited = listSourceFiles({ repoRoot, include, exclude });
 
   const cache = readSotCache(repoRoot);
-  const cacheEntries = (Object.values(cache.entries) as SotCacheEntry[]).filter(
-    (e) => e.tokens.length > 0,
-  );
+  const cacheEntries = Object.values(cache.entries)
+    .filter((e): e is SotCacheEntry => e !== undefined && e.tokens.length > 0);
 
   const preflight = computePreflight({
     repoRoot,

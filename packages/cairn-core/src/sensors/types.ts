@@ -39,7 +39,7 @@ export type SensorLanguage =
 /** One pattern entry from .cairn/config/stub-patterns.yaml. */
 export interface StubPattern {
   id: string;
-  languages: SensorLanguage[];
+  languages: (SensorLanguage | "all")[];
   description: string;
   regex: string;
   severity: "hard" | "soft";

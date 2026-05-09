@@ -4,11 +4,6 @@ export {
   walkSourceComments,
 } from "./walker.js";
 export type {
-  CommentBlock,
-  CommentKind,
-  CommentLang,
-} from "@isaacriehm/cairn-state";
-export type {
   WalkOptions,
   WalkResult,
 } from "./walker.js";

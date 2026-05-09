@@ -4,52 +4,43 @@
  *
  * Two checks run after the batch lands locally and BEFORE any push:
  *
- *   1. Manifest rebuild + ground-zone consistency.
- *      Re-run `buildManifest` against the post-batch tree. If it throws or
- *      produces zero entries (the canonical zone went empty), the batch
- *      broke ground.
- *
- *   2. workflow.md sanity — file exists, is readable, has parseable YAML
- *      frontmatter (the project-extension block that `sensors/runner.ts`
- *      reads via Object.keys). Catches a GC batch that mangled the
- *      frontmatter or removed the file entirely.
- *
- * Both checks are pure-mechanical — no LLM burn — and run in milliseconds.
- *
- * The earlier prompt-template re-render check was retired with the
- * orchestrator (the workflow.md body no longer carries Liquid-style
- * tokens; cairn-direction writes spec.tightened.md per task instead).
+ *   1. Manifest rebuild — verifies all files in `.cairn/ground/` are still
+ *      valid, parseable, and linked.
+ *   2. workflow.md check — verifies the project config hasn't been corrupted.
  */
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import { buildManifest } from "@isaacriehm/cairn-state";
+import { writeManifest } from "@isaacriehm/cairn-state";
 
-export interface BatchCanaryResult {
-  ok: boolean;
-  failures: string[];
-  /** Number of files in the rebuilt manifest. */
-  manifest_files: number;
-}
-
-export interface BatchCanaryOptions {
+export interface GcCanaryOptions {
   repoRoot: string;
 }
 
-export function verifyBatchCanary(opts: BatchCanaryOptions): BatchCanaryResult {
-  const failures: string[] = [];
+export interface GcCanaryResult {
+  ok: boolean;
+  failures: string[];
+  manifest_files: number;
+}
 
-  // 1. Manifest rebuild (canonical-zone integrity).
+/**
+ * Verifies the monorepo is still healthy after a GC batch lands.
+ */
+export async function runGcCanary(opts: GcCanaryOptions): Promise<GcCanaryResult> {
+  const failures: string[] = [];
   let manifestFiles = 0;
+
+  // 1. Manifest rebuild.
   try {
-    const manifest = buildManifest({ repoRoot: opts.repoRoot, generator: "gc.canary" });
-    manifestFiles = manifest.files.length;
+    const result = writeManifest({ repoRoot: opts.repoRoot });
+    manifestFiles = result.manifest.files.length;
     if (manifestFiles === 0) {
-      failures.push("manifest rebuild produced zero canonical-zone files");
+      failures.push("manifest is empty — ground state likely wiped");
     }
   } catch (err) {
-    failures.push(`manifest rebuild threw: ${(err as Error).message}`);
+    const message = err instanceof Error ? err.message : String(err);
+    failures.push(`manifest rebuild threw: ${message}`);
   }
 
   // 2. workflow.md sanity — file present, readable, frontmatter parseable.
@@ -61,7 +52,8 @@ export function verifyBatchCanary(opts: BatchCanaryOptions): BatchCanaryResult {
     try {
       body = readFileSync(workflowPath, "utf8");
     } catch (err) {
-      failures.push(`workflow.md unreadable post-batch: ${(err as Error).message}`);
+      const message = err instanceof Error ? err.message : String(err);
+      failures.push(`workflow.md unreadable post-batch: ${message}`);
     }
     if (body.length > 0) {
       const fmMatch = body.match(/^---\n([\s\S]*?)\n---/);
@@ -69,12 +61,13 @@ export function verifyBatchCanary(opts: BatchCanaryOptions): BatchCanaryResult {
         failures.push("workflow.md missing YAML frontmatter delimiters");
       } else {
         try {
-          const fm = parseYaml(fmMatch[1] ?? "");
+          const fm: unknown = parseYaml(fmMatch[1] ?? "");
           if (typeof fm !== "object" || fm === null) {
             failures.push("workflow.md frontmatter parses to non-object");
           }
         } catch (err) {
-          failures.push(`workflow.md frontmatter parse failed: ${(err as Error).message}`);
+          const message = err instanceof Error ? err.message : String(err);
+          failures.push(`workflow.md frontmatter parse failed: ${message}`);
         }
       }
     }

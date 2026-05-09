@@ -16,13 +16,6 @@ export async function runPhase10RulesMerge(state: PhaseState): Promise<PhaseResu
   try {
     const result: RunRulesMergeResult = await runRulesMerge({
       repoRoot: state.repoRoot,
-      onSectionProgress: (row) =>
-        writeProgress(state.repoRoot, {
-          phase: "10-rules-merge",
-          batch: row.index,
-          total: row.total,
-          startedAt,
-        }),
     });
     clearProgress(state.repoRoot);
     const next: PhaseState = {

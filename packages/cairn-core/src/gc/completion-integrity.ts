@@ -4,22 +4,35 @@
  * For every task in `.cairn/tasks/done/`, validate that:
  *   - status.yaml indicates phase: succeeded
  *   - related_run_ids has at least one entry (last entry is "the run")
- *   - the linked run dir exists in either runs/active/ or runs/terminal/
- *   - meta.json is present and parseable, with a sha_pin string
- *   - attestation.yaml is present
- *   - sensor-results.yaml is present and contains no failed entries
- *   - the attested sha_pin is reachable in the current git history
- *
- * All findings are kind: "task_integrity_error" with severity: "warn".
+ *   - the run directory exists in runs/terminal/ (or fallback runs/active/)
+ *   - the run's meta.json contains a sha_pin
+ *   - the sha_pin is reachable in the current git history
+ *   - attestation.yaml is present in the run dir
+ *   - sensor-results.yaml (if present) indicates all sensors passed
  */
 
-import { type Dirent, existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { simpleGit } from "simple-git";
 import { parse as parseYaml } from "yaml";
 import type { GcFinding } from "./types.js";
+import { z } from "zod";
 
 const PASS_ID = "completion-integrity" as const;
+
+const StatusSchema = z.object({
+  phase: z.string().optional(),
+  related_run_ids: z.array(z.string()).optional(),
+}).passthrough();
+
+const MetaSchema = z.object({
+  sha_pin: z.string().optional(),
+}).passthrough();
+
+const SensorResultSchema = z.object({
+  status: z.string().optional(),
+  sensor: z.string().optional(),
+}).passthrough();
 
 export interface CompletionIntegrityOptions {
   repoRoot: string;
@@ -29,34 +42,26 @@ export interface CompletionIntegrityResult {
   findings: GcFinding[];
 }
 
+let _git: ReturnType<typeof simpleGit> | null = null;
+function ensureGit(repoRoot: string): ReturnType<typeof simpleGit> {
+  if (!_git) _git = simpleGit(repoRoot);
+  return _git;
+}
+
+/** Run the completion-integrity pass. */
 export async function runCompletionIntegrity(
   opts: CompletionIntegrityOptions,
 ): Promise<CompletionIntegrityResult> {
-  const findings: GcFinding[] = [];
   const doneDir = join(opts.repoRoot, ".cairn", "tasks", "done");
+  const findings: GcFinding[] = [];
   if (!existsSync(doneDir)) return { findings };
 
-  let dirents: Dirent[];
-  try {
-    dirents = readdirSync(doneDir, { withFileTypes: true, encoding: "utf8" });
-  } catch {
-    return { findings };
-  }
-
-  // Lazily-constructed git client; only needed if any task makes it past the
-  // attestation checks.
-  let git: ReturnType<typeof simpleGit> | null = null;
-  function ensureGit(): ReturnType<typeof simpleGit> {
-    if (git === null) git = simpleGit({ baseDir: opts.repoRoot });
-    return git;
-  }
-
-  for (const entry of dirents) {
-    if (!entry.isDirectory()) continue;
-    const taskId = entry.name;
+  const entries = readdirSync(doneDir, { withFileTypes: true });
+  for (const e of entries) {
+    if (!e.isDirectory()) continue;
+    const taskId = e.name;
     const taskDir = join(doneDir, taskId);
     const statusPath = join(taskDir, "status.yaml");
-
     if (!existsSync(statusPath)) {
       findings.push(makeFinding(taskId, `tasks/done/${taskId}/status.yaml missing`));
       continue;
@@ -71,22 +76,18 @@ export async function runCompletionIntegrity(
       );
       continue;
     }
-    if (typeof statusParsed !== "object" || statusParsed === null) {
-      findings.push(makeFinding(taskId, `tasks/done/${taskId}/status.yaml is not an object`));
+    const statusResult = StatusSchema.safeParse(statusParsed);
+    if (!statusResult.success) {
+      findings.push(makeFinding(taskId, `tasks/done/${taskId}/status.yaml is malformed`));
       continue;
     }
-    const status = statusParsed as Record<string, unknown>;
-    const phase = typeof status["phase"] === "string" ? (status["phase"] as string) : null;
+    const status = statusResult.data;
+    const phase = status.phase ?? null;
     if (phase !== "succeeded") {
-      // Tasks in done/ that aren't succeeded are presumably archived for
-      // another reason; skip — the pass is about completion integrity, not
-      // categorization.
       continue;
     }
 
-    const runIds = Array.isArray(status["related_run_ids"])
-      ? (status["related_run_ids"] as unknown[]).filter((x): x is string => typeof x === "string")
-      : [];
+    const runIds = status.related_run_ids ?? [];
     const runId = runIds.length > 0 ? runIds[runIds.length - 1] : undefined;
     if (runId === undefined) {
       findings.push(
@@ -95,8 +96,6 @@ export async function runCompletionIntegrity(
       continue;
     }
 
-    // Look in runs/terminal/ first (succeeded runs typically end up here),
-    // then fall back to runs/active/.
     const terminalDir = join(opts.repoRoot, ".cairn", "runs", "terminal", runId);
     const activeDir = join(opts.repoRoot, ".cairn", "runs", "active", runId);
     let runDir: string | null = null;
@@ -115,14 +114,15 @@ export async function runCompletionIntegrity(
       findings.push(makeFinding(taskId, `meta.json missing in ${relPathOf(opts.repoRoot, runDir)}`));
       continue;
     }
-    let meta: Record<string, unknown>;
+    let shaPin: string | null = null;
     try {
-      const raw = JSON.parse(readFileSync(metaPath, "utf8")) as unknown;
-      if (typeof raw !== "object" || raw === null) {
+      const raw = JSON.parse(readFileSync(metaPath, "utf8"));
+      const metaResult = MetaSchema.safeParse(raw);
+      if (!metaResult.success) {
         findings.push(makeFinding(taskId, `meta.json malformed in ${relPathOf(opts.repoRoot, runDir)}`));
         continue;
       }
-      meta = raw as Record<string, unknown>;
+      shaPin = metaResult.data.sha_pin ?? null;
     } catch (err) {
       findings.push(
         makeFinding(taskId, `meta.json unparseable in ${relPathOf(opts.repoRoot, runDir)}: ${stringifyErr(err)}`),
@@ -149,29 +149,24 @@ export async function runCompletionIntegrity(
         );
         continue;
       }
-      if (Array.isArray(sensorParsed)) {
-        for (const r of sensorParsed) {
-          if (typeof r !== "object" || r === null) continue;
-          const rr = r as Record<string, unknown>;
-          if (typeof rr["status"] === "string" && rr["status"] !== "pass") {
+      const resultsResult = z.array(SensorResultSchema).safeParse(sensorParsed);
+      if (resultsResult.success) {
+        for (const rr of resultsResult.data) {
+          if (rr.status !== undefined && rr.status !== "pass") {
             findings.push(
               makeFinding(
                 taskId,
-                `sensor failures present in completed task ${taskId} (sensor: ${typeof rr["sensor"] === "string" ? (rr["sensor"] as string) : "unknown"})`,
+                `sensor failures present in completed task ${taskId} (sensor: ${rr.sensor ?? "unknown"})`,
               ),
             );
-            // Don't break — surface every failed sensor as its own finding.
           }
         }
       }
     }
 
-    // SHA reachability — skip if no sha_pin field.
-    const shaPin = typeof meta["sha_pin"] === "string" ? (meta["sha_pin"] as string) : null;
     if (shaPin === null || shaPin.length === 0) continue;
     try {
-      await ensureGit().catFile(["-e", shaPin]);
-      // No throw → SHA reachable; nothing to surface.
+      await ensureGit(opts.repoRoot).catFile(["-e", shaPin]);
     } catch {
       findings.push(
         makeFinding(

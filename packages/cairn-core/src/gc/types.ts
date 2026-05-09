@@ -46,6 +46,8 @@ export type GcFindingKind =
   | "scope_index_missing"
   | "task_integrity_error"
   | "orphaned_citation"
+  | "stale_citation"
+  | "quality_grades_rebuilt"
   | "superseded_citation";
 
 export type GcAutoMergeClass = "safe" | "code" | "high-stakes";
@@ -58,7 +60,7 @@ export interface GcFinding {
   /** Human-readable, one-line summary. */
   detail: string;
   /** warn = surface; block = sensor-equivalent failure. info = neutral. */
-  severity: "warn" | "block" | "info";
+  severity: "warn" | "block" | "info" | "soft";
   /** Days since verified-at (frontmatter pass only). */
   age_days?: number;
   /** Stub-pattern id when kind = "stub_hit". */

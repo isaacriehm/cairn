@@ -6,6 +6,7 @@
  * by running both logically sequential tasks in a single process.
  */
 
+import { z } from "zod";
 import { resolveRepoRoot } from "../../session-start/index.js";
 import { readHookStdin } from "../runners/payload.js";
 import { executeSotAlign } from "./sot-align.js";
@@ -13,6 +14,25 @@ import { executeWriteGuardian } from "./write-guardian.js";
 import { logger } from "../../logger.js";
 
 const log = logger("hooks.post-tool-use.post-write");
+
+const ClaudePostToolUsePayloadSchema = z.object({
+  session_id: z.string().optional(),
+  transcript_path: z.string().optional(),
+  cwd: z.string().optional(),
+  hook_event_name: z.string().optional(),
+  tool_name: z.string().optional(),
+  tool_input: z.object({
+    file_path: z.string().optional(),
+    new_string: z.string().optional(),
+  }).passthrough().optional(),
+  tool_response: z.object({
+    content: z.string().optional(),
+    text: z.string().optional(),
+    output: z.string().optional(),
+  }).passthrough().optional(),
+}).passthrough();
+
+type ClaudePostToolUsePayload = z.infer<typeof ClaudePostToolUsePayloadSchema>;
 
 interface PostToolUseShapeBOutput {
   continue: true;
@@ -28,30 +48,12 @@ interface PostToolUseBlockOutput {
   reason: string;
 }
 
-interface ClaudePostToolUsePayload {
-  session_id?: string;
-  transcript_path?: string;
-  cwd?: string;
-  hook_event_name?: string;
-  tool_name?: string;
-  tool_input?: {
-    file_path?: string;
-    new_string?: string;
-    [key: string]: unknown;
-  };
-  tool_response?: {
-    content?: string;
-    text?: string;
-    output?: string;
-    [key: string]: unknown;
-  };
-}
-
 function parsePayload(text: string): ClaudePostToolUsePayload {
   if (text.trim().length === 0) return {};
   try {
-    const parsed = JSON.parse(text) as ClaudePostToolUsePayload;
-    return typeof parsed === "object" && parsed !== null ? parsed : {};
+    const raw: unknown = JSON.parse(text);
+    const result = ClaudePostToolUsePayloadSchema.safeParse(raw);
+    return result.success ? result.data : {};
   } catch {
     return {};
   }
@@ -91,12 +93,12 @@ export async function runPostWriteHook(): Promise<void> {
     }
 
     const filePath = payload.tool_input?.file_path;
-    if (typeof filePath !== "string" || filePath.length === 0) {
+    if (filePath === undefined || filePath.length === 0) {
       emitShapeB("");
       return;
     }
 
-    const cwd = typeof payload.cwd === "string" && payload.cwd.length > 0 ? payload.cwd : process.cwd();
+    const cwd = payload.cwd ?? process.cwd();
     const repoRoot = resolveRepoRoot(cwd);
     if (repoRoot === null) {
       emitShapeB("");
@@ -104,7 +106,14 @@ export async function runPostWriteHook(): Promise<void> {
     }
 
     // 1. Run Guardian (can block)
-    const guard = await executeWriteGuardian(payload, repoRoot);
+    // Needs content — extract from tool_response
+    const content = payload.tool_response?.content ?? payload.tool_response?.text ?? payload.tool_response?.output ?? "";
+    const guard = executeWriteGuardian({
+      repoRoot,
+      relPath: filePath,
+      content,
+      payload,
+    });
     if (guard.kind === "block") {
       emitBlock(guard.message ?? "blocked");
       return;
@@ -116,12 +125,13 @@ export async function runPostWriteHook(): Promise<void> {
     // 3. Merge and Emit
     const sections: string[] = [];
     if (guard.message) sections.push(guard.message);
-    if (alignSummary) sections.push(alignSummary);
+    if (alignSummary.length > 0) sections.push(alignSummary);
 
     emitShapeB(sections.join("\n\n"));
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     log.warn(
-      { err: err instanceof Error ? err.message : String(err) },
+      { err: message },
       "Post-write hook failed; degrading to no-op",
     );
     emitShapeB("");

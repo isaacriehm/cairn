@@ -15,6 +15,12 @@ import { parse as parseYaml } from "yaml";
 import { parseFrontmatter } from "@isaacriehm/cairn-state";
 import type { TaskState } from "../status-line/index.js";
 
+import { z } from "zod";
+
+const StatusFileSchema = z.object({
+  phase: z.string().optional(),
+}).passthrough();
+
 export interface ActiveTaskSummary {
   taskId: string;
   taskState: TaskState;

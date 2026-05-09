@@ -5,6 +5,7 @@ export * from "./anchor-map.js";
 export * from "./sot-bindings.js";
 export * from "./scope-index.js";
 export * from "./frontmatter.js";
+export * from "./text.js";
 export * from "./slug.js";
 export * from "./cache.js";
 export * from "./fs.js";

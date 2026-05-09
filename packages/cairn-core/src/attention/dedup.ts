@@ -43,20 +43,28 @@ function parseMinimalFrontmatter(raw: string): {
   body: string;
 } {
   const m = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
-  if (m === null || m[1] === undefined || m[2] === undefined) {
+  if (m === null) {
     return { fm: {}, body: raw };
   }
+  const fmBlock = m[1];
+  const bodyPart = m[2];
+  if (fmBlock === undefined || bodyPart === undefined) {
+     return { fm: {}, body: raw };
+  }
+
   const fm: MinimalFrontmatter = {};
-  for (const line of m[1].split("\n")) {
+  for (const line of fmBlock.split("\n")) {
     const lm = line.match(/^(\w[\w-]*):\s*(.*)$/);
-    if (lm === null || lm[1] === undefined || lm[2] === undefined) continue;
+    if (lm === null) continue;
     const key = lm[1];
-    const val = lm[2].trim().replace(/^["']|["']$/g, "");
+    const valRaw = lm[2];
+    if (key === undefined || valRaw === undefined) continue;
+    const val = valRaw.trim().replace(/^["']|["']$/g, "");
     if (key === "id" || key === "title" || key === "sourceFile" || key === "capture_source" || key === "capture_confidence") {
       fm[key] = val;
     }
   }
-  return { fm, body: m[2] };
+  return { fm, body: bodyPart };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -184,9 +192,12 @@ export function findDuplicateClusters(args: {
   const parent: number[] = Array.from({ length: n }, (_, i) => i);
   const find = (x: number): number => {
     let cur = x;
-    while (parent[cur] !== cur) {
-      parent[cur] = parent[parent[cur] ?? cur] ?? cur;
-      cur = parent[cur] ?? cur;
+    for (;;) {
+      const p = parent[cur];
+      if (p === undefined || p === cur) break;
+      const gp = parent[p];
+      if (gp !== undefined) parent[cur] = gp;
+      cur = p;
     }
     return cur;
   };
@@ -254,7 +265,7 @@ export function findDuplicateClusters(args: {
     clusters.push({
       tier,
       averageSimilarity: Number(avg.toFixed(3)),
-      drafts: ordered.map(({ tokens: _omit, ...rest }) => rest),
+      drafts: ordered.map(({ tokens: _omit, mtimeMs: _omit2, ...rest }) => rest),
     });
     draftsInClusters += idxs.length;
     reducible += idxs.length - 1;
@@ -275,4 +286,3 @@ export function findDuplicateClusters(args: {
     thresholdDefinite,
   };
 }
-

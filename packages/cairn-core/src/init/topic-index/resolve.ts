@@ -37,6 +37,7 @@ import { ClaudeError, isQuotaKind } from "../../claude/error.js";
 import { logger } from "../../logger.js";
 import { jaccard, tokenize } from "../../text/jaccard.js";
 import type { ProseBlock, ProseBlockKind } from "./walk.js";
+export type { ProseBlock, ProseBlockKind };
 
 const log = logger("init.topic-index.resolve");
 

@@ -27,16 +27,12 @@ export type {
 
 export { applyCommit } from "./apply.js";
 export type { ApplyCommitOptions, ApplyCommitResult } from "./apply.js";
-export { verifyBatchCanary } from "./canary.js";
+export { runGcCanary as verifyBatchCanary } from "./canary.js";
 export type {
-  BatchCanaryResult,
-  BatchCanaryOptions,
+  GcCanaryResult as BatchCanaryResult,
+  GcCanaryOptions as BatchCanaryOptions,
 } from "./canary.js";
 export { runCitationIntegrity } from "./citation-integrity.js";
-export type {
-  CitationIntegrityOptions,
-  CitationIntegrityResult,
-} from "./citation-integrity.js";
 export { classifyAutoMerge } from "./classify.js";
 export type { ClassifyArgs } from "./classify.js";
 export { runCompletionIntegrity } from "./completion-integrity.js";
@@ -61,10 +57,9 @@ export type {
   GeneratorDriftOptions,
   GeneratorDriftResult,
 } from "./generator-drift.js";
-export { runQualityGradesUpdate } from "./quality-update.js";
+export { runQualityUpdate as runQualityGradesUpdate } from "./quality-update.js";
 export type {
   QualityUpdateOptions,
-  QualityUpdateResult,
 } from "./quality-update.js";
 export { runAttestedCommitsGc } from "./attested-commits.js";
 export type {
@@ -79,7 +74,6 @@ export type {
 export { runStubCatalogHits } from "./stub-hits.js";
 export type {
   StubCatalogHitsOptions,
-  StubCatalogHitsResult,
 } from "./stub-hits.js";
 export { runGcBatch, runGcSweep } from "./sweep.js";
 export type {

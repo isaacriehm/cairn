@@ -57,6 +57,17 @@ import {
   type FixAlignArgs,
   type FixAlignResult,
 } from "@isaacriehm/cairn-core";
+import { z } from "zod";
+
+const ConfigSchema = z.object({
+  version: z.number(),
+  source: z.string(),
+  repo: z.string(),
+  phases: z.array(z.string()),
+  env: z.record(z.string(), z.string()).optional(),
+  dependencies: z.array(z.string()).optional(),
+  project_slug: z.string().optional(),
+}).passthrough();
 import { fixCli as doctorFixCli } from "./doctor.js";
 
 function parseRepoFlag(argv: string[]): string {
@@ -87,15 +98,16 @@ function readProjectSlug(repoRoot: string): string {
   const cfgPath = join(repoRoot, ".cairn", "config.yaml");
   if (!existsSync(cfgPath)) return "this-project";
   try {
-    const parsed = parseYaml(readFileSync(cfgPath, "utf8")) as
-      | Record<string, unknown>
-      | null;
-    if (parsed === null || typeof parsed !== "object") return "this-project";
-    const slug = parsed["project_slug"];
-    return typeof slug === "string" && slug.length > 0 ? slug : "this-project";
+    const raw = readFileSync(cfgPath, "utf8");
+    const parsed: unknown = parseYaml(raw);
+    const result = ConfigSchema.safeParse(parsed);
+    if (result.success && result.data.project_slug !== undefined) {
+      return result.data.project_slug;
+    }
   } catch {
-    return "this-project";
+    /* fallback to this-project */
   }
+  return "this-project";
 }
 
 async function fixBrand(repoRoot: string, dryRun: boolean): Promise<void> {

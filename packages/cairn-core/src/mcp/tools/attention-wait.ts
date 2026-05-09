@@ -16,11 +16,18 @@ import { join } from "node:path";
 import { z } from "zod";
 import {
   getActiveAttentionServer,
-  type DoneState,
 } from "../../attention/serve/index.js";
 import type { McpContext } from "../context.js";
 import { requireBootstrap } from "../bootstrap-guard.js";
 import type { ToolDef } from "./types.js";
+
+const DoneStateSchema = z.object({
+  status: z.enum(["done", "idle", "abort"]),
+  accepted: z.number(),
+  rejected: z.number(),
+  merged: z.number(),
+  edited: z.number(),
+}).passthrough();
 
 const DEFAULT_TIMEOUT_SECONDS = 1800;
 const POLL_INTERVAL_MS = 1000;
@@ -48,7 +55,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
   const live = getActiveAttentionServer(ctx.repoRoot);
   if (live !== undefined) {
     const result = await Promise.race([
-      live.done.then((s) => ({ kind: "done", state: s }) as const),
+      live.done.then((s) => ({ kind: "done" as const, state: s })),
       new Promise<{ kind: "timeout" }>((resolve) =>
         setTimeout(() => resolve({ kind: "timeout" }), timeoutMs),
       ),
@@ -69,8 +76,11 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     if (existsSync(sentinelPath)) {
       try {
         const raw = readFileSync(sentinelPath, "utf8");
-        const state = JSON.parse(raw) as DoneState;
-        return { ok: true, ...state };
+        const parsed: unknown = JSON.parse(raw);
+        const result = DoneStateSchema.safeParse(parsed);
+        if (result.success) {
+          return { ok: true, ...result.data };
+        }
       } catch {
         // partial write — try again next tick
       }

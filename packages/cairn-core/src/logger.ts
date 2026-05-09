@@ -2,6 +2,7 @@ import { createWriteStream, mkdirSync, type WriteStream } from "node:fs";
 import { dirname } from "node:path";
 import { Writable } from "node:stream";
 import { pino, type Logger } from "pino";
+import { setStateLogger } from "@isaacriehm/cairn-state";
 
 /**
  * Pino destination indirection. By default pino logs go to a black-hole
@@ -49,6 +50,9 @@ const root: Logger = pino(
   },
   proxyStream,
 );
+
+// Initialize the lightweight state package logger to use our pino instance.
+setStateLogger(root.child({ module: "state" }));
 
 export function logger(module: string): Logger {
   return root.child({ module });

@@ -4,46 +4,38 @@
  * Walks every source file in the repo and scans for cairn citations
  * (§INV invariants, §DEC decisions, TODO(TSK-...) linked todos). Each
  * citation is resolved against the appropriate source of truth:
- *   - §INV-NNNN → invariants.ledger.yaml. Missing → orphaned. superseded_by
- *                  set → superseded citation.
- *   - §DEC-<N>  → decisions.ledger.yaml. Missing → orphaned. status:
- *                  superseded / archived → superseded citation.
- *   - TODO(TSK-<id>) → tasks/{active,done}/<id>/. Missing → orphan; "done"
- *                       isn't a finding (TODO will be removed when the agent
- *                       gets to it; flagging is noisy).
+ *
+ *   - §INV-NNNN  resolved against `invariants.ledger.yaml` (Active/Superseded)
+ *   - §DEC-NNNN  resolved against `decisions.ledger.yaml` (Accepted/Superseded)
+ *   - TODO(TSK-) resolved against `tasks/{active,done}/`
+ *
+ * Findings surface orphaned citations (target missing) or stale citations
+ * (target superseded by a newer version).
  */
 
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import { buildDecisionsLedger, buildInvariantsLedger } from "@isaacriehm/cairn-state";
-import { decisionsLedgerPath, invariantsLedgerPath } from "@isaacriehm/cairn-state";
-import { scanCitations } from "../hooks/post-tool-use/citation-scanner.js";
-import type { GcFinding } from "./types.js";
+import {
+  buildDecisionsLedger,
+  buildInvariantsLedger,
+  decisionsLedgerPath,
+  invariantsLedgerPath,
+} from "@isaacriehm/cairn-state";
 import { walkSourceTree } from "./walk-source.js";
+import type { GcFinding } from "./types.js";
+import { z } from "zod";
 
 const PASS_ID = "citation-integrity" as const;
 
-const TEXT_EXTS = new Set([
-  ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs",
-  ".py", ".rb", ".go", ".rs", ".java", ".c", ".cc", ".cpp", ".h", ".hpp",
-  ".swift", ".kt", ".sh", ".bash", ".zsh",
-  ".sql", ".html", ".vue", ".svelte", ".css", ".scss",
-]);
-
-export interface CitationIntegrityOptions {
-  repoRoot: string;
-  /** Cap on file size to scan (bytes). Default 256 KB. */
-  maxFileBytes?: number;
-}
-
-export interface CitationIntegrityResult {
-  findings: GcFinding[];
-}
+const LedgerEntrySchema = z.object({
+  id: z.string(),
+  superseded_by: z.string().nullable().optional(),
+}).passthrough();
 
 interface LedgerInfo {
-  active: Set<string>;              // ids of currently-active entries
-  superseded: Map<string, string>;  // id → supersededBy
+  active: Set<string>;
+  superseded: Map<string, string>;
 }
 
 function loadInvariants(repoRoot: string): LedgerInfo {
@@ -54,21 +46,21 @@ function loadInvariants(repoRoot: string): LedgerInfo {
   const superseded = new Map<string, string>();
   const path = invariantsLedgerPath(repoRoot);
   if (!existsSync(path)) return { active, superseded };
-  let parsed: unknown;
   try {
-    parsed = parseYaml(readFileSync(path, "utf8"));
-  } catch {
-    return { active, superseded };
-  }
-  if (!Array.isArray(parsed)) return { active, superseded };
-  for (const entry of parsed) {
-    if (typeof entry !== "object" || entry === null) continue;
-    const e = entry as Record<string, unknown>;
-    const id = typeof e["id"] === "string" ? (e["id"] as string) : null;
-    const supBy = typeof e["superseded_by"] === "string" ? (e["superseded_by"] as string) : null;
-    if (id !== null && supBy !== null && supBy.length > 0) {
-      superseded.set(id, supBy);
+    const raw = readFileSync(path, "utf8");
+    const parsed: unknown = parseYaml(raw);
+    const result = z.array(LedgerEntrySchema).safeParse(parsed);
+    if (result.success) {
+      for (const e of result.data) {
+        const id = e.id;
+        const supBy = e.superseded_by ?? null;
+        if (supBy !== null && supBy.length > 0) {
+          superseded.set(id, supBy);
+        }
+      }
     }
+  } catch {
+    /* ignore */
   }
   return { active, superseded };
 }
@@ -81,127 +73,135 @@ function loadDecisions(repoRoot: string): LedgerInfo {
   const superseded = new Map<string, string>();
   const path = decisionsLedgerPath(repoRoot);
   if (!existsSync(path)) return { active, superseded };
-  let parsed: unknown;
   try {
-    parsed = parseYaml(readFileSync(path, "utf8"));
-  } catch {
-    return { active, superseded };
-  }
-  if (!Array.isArray(parsed)) return { active, superseded };
-  for (const entry of parsed) {
-    if (typeof entry !== "object" || entry === null) continue;
-    const e = entry as Record<string, unknown>;
-    const id = typeof e["id"] === "string" ? (e["id"] as string) : null;
-    const supBy = typeof e["superseded_by"] === "string" ? (e["superseded_by"] as string) : null;
-    if (id !== null && supBy !== null && supBy.length > 0) {
-      superseded.set(id, supBy);
+    const raw = readFileSync(path, "utf8");
+    const parsed: unknown = parseYaml(raw);
+    const result = z.array(LedgerEntrySchema).safeParse(parsed);
+    if (result.success) {
+      for (const e of result.data) {
+        const id = e.id;
+        const supBy = e.superseded_by ?? null;
+        if (supBy !== null && supBy.length > 0) {
+          superseded.set(id, supBy);
+        }
+      }
     }
+  } catch {
+    /* ignore */
   }
   return { active, superseded };
 }
 
 function fileExt(path: string): string {
   const idx = path.lastIndexOf(".");
-  if (idx === -1) return "";
-  return path.slice(idx).toLowerCase();
+  return idx === -1 ? "" : path.slice(idx).toLowerCase();
 }
 
-export function runCitationIntegrity(opts: CitationIntegrityOptions): CitationIntegrityResult {
-  const findings: GcFinding[] = [];
-  const maxBytes = opts.maxFileBytes ?? 256 * 1024;
+const SOURCE_EXTENSIONS = new Set([
+  ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs",
+  ".py", ".rb", ".go", ".rs", ".java", ".c", ".cc", ".cpp", ".h", ".hpp",
+  ".swift", ".kt", ".sh", ".bash", ".zsh",
+  ".sql", ".html", ".vue", ".svelte", ".css", ".scss",
+]);
 
+const INV_RE = /§INV-([0-9a-f]{7,})\b/g;
+const DEC_RE = /§DEC-([0-9a-f]{7,})\b/g;
+const TSK_RE = /TODO\((TSK-\d{4}-\d{2}-\d{2}-[\w-]+-\d{5})\)/g;
+
+/** Run citation-integrity against all source files in repoRoot. */
+export async function runCitationIntegrity(opts: {
+  repoRoot: string;
+}): Promise<{ findings: GcFinding[] }> {
+  const files = walkSourceTree(opts.repoRoot);
   const invariants = loadInvariants(opts.repoRoot);
   const decisions = loadDecisions(opts.repoRoot);
 
-  const files = walkSourceTree(opts.repoRoot);
-  for (const rel of files) {
-    if (!TEXT_EXTS.has(fileExt(rel))) continue;
-    const abs = join(opts.repoRoot, rel);
-    let size: number;
-    try {
-      size = statSync(abs).size;
-    } catch {
-      continue;
-    }
-    if (size > maxBytes) continue;
+  const findings: GcFinding[] = [];
 
+  for (const rel of files) {
+    if (!SOURCE_EXTENSIONS.has(fileExt(rel))) continue;
+    const abs = join(opts.repoRoot, rel);
     let content: string;
     try {
       content = readFileSync(abs, "utf8");
     } catch {
       continue;
     }
-    if (content.length === 0) continue;
 
-    const matches = scanCitations(content);
+    const lines = content.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      const lineText = lines[i] ?? "";
+      const lineNumber = i + 1;
 
-    // §INV invariants
-    for (const m of matches.invariants) {
-      if (invariants.superseded.has(m.id)) {
-        const supBy = invariants.superseded.get(m.id) ?? "(unknown)";
-        findings.push({
-          pass: PASS_ID,
-          kind: "superseded_citation",
-          path: rel,
-          detail: `${rel}:${m.line} cites §${m.id}, which is superseded by §${supBy}`,
-          severity: "warn",
-          line: m.line,
-        });
-        continue;
+      // 1. Invariants
+      for (const m of lineText.matchAll(INV_RE)) {
+        const id = `INV-${m[1]}`;
+        if (invariants.active.has(id)) continue;
+        const supBy = invariants.superseded.get(id);
+        if (supBy !== undefined) {
+          findings.push({
+            pass: PASS_ID,
+            kind: "stale_citation",
+            path: rel,
+            detail: `${rel}:${lineNumber} references ${id}, which is superseded by ${supBy}`,
+            severity: "warn",
+            line: lineNumber,
+          });
+        } else {
+          findings.push({
+            pass: PASS_ID,
+            kind: "orphaned_citation",
+            path: rel,
+            detail: `${rel}:${lineNumber} references ${id}, which is not in the active ledger`,
+            severity: "warn",
+            line: lineNumber,
+          });
+        }
       }
-      if (!invariants.active.has(m.id)) {
+
+      // 2. Decisions
+      for (const m of lineText.matchAll(DEC_RE)) {
+        const id = `DEC-${m[1]}`;
+        if (decisions.active.has(id)) continue;
+        const supBy = decisions.superseded.get(id);
+        if (supBy !== undefined) {
+          findings.push({
+            pass: PASS_ID,
+            kind: "stale_citation",
+            path: rel,
+            detail: `${rel}:${lineNumber} references ${id}, which is superseded by ${supBy}`,
+            severity: "warn",
+            line: lineNumber,
+          });
+        } else {
+          findings.push({
+            pass: PASS_ID,
+            kind: "orphaned_citation",
+            path: rel,
+            detail: `${rel}:${lineNumber} references ${id}, which is not in the accepted ledger`,
+            severity: "warn",
+            line: lineNumber,
+          });
+        }
+      }
+
+      // 3. Task todos
+      for (const m of lineText.matchAll(TSK_RE)) {
+        const taskId = m[1];
+        if (taskId === undefined) continue;
+        const activeDir = join(opts.repoRoot, ".cairn", "tasks", "active", taskId);
+        const doneDir = join(opts.repoRoot, ".cairn", "tasks", "done", taskId);
+        if (existsSync(activeDir)) continue;
+        if (existsSync(doneDir)) continue;
         findings.push({
           pass: PASS_ID,
           kind: "orphaned_citation",
           path: rel,
-          detail: `${rel}:${m.line} cites §${m.id}, which is not in the invariants ledger`,
+          detail: `${rel}:${lineNumber} references ${taskId}, which is not in tasks/{active,done}/`,
           severity: "warn",
-          line: m.line,
+          line: lineNumber,
         });
       }
-    }
-
-    // §DEC-NNNN bare-symbol citations — resolve against decisions ledger
-    for (const m of matches.decisions) {
-      if (decisions.superseded.has(m.id)) {
-        const supBy = decisions.superseded.get(m.id) ?? "(unknown)";
-        findings.push({
-          pass: PASS_ID,
-          kind: "superseded_citation",
-          path: rel,
-          detail: `${rel}:${m.line} cites §${m.id}, which is superseded by §${supBy}`,
-          severity: "warn",
-          line: m.line,
-        });
-        continue;
-      }
-      if (!decisions.active.has(m.id)) {
-        findings.push({
-          pass: PASS_ID,
-          kind: "orphaned_citation",
-          path: rel,
-          detail: `${rel}:${m.line} cites §${m.id}, which is not in the decisions ledger`,
-          severity: "warn",
-          line: m.line,
-        });
-      }
-    }
-
-    // TODO(TSK-...) — check active/done dirs
-    for (const m of matches.todos) {
-      const taskId = m.id; // already "TSK-..."
-      const activeDir = join(opts.repoRoot, ".cairn", "tasks", "active", taskId);
-      const doneDir = join(opts.repoRoot, ".cairn", "tasks", "done", taskId);
-      if (existsSync(activeDir)) continue;   // active TODO — fine
-      if (existsSync(doneDir)) continue;     // done — agent will remove eventually; not a finding
-      findings.push({
-        pass: PASS_ID,
-        kind: "orphaned_citation",
-        path: rel,
-        detail: `${rel}:${m.line} references ${taskId}, which is not in tasks/{active,done}/`,
-        severity: "warn",
-        line: m.line,
-      });
     }
   }
 

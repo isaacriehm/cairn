@@ -12,11 +12,11 @@ import { join } from "node:path";
 import { runClaude } from "../claude/index.js";
 import { logger } from "../logger.js";
 import type { BrandAnswers } from "./brand-setup.js";
+import { z } from "zod";
 
 const log = logger("init.brand-derive");
 
 const TIMEOUT_MS = 60_000;
-const MAX_ATTEMPTS = 2;
 const README_CHARS = 800;
 const RULES_CHARS = 1_000;
 
@@ -71,12 +71,17 @@ const OUTPUT_SCHEMA: object = {
   },
 };
 
-interface DerivedBrand {
-  overview: string;
-  voice: string;
-  avoid: string;
-  personas: { name: string; description: string }[];
-}
+const DerivedBrandSchema = z.object({
+  overview: z.string(),
+  voice: z.string(),
+  avoid: z.string(),
+  personas: z.array(z.object({
+    name: z.string(),
+    description: z.string(),
+  })),
+}).passthrough();
+
+export type DerivedBrand = z.infer<typeof DerivedBrandSchema>;
 
 interface DeriveArgs {
   repoRoot: string;
@@ -136,58 +141,30 @@ async function attemptDerive(args: DeriveArgs): Promise<DerivedBrand | null> {
     isolateAmbientContext: true,
   });
   const parsed = result.parsed;
-  if (typeof parsed !== "object" || parsed === null) return null;
-  const v = parsed as Record<string, unknown>;
-  const overview = typeof v["overview"] === "string" ? v["overview"] : null;
-  const voice = typeof v["voice"] === "string" ? v["voice"] : null;
-  const avoid = typeof v["avoid"] === "string" ? v["avoid"] : null;
-  const rawPersonas = Array.isArray(v["personas"]) ? v["personas"] : null;
-  if (overview === null || voice === null || avoid === null || rawPersonas === null) {
+  const parseResult = DerivedBrandSchema.safeParse(parsed);
+  if (!parseResult.success) {
     log.warn(
-      { hasOverview: overview !== null, hasVoice: voice !== null, hasAvoid: avoid !== null, hasPersonas: rawPersonas !== null },
-      "brand-derive: missing fields in Haiku response",
+      { error: parseResult.error.message },
+      "brand-derive: invalid response from Haiku",
     );
     return null;
   }
-  const personas: { name: string; description: string }[] = [];
-  for (const entry of rawPersonas) {
-    if (typeof entry !== "object" || entry === null) continue;
-    const e = entry as Record<string, unknown>;
-    if (typeof e["name"] === "string" && typeof e["description"] === "string") {
-      personas.push({ name: e["name"], description: e["description"] });
-    }
-  }
-  if (personas.length === 0) return null;
-  return { overview, voice, avoid, personas };
+  return parseResult.data;
 }
 
 export async function deriveBrandFromProject(
   args: DeriveArgs,
 ): Promise<DerivedBrand | null> {
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    try {
-      const result = await attemptDerive(args);
-      if (result !== null) return result;
-      if (attempt < MAX_ATTEMPTS) {
-        log.warn({ attempt }, "brand-derive: invalid response, retrying");
-      }
-    } catch (err) {
-      if (attempt < MAX_ATTEMPTS) {
-        log.warn({ attempt, err: String(err) }, "brand-derive: Haiku call failed, retrying");
-      } else {
-        log.warn({ err: String(err) }, "brand-derive: Haiku call failed after all attempts");
-      }
-    }
+  const t0 = Date.now();
+  let brand = await attemptDerive(args);
+  if (brand === null) {
+    // Retry once on Haiku failure.
+    brand = await attemptDerive(args);
   }
-  return null;
+  log.info({ durationMs: Date.now() - t0, ok: brand !== null }, "brand derivation complete");
+  return brand;
 }
 
-/**
- * Convert derived brand to the `BrandAnswers` shape consumed by
- * `applyBrandAnswers`. Combines voice + avoid since the brand voice
- * file already takes both. Personas collapse to the first entry's
- * description (multi-persona support → v0.4 schema extension).
- */
 export function derivedToBrandAnswers(d: DerivedBrand): BrandAnswers {
   return {
     whatItDoes: d.overview,

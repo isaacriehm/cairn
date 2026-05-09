@@ -3,10 +3,7 @@
  *
  * `.cairn/config/stub-patterns.yaml` — Layer A regex catalog
  * `.cairn/config/sensors.yaml`       — sensor registry (which sensors run,
- *                                        their layer, fail_severity, glob keys)
- *
- * Both files ship as templates in `cairn/templates/.cairn/config/` and
- * are copied into the adopted project's `.cairn/config/` at init.
+ *                                       and project-specific glob keys)
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -14,6 +11,46 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
 import type { StubCatalog, StubPattern, SensorLanguage } from "./types.js";
+import { z } from "zod";
+
+const StubPatternSchema = z.object({
+  id: z.string(),
+  languages: z.array(z.string()),
+  description: z.string(),
+  regex: z.string(),
+  severity: z.enum(["hard", "soft"]),
+}).passthrough();
+
+const StubCatalogSchema = z.object({
+  version: z.number().optional(),
+  patterns: z.array(StubPatternSchema),
+}).passthrough();
+
+const SensorRegistryEntrySchema = z.object({
+  id: z.string(),
+  layer: z.string(),
+  kind: z.string(),
+  description: z.string(),
+  triggers: z.array(z.string()),
+  glob_keys: z.array(z.string()).optional(),
+  catalog: z.string().optional(),
+  fail_severity: z.enum(["hard", "soft"]).optional(),
+}).passthrough();
+
+const SensorRegistrySchema = z.object({
+  version: z.number().optional(),
+  sensors: z.array(SensorRegistryEntrySchema),
+  required_glob_keys: z.array(z.string()).optional(),
+  disabled_per_project: z.array(z.string()).optional(),
+}).passthrough();
+
+export type SensorRegistryEntry = z.infer<typeof SensorRegistryEntrySchema>;
+export type SensorRegistry = {
+  version: number;
+  sensors: SensorRegistryEntry[];
+  required_glob_keys: string[];
+  disabled_per_project: string[];
+};
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /**
@@ -21,76 +58,29 @@ const HERE = dirname(fileURLToPath(import.meta.url));
  * as the fallback when the adopted project hasn't customized the catalog.
  *
  * Dev / npm build: `dist/sensors/catalog.js` → `templates/.cairn/config/`.
- * Plugin bundle: `dist/cli.cjs` → `dist/templates/.cairn/config/` (esbuild
- * --define flips the prefix; build-bundle.mjs co-locates templates).
+ * Claude Code plugin bundle: `dist/cli.mjs` co-located with `dist/templates/`.
  */
-const TEMPLATES_PREFIX =
+const PKG_TEMPLATE_STUB_CATALOG =
   typeof __CAIRN_BUNDLED__ !== "undefined" && __CAIRN_BUNDLED__
-    ? join(HERE, "templates")
-    : join(HERE, "..", "..", "templates");
-const PKG_TEMPLATE_STUB = join(
-  TEMPLATES_PREFIX,
-  ".cairn",
-  "config",
-  "stub-patterns.yaml",
-);
-const PKG_TEMPLATE_SENSORS = join(
-  TEMPLATES_PREFIX,
-  ".cairn",
-  "config",
-  "sensors.yaml",
-);
+    ? join(HERE, "templates", ".cairn", "config", "stub-patterns.yaml")
+    : join(HERE, "..", "..", "templates", ".cairn", "config", "stub-patterns.yaml");
 
-const KNOWN_LANGUAGES: SensorLanguage[] = [
-  "typescript",
-  "javascript",
-  "python",
-  "ruby",
-  "go",
-  "rust",
-  "sql",
-];
+const PKG_TEMPLATE_SENSORS =
+  typeof __CAIRN_BUNDLED__ !== "undefined" && __CAIRN_BUNDLED__
+    ? join(HERE, "templates", ".cairn", "config", "sensors.yaml")
+    : join(HERE, "..", "..", "templates", ".cairn", "config", "sensors.yaml");
 
-function isKnownLanguage(s: unknown): s is SensorLanguage {
-  return typeof s === "string" && (KNOWN_LANGUAGES as string[]).includes(s);
-}
-
-/** Parse a stub-patterns.yaml document into the typed catalog shape. */
-export function parseStubCatalog(yamlText: string): StubCatalog {
-  const doc = parseYaml(yamlText) as Record<string, unknown>;
-  const version = typeof doc["version"] === "number" ? doc["version"] : 1;
-  const rawPatterns = Array.isArray(doc["patterns"]) ? doc["patterns"] : [];
-  const patterns: StubPattern[] = [];
-  for (const raw of rawPatterns) {
-    if (typeof raw !== "object" || raw === null) continue;
-    const r = raw as Record<string, unknown>;
-    const id = typeof r["id"] === "string" ? r["id"] : "";
-    const langs = Array.isArray(r["languages"])
-      ? (r["languages"] as unknown[]).filter(isKnownLanguage)
-      : [];
-    const description = typeof r["description"] === "string" ? r["description"] : "";
-    const regex = typeof r["regex"] === "string" ? r["regex"] : "";
-    const severity = r["severity"] === "soft" ? "soft" : "hard";
-    if (id === "" || regex === "" || langs.length === 0) continue;
-    patterns.push({ id, languages: langs, description, regex, severity });
-  }
-  return { version, patterns };
-}
-
-/**
- * Load the stub-pattern catalog. Order:
+/** Load the stub-pattern catalog. Order:
  *   1. `<repoRoot>/.cairn/config/stub-patterns.yaml` (project override)
- *   2. The package's bundled template file (always present in cairn/dist).
- *
- * Returns the parsed catalog. Throws only if both candidates are missing or
- * unparseable — that would indicate a broken cairn install.
+ *   2. `templates/` inside the cairn package (shipped default)
  */
 export function loadStubCatalog(repoRoot?: string): StubCatalog {
   const candidates: string[] = [];
   if (repoRoot !== undefined) {
     candidates.push(join(repoRoot, ".cairn", "config", "stub-patterns.yaml"));
   }
-  candidates.push(PKG_TEMPLATE_STUB);
+  candidates.push(PKG_TEMPLATE_STUB_CATALOG);
+
   for (const p of candidates) {
     if (!existsSync(p)) continue;
     return parseStubCatalog(readFileSync(p, "utf8"));
@@ -100,23 +90,37 @@ export function loadStubCatalog(repoRoot?: string): StubCatalog {
   );
 }
 
-/** Sensor registry entry from sensors.yaml. */
-export interface SensorRegistryEntry {
-  id: string;
-  layer: string;
-  kind: string;
-  description: string;
-  triggers: string[];
-  glob_keys?: string[];
-  catalog?: string;
-  fail_severity?: "hard" | "soft";
+/** Parse a stub-patterns.yaml document into the typed catalog shape. */
+export function parseStubCatalog(yamlText: string): StubCatalog {
+  const parsed: unknown = parseYaml(yamlText);
+  const result = StubCatalogSchema.safeParse(parsed);
+  if (!result.success) {
+    return { version: 1, patterns: [] };
+  }
+  const data = result.data;
+  const patterns: StubPattern[] = data.patterns
+    .filter((p) => p.languages.some(isKnownLanguageOrAll))
+    .map((p) => ({
+      id: p.id,
+      languages: p.languages.filter((l): l is SensorLanguage | "all" => isKnownLanguageOrAll(l)),
+      description: p.description,
+      regex: p.regex,
+      severity: p.severity,
+    }));
+  return { version: data.version ?? 1, patterns };
 }
 
-export interface SensorRegistry {
-  version: number;
-  sensors: SensorRegistryEntry[];
-  required_glob_keys: string[];
-  disabled_per_project: string[];
+function isKnownLanguageOrAll(s: unknown): s is SensorLanguage | "all" {
+  if (s === "all") return true;
+  return (
+    s === "typescript" ||
+    s === "javascript" ||
+    s === "python" ||
+    s === "go" ||
+    s === "ruby" ||
+    s === "rust" ||
+    s === "sql"
+  );
 }
 
 /** Load + parse the sensor registry. */
@@ -128,34 +132,17 @@ export function loadSensorRegistry(repoRoot?: string): SensorRegistry {
   candidates.push(PKG_TEMPLATE_SENSORS);
   for (const p of candidates) {
     if (!existsSync(p)) continue;
-    const doc = parseYaml(readFileSync(p, "utf8")) as Record<string, unknown>;
-    const version = typeof doc["version"] === "number" ? doc["version"] : 1;
-    const sensors: SensorRegistryEntry[] = [];
-    for (const raw of (doc["sensors"] as unknown[]) ?? []) {
-      if (typeof raw !== "object" || raw === null) continue;
-      const r = raw as Record<string, unknown>;
-      sensors.push({
-        id: String(r["id"] ?? ""),
-        layer: String(r["layer"] ?? ""),
-        kind: String(r["kind"] ?? ""),
-        description: String(r["description"] ?? ""),
-        triggers: Array.isArray(r["triggers"]) ? (r["triggers"] as string[]) : [],
-        ...(Array.isArray(r["glob_keys"]) ? { glob_keys: r["glob_keys"] as string[] } : {}),
-        ...(typeof r["catalog"] === "string" ? { catalog: r["catalog"] } : {}),
-        ...(r["fail_severity"] === "hard" || r["fail_severity"] === "soft"
-          ? { fail_severity: r["fail_severity"] }
-          : {}),
-      });
-    }
+    const raw = readFileSync(p, "utf8");
+    const parsed: unknown = parseYaml(raw);
+    const result = SensorRegistrySchema.safeParse(parsed);
+    if (!result.success) continue;
+    
+    const data = result.data;
     return {
-      version,
-      sensors,
-      required_glob_keys: Array.isArray(doc["required_glob_keys"])
-        ? (doc["required_glob_keys"] as string[])
-        : [],
-      disabled_per_project: Array.isArray(doc["disabled_per_project"])
-        ? (doc["disabled_per_project"] as string[])
-        : [],
+      version: data.version ?? 1,
+      sensors: data.sensors,
+      required_glob_keys: data.required_glob_keys ?? [],
+      disabled_per_project: data.disabled_per_project ?? [],
     };
   }
   throw new Error(

@@ -188,7 +188,8 @@ export function runTag(args: {
     try {
       content = readFileSync(file, "utf8");
     } catch (err) {
-      stderr(`WARN: could not read ${relative(args.repoRoot, file)}: ${(err as Error).message}\n`);
+      const message = err instanceof Error ? err.message : String(err);
+      stderr(`WARN: could not read ${relative(args.repoRoot, file)}: ${message}\n`);
       continue;
     }
     const lines = content.split("\n");

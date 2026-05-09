@@ -4,12 +4,14 @@
  * guardian and (later) by the Layer D copy-safety sensor.
  *
  * Falls back to hardcoded defaults if the file is missing or
- * unparseable — the guardian must never block on configuration.
+ * unparseable — the guardian must never block due to a missing
+ * optional config file.
  */
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
+import { z } from "zod";
 
 export interface CopySafetyConfig {
   enabled: boolean;
@@ -17,36 +19,51 @@ export interface CopySafetyConfig {
   allowlist: string[];
 }
 
+const CopySafetySchema = z.object({
+  enabled: z.boolean().optional(),
+  globs: z.array(z.string()).optional(),
+  allowlist: z.array(z.string()).optional(),
+}).passthrough();
+
+const SensorsConfigSchema = z.object({
+  copy_safety: CopySafetySchema.optional(),
+}).passthrough();
+
 const DEFAULT: CopySafetyConfig = {
   enabled: true,
   globs: [
     "src/**/*.tsx",
     "src/**/*.jsx",
+    "src/**/*.ts",
+    "src/**/*.js",
+    "src/**/*.mjs",
+    "src/**/*.cjs",
+    "src/**/*.py",
+    "src/**/*.rb",
+    "src/**/*.go",
+    "src/**/*.rs",
+    "src/**/*.java",
+    "src/**/*.c",
+    "src/**/*.cc",
+    "src/**/*.cpp",
+    "src/**/*.h",
+    "src/**/*.hpp",
+    "src/**/*.swift",
+    "src/**/*.kt",
+    "src/**/*.sh",
+    "src/**/*.bash",
+    "src/**/*.zsh",
+    "src/**/*.sql",
+    "src/**/*.html",
     "src/**/*.vue",
     "src/**/*.svelte",
-    "**/*.html",
-    "src/**/i18n/**/*.json",
-    "src/**/locales/**/*.json",
+    "src/**/*.css",
+    "src/**/*.scss",
+    "src/**/*.sass",
+    "src/**/*.less",
   ],
   allowlist: [],
 };
-
-function defaultsCopy(): CopySafetyConfig {
-  return {
-    enabled: DEFAULT.enabled,
-    globs: [...DEFAULT.globs],
-    allowlist: [...DEFAULT.allowlist],
-  };
-}
-
-function asStringArray(value: unknown): string[] | null {
-  if (!Array.isArray(value)) return null;
-  const out: string[] = [];
-  for (const v of value) {
-    if (typeof v === "string") out.push(v);
-  }
-  return out;
-}
 
 export function readCopySafetyConfig(repoRoot: string): CopySafetyConfig {
   const path = join(repoRoot, ".cairn", "config", "sensors.yaml");
@@ -58,26 +75,21 @@ export function readCopySafetyConfig(repoRoot: string): CopySafetyConfig {
   } catch {
     return defaultsCopy();
   }
-
-  if (typeof parsed !== "object" || parsed === null) return defaultsCopy();
-
-  const raw = (parsed as { copy_safety?: unknown }).copy_safety;
-  if (typeof raw !== "object" || raw === null) return defaultsCopy();
-
-  const block = raw as Record<string, unknown>;
-
-  const enabledRaw = block["enabled"];
-  const enabled =
-    typeof enabledRaw === "boolean" ? enabledRaw : DEFAULT.enabled;
-
-  const globsParsed = asStringArray(block["globs"]);
-  const globs =
-    globsParsed !== null && globsParsed.length > 0
-      ? globsParsed
-      : [...DEFAULT.globs];
-
-  const allowlistParsed = asStringArray(block["allowlist"]);
-  const allowlist = allowlistParsed !== null ? allowlistParsed : [];
+  const result = SensorsConfigSchema.safeParse(parsed);
+  if (!result.success || result.data.copy_safety === undefined) return defaultsCopy();
+  
+  const block = result.data.copy_safety;
+  const enabled = block.enabled ?? DEFAULT.enabled;
+  const globs = (block.globs !== undefined && block.globs.length > 0) ? block.globs : [...DEFAULT.globs];
+  const allowlist = block.allowlist ?? [];
 
   return { enabled, globs, allowlist };
+}
+
+function defaultsCopy(): CopySafetyConfig {
+  return {
+    enabled: DEFAULT.enabled,
+    globs: [...DEFAULT.globs],
+    allowlist: [...DEFAULT.allowlist],
+  };
 }
