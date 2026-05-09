@@ -132,6 +132,7 @@
     "@isaacriehm/cairn-state": "workspace:*"
   },
   "devDependencies": {
+    "@isaacriehm/cairn-core": "workspace:*",
     "@types/node": "^25.6.0",
     "@types/vscode": "^1.96.0",
     "@vscode/vsce": "^3.9.1",
