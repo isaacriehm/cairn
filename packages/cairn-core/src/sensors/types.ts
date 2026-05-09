@@ -7,8 +7,7 @@
  * builds a remediation prompt from any findings, and either passes the run
  * through or feeds the prompt back to the agent for retry.
  *
- * Per PRIMER §10. Per OpenAI's pattern: failure messages are remediation
- * prompts the agent consumes on retry.
+ * Sensors follow the remediation-prompt pattern: failure messages are consumed by the agent on retry.
  */
 
 import type { DecisionFrontmatter } from "@isaacriehm/cairn-state";

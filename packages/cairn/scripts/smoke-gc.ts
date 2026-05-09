@@ -2,7 +2,7 @@
 /**
  * smoke-gc — Phase 12 acceptance sensor.
  *
- * Per docs/INTEGRATION_PLAN.md §5 Phase 12 + PRIMER §12:
+ * Per Phase 12 acceptance criteria + the attestation/auto-merge layer:
  *   "synthetic stale frontmatter case; GC pass surfaces it; safe-class
  *    auto-merge produces clean commit on main visible in user's working-tree
  *    pull."

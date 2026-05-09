@@ -1,7 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * smoke-fix-align-gates — `cairn fix align` operator-consent gates
- * (plan §4.4 — items 4 + 9 in <operator-home>/cairn-v0.5.0-deferred.md).
+ * smoke-fix-align-gates — `cairn fix align` operator-consent gates.
  *
  *   Step 1 — Missing sentinel: validate returns `missing` against a
  *            repo that never ran --dry-run.

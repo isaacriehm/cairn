@@ -1,7 +1,7 @@
 /**
  * Phase 12 — garbage collection cadence.
  *
- * GC runs five passes (per PRIMER §12.1) against the canonical zone of an
+ * GC runs five passes against the canonical zone of an
  * adopted project's mirror checkout:
  *
  *   1. frontmatter-freshness — verified-at >30d warn, >60d block
@@ -15,7 +15,7 @@
  * rebuild). The sweep composer produces a `GcSweepResult` that the CLI / cron
  * decides how to apply.
  *
- * Auto-merge classes per PRIMER §12.2:
+ * Auto-merge classes:
  *   safe        — formatting, doc regen, frontmatter refresh, generated content,
  *                 archive moves, stub-catalog additions. Push, no UAT.
  *   code        — touches *.ts outside generator-managed files. Sensors +

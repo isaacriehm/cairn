@@ -7,7 +7,7 @@
  *   2. Parses it into a structured `Attestation`.
  *   3. Cross-checks every claim against the actual diff. Mismatch = lie.
  *
- * Per PRIMER §10 Layer B. Lying must be harder than telling truth.
+ * Layer B attestation cross-check. Lying must be harder than telling truth.
  */
 
 import { parse as parseYaml } from "yaml";

@@ -5,7 +5,7 @@
  * file changed in the diff. Hard-severity match fails the run; soft-severity
  * contributes to attestation cross-check (stubs_introduced count).
  *
- * Per PRIMER §10 Layer A. Catalog grows additively via /oops dialog (L25).
+ * Layer A mechanical stub-pattern catalog. Catalog grows additively via /oops dialog.
  */
 
 import { lineOf } from "@isaacriehm/cairn-state";

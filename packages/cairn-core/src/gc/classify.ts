@@ -1,5 +1,5 @@
 /**
- * Auto-merge classification per PRIMER §12.2.
+ * Auto-merge classification.
  *
  * Given a set of repo-relative paths a commit will touch, return one of:
  *   safe        — formatting, doc regen, frontmatter refresh, generated content,

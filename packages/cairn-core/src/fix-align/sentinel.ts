@@ -1,6 +1,5 @@
 /**
- * Layer C operator-consent gates (plan §4.4 — items 4 + 9 in
- * `<operator-home>/cairn-v0.5.0-deferred.md`).
+ * Layer C operator-consent gates.
  *
  * `cairn fix align` runs a full-repo Haiku-judge sweep + strip-replace
  * pass. It is expensive (Haiku spend) and destructive (rewrites source
