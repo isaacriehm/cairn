@@ -609,12 +609,22 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     try {
       sourceComments = await runSourceCommentsIngestion({
         repoRoot,
+        ...(args.mockSourceCommentClassify !== undefined
+          ? { mockClassify: args.mockSourceCommentClassify }
+          : {}),
+        onBatchProgress: (row) => {
+          if (row.index === row.total - 1) {
+            process.stdout.write(
+              `    ${row.classified} classified, ${row.failed} failed (${row.total} batch${row.total === 1 ? "" : "es"})\n`,
+            );
+          }
+        },
       });
       process.stdout.write(
-        `    DECs: ${sourceComments.blocksEmittedDec}; ` +
-          `invariants: ${sourceComments.blocksEmittedInv}; ` +
-          `cites: ${sourceComments.blocksCited}; ` +
-          `strip applied: ${sourceComments.blocksEmittedDec + sourceComments.blocksEmittedInv}\n`,
+        `    DECs: ${sourceComments.decsWritten.length}; ` +
+          `invariants: ${sourceComments.invsWritten.length}; ` +
+          `cites: ${sourceComments.citesEmitted.length}; ` +
+          `strip applied: ${sourceComments.decsWritten.length + sourceComments.invsWritten.length}\n`,
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -645,13 +655,16 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     try {
       rulesMerge = await runRulesMerge({
         repoRoot,
+        ...(args.mockRulesMergeClassify !== undefined
+          ? { mockClassify: args.mockRulesMergeClassify }
+          : {}),
       });
       process.stdout.write(
-        `    Sources: ${rulesMerge.sourcesScanned}; ` +
-          `Emitted: ${rulesMerge.sectionsEmitted}; ` +
-          `cites: ${rulesMerge.sectionsCited}; ` +
-          `conflicts: ${rulesMerge.sectionsConflicting}; ` +
-          `informational: ${rulesMerge.sectionsInformational}\n`,
+        `    Sources: ${rulesMerge.sources.length}; ` +
+          `Emitted: ${rulesMerge.decsWritten.length + rulesMerge.invsWritten.length}; ` +
+          `cites: ${rulesMerge.citesEmitted.length}; ` +
+          `conflicts: ${rulesMerge.conflicts.length}; ` +
+          `informational: ${rulesMerge.kindCounts["informational"] ?? 0}\n`,
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

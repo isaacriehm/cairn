@@ -24,6 +24,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import type { IngestSourceCommentsResult } from "../source-comments/index.js";
+import type { CommentClassKind } from "../source-comments/classify.js";
 
 /** Filename relative to repoRoot. */
 export const SOURCE_COMMENTS_WALK_PATH = join(
@@ -52,33 +53,72 @@ export function writeSourceCommentsWalkFile(
   return abs;
 }
 
+/**
+ * Read the full Phase 7b result from `.cairn/init/source-comments-walk.json`.
+ * Returns null if missing or unreadable. Available for debug tooling and
+ * post-hoc inspection — phase consumers prefer the lightweight projection
+ * stored on state.
+ */
 export function readSourceCommentsWalkFile(
   repoRoot: string,
 ): IngestSourceCommentsResult | null {
   const abs = sourceCommentsWalkAbsPath(repoRoot);
   if (!existsSync(abs)) return null;
   try {
-    const raw = readFileSync(abs, "utf8");
-    return JSON.parse(raw) as IngestSourceCommentsResult;
+    return JSON.parse(readFileSync(abs, "utf8")) as IngestSourceCommentsResult;
   } catch {
     return null;
   }
 }
 
 /**
- * Persisted shape embedded in `init-state.json`.
+ * Lightweight projection persisted into `init-state.json` outputs. Drops
+ * `walk.blocks` and `classifications` (the heavy fields); keeps ledger /
+ * triage references that downstream phases + the cairn-adopt summary
+ * skill query directly.
  */
 export interface IngestSourceCommentsResultPersisted {
+  /** Repo-relative path to the spilled full result, or null when not written. */
   walkPath: string;
-  filesScanned: number;
-  blocksDiscovered: number;
-  blocksCited: number;
-  blocksEmittedDec: number;
-  blocksEmittedInv: number;
-  blocksSkipped: number;
-  blocksFailed: number;
-  auditPath: string | null;
+  walkSummary: {
+    files: number;
+    blocks: number;
+    bytesScanned: number;
+    fileCountByLang: Record<string, number>;
+    filesAvailable: number;
+    truncatedAtFileCap: boolean;
+  };
+  decsWritten: {
+    id: string;
+    path: string;
+    sourceFile: string;
+    slug: string;
+    status: "accepted";
+  }[];
+  invsWritten: {
+    id: string;
+    path: string;
+    sourceFile: string;
+    slug: string;
+    status: "accepted";
+  }[];
+  citesEmitted: {
+    id: string;
+    sourceFile: string;
+    lineRange: [number, number];
+    slug: string;
+  }[];
+  stripFilesModified: number;
+  stripItemsApplied: number;
+  stripItemsSkipped: number;
   stripError: string | null;
+  auditPath: string;
+  auditRelPath: string;
+  inputTokens: number;
+  outputTokens: number;
+  batchesRun: number;
+  batchesFailed: number;
+  kindCounts: Record<CommentClassKind, number>;
 }
 
 /** Strip the heavy fields from a fresh ingest result for state persistence. */
@@ -87,14 +127,27 @@ export function to7bResultPersisted(
 ): IngestSourceCommentsResultPersisted {
   return {
     walkPath: SOURCE_COMMENTS_WALK_PATH,
-    filesScanned: full.filesScanned,
-    blocksDiscovered: full.blocksDiscovered,
-    blocksCited: full.blocksCited,
-    blocksEmittedDec: full.blocksEmittedDec,
-    blocksEmittedInv: full.blocksEmittedInv,
-    blocksSkipped: full.blocksSkipped,
-    blocksFailed: full.blocksFailed,
+    walkSummary: {
+      files: full.walk.files.length,
+      blocks: full.walk.blocks.length,
+      bytesScanned: full.walk.bytesScanned,
+      fileCountByLang: full.walk.fileCountByLang,
+      filesAvailable: full.walk.filesAvailable,
+      truncatedAtFileCap: full.walk.truncatedAtFileCap,
+    },
+    decsWritten: full.decsWritten,
+    invsWritten: full.invsWritten,
+    citesEmitted: full.citesEmitted,
+    stripFilesModified: full.stripFilesModified,
+    stripItemsApplied: full.stripItemsApplied,
+    stripItemsSkipped: full.stripItemsSkipped,
+    stripError: full.stripError,
     auditPath: full.auditPath,
-    stripError: full.stripError ?? null,
+    auditRelPath: full.auditRelPath,
+    inputTokens: full.inputTokens,
+    outputTokens: full.outputTokens,
+    batchesRun: full.batchesRun,
+    batchesFailed: full.batchesFailed,
+    kindCounts: full.kindCounts,
   };
 }

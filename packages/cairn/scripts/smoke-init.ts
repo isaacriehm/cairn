@@ -93,7 +93,7 @@ async function main(): Promise<void> {
   // ── Step 1: detection on TS+ESLint repo.
   header("Step 1: detect TS + ESLint signals");
   const root1 = makeTsRepo();
-  const det1 = await detectAll(root1);
+  const det1 = detectAll({ repoRoot: root1 });
   console.log(
     `  slug=${det1.project_slug} stacks=[${det1.stack_signatures.map((s) => s.kind).join(", ")}] sensors=[${det1.proposed_sensors.map((s) => s.id).join(", ")}]`,
   );

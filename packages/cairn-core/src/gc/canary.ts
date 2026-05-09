@@ -27,7 +27,7 @@ export interface GcCanaryResult {
 /**
  * Verifies the monorepo is still healthy after a GC batch lands.
  */
-export async function runGcCanary(opts: GcCanaryOptions): Promise<GcCanaryResult> {
+export function runGcCanary(opts: GcCanaryOptions): GcCanaryResult {
   const failures: string[] = [];
   let manifestFiles = 0;
 
