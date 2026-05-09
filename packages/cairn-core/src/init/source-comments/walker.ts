@@ -1,5 +1,5 @@
 /**
- * Phase 7b — deterministic source-comment walker.
+ * Phase 9 — deterministic source-comment walker.
  *
  * Walks every source file in the repo (via `git ls-files` when available, else
  * a manual recursive walk respecting a hardcoded ignore list) and extracts

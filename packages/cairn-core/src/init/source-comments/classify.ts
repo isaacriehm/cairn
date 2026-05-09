@@ -1,5 +1,5 @@
 /**
- * Phase 7b — Haiku batch classifier for source-comment blocks.
+ * Phase 9 — Haiku batch classifier for source-comment blocks.
  *
  * Walker outputs essay-style comment blocks; this module batches them per
  * Haiku call and returns one classification per block. Per plan §5.3 the

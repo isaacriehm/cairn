@@ -9,10 +9,10 @@
  *   4. Mapper (Tier-2 chunked Sonnet) → seed `<slug>:` workflow.md block +
  *      `.cairn/config.yaml` project_globs.
  *   5. Brand setup (4-question wizard).
- *   6. Phase 6 docs ingestion + baseline sensor sweep.
- *   7. Phase 7b source-comment ingestion + 7c rules merge (mock-friendly
+ *   6. Phase 8 docs ingestion + baseline sensor sweep.
+ *   7. Phase 9 source-comment ingestion + Phase 10 rules merge (mock-friendly
  *      via `mockSourceCommentClassify` / `mockRulesMergeClassify`).
- *   8. Phase 12 multi-dev install (deterministic, idempotent).
+ *   8. Phase 13 multi-dev install (deterministic, idempotent).
  */
 
 import {
@@ -135,7 +135,7 @@ export interface RunInitArgs {
    */
   mockMapperOutput?: MapperOutput;
   /**
-   * Skip the interactive 4-question brand setup (Phase 5b). Smokes / auto
+   * Skip the interactive 4-question brand setup (Phase 6). Smokes / auto
    * mode set this; interactive runs default to running it.
    */
   skipBrandSetup?: boolean;
@@ -147,7 +147,7 @@ export interface RunInitArgs {
    */
   skipSubmoduleCheck?: boolean;
   /**
-   * Skip Phase 6 — docs ingestion + baseline sensor sweep. Smokes default to
+   * Skip Phase 8 — docs ingestion + baseline sensor sweep. Smokes default to
    * skipping since the Haiku ingestion call costs tokens; production runs
    * default to running.
    */
@@ -176,30 +176,30 @@ export interface RunInitArgs {
    */
   autoMonorepo?: "continue" | "abort";
   /**
-   * Skip Phase 7b — full-repo source-comment ingestion. Defaults to the
+   * Skip Phase 9 — full-repo source-comment ingestion. Defaults to the
    * same gate as `skipIngestion`. Tests pass `mockSourceCommentClassify`
    * to exercise the persistence path without burning Haiku tokens.
    */
   skipPhase7b?: boolean;
   /**
-   * Skip Phase 7c — existing-rules merge + initial CLAUDE.md/AGENTS.md
+   * Skip Phase 10 — existing-rules merge + initial CLAUDE.md/AGENTS.md
    * regeneration. Defaults to the same gate as `skipIngestion`. Tests
    * pass `mockRulesMergeClassify` to bypass Haiku.
    */
   skipPhase7c?: boolean;
   /**
-   * Skip Phase 12 — multi-dev enforcement install (package.json prepare,
-   * non-Node manual hints). Defaults to false; auto mode runs Phase 12
+   * Skip Phase 13 — multi-dev enforcement install (package.json prepare,
+   * non-Node manual hints). Defaults to false; auto mode runs Phase 13
    * since it's purely deterministic + idempotent.
    */
   skipPhase12?: boolean;
   /**
-   * Test override for the source-comment classifier. When set, Phase 7b
+   * Test override for the source-comment classifier. When set, Phase 9
    * runs without any Haiku call.
    */
   mockSourceCommentClassify?: (block: CommentBlock) => CommentClassification;
   /**
-   * Test override for the rules-merge classifier. When set, Phase 7c
+   * Test override for the rules-merge classifier. When set, Phase 10
    * runs without any Haiku call.
    */
   mockRulesMergeClassify?: (
@@ -207,14 +207,14 @@ export interface RunInitArgs {
     source: RuleSourceFile,
   ) => RuleClassification;
   /**
-   * Test override for the phase 5b topic-index semantic judge. Defaults
+   * Test override for the phase 7 topic-index semantic judge. Defaults
    * to a Haiku-backed judge inside `buildTopicIndex`. Smokes pass a
    * deterministic stand-in to avoid Haiku calls when fixture sections
    * trip the Jaccard similarity threshold.
    */
   mockTopicIndexJudge?: SemanticJudge;
   /**
-   * Test override for the phase 6 docs-ingestion classifier. When set,
+   * Test override for the phase 8 docs-ingestion classifier. When set,
    * Stages 1 + 2 (file filter + section classify) are bypassed; every
    * non-marker topic-index doc candidate flows through this synchronous
    * mock instead of Haiku. Mirrors {@link RunDocsIngestionArgs.mockClassify}
@@ -239,20 +239,20 @@ export interface InitResult {
   mapper_applied_to_workflow: boolean;
   /** Whether mapper output reached the new .cairn/config.yaml. */
   mapper_applied_to_config: boolean;
-  /** Brand-setup outcome (Phase 5b). null when skipped. */
+  /** Brand-setup outcome (Phase 7). null when skipped. */
   brand_setup: {
     answered: number;
     updated_files: string[];
   } | null;
-  /** Phase 6 ingestion outcome (docs → DEC drafts, canonical-map seed). */
+  /** Phase 8 ingestion outcome (docs → DEC drafts, canonical-map seed). */
   ingestion: IngestionResult | null;
-  /** Phase 6 baseline sensor audit outcome. */
+  /** Phase 8 baseline sensor audit outcome. */
   baseline_audit: BaselineAuditResult | null;
-  /** Phase 7b — full-repo source-comment ingestion. */
+  /** Phase 9 — full-repo source-comment ingestion. */
   source_comments: IngestSourceCommentsResult | null;
-  /** Phase 7c — existing-rules merge result. */
+  /** Phase 10 — existing-rules merge result. */
   rules_merge: RunRulesMergeResult | null;
-  /** Phase 12 — multi-dev enforcement install result. */
+  /** Phase 13 — multi-dev enforcement install result. */
   multi_dev: MultiDevInstallResult | null;
   /** Absolute path to the log file pino output was redirected to. */
   log_file_path: string | null;
@@ -532,12 +532,12 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     }
   }
 
-  // ── Phase 5b (topic-index): cross-source dedup pre-pass ────────────
+  // ── Phase 7 (topic-index): cross-source dedup pre-pass ────────────
   // Walks every prose-bearing markdown source the SoT model recognizes
   // (`docs/*`, `CLAUDE.md`, `AGENTS.md`, `.claude/rules/*`) and writes
   // `topic-index.yaml` + `anchor-map.yaml`. Phases 6 / 7b / 7c read both
   // before emitting so a single fact never duplicates across sources.
-  // Skipped under the same condition as Phase 6.
+  // Skipped under the same condition as Phase 8.
   const skipTopicIndex =
     args.skipIngestion === true ||
     (mode === "auto" &&
@@ -546,7 +546,7 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   if (!skipTopicIndex) {
     process.stdout.write("\n");
     process.stdout.write(
-      `  ${visualC.bold("Phase 5b")} — topic-index (cross-source dedup)…\n`,
+      `  ${visualC.bold("Phase 7")} — topic-index (cross-source dedup)…\n`,
     );
     try {
       const topicArgs: { repoRoot: string; judge?: SemanticJudge } = { repoRoot };
@@ -567,7 +567,7 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     }
   }
 
-  // ── Phase 6: ingestion sweep + baseline audit ──────────────────────
+  // ── Phase 8: ingestion sweep + baseline audit ──────────────────────
   // Populates project brain from docs that already exist in the repo, then
   // runs every runnable sensor against the full codebase to surface pre-
   // Cairn debt. Both pieces are best-effort; failures degrade to empty
@@ -591,10 +591,10 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   }
   const phase6 = await runPhaseSix(phase6Args);
 
-  // ── Phase 7b: source-comment ingestion ─────────────────────────────
+  // ── Phase 9: source-comment ingestion ─────────────────────────────
   // Walks every source file, batches block-comments through Haiku, files
   // DEC drafts + invariant proposals + canonical citations into
-  // `.cairn/baseline/`. Skipped under the same condition as Phase 6
+  // `.cairn/baseline/`. Skipped under the same condition as Phase 8
   // unless a `mockSourceCommentClassify` is supplied (smokes).
   let sourceComments: IngestSourceCommentsResult | null = null;
   const skip7b =
@@ -604,7 +604,7 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   if (!skip7b) {
     process.stdout.write("\n");
     process.stdout.write(
-      `  ${visualC.bold("Phase 7b")} — source-comment ingestion…\n`,
+      `  ${visualC.bold("Phase 9")} — source-comment ingestion…\n`,
     );
     try {
       sourceComments = await runSourceCommentsIngestion({
@@ -635,7 +635,7 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     }
   }
 
-  // ── Phase 7c: existing-rules merge + first regenerate ──────────────
+  // ── Phase 10: existing-rules merge + first regenerate ──────────────
   // Reads CLAUDE.md / AGENTS.md / .claude/CLAUDE.md / .claude/rules/**.md,
   // classifies sections via Haiku into rule-net-new / rule-conflict /
   // informational / operator-keep, persists net-new as DEC drafts. The
@@ -650,7 +650,7 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   if (!skip7c) {
     process.stdout.write("\n");
     process.stdout.write(
-      `  ${visualC.bold("Phase 7c")} — existing-rules merge…\n`,
+      `  ${visualC.bold("Phase 10")} — existing-rules merge…\n`,
     );
     try {
       rulesMerge = await runRulesMerge({
@@ -675,7 +675,7 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     }
   }
 
-  // ── Phase 12: multi-developer enforcement install ──────────────────
+  // ── Phase 13: multi-developer enforcement install ──────────────────
   // Idempotent + deterministic. Patches `package.json` `scripts.prepare`
   // for Node projects so every clone runs `cairn join` on install.
   // Surfaces manual hints for non-Node hosts. Templates (.cairn/
@@ -685,7 +685,7 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   if (args.skipPhase12 !== true) {
     process.stdout.write("\n");
     process.stdout.write(
-      `  ${visualC.bold("Phase 12")} — multi-dev enforcement install…\n`,
+      `  ${visualC.bold("Phase 13")} — multi-dev enforcement install…\n`,
     );
     try {
       multiDev = installMultiDev({ repoRoot });
@@ -1115,7 +1115,7 @@ interface CompletionSummaryArgs {
   repoRoot: string;
   /** Module slugs that used the heuristic fallback path; empty when none. */
   mapperFallbackSlugs: string[];
-  /** Phase 6 baseline audit outcome — drives the `<N> active rules` line. */
+  /** Phase 8 baseline audit outcome — drives the `<N> active rules` line. */
   baselineAudit: BaselineAuditResult | null;
   logFilePath: string | null;
   warnings: string[];
@@ -1346,7 +1346,7 @@ async function runPhaseSix(args: PhaseSixArgs): Promise<PhaseSixResult> {
 
   process.stdout.write("\n");
   process.stdout.write(
-    `  ${visualC.bold("Phase 6")} — ingesting existing project knowledge…\n`,
+    `  ${visualC.bold("Phase 8")} — ingesting existing project knowledge…\n`,
   );
 
   // ── 6.1 — docs ingestion (staged: marker → file-filter → section) ──

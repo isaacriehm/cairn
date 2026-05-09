@@ -1,5 +1,5 @@
 /**
- * Phase 7b orchestrator (v0.5.0 SoT model) — walker → classifier →
+ * Phase 9 orchestrator (v0.5.0 SoT model) — walker → classifier →
  * topic-index lookup → emit-or-cite → strip-replace.
  *
  * Plan §5.3 algorithm:
@@ -95,7 +95,7 @@ const log = logger("init.source-comments.ingest");
 const CAPTURE_SOURCE = "init-source-comments";
 
 /**
- * Phase 7b regex pre-filter.
+ * Phase 9 regex pre-filter.
  *
  * Essay-class block comments only fall through to the Haiku batch
  * classifier when their prose matches imperative documentation
@@ -150,7 +150,7 @@ export interface IngestSourceCommentsArgs {
   nowIso?: string;
   /**
    * Project globs from `.cairn/config.yaml`. Carried through for
-   * compatibility with the parallel-678 caller; phase 7b under v0.5.0
+   * compatibility with the parallel-678 caller; phase 9 under v0.5.0
    * doesn't gate behavior on these (every novel rationale/constraint
    * auto-promotes without scoring).
    */
@@ -249,7 +249,7 @@ export async function runSourceCommentsIngestion(
   }
   const walk = walkSourceComments(walkOpts);
 
-  // ── 2a. Phase 7b regex pre-filter ────────────────────────────────
+  // ── 2a. Phase 9 regex pre-filter ────────────────────────────────
   const dispositions: BlockDisposition[] = walk.blocks.map(dispositionForBlock);
   const classifyTargets: CommentBlock[] = [];
   const classifyTargetIndices: number[] = [];
@@ -331,7 +331,7 @@ export async function runSourceCommentsIngestion(
     const disposition = dispositions[i];
     if (block === undefined || cls === undefined || disposition === undefined) continue;
     if (disposition.kind === "candidate-only") {
-      // Phase 7b regex pre-filter: surface in topic-index as a candidate
+      // Phase 9 regex pre-filter: surface in topic-index as a candidate
       // (no dec_id) so AI agents reading the file can promote later via
       // cairn_propose_decision. No DEC emit, no strip-replace.
       const slug = topicSlug(block.prose);
@@ -380,7 +380,7 @@ export async function runSourceCommentsIngestion(
     const emitKind: "decision" | "constraint" =
       cls.kind === "constraint" ? "constraint" : "decision";
     if (existing !== undefined) {
-      // Slug already in topic-index but not yet emitted (e.g. phase 5b
+      // Slug already in topic-index but not yet emitted (e.g. phase 7
       // walked it as some other kind). Keep the existing entry, just
       // remember the emit kind so the classifier callback below maps
       // the entry to the right phase-7b verdict.

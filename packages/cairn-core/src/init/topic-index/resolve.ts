@@ -1,5 +1,5 @@
 /**
- * Phase 5b — topic resolver.
+ * Phase 7 — topic resolver.
  *
  * Given the prose blocks discovered by `walk.ts`, build the
  * TopicIndex (`{slug: entry}`) and AnchorMap (`{slug: location}`)
@@ -42,7 +42,7 @@ export type { ProseBlock, ProseBlockKind };
 const log = logger("init.topic-index.resolve");
 
 /**
- * Bail the rest of phase 5b after this many consecutive judge timeouts —
+ * Bail the rest of phase 7 after this many consecutive judge timeouts —
  * once the Haiku subprocess starts timing out, every subsequent call is
  * very likely to time out too (env / quota / network), and continuing
  * would burn TIMEOUT_MS × pair-count of wall-time. Quota / auth errors
@@ -76,7 +76,7 @@ export interface ResolveOptions {
   judgeConcurrency?: number;
   /**
    * Fired after each judge call resolves (success or failure). Used by
-   * phase 5b to write `.cairn/init/progress.json` so the statusline can
+   * phase 7 to write `.cairn/init/progress.json` so the statusline can
    * render `phase-5b X/Y pairs` while the phase runs.
    */
   onProgress?: (snap: JudgeProgress) => void;
@@ -200,14 +200,14 @@ export async function resolveTopics(
         unresolvedAmbiguous += 1;
         if (err instanceof ClaudeError) {
           if (err.kind === "auth" || isQuotaKind(err.kind)) {
-            log.warn({ kind: err.kind }, "phase 5b judge bailed on quota/auth error");
+            log.warn({ kind: err.kind }, "phase 7 judge bailed on quota/auth error");
             judgeBroken = true;
           } else if (err.kind === "timeout") {
             consecutiveTimeouts += 1;
             if (consecutiveTimeouts >= CONSECUTIVE_TIMEOUT_BAIL) {
               log.warn(
                 { consecutiveTimeouts },
-                "phase 5b judge bailed after consecutive timeouts; remaining pairs treated as different",
+                "phase 7 judge bailed after consecutive timeouts; remaining pairs treated as different",
               );
               judgeBroken = true;
             }
@@ -256,7 +256,7 @@ export async function resolveTopics(
     // surface any candidate's marker so an operator's opt-in inside
     // a lower-priority source isn't lost just because docs/* won the
     // tie-break. "decision" beats "rule" when both kinds appear in
-    // the same equivalence class — phase 6 only acts on this for
+    // the same equivalence class — phase 8 only acts on this for
     // `kind="decision"|"rule"` so the choice doesn't matter for
     // emit semantics, but it keeps the field deterministic.
     const entryMarker = resolveMarker(sot, memberBlocks);

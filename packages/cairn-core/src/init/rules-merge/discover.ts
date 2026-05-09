@@ -1,5 +1,5 @@
 /**
- * Phase 7c discovery — find existing project-rules sources.
+ * Phase 10 discovery — find existing project-rules sources.
  *
  * Plan §5.4 ownership set (v0.5.0):
  *   - <repoRoot>/CLAUDE.md
@@ -7,7 +7,7 @@
  *   - <repoRoot>/.claude/rules/**.md
  *
  * `.claude/CLAUDE.md` was previously discovered here too (kind
- * `claude-md-claude-dir`). The phase 5b walker treats every reachable
+ * `claude-md-claude-dir`). The phase 7 walker treats every reachable
  * `.md` outside the rule-owned set as `kind="doc"` — so phase 6 already
  * owns `.claude/CLAUDE.md`. Re-discovering it here would race with phase
  * 6's emit and double-bind the slug.

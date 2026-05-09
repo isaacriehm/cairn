@@ -1,17 +1,17 @@
 /**
- * Phase 12 — multi-developer enforcement detection.
+ * Phase 13 — multi-developer enforcement detection.
  *
- * Spec: PLUGIN_ARCHITECTURE §17 + §6 Phase 12.
+ * Spec: PLUGIN_ARCHITECTURE §17 + §6 Phase 13.
  *
  * Idempotent. Runs once during `cairn init` after the .cairn/ skeleton
  * is seeded. Detects the package manager(s) in use and emits per-host
  * JOIN.md hints for new contributors. The plugin bundle is the
  * primary delivery mechanism; the Claude Code SessionStart hook
  * surfaces the per-clone bootstrap banner for unbootstrapped clones.
- * Phase 12 does not auto-patch `package.json` `prepare`.
+ * Phase 13 does not auto-patch `package.json` `prepare`.
  *
  * `patchPackageJsonPrepare` is exported for explicit operator-driven
- * wiring; phase 12 itself never calls it.
+ * wiring; phase 13 itself never calls it.
  */
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -36,7 +36,7 @@ export interface MultiDevInstallStep {
 
 export interface MultiDevInstallResult {
   hostKinds: MultiDevHostKind[];
-  /** Always false — phase 12 does not auto-patch `package.json`. */
+  /** Always false — phase 13 does not auto-patch `package.json`. */
   preparePatched: boolean;
   manualHints: string[];
   steps: MultiDevInstallStep[];

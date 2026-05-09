@@ -1,5 +1,5 @@
 /**
- * Phase 5b — Haiku semantic judge wrapper.
+ * Phase 7 — Haiku semantic judge wrapper.
  *
  * Used by the topic-index resolver to decide whether two prose blocks
  * with high Jaccard similarity but distinct content fingerprints are
