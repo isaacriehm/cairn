@@ -75,7 +75,7 @@ Source of truth: `packages/cairn-core/src/mcp/tools/index.ts` (`allTools`).
 | `cairn_search`             | FTS over canonical-zone artifacts; compact index records (~50 tokens each). |
 | `cairn_timeline`           | Chronologically ordered events for a scope window.                         |
 | `cairn_get_full`           | Full body of a named artifact after `cairn_search` narrows candidates.     |
-| `cairn_search_candidates`  | Phase 6 candidate surface — search across DEC drafts in `_inbox/`.         |
+| `cairn_search_candidates`  | Phase 8 candidate surface — search across DEC drafts in `_inbox/`.         |
 
 **Read — historical zone (gated, 1)**
 
@@ -91,11 +91,11 @@ Source of truth: `packages/cairn-core/src/mcp/tools/index.ts` (`allTools`).
 | `cairn_task_create`     | Create `.cairn/tasks/active/<id>/` with `spec.tightened.md` + `status.yaml`. |
 | `cairn_archive`         | Move file from canonical zone to `.archive/<today>/`. Idempotent.        |
 
-**Write — phase 6 candidate surface (2)**
+**Write — phase 8 candidate surface (2)**
 
 | Tool                      | What                                                                  |
 | ------------------------- | --------------------------------------------------------------------- |
-| `cairn_propose_decision`  | Submit a new DEC candidate from a Phase-6 / source-comment ingest.    |
+| `cairn_propose_decision`  | Submit a new DEC candidate from a Phase 8 / source-comment ingest.    |
 | `cairn_reject_candidate`  | Mark a candidate rejected with reason; persists in audit log.         |
 
 **Write — plugin-era attention queue (6)**
@@ -120,20 +120,20 @@ Source of truth: `packages/cairn-core/src/mcp/tools/index.ts` (`allTools`).
 | Tool                              | What                                                                |
 | --------------------------------- | ------------------------------------------------------------------- |
 | `cairn_init_resume`               | Resume an in-flight adoption from the last completed phase.         |
-| `cairn_init_phases_678_parallel`  | Run phases 6, 7b, 7c concurrently (docs / source-comments / rules). |
+| `cairn_init_phases_8_9_10_parallel`  | Run phases 8, 9, 10 concurrently (docs / source-comments / rules). |
 | `cairn_init_phase_1_detect`       | Env probe + framework signals.                                      |
 | `cairn_init_phase_2_walker`       | Repo file walk → manifest + extension stats.                        |
 | `cairn_init_phase_3_mapper`       | Sonnet domain mapper → module proposals + scope globs.              |
-| `cairn_init_phase_3b_seed`        | Write `.cairn/` skeleton + grandfather pre-adoption commits.        |
-| `cairn_init_phase_4_pilot`        | Operator picks seed module from mapper's top-3.                     |
-| `cairn_init_phase_5_brand`        | Auto-fill brand / voice / product DEC drafts.                       |
-| `cairn_init_phase_5b_topic_index` | Content-fingerprint pre-pass for cross-source dedup.                |
-| `cairn_init_phase_6_docs_ingest`  | Haiku-staged ingestion of authored `*.md` → DEC drafts.             |
-| `cairn_init_phase_7b_source_comments` | Walk source docblocks, classify, emit DEC/INV drafts.           |
-| `cairn_init_phase_7c_rules_merge` | Reconcile `CLAUDE.md` / `AGENTS.md` / `.claude/rules/*`; flag conflicts. |
-| `cairn_init_phase_8_baseline`     | First sensor sweep against synthetic full-tree diff.                |
-| `cairn_init_phase_10_strip`       | Per-module strip-replace consent.                                   |
-| `cairn_init_phase_12_multidev`    | Detect package manager, install git hooks, emit `JOIN.md`.          |
+| `cairn_init_phase_4_seed`         | Write `.cairn/` skeleton + grandfather pre-adoption commits.        |
+| `cairn_init_phase_5_pilot`        | Operator picks seed module from mapper's top-3.                     |
+| `cairn_init_phase_6_brand`        | Auto-fill brand / voice / product DEC drafts.                       |
+| `cairn_init_phase_7_topic_index`  | Content-fingerprint pre-pass for cross-source dedup.                |
+| `cairn_init_phase_8_docs_ingest`  | Haiku-staged ingestion of authored `*.md` → DEC drafts.             |
+| `cairn_init_phase_9_source_comments` | Walk source docblocks, classify, emit DEC/INV drafts.           |
+| `cairn_init_phase_10_rules_merge` | Reconcile `CLAUDE.md` / `AGENTS.md` / `.claude/rules/*`; flag conflicts. |
+| `cairn_init_phase_11_baseline`    | First sensor sweep against synthetic full-tree diff.                |
+| `cairn_init_phase_12_strip`       | Per-module strip-replace consent.                                   |
+| `cairn_init_phase_13_multidev`    | Detect package manager, install git hooks, emit `JOIN.md`.          |
 
 ### Read tools — graph traversal
 
@@ -504,7 +504,7 @@ packages/cairn-core/src/mcp/
     ├── attention-serve.ts
     ├── attention-wait.ts
     ├── align-drain.ts
-    └── init-phases.ts            ← `initPhaseTools` (13 phases) + `initResumeTool` + `initParallel678Tool`
+    └── init-phases.ts            ← `initPhaseTools` (13 phases) + `initResumeTool` + `initParallel8910Tool`
 ```
 
 Started via `cairn mcp serve` (CLI in `packages/cairn/`). Stdio transport. Registered for Claude Code via the `.mcp.json` block above.

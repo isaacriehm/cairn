@@ -104,18 +104,19 @@ flowchart TD
   P3 --> P3b[Phase 3b — seed<br/>JS only · writes .cairn/ skeleton<br/>seeds .attested-commits with HEAD-reachable SHAs]
   P3b --> P4[Phase 4 — pilot<br/>JS only · operator confirms pilot module]
   P4 --> P5[Phase 5 — brand<br/>operator Q&A · 4 brand questions]
-  P5 --> P6[Phase 6 — docs-ingest<br/>Haiku per doc · canonical-map topics]
-  P6 --> P7b[Phase 7b — source-comments<br/>Walker grabs essay blocks · Haiku batch classifies<br/>writes DEC drafts to _inbox/, INV-NNNN.md to ground/<br/>caps: 5000 files default]
-  P7b --> P7c[Phase 7c — rules-merge<br/>Walks CLAUDE.md/AGENTS.md · Haiku per section<br/>writes more DEC drafts]
-  P7c --> P8[Phase 8 — baseline<br/>JS sensors · synthetic full-tree diff<br/>caps: 5000 files default]
-  P8 --> P10[Phase 10 — strip<br/>JS only · per-module operator consent<br/>strips essay comments + inserts // §INV-NNNN<br/>folds IDs into scope-index]
-  P10 --> P12[Phase 12 — multidev<br/>JS only · multi-dev enforcement seed]
-  P12 --> Done([Adoption complete<br/>cairn-attention surfaces DEC drafts])
+  P5 --> P7[Phase 7 — topic-index<br/>cross-source dedup pre-pass]
+  P7 --> P8[Phase 8 — docs-ingest<br/>Haiku per doc · canonical-map topics]
+  P8 --> P9[Phase 9 — source-comments<br/>Walker grabs essay blocks · Haiku batch classifies<br/>writes DEC drafts to _inbox/, INV-NNNN.md to ground/<br/>caps: 5000 files default]
+  P9 --> P10[Phase 10 — rules-merge<br/>Walks CLAUDE.md/AGENTS.md · Haiku per section<br/>writes more DEC drafts]
+  P10 --> P11[Phase 11 — baseline<br/>JS sensors · synthetic full-tree diff<br/>caps: 5000 files default]
+  P11 --> P12[Phase 12 — strip<br/>JS only · per-module operator consent<br/>strips essay comments + inserts // §INV-NNNN<br/>folds IDs into scope-index]
+  P12 --> P13[Phase 13 — multidev<br/>JS only · multi-dev enforcement seed]
+  P13 --> Done([Adoption complete<br/>cairn-attention surfaces DEC drafts])
 
   classDef llm fill:#ff7,color:#000
   classDef det fill:#7f7,color:#000
-  class P1,P2,P3b,P4,P5,P8,P10,P12 det
-  class P3,P6,P7b,P7c llm
+  class P1,P2,P3b,P4,P5,P7,P11,P12,P13 det
+  class P3,P8,P9,P10 llm
 ```
 
 **Legend:** green = pure JS, yellow = LLM call somewhere in the phase.
@@ -176,18 +177,18 @@ sequenceDiagram
 .cairn/
 ├── ground/                            ← curated knowledge
 │   ├── decisions/
-│   │   ├── DEC-NNNN.md                  written by: cairn_record_decision, resolve-attention(accept), Phase 6/7b/7c
+│   │   ├── DEC-NNNN.md                  written by: cairn_record_decision, resolve-attention(accept), Phase 8/9/10
 │   │   ├── _inbox/
-│   │   │   ├── DEC-NNNN.draft.md        written by: Phase 6/7b/7c, cairn-attention(edit)
+│   │   │   ├── DEC-NNNN.draft.md        written by: Phase 8/9/10, cairn-attention(edit)
 │   │   │   └── DEC-NNNN.rejected.md     written by: resolve-attention(reject)
 │   │   └── decisions.ledger.yaml        rebuilt: SessionStart, resolve-attention(accept). Read: in-scope tools, lens
 │   ├── invariants/
-│   │   ├── INV-NNNN.md                  written by: Phase 7b ingest
+│   │   ├── INV-NNNN.md                  written by: Phase 9 ingest
 │   │   └── invariants.ledger.yaml       rebuilt: SessionStart, ingest. Read: in-scope tools, lens
-│   ├── scope-index.yaml                 rebuilt: SessionStart, PostToolUse(Write/Edit), Phase 7b post-pop, Phase 10
+│   ├── scope-index.yaml                 rebuilt: SessionStart, PostToolUse(Write/Edit), Phase 9 post-pop, Phase 10
 │   ├── canonical-map/
-│   │   ├── topics.yaml                  written by: Phase 6
-│   │   └── citations/                   written by: Phase 6
+│   │   ├── topics.yaml                  written by: Phase 8
+│   │   └── citations/                   written by: Phase 8
 │   ├── brand.md                         written by: Phase 5
 │   └── quality-grades.yaml              written by: GC sweep
 ├── tasks/
@@ -203,7 +204,7 @@ sequenceDiagram
 │       └── events-marker.txt            session events poll cursor
 ├── events/                              cross-session invalidation events (decision_accepted, etc.)
 ├── baseline/
-│   └── sensor-audit-*.yaml              written by: Phase 8, `cairn baseline` CLI
+│   └── sensor-audit-*.yaml              written by: Phase 11, `cairn baseline` CLI
 ├── backups/source/                      written by: Phase 10 strip-replace (per-file originals)
 ├── git-hooks/                           seeded by: Phase 3b
 ├── config/
@@ -252,9 +253,9 @@ sequenceDiagram
 |------|-----|--------------|----------------------------|
 | Phase 3 mapper per-slice | Sonnet | `domain` summary + per-module purpose require judgment | **No** — judgment + writing |
 | Phase 3 mapper-merge | Haiku | Synthesizes overall `domain_summary` from per-module domains; picks pilot when multiple candidates | **Partial** — only `domain_summary` synthesis remains LLM. Pilot pick + glob union + sensor passthrough are mechanical now |
-| Phase 6 docs-ingest | Haiku per doc | Canonical-map topic naming + summary | **No** — semantic naming |
-| Phase 7b source-comments | Haiku per batch | Classify essay block as rationale/constraint/citation/license/other; rewrite into DEC title / INV body | **No** — classification + prose rewrite |
-| Phase 7c rules-merge | Haiku per section | Semantic merge of overlapping CLAUDE.md/AGENTS.md rules | **No** — conflict detection |
+| Phase 8 docs-ingest | Haiku per doc | Canonical-map topic naming + summary | **No** — semantic naming |
+| Phase 9 source-comments | Haiku per batch | Classify essay block as rationale/constraint/citation/license/other; rewrite into DEC title / INV body | **No** — classification + prose rewrite |
+| Phase 10 rules-merge | Haiku per section | Semantic merge of overlapping CLAUDE.md/AGENTS.md rules | **No** — conflict detection |
 | `cairn-direction` skill | Main Claude (the agent itself) | Spec tightening from loose prompt | **No** — operator-facing dialog |
 | `cairn-attention` skill | Main Claude | DEC draft accept/reject/edit dialog | **No** — operator-facing dialog |
 | `reviewer` subagent | Sonnet | Cross-attestation of subagent diffs | **No** — judgment |
