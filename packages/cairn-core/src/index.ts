@@ -48,7 +48,7 @@ export * from "@isaacriehm/cairn-state";
 export {
   clearDeferState,
   deferStatePath,
-  isCurrentlyDeferred,
+  isDeferActive,
   readDeferState,
   writeDeferState,
 } from "./hooks/defer.js";

@@ -95,7 +95,7 @@ export function parseStubCatalog(yamlText: string): StubCatalog {
   const parsed: unknown = parseYaml(yamlText);
   const result = StubCatalogSchema.safeParse(parsed);
   if (!result.success) {
-    return { version: 1, patterns: [] };
+    throw new Error(`stub-patterns.yaml parse failed: ${result.error.message}`);
   }
   const data = result.data;
   const patterns: StubPattern[] = data.patterns
