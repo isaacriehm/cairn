@@ -57,7 +57,12 @@ export type ContextThresholdResult = ContextThresholdHit | ContextThresholdMiss;
 
 const MODEL_WINDOW_FALLBACK = 1_000_000;
 
-function modelWindow(model: string): number {
+export function modelWindow(model: string): number {
+  // Opus 4.7 ships with a 1M-token window when the `[1m]` variant is
+  // selected; the base alias still resolves to 200k. Treat any model
+  // string that contains `1m` (the variant suffix Claude Code prints)
+  // as the 1M tier so the statusline percentage reads correctly.
+  if (/1m/i.test(model)) return 1_000_000;
   if (/opus/i.test(model)) return 1_000_000;
   if (/sonnet/i.test(model)) return 200_000;
   if (/haiku/i.test(model)) return 200_000;
@@ -70,7 +75,7 @@ function modelWindow(model: string): number {
  * turn carries a `message.model` string. Skipping the full file keeps
  * the hook fast on long sessions.
  */
-function readModelFromTranscript(path: string): string | null {
+export function readModelFromTranscript(path: string): string | null {
   try {
     const stat = statSync(path);
     const tail = Math.min(stat.size, 65_536);
@@ -130,18 +135,61 @@ function readPersistedCtx(repoRoot: string, sessionId: string): CtxSnapshot | nu
 }
 
 /**
- * Fallback estimator when no persisted snapshot is available.
- * Bytes/4 of the transcript over-estimates 1.5–2x because the
- * transcript JSONL accumulates every tool I/O blob since session
- * start, while the actual prompt sent to the model is much smaller
- * after Claude Code's compaction. Used only as a safety net.
+ * Fallback estimator when no persisted ctx snapshot is available.
+ *
+ * Walks the last ~256 KB of the transcript backward looking for the
+ * most recent `message.usage` block from an assistant turn. Claude
+ * Code transcript lines are JSON; assistant turns carry an exact token
+ * count under `message.usage.{input_tokens, cache_creation_input_tokens,
+ * cache_read_input_tokens}` — summing those three gives the actual
+ * prompt size at that turn (output_tokens are produced, not consumed
+ * by context).
+ *
+ * Returns null when no usage block is found (e.g. fresh session, no
+ * assistant turn yet). Caller can choose to skip threshold check or
+ * fall back to bytes/4. We never fall back here — bytes/4 over-counts
+ * 1.5–2x because the transcript JSONL accumulates every tool I/O blob
+ * since session start, which is what produced the 113%-of-window bug.
  */
-function estimateTokens(transcriptPath: string): number {
+export function estimateTokensFromTranscript(transcriptPath: string): number | null {
   try {
-    return Math.floor(statSync(transcriptPath).size / 4);
+    const stat = statSync(transcriptPath);
+    const tail = Math.min(stat.size, 262_144);
+    const fd = readFileSync(transcriptPath, "utf8");
+    const slice = fd.slice(Math.max(0, fd.length - tail));
+    const lines = slice.split(/\r?\n/);
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i];
+      if (line === undefined || line.length === 0) continue;
+      try {
+        const obj = JSON.parse(line) as {
+          message?: {
+            usage?: {
+              input_tokens?: number;
+              cache_creation_input_tokens?: number;
+              cache_read_input_tokens?: number;
+            };
+          };
+        };
+        const u = obj.message?.usage;
+        if (u === undefined) continue;
+        const i_t = typeof u.input_tokens === "number" ? u.input_tokens : 0;
+        const cc = typeof u.cache_creation_input_tokens === "number"
+          ? u.cache_creation_input_tokens
+          : 0;
+        const cr = typeof u.cache_read_input_tokens === "number"
+          ? u.cache_read_input_tokens
+          : 0;
+        const total = i_t + cc + cr;
+        if (total > 0) return total;
+      } catch {
+        // skip malformed lines
+      }
+    }
   } catch {
-    return 0;
+    return null;
   }
+  return null;
 }
 
 interface WarnedState {
@@ -216,8 +264,11 @@ export function checkContextThreshold(
   const thresholdTokens = Math.floor(windowTokens * fraction);
 
   const snapshot = readPersistedCtx(input.repoRoot, input.sessionId);
-  const estimated =
-    snapshot !== null ? snapshot.usedTokens : estimateTokens(input.transcriptPath);
+  const fallback = estimateTokensFromTranscript(input.transcriptPath);
+  // Skip the check when neither source is available — better to stay
+  // silent than fire on bytes/4 garbage like we used to.
+  if (snapshot === null && fallback === null) return { hit: false };
+  const estimated = snapshot !== null ? snapshot.usedTokens : (fallback ?? 0);
   if (estimated < thresholdTokens) return { hit: false };
 
   const warned = readWarned(input.repoRoot, input.sessionId);
@@ -235,7 +286,7 @@ export function checkContextThreshold(
     hit: true,
     estimatedTokens: estimated,
     windowTokens,
-    pct: Math.round((estimated / windowTokens) * 100),
+    pct: Math.min(100, Math.round((estimated / windowTokens) * 100)),
     model,
     taskId: null,
   };
@@ -243,29 +294,44 @@ export function checkContextThreshold(
 
 /**
  * Render the inline prompt that the Stop hook injects via
- * `decision: block`. The text instructs main Claude to render the
- * three-option AskUserQuestion. Format-locked so the `[b]` branch
- * always emits the literal `/cairn-resume <task_id>` token the
- * operator pastes after `/clear`.
+ * `decision: block`. When an active task is in flight, the prompt
+ * surfaces three options (keep going / clear+resume / mark done) and
+ * emits the literal `/cairn-resume <task_id>` token for the `[b]`
+ * branch. When no active task is in flight (e.g. the auto-graduator
+ * just moved the only active task to `done/` this same Stop tick),
+ * the resume + mark-done options are dropped to avoid offering a
+ * resume that `cairn_resume` would error on.
  */
 export function renderContextThresholdHint(
   hit: ContextThresholdHit,
   taskId: string | null,
 ): string {
-  const taskLine =
-    taskId !== null
-      ? `Active task: \`${taskId}\`.`
-      : "No active task — context still climbing through general work.";
-  const resumeLine =
-    taskId !== null
-      ? `If the operator picks **\`b\`**, emit a code block containing exactly:\n\n\`\`\`\n/cairn-resume ${taskId}\n\`\`\`\n\nThe operator copies that, runs \`/clear\`, then pastes it into the fresh chat — Cairn rebuilds context from \`.cairn/tasks/active/${taskId}/journal.jsonl\`.`
-      : "If the operator picks **`b`**, instruct them to `/clear` and re-ask. There's no task journal to resume from yet.";
-  return [
+  const header = [
     `## Cairn — context threshold reached`,
     "",
     `Estimated **${hit.estimatedTokens.toLocaleString()} / ${hit.windowTokens.toLocaleString()} tokens (${hit.pct}%)** for \`${hit.model}\`. Trust degrades as context climbs — best to compact now.`,
     "",
-    taskLine,
+  ];
+
+  if (taskId === null) {
+    return [
+      ...header,
+      "No active task — context climbed through general work, or the active task just graduated this tick. Nothing to resume from.",
+      "",
+      "Render this question via the `AskUserQuestion` tool — do not skip:",
+      "",
+      "> Context at " + hit.pct + "% of " + hit.model + " window. Pick:",
+      "> ",
+      "> - `[a]` keep going (warn re-fires every +10 %)",
+      "> - `[b]` `/clear` and start fresh (no task to resume)",
+      "",
+      "On `[b]`, instruct the operator to run `/clear`. On `[a]`, just continue.",
+    ].join("\n");
+  }
+
+  return [
+    ...header,
+    `Active task: \`${taskId}\`.`,
     "",
     "Render this question via the `AskUserQuestion` tool — do not skip:",
     "",
@@ -275,7 +341,7 @@ export function renderContextThresholdHint(
     "> - `[b]` `/clear` and resume now (Cairn writes the resume prompt)",
     "> - `[c]` mark task done (graduate the active TSK and start fresh)",
     "",
-    resumeLine,
+    `If the operator picks **\`b\`**, emit a code block containing exactly:\n\n\`\`\`\n/cairn-resume ${taskId}\n\`\`\`\n\nThe operator copies that, runs \`/clear\`, then pastes it into the fresh chat — Cairn rebuilds context from \`.cairn/tasks/active/${taskId}/journal.jsonl\`.`,
     "",
     "On `[c]`, call `cairn_task_complete({task_id, outcome: \"succeeded\"})` for the active task before ending the turn. On `[a]`, just continue.",
   ].join("\n");

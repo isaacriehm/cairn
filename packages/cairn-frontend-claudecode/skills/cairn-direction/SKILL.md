@@ -45,7 +45,7 @@ every deferred tool the rest of the skill needs. The cairn MCP tools
 back to inline prose questions and the contract breaks.
 
 ```
-ToolSearch(select:mcp__plugin_cairn_cairn__cairn_task_create,mcp__plugin_cairn_cairn__cairn_task_complete,mcp__plugin_cairn_cairn__cairn_in_scope,mcp__plugin_cairn_cairn__cairn_canonical_for_topic,mcp__plugin_cairn_cairn__cairn_search,mcp__plugin_cairn_cairn__cairn_mission_get,AskUserQuestion)
+ToolSearch(select:mcp__plugin_cairn_cairn__cairn_task_create,mcp__plugin_cairn_cairn__cairn_task_complete,mcp__plugin_cairn_cairn__cairn_in_scope,mcp__plugin_cairn_cairn__cairn_canonical_for_topic,mcp__plugin_cairn_cairn__cairn_search,mcp__plugin_cairn_cairn__cairn_mission_get,mcp__plugin_cairn_cairn__cairn_mission_start,mcp__plugin_cairn_cairn__cairn_mission_accept_draft,AskUserQuestion)
 ```
 
 After this call, all phase tools + the question tool are loaded for
@@ -121,6 +121,91 @@ goal:
   existing spec's `## Goal` section via `Edit`, end the turn. The
   operator continues with the augmented spec; reviewer will attest
   both lines of work together.
+
+## Step 0.7 — mission scope detection (when no active mission)
+
+Call `cairn_mission_get({})`. If `active: true`, skip this step
+entirely — Step 2.5 handles anchoring to the existing cursor. If
+`active: false`, scan the operator's prompt for **mission-shape
+signals**. Trigger when ANY 2+ hit:
+
+1. **Verb count.** 3+ distinct task verbs in the prompt (build, add,
+   fix, refactor, implement, wire, remove, migrate, replace,
+   redesign, ship).
+2. **Enumerated phases.** Numbered list ("1. … 2. … 3. …"), ordinal
+   adverbs ("first … then … then …"), or explicit "phase 1 …
+   phase 2 …".
+3. **Multi-feature span.** 3+ distinct feature nouns from different
+   areas (e.g. schema + auth + UI; not 3 fields on one form).
+4. **Scope phrasing.** "build the whole X", "redesign Y end-to-end",
+   "rewrite the Z system", "ship the entire X module".
+5. **Length + structure.** Prompt >300 words AND contains 2+ H2/H3
+   sections or bulleted sub-deliverables.
+
+Single-trigger prompts stay as single tasks — the bar is two
+independent signals. A 600-word prose dump with no enumeration and
+one feature noun is just a verbose single-task ask.
+
+If the trigger fires, surface ONE question via `AskUserQuestion`:
+
+> Your ask spans multiple deliverables. Pick the shape:
+>
+> - `[a]` mission — multi-phase plan with cursor-tracked phase
+>   exits. Cairn drafts a phase roadmap from your prompt and you
+>   approve it before any task starts.
+> - `[b]` single task — treat as one scoped task; you handle the
+>   sub-deliverables yourself in conversation.
+
+On `[b]`: skip the rest of this step, proceed to Step 1 as a normal
+single task.
+
+On `[a]`:
+
+1. Pick a slug — first 3-4 words of the prompt's first sentence,
+   kebab-case, ≤30 chars (e.g. "rewrite-auth-and-billing").
+2. `mkdir -p .cairn/missions/_drafts/` then `Write` the operator's
+   prompt verbatim to `.cairn/missions/_drafts/<slug>.md`. Prepend
+   an H1 line giving the mission a tight title (≤60 chars). Body is
+   the prompt itself; preserve any enumeration the operator wrote.
+3. Call `cairn_mission_start({spec_path: ".cairn/missions/_drafts/<slug>.md", exit_gate: "prompt"})`.
+   The tool returns a draft envelope: `{proposed_title, spec_path,
+   exit_gate, phases: [{id, title, depends_on, exit_criteria}, …],
+   truncated, llm_used}`. Nothing has been written to disk by the
+   server yet — the draft is in your turn buffer only.
+4. Surface the draft to the operator via `AskUserQuestion` so they
+   can confirm the phase shape before commit:
+
+   > Drafted roadmap — `<proposed_title>` (`<phases.length>` phases):
+   >
+   > 1. `<phase[0].id>` — <phase[0].title>
+   > 2. `<phase[1].id>` — <phase[1].title>
+   > … (list every phase; cite `depends_on` when non-empty)
+   >
+   > Pick:
+   >
+   > - `[a]` accept — call `cairn_mission_accept_draft` and proceed
+   > - `[b]` edit first — open the draft and tighten before
+   >   accepting
+   > - `[c]` cancel — abandon the mission, fall through to single
+   >   task
+
+5. On `[a]`: call `cairn_mission_accept_draft({title:
+   <proposed_title>, spec_path: <spec_path>, exit_gate: <exit_gate>,
+   phases: <phases>})` with the values from the Step 3 response.
+   The mission is now live with the cursor on phase-1. Proceed to
+   Step 1 — `cairn_task_create` will auto-anchor to the cursor
+   phase via Step 2.5 default behaviour.
+6. On `[b]`: end the turn with one line pointing the operator to the
+   draft path: "Mission draft at `.cairn/missions/_drafts/<slug>.md`
+   — edit phases inline, then re-invoke." They edit the prompt /
+   the draft and re-ask; this skill re-runs Step 0.7 from scratch.
+7. On `[c]`: skip the mission, proceed to Step 1 as a single task.
+   The draft file at `.cairn/missions/_drafts/<slug>.md` stays on
+   disk — operator deletes if unwanted.
+
+This is the ONLY auto-mission path. The CLI surface
+(`cairn mission start <spec_path>`) remains for operator-driven
+flows where they hand-write a planning doc outside any prompt.
 
 ## Hard contract — ONE CHECKPOINT, BLOCKING
 

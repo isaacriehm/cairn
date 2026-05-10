@@ -4,6 +4,53 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.1] — 2026-05-10
+
+### Fixed
+
+- **`/cairn-resume` no longer 404s after auto-graduate race.** The
+  Stop hook runs the task auto-graduator before the context-threshold
+  check, so a task that completed in the same tick used to leave
+  `findCurrentActiveTask` returning `null` while the AskUserQuestion
+  template still offered `[b] /clear and resume now`. Operators who
+  picked `[b]` then hit "no active task to resume" after `/clear`.
+  The threshold prompt now branches on task presence: with no
+  active task it surfaces only `[a] keep going` and `[b] /clear and
+  start fresh (no resume)`. The `cairn_resume` MCP tool also falls
+  back to `tasks/done/<id>/` when the active dir is missing,
+  returning a `scope: "done"` payload with `completed_at` so the
+  `/cairn-resume` slash command can render a "task already shipped"
+  frame instead of erroring.
+- **Statusline ctx %** falls back to transcript `usage` parsing when
+  Claude Code omits the `context_window` payload block (older CC
+  builds + some configs ship only one of the two fields). The
+  fallback sums `input + cache_creation + cache_read` from the most
+  recent assistant turn and pairs it with the model's window
+  (Opus 1M / Sonnet 200k / Haiku 200k) so a fresh session no longer
+  renders blank.
+- **Local-dev plugin statusline shim.** `session-start.ts` now
+  derives the plugin cache slug from a sibling
+  `.claude-plugin/marketplace.json` when `CLAUDE_PLUGIN_ROOT` lives
+  outside `~/.claude/plugins/cache/` (the typical local-dev
+  marketplace layout). Locally-loaded Cairn now writes the same
+  shim path as the cached install, so the statusline survives
+  switching between the two.
+
+### Added
+
+- **`cairn-direction` Step 0.7 — auto-mission heuristic.** Multi-
+  phase asks no longer silently collapse into a single task. When
+  no mission is active, the skill scans the operator's prompt for
+  five mission-shape signals (verb count, enumerated phases,
+  multi-feature span, scope phrasing, length+structure) and
+  surfaces a `[a] mission [b] single task` AskUserQuestion when
+  any 2+ trigger. On `[a]`, the skill writes the prompt to
+  `.cairn/missions/_drafts/<slug>.md`, calls `cairn_mission_start`,
+  surfaces the drafted phase roadmap for operator approval, and
+  commits via `cairn_mission_accept_draft`. The CLI surface
+  (`cairn mission start <spec>`) remains for operator-driven
+  flows from hand-written planning docs.
+
 ## [0.10.0] — 2026-05-10
 
 ### Added
