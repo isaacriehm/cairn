@@ -178,6 +178,27 @@ patterns:
     description: "Block of 3+ consecutive commented-out code lines (not doc comments)."
     regex: '(?:^[\t ]*//[^\n]*\n){3,}'
     severity: soft
+    # `must_contain` rejects matches whose captured text doesn't carry
+    # a CODE-SHAPED token. Each clause requires keyword + structural
+    # context, not bare keyword — `return`, `if`, `import` all appear
+    # routinely in narrative comments. Without the structural anchor
+    # we re-flood the audit with doc preamble false positives.
+    #   - declarations: `const NAME =`, `let NAME =`, `var NAME =`
+    #   - function decls: `function NAME(`
+    #   - return statement ending in `;` on the same comment line
+    #     (rejects narrative "return empty" without terminator)
+    #   - control flow with body brace: `if (...) {`, `while (...) {`,
+    #     `for (`
+    #   - arrow with code body: `=> word`, `=> (`, `=> {`
+    #   - real import / export forms (not narrative "import storage")
+    #   - function-call shape `name(args);` (identifier-then-paren-then-semi)
+    # Anchored to `//`-line START so the code-shape MUST be the
+    # comment's content (the canonical "commented-out code" shape),
+    # not an inline reference to a code construct buried in narrative
+    # like `// use this.active() → currentTx(); on success`. With the
+    # leading `^[\t ]*//\s*` anchor, narrative paragraphs that
+    # casually quote a method call no longer trip the pattern.
+    must_contain: '^[\t ]*//\s*(?:(?:const|let|var)\s+\w+\s*=|function\s+\w+\s*\(|return\s+\S+\s*;|if\s*\([^)]*\)\s*\{|while\s*\([^)]*\)\s*\{|for\s*\(\s*(?:let|const|var)\s|import\s+[{*''"]|export\s+(?:default|const|function|class|interface|type|async|\*|\{)|[A-Za-z_]\w*\([^)]*\)\s*;)'
 
   - id: commented-out-import
     languages: [typescript, javascript]

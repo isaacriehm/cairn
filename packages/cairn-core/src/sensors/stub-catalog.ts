@@ -78,9 +78,22 @@ export function detectStubMatches(args: {
         continue;
       }
       const re = new RegExp(pattern.regex, "gm");
+      const mustContainRe =
+        pattern.must_contain !== undefined
+          ? new RegExp(pattern.must_contain, "m")
+          : null;
       let m: RegExpExecArray | null;
       while ((m = re.exec(after)) !== null) {
         const matchedText = m[0];
+        // must_contain post-filter: the outer regex captured a candidate
+        // block; only emit a finding if the inner regex matches inside
+        // that block. Lets coarse outer patterns (e.g. "3+ consecutive
+        // `//` lines") gate on a code-syntax signal (`;`, `=>`, `const`,
+        // `function`, etc.) and skip pure narrative / doc preamble.
+        if (mustContainRe !== null && !mustContainRe.test(matchedText)) {
+          if (re.lastIndex === m.index) re.lastIndex += 1;
+          continue;
+        }
         // Find the line number this match starts on (1-based).
         const lineIdx = lineOf(after, m.index);
         const lineText = afterLines[lineIdx - 1] ?? "";

@@ -43,16 +43,25 @@ export interface StubPattern {
   regex: string;
   severity: "hard" | "soft";
   /**
-   * File-path globs to EXCLUDE from this pattern. Used to silence
-   * legitimate idioms that match the regex syntactically but are
-   * semantically correct in the matched context. Canonical case:
-   * `empty-async-body` matches `async () => {}` inside
-   * `vi.fn(async () => {})` — vitest mocks intentionally return
-   * `Promise<void>`. Test files get a default skip glob in the
-   * shipped catalog.
+   * File-path globs to EXCLUDE from this pattern. Per-project
+   * operator escape hatch for legitimate idioms that match the regex
+   * syntactically but are semantically correct in the matched context.
    * Globs are POSIX-style, evaluated against the diff entry's path.
    */
   skip_globs?: string[];
+  /**
+   * Optional inner regex applied to the OUTER match's text. Finding is
+   * only emitted when this regex matches at least once inside the
+   * block the outer regex captured. Lets a coarse outer pattern
+   * (e.g. "3+ consecutive `//` lines") gate on an inner signal
+   * (e.g. "at least one of those lines contains a code-syntax marker
+   * like `;`, `=>`, `const`, `function`"). Without this, the outer
+   * regex matches every doc preamble / license header / annotation
+   * block and floods the audit with non-actionable noise.
+   * Regex is multiline-mode; matched against the substring captured
+   * by the outer regex, not the full file.
+   */
+  must_contain?: string;
 }
 
 export interface StubCatalog {

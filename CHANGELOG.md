@@ -4,6 +4,39 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.4] — 2026-05-10
+
+### Added
+
+- **`StubPattern.must_contain` post-filter.** Schema + runner accept
+  an optional inner regex applied to the outer regex's matched text.
+  Finding only emits when the inner regex matches at least once
+  inside the captured block. Lets a coarse outer pattern (e.g. "3+
+  consecutive `//` lines") gate on a structural signal (e.g. "the
+  matched text contains a code-shaped construct"). Without the gate,
+  the outer regex captured every license header / doc preamble /
+  AI-annotation block as "commented-out code." Generic mechanism —
+  any pattern can opt in.
+
+### Fixed
+
+- **`commented-block-3-plus-lines` no longer floods on doc preamble.**
+  Outer regex matches every 3+-line `//` block, including license
+  headers, AI annotations, narrative section dividers — none of which
+  are commented-out code. Added `must_contain` anchored to
+  `//`-line-start requiring a structural code-shape:
+  `(const|let|var) NAME =`, `function NAME(`, `return X;`,
+  `if (...) {`, `while (...) {`, `for ((let|const|var) ...`,
+  `import {/*/'/"`, `export (default|const|...)`, or
+  `name(args);`. The leading `^[\t ]*//\s*` anchor (multiline mode)
+  rejects narrative-with-inline-code-reference like
+  `// use this.active() → currentTx(); on success`. Real
+  commented-out-code blocks (lines whose content directly is a
+  declaration / call / return) still match. On a typical
+  monorepo this drops the commented-block hit count by ~99%
+  (399 → 0 on the test fixture; the remaining audit is dominated
+  by other patterns whose findings are real).
+
 ## [0.9.3] — 2026-05-10
 
 ### Fixed
