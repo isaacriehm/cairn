@@ -101,6 +101,19 @@ export const taskCreateInput = {
   acceptance: z.array(z.string().min(1)).optional(),
   module: z.string().optional(),
   needs_review: z.boolean().optional(),
+  /**
+   * Mission anchor — when set, the task is linked to the given phase
+   * of the mission. Defaults to the active mission's cursor when both
+   * fields are omitted. Pass `mission_id: ""` to opt out (side-task).
+   */
+  mission_id: z
+    .string()
+    .regex(/^MIS-[a-z0-9-]+-[0-9a-f]{7}$|^$/, "mission id must match MIS-<slug>-<hash7> or empty string")
+    .optional(),
+  phase_id: z
+    .string()
+    .regex(/^[a-z0-9][a-z0-9-]*$/, "phase id must be kebab-case")
+    .optional(),
 };
 
 /**
@@ -288,4 +301,97 @@ export const searchCandidatesInput = {
 export const rejectCandidateInput = {
   slug: z.string().min(1),
   reason: z.string().min(1),
+};
+
+// ── Mission system — supra-task layer ──────────────────────────────────────
+
+const missionIdField = z
+  .string()
+  .regex(/^MIS-[a-z0-9-]+-[0-9a-f]{7}$/, "mission id must match MIS-<slug>-<hash7>");
+const missionExitGateField = z.enum(["prompt", "auto", "manual"]);
+const missionPhaseIdField = z
+  .string()
+  .regex(/^[a-z0-9][a-z0-9-]*$/, "phase id must be kebab-case");
+
+const missionPhaseDraftField = z.array(
+  z.object({
+    id: missionPhaseIdField,
+    title: z.string().min(1),
+    depends_on: z.array(z.string()).optional(),
+    exit_criteria: z.string().min(1),
+    exit_gate: missionExitGateField.optional(),
+  }),
+);
+
+/**
+ * `cairn_mission_start` — read the source spec, draft a roadmap via
+ * Haiku, return the draft for operator approval. Does NOT write
+ * anything to disk; the skill calls `cairn_mission_accept_draft` once
+ * the operator confirms.
+ *
+ * `no_llm: true` skips the Haiku call and returns a single-phase stub
+ * roadmap so the operator can hand-edit it before approving (used when
+ * Haiku is offline or quota-exhausted).
+ */
+export const missionStartInput = {
+  spec_path: z.string().min(1),
+  exit_gate: missionExitGateField,
+  no_llm: z.boolean().optional(),
+};
+
+export const missionAcceptDraftInput = {
+  title: z.string().min(1).max(80),
+  spec_path: z.string().min(1),
+  exit_gate: missionExitGateField,
+  phases: missionPhaseDraftField.min(1),
+};
+
+export const missionGetInput = {
+  /** Mission id; omit to read the active mission. */
+  mission_id: missionIdField.optional(),
+};
+
+/**
+ * `cairn_mission_advance` — operator picked a phase-exit choice.
+ * `phase_id` is the phase being exited. choice=exit advances cursor;
+ * choice=not_yet keeps cursor; choice=defer suppresses the prompt for
+ * 24h; choice=force advances even when the phase has zero tasks;
+ * choice=drop removes a drifted phase id from `phase_progress` (the
+ * id is no longer in roadmap.md — operator deleted it mid-mission).
+ */
+export const missionAdvanceInput = {
+  phase_id: missionPhaseIdField,
+  choice: z.enum(["exit", "not_yet", "defer", "force", "drop"]),
+  defer_hours: z.number().int().min(1).max(24 * 30).optional(),
+};
+
+export const missionResumeInput = {
+  mission_id: missionIdField.optional(),
+};
+
+export const missionCloseInput = {
+  mission_id: missionIdField,
+  outcome: z.enum(["done", "aborted"]),
+  reason: z.string().min(1).optional(),
+};
+
+export const missionReopenInput = {
+  mission_id: missionIdField,
+};
+
+export const missionResyncInput = {
+  /** Optional override; defaults to the mission's stored spec_path. */
+  spec_path: z.string().min(1).optional(),
+  no_llm: z.boolean().optional(),
+};
+
+/**
+ * `cairn_mission_resync_accept` — apply (or reject) a pending resync
+ * marker. `outcome=accept` rewrites roadmap.md with the proposed
+ * phases, refreshes spec.md, reconciles phase_progress (added phases
+ * → pending; removed phases → dropped from progress with journal note).
+ * `outcome=reject` deletes the marker without touching roadmap.md.
+ */
+export const missionResyncAcceptInput = {
+  outcome: z.enum(["accept", "reject"]),
 };

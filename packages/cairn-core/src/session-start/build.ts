@@ -11,7 +11,12 @@ import { buildHandoffBlock } from "../context/index.js";
 import {
   buildDecisionsLedger,
   buildInvariantsLedger,
+  countDonePhases,
+  detectRoadmapDrift,
+  findActiveMission,
   parseFrontmatter,
+  readMissionState,
+  readRoadmap,
 } from "@isaacriehm/cairn-state";
 import { loadSensorRegistry } from "../sensors/catalog.js";
 import {
@@ -33,7 +38,8 @@ export type SessionStartSection =
   | "invariants_active"
   | "current_task"
   | "quality_grades_tail"
-  | "pending_drafts";
+  | "pending_drafts"
+  | "active_mission";
 
 export interface BuildSessionStartContextArgs {
   /** Resolved repo root (the dir containing `.cairn/`). */
@@ -200,6 +206,9 @@ export async function buildSessionStartContext(
   counts.pendingDrafts = drafts.length;
   const pendingDraftsSection = renderPendingDraftsSection(drafts);
 
+  // ── Section 7 — active mission cursor ─────────────────────────────
+  const activeMissionSection = renderActiveMissionSection(args.repoRoot, warnings);
+
   // Baseline findings drive the attention surface alongside drafts +
   // drift. Only HARD findings count — soft findings (e.g. the
   // commented-block-3-plus-lines pattern that fires on every
@@ -244,6 +253,9 @@ export async function buildSessionStartContext(
   if (brandAndPositioningSection !== null) {
     orderedSections.push({ id: "brand_and_positioning", body: brandAndPositioningSection });
   }
+  if (activeMissionSection !== null) {
+    orderedSections.push({ id: "active_mission", body: activeMissionSection });
+  }
   if (currentTaskSection !== null) {
     orderedSections.push({ id: "current_task", body: currentTaskSection });
   }
@@ -270,6 +282,7 @@ export async function buildSessionStartContext(
     "invariants_active",
     "decisions_in_scope",
     "current_task",
+    "active_mission",
     "two_zone_reminder",
     "header",
     "code_change_contract",
@@ -312,6 +325,60 @@ export async function buildSessionStartContext(
     counts,
     warnings,
   };
+}
+
+function renderActiveMissionSection(repoRoot: string, warnings: string[]): string | null {
+  let missionId: string | null;
+  try {
+    missionId = findActiveMission(repoRoot);
+  } catch (err) {
+    warnings.push(`mission lookup failed: ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  }
+  if (missionId === null) return null;
+  let roadmap: ReturnType<typeof readRoadmap>;
+  let state: ReturnType<typeof readMissionState>;
+  try {
+    roadmap = readRoadmap(repoRoot, missionId);
+    state = readMissionState(repoRoot, missionId);
+  } catch (err) {
+    warnings.push(`mission read failed: ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  }
+  if (roadmap === null || state === null) return null;
+
+  const cursorPhaseId = state.cursor.active_phase;
+  const cursorPhase =
+    cursorPhaseId === null
+      ? null
+      : roadmap.frontmatter.phases.find((p) => p.id === cursorPhaseId) ?? null;
+  const done = countDonePhases(state);
+  const total = roadmap.frontmatter.phases.length;
+  const drift = detectRoadmapDrift(roadmap.frontmatter, state);
+
+  const lines: string[] = [];
+  lines.push(`## Active mission — ${roadmap.frontmatter.title}`);
+  lines.push("");
+  lines.push(`- mission: \`${missionId}\``);
+  lines.push(`- progress: ${done}/${total} phases · exit_gate: ${roadmap.frontmatter.exit_gate}`);
+  if (cursorPhase !== null) {
+    lines.push(`- cursor: \`${cursorPhase.id}\` — ${cursorPhase.title}`);
+    lines.push(`  - exit_criteria: ${cursorPhase.exit_criteria}`);
+  } else {
+    lines.push(`- cursor: (no active phase — mission ready to close)`);
+  }
+  lines.push(`- spec: \`${roadmap.frontmatter.spec_path}\``);
+  if (drift.length > 0) {
+    lines.push("");
+    lines.push(
+      `**Mission drift** — ${drift.length} phase id(s) in state.json no longer appear in roadmap.md: ${drift.map((id) => `\`${id}\``).join(", ")}. Resolve via \`cairn-attention\` (\`mission_drift\`).`,
+    );
+  }
+  lines.push("");
+  lines.push(
+    "Tasks under this cursor inherit `mission_id` + `phase_id` automatically. To work off-mission, pass `mission_id: \"\"` to `cairn_task_create` (side-task, no phase progress).",
+  );
+  return lines.join("\n");
 }
 
 function readBrandAndPositioning(repoRoot: string, warnings: string[]): string | null {

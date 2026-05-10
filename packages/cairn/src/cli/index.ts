@@ -12,6 +12,7 @@ import { hookCli } from "./hook.js";
 import { initCli } from "./init.js";
 import { joinCli } from "./join.js";
 import { mcpCli } from "./mcp.js";
+import { missionCli } from "./mission.js";
 import { scopeCli } from "./scope.js";
 import { sensorRunCli } from "./sensor-run.js";
 import { tagCli } from "./tag.js";
@@ -141,6 +142,9 @@ switch (subcommand) {
   case "trace":
     await traceCli(rest);
     break;
+  case "mission":
+    await missionCli(rest);
+    break;
   case "status-line": {
     const projectRootIdx = rest.indexOf("--project-root");
     let projectRoot: string;
@@ -208,6 +212,8 @@ switch (subcommand) {
         "  trace      pretty-print the unified live-session trace log\n" +
         "             (--tail | --session <id> | --repo <path> | --source <name> |\n" +
         "              --kind <substr> | --errors-only | --wide | --json)\n" +
+        "  mission    mission lifecycle commands\n" +
+        "             (subcommands: start | accept | get | list | advance | close | reopen)\n" +
         "  status-line  print formatted status line\n" +
         "               (--project-root <path>? --session-id <id>?\n" +
         "                or pipe Claude Code status-line payload JSON on stdin)",

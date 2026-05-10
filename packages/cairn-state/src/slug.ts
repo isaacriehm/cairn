@@ -125,3 +125,44 @@ export function deriveLedgerInvId(input: {
   });
   return `INV-${createHash("sha256").update(json, "utf8").digest("hex").slice(0, 7)}`;
 }
+
+/**
+ * Convert an arbitrary title into a kebab-case slug suitable for a
+ * mission id (`MIS-<slug>-<hash7>`). Lowercased ASCII; non-alnum
+ * collapses to single hyphen; trims leading/trailing hyphens; capped
+ * at 32 chars to keep mission ids inside the 40-char statusline budget
+ * after the `MIS-` prefix + `-<hash7>` suffix.
+ */
+export function titleToSlug(title: string, maxLen = 32): string {
+  const slug = title
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, maxLen)
+    .replace(/-+$/g, "");
+  return slug.length > 0 ? slug : "mission";
+}
+
+/**
+ * Derive a stable mission id from canonical inputs. Format:
+ * `MIS-<slug>-<hash7>` mirroring TSK-/DEC-/INV- conventions.
+ *
+ * Hash inputs include `started_at` so re-running `mission start` on the
+ * same spec doc minutes later produces a fresh id (no collision with
+ * the prior mission's archived dirs).
+ */
+export function deriveMissionId(input: {
+  title: string;
+  spec_path: string;
+  started_at: string;
+}): string {
+  const slug = titleToSlug(input.title);
+  const json = JSON.stringify({
+    title: input.title,
+    spec_path: input.spec_path,
+    started_at: input.started_at,
+  });
+  const hash = createHash("sha256").update(json, "utf8").digest("hex").slice(0, 7);
+  return `MIS-${slug}-${hash}`;
+}

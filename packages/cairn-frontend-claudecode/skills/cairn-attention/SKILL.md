@@ -30,6 +30,131 @@ Never reference `cli.mjs` or `cairn join` directly in the chat
 surface — Plugin spec §11 forbids exposing CLI subcommands to the
 operator.
 
+## Step 0.2 — mission attention (phase_ready_to_exit + drift)
+
+Before the regular attention queue, handle mission-specific surfaces.
+These don't go through `cairn_resolve_attention` — missions have
+their own resolver tool (`cairn_mission_advance`).
+
+Preload the mission tools alongside the existing attention tools:
+
+```
+ToolSearch(select:mcp__plugin_cairn_cairn__cairn_mission_get,mcp__plugin_cairn_cairn__cairn_mission_advance,AskUserQuestion)
+```
+
+Then call:
+
+```
+cairn_mission_get({})
+```
+
+If `active: false`, skip this step.
+
+### 0.2a — phase ready to exit
+
+Stop hook injected a `phase_ready_to_exit` hint into the reason block
+when the active phase's tasks all graduated. Surface a single
+`AskUserQuestion`:
+
+> Mission `<mission_id>` (`<title>`) — phase `<active_phase>`:
+> `<active_phase_title>` ready to exit.
+>
+> Exit criteria: `<active_phase_exit_criteria>`.
+>
+> - `[a]` mark phase done, advance cursor (`exit`)
+> - `[b]` not yet — more tasks needed (`not_yet`)
+> - `[c]` defer 24h (`defer`)
+
+Dispatch:
+
+```
+cairn_mission_advance({phase_id: "<active_phase>", choice: "exit" | "not_yet" | "defer"})
+```
+
+When the mission's `exit_gate` is `auto`, the cursor already
+advanced silently (no prompt fires). When `manual`, the Stop hook
+suppresses the surface entirely — operator must invoke advance
+directly.
+
+Render a one-line outcome after the call:
+
+```
+✓ Phase advanced (next: <next_phase>) · M/N done.
+```
+
+If `closed: true`, the mission auto-closed on last phase complete:
+
+```
+✓ Mission MIS-… complete. Archived.
+```
+
+### 0.2a.5 — pending mission resync
+
+If `.cairn/missions/<id>/_resync.json` exists for the active mission,
+the operator amended the source spec doc. Read the marker file
+(`Read` tool — it's a small JSON), surface the diff via
+`AskUserQuestion`:
+
+> Mission `<mission_id>` resync pending — spec at `<spec_path>`
+> proposes:
+>
+> - +<N> phase(s) added: `<id1>`, `<id2>`
+> - −<M> phase(s) removed: `<id3>`
+> - ↻<K> phase(s) renamed
+> - <P> phase(s) with new exit_criteria
+>
+> Pick:
+>
+> - `[a]` accept — rewrite roadmap.md, refresh spec.md, reconcile
+>   phase_progress (added → pending, removed → dropped)
+> - `[b]` reject — delete the marker, keep roadmap.md unchanged
+
+Dispatch via:
+
+```
+cairn_mission_resync_accept({outcome: "accept" | "reject"})
+```
+
+After the call, render a one-line outcome:
+
+```
+✓ Resync applied (+N −M ↻K). Cursor: <next_phase>.
+```
+
+If the marker file is missing, skip this sub-step.
+
+### 0.2b — mission drift
+
+If `mission_get` returned a non-empty `drift_phase_ids`, the operator
+edited `roadmap.md` mid-mission and removed phases that still have
+graduated task records in `state.json`. Surface a single block per
+drift id:
+
+> Mission drift detected — phase `<id>` no longer in roadmap.md but
+> has graduated tasks linked.
+>
+> - `[a]` accept drift — drop phase from `phase_progress` (orphans
+>   the linked task records; the tasks themselves remain in
+>   `tasks/done/`).
+> - `[b]` restore phase to roadmap.md (operator edits the file by
+>   hand; this option defers the prompt for 24h while they work).
+> - `[c]` defer 24h
+
+Dispatch via `cairn_mission_advance({phase_id: "<drift_id>", choice: "drop"})`
+on `[a]` — `drop` removes the drifted entry from `phase_progress`
+and journals the resolution. The tool refuses `drop` when the phase
+is still present in roadmap.md (operator restored it). For `[b]`
+and `[c]`, write the defer file the same way as 0.2a (`choice:
+"defer"` is reserved for cursor-phase exits; for drift defers the
+skill writes `.cairn/.mission-phase-deferred-until` directly with
+the drifted id).
+
+If both 0.2a and 0.2b have items, batch them under one `AskUserQuestion`
+call (max 4 questions per batch — same rule as the main queue).
+
+After mission attention resolves, fall through to the regular
+attention queue below.
+
 ## Step 0.3 — large-queue routing (browser triage GUI)
 
 When `attention_count > 15`, the inline `AskUserQuestion` flow burns

@@ -139,3 +139,54 @@ export function preCommitDeferredLogPath(repoRoot: string): string {
 export function runsTerminalDir(repoRoot: string): string {
   return join(repoRoot, ".cairn", "runs", "terminal");
 }
+
+/* -------------------------------------------------------------------------- */
+/* Missions — committed roadmap + per-clone runtime state                    */
+/* -------------------------------------------------------------------------- */
+
+/** `.cairn/ground/missions/` — committed roadmap surface. */
+export function missionsGroundRoot(repoRoot: string): string {
+  return join(groundDir(repoRoot), "missions");
+}
+
+/** `.cairn/ground/missions/_done/` — archived roadmaps. */
+export function missionsGroundDoneRoot(repoRoot: string): string {
+  return join(missionsGroundRoot(repoRoot), "_done");
+}
+
+/** `.cairn/ground/missions/<id>/` for the live roadmap. */
+export function missionGroundDir(repoRoot: string, missionId: string): string {
+  return join(missionsGroundRoot(repoRoot), missionId);
+}
+
+/** `.cairn/ground/missions/<id>/roadmap.md`. */
+export function missionRoadmapPath(repoRoot: string, missionId: string): string {
+  return join(missionGroundDir(repoRoot, missionId), "roadmap.md");
+}
+
+/** `.cairn/missions/` — per-clone runtime state root. */
+export function missionsRuntimeRoot(repoRoot: string): string {
+  return join(repoRoot, ".cairn", "missions");
+}
+
+/** `.cairn/missions/_done/` — archived per-clone state. */
+export function missionsRuntimeDoneRoot(repoRoot: string): string {
+  return join(missionsRuntimeRoot(repoRoot), "_done");
+}
+
+/** `.cairn/missions/<id>/`. */
+export function missionRuntimeDir(repoRoot: string, missionId: string): string {
+  return join(missionsRuntimeRoot(repoRoot), missionId);
+}
+
+export function missionStatePath(repoRoot: string, missionId: string): string {
+  return join(missionRuntimeDir(repoRoot, missionId), "state.json");
+}
+
+export function missionSpecPath(repoRoot: string, missionId: string): string {
+  return join(missionRuntimeDir(repoRoot, missionId), "spec.md");
+}
+
+export function missionJournalPath(repoRoot: string, missionId: string): string {
+  return join(missionRuntimeDir(repoRoot, missionId), "journal.jsonl");
+}

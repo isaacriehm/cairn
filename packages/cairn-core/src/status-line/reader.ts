@@ -1,9 +1,45 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import {
+  countDonePhases,
+  findActiveMission,
+  readMissionState,
+  readRoadmap,
+} from "@isaacriehm/cairn-state";
 import { readProgress } from "../init/progress.js";
-import { type CtxMeterInput, formatStatus, renderCtxMeter } from "./format.js";
+import {
+  type CtxMeterInput,
+  type MissionCursorInput,
+  formatStatus,
+  renderCtxMeter,
+  renderMissionSegment,
+} from "./format.js";
 import { emptyEventCounters, type StatusJson, type TaskState } from "./index.js";
 import { defaultStatusJson, statusJsonPath } from "./writer.js";
+
+/**
+ * Read the active mission's cursor for the statusline. Returns null
+ * when no mission is active (no segment rendered).
+ *
+ * Hot path — invoked on every Claude Code prompt; bail fast on the
+ * common "no active mission" case before parsing roadmap/state.
+ */
+function readMissionCursorForStatusline(repoRoot: string): MissionCursorInput | null {
+  const id = findActiveMission(repoRoot);
+  if (id === null) return null;
+  const state = readMissionState(repoRoot, id);
+  const roadmap = readRoadmap(repoRoot, id);
+  if (state === null || roadmap === null) return null;
+  if (state.cursor.active_phase === null) return null;
+  // Slug = "MIS-<slug>-<hash7>" → strip prefix + suffix
+  const slug = id.replace(/^MIS-/, "").replace(/-[0-9a-f]{7}$/, "");
+  return {
+    slug,
+    phase_id: state.cursor.active_phase,
+    done: countDonePhases(state),
+    total: roadmap.frontmatter.phases.length,
+  };
+}
 
 const TASK_STATES: readonly TaskState[] = [
   "idle",
@@ -96,11 +132,14 @@ function groundStateFallback(repoRoot: string, ctx?: CtxMeterInput): string {
     }
   }
 
+  const mission = readMissionCursorForStatusline(repoRoot);
+
   const parts: string[] = ["⬡ cairn"];
   if (drafts > 0) {
     const noun = drafts === 1 ? "draft" : "drafts";
     parts.push(`⚑ ${drafts} ${noun}`);
   }
+  if (mission !== null) parts.push(renderMissionSegment(mission));
   if (ctx) parts.push(renderCtxMeter(ctx));
   return parts.join("  ");
 }
@@ -146,5 +185,6 @@ export function readStatusForCLI(
 
   // Mid-adoption: live progress wins over the per-session signal.
   const progress = readProgress(repoRoot);
-  return formatStatus(normalizeStatusJson(parsed), ctx, progress);
+  const mission = readMissionCursorForStatusline(repoRoot);
+  return formatStatus(normalizeStatusJson(parsed), ctx, progress, Date.now(), mission);
 }

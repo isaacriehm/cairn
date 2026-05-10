@@ -13,8 +13,21 @@ or omitted (defaults to the most-recently-touched active task).
 ## Step 1 — preload tools
 
 ```
-ToolSearch(select:mcp__plugin_cairn_cairn__cairn_resume,mcp__plugin_cairn_cairn__cairn_in_scope,mcp__plugin_cairn_cairn__cairn_decision_get,mcp__plugin_cairn_cairn__cairn_invariant_get)
+ToolSearch(select:mcp__plugin_cairn_cairn__cairn_resume,mcp__plugin_cairn_cairn__cairn_mission_resume,mcp__plugin_cairn_cairn__cairn_in_scope,mcp__plugin_cairn_cairn__cairn_decision_get,mcp__plugin_cairn_cairn__cairn_invariant_get)
 ```
+
+## Step 1.5 — mission frame (when an active mission exists)
+
+Call `cairn_mission_resume({})` first. If `active: true`, render the
+returned `body` verbatim BEFORE the task resume block — it's the
+mission-level context (cursor phase + exit_criteria, last 3
+graduated tasks across the mission, in-flight tasks under the
+cursor, the spec.md slice for the current phase, next 1-2 upcoming
+phases). Combined with the task frame from Step 2, total prime
+budget is ≤2500 tokens.
+
+If `active: false`, skip this step entirely — the operator is on a
+non-mission task and the task journal alone primes the session.
 
 ## Step 2 — fetch the resume payload
 

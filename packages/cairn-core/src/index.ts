@@ -69,6 +69,7 @@ export * from "./hooks/runners/index.js";
 export * from "./session/index.js";
 export * from "./session-start/index.js";
 export * from "./status-line/index.js";
+export * from "./missions/index.js";
 export {
   appendTrace,
   nowEvent,

@@ -45,7 +45,7 @@ every deferred tool the rest of the skill needs. The cairn MCP tools
 back to inline prose questions and the contract breaks.
 
 ```
-ToolSearch(select:mcp__plugin_cairn_cairn__cairn_task_create,mcp__plugin_cairn_cairn__cairn_task_complete,mcp__plugin_cairn_cairn__cairn_in_scope,mcp__plugin_cairn_cairn__cairn_canonical_for_topic,mcp__plugin_cairn_cairn__cairn_search,AskUserQuestion)
+ToolSearch(select:mcp__plugin_cairn_cairn__cairn_task_create,mcp__plugin_cairn_cairn__cairn_task_complete,mcp__plugin_cairn_cairn__cairn_in_scope,mcp__plugin_cairn_cairn__cairn_canonical_for_topic,mcp__plugin_cairn_cairn__cairn_search,mcp__plugin_cairn_cairn__cairn_mission_get,AskUserQuestion)
 ```
 
 After this call, all phase tools + the question tool are loaded for
@@ -214,6 +214,45 @@ so the operator sees the constraint that motivated the question.
 After each round of answers, loop back to Step 1+2 to re-evaluate. A
 tightened spec routinely takes 2–3 rounds for non-trivial work; one
 round is fine when the prompt is already mostly specified.
+
+## Step 2.5 — mission anchoring (when an active mission exists)
+
+Call `cairn_mission_get({})`. If `active: false`, skip this step.
+
+If `active: true`, you have an active mission with a cursor phase.
+The new task should be **anchored to the cursor phase** by default —
+`cairn_task_create` auto-stamps `mission_id` + `phase_id` from the
+cursor when both fields are omitted. Do NOT pass them explicitly
+unless you're overriding to a different phase.
+
+**Off-mission detection.** Read the cursor phase's `title` +
+`exit_criteria` from the `cairn_mission_get` response. If the
+operator's prompt clearly diverges from the phase scope (different
+file globs, different feature area, no overlap with exit_criteria),
+surface ONE question via `AskUserQuestion`:
+
+> Active mission `<mission_id>` is at phase `<phase_id>` —
+> `<phase_title>`. Your ask looks orthogonal. Pick:
+>
+> - `[a]` side-task — spawn this as a normal task with NO mission
+>   anchor (`mission_id: ""`); it won't count toward phase progress.
+> - `[b]` fold into current phase — anchor to `<phase_id>` anyway;
+>   the task graduating will count toward phase exit.
+> - `[c]` advance to a different phase first — list pending phases
+>   and let the operator pick (rare; only when the prompt clearly
+>   matches an upcoming phase's scope).
+
+On `[a]`: pass `mission_id: ""` to `cairn_task_create` in Step 3.
+On `[b]`: omit mission fields (default cursor pickup wins).
+On `[c]`: surface the pending phase list via a follow-up
+`AskUserQuestion`; the operator picks one. Then call
+`cairn_mission_advance({phase_id: <current>, choice: "force"})` to
+skip the current phase, then invoke this Step again so the new
+cursor phase is the anchor.
+
+**Aligned-on-mission case** (operator's prompt matches the cursor
+phase): no extra prompt; default cursor pickup handles everything.
+The task gets `mission_id` + `phase_id` stamps automatically.
 
 ## Step 3 — write the tightened spec (ALWAYS, server-enforced)
 

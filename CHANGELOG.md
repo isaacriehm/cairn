@@ -4,6 +4,71 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] — 2026-05-10
+
+### Added
+
+- **Mission system — supra-task layer for multi-phase plans.**
+  Cairn previously had one unit of work (`TSK-`), so a single
+  tightened spec scoped to one or two files. That broke down on
+  large multi-phase plans: the agent created a task for the
+  current slice, but the rest of the plan was invisible. After
+  `/clear`, the operator had to re-paste the whole plan into a
+  fresh chat. Missions add a persistent "what we're working on
+  across sessions" object — a doc-anchored cursor (committed
+  `roadmap.md` + per-clone `state.json` + frozen `spec.md`
+  snapshot + `journal.jsonl`) with phase-by-phase progress,
+  lazy task spawn anchored to the current cursor phase, and a
+  resume prompt that re-primes the mission frame in front of
+  the existing task journal. One active mission per repo;
+  side-tasks spawn without a mission tag.
+  - **Eight new MCP tools**: `cairn_mission_start` (Haiku
+    drafts the roadmap from a planning doc), `cairn_mission_accept_draft`
+    (commits the operator-approved roadmap), `cairn_mission_get`,
+    `cairn_mission_advance` (`exit` / `not_yet` / `defer` / `force`
+    / `drop`), `cairn_mission_close` (manual close + `--abort`
+    path), `cairn_mission_resume` (chained from `/cairn-resume`),
+    `cairn_mission_resync` + `cairn_mission_resync_accept`
+    (operator amended the source spec; surfaces a diff for
+    explicit accept/reject), `cairn_mission_reopen`.
+  - **Per-mission exit gate, optionally per-phase**: `prompt`
+    surfaces an inline `[a]/[b]/[c]` in the Stop hook reason
+    block when all linked tasks for the active phase graduate;
+    `auto` advances the cursor silently; `manual` waits for the
+    operator. Per-phase override in roadmap.md frontmatter for
+    one risky phase that should keep `prompt` while the rest
+    are `auto`.
+  - **Statusline**: appends `✓ <mid-slug> · <phase-id> (N/M)`
+    when a mission is active. Slug auto-truncates with `…` to
+    fit the 40-char budget.
+  - **SessionStart**: ground-state context block carries a new
+    `Active mission` section with the cursor phase, exit
+    criteria, drift warning, and a one-liner explaining
+    automatic mission anchoring on new tasks.
+  - **`cairn-direction` skill**: Step 2.5 mission preflight
+    auto-anchors the spawned task to the cursor phase; surfaces
+    a single AskUserQuestion when the operator's prompt is
+    orthogonal to the active phase (`side-task` /
+    `fold-into-phase` / `advance-to-different-phase`).
+  - **`cairn-attention` skill**: Step 0.2 resolves
+    phase-ready-to-exit, mission_drift, and mission_resync_pending
+    surfaces inline.
+  - **`/cairn-resume` command**: chains the mission frame body
+    (cursor + last 3 graduated tasks + in-flight tasks + sliced
+    spec section + next 1-2 phases) before the existing task
+    journal frame. Total resume budget: ≤2500 tokens.
+  - **CLI parity**: `cairn mission {start,accept,get,list,advance,close,reopen}`
+    for headless / debug paths.
+  - **Task linkage**: `cairn_task_create` accepts optional
+    `mission_id` + `phase_id` (defaults to active mission's
+    cursor; `mission_id: ""` opts out for explicit side-tasks).
+    `cairn_task_complete` emits a `phase-ready-to-exit`
+    invalidation event under `gate=prompt` and advances the
+    cursor under `gate=auto` when the last linked task on a
+    phase graduates. Linkage is centralized inside
+    `completeTask` so the Stop hook auto-graduator path picks
+    it up automatically.
+
 ## [0.9.8] — 2026-05-10
 
 ### Fixed

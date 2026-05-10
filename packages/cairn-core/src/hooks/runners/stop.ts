@@ -39,6 +39,12 @@ import {
   transitionTaskPhase,
 } from "../../tasks/index.js";
 import {
+  effectivePhaseExitGate,
+  findActiveMission,
+  readMissionState,
+  readRoadmap,
+} from "@isaacriehm/cairn-state";
+import {
   checkContextThreshold,
   renderContextThresholdHint,
 } from "./context-threshold.js";
@@ -191,6 +197,19 @@ export async function runStopHook(): Promise<void> {
       } catch (err) {
         warnings.push(
           `ctx_threshold_failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+
+      try {
+        const phaseHints = collectPhaseReadyHints(repoRoot, drained);
+        if (phaseHints.length > 0) {
+          const hint = renderPhaseReadyHint(phaseHints);
+          reason = reason.length > 0 ? `${reason}\n\n${hint}` : hint;
+          warnings.push(`mission_phase_ready:${phaseHints.length}`);
+        }
+      } catch (err) {
+        warnings.push(
+          `mission_phase_scan_failed: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
 
@@ -430,6 +449,109 @@ function autoGraduateTasks(
   }
 
   return result;
+}
+
+interface PhaseReadyHint {
+  mission_id: string;
+  mission_title: string;
+  phase_id: string;
+  phase_title: string;
+  exit_criteria: string;
+  exit_gate: "prompt" | "auto" | "manual";
+}
+
+/**
+ * Read the latest `phase-ready-to-exit` event(s) for active missions
+ * out of the drained event list. Cross-checks against the live mission
+ * state (the event might be stale if the operator already advanced).
+ * Skip events whose phase is no longer the cursor or already done.
+ *
+ * Suppresses events when the operator deferred the phase via
+ * `cairn_mission_advance({choice: "defer"})` — read the defer file
+ * directly since mission-phase defers don't share schema with the
+ * bypass/review defer states.
+ */
+function collectPhaseReadyHints(
+  repoRoot: string,
+  drained: InvalidationEvent[],
+): PhaseReadyHint[] {
+  const candidates = drained.filter((e) => e.kind === "phase-ready-to-exit");
+  if (candidates.length === 0) return [];
+
+  const missionId = findActiveMission(repoRoot);
+  if (missionId === null) return [];
+  const roadmap = readRoadmap(repoRoot, missionId);
+  const state = readMissionState(repoRoot, missionId);
+  if (roadmap === null || state === null) return [];
+
+  const cursorPhaseId = state.cursor.active_phase;
+  if (cursorPhaseId === null) return [];
+  if (state.phase_progress[cursorPhaseId]?.state === "done") return [];
+
+  // Defer file check — `.cairn/.mission-phase-deferred-until` JSON.
+  if (isMissionPhaseDeferActive(repoRoot, missionId, cursorPhaseId)) return [];
+
+  const gate = effectivePhaseExitGate(roadmap.frontmatter, cursorPhaseId);
+  if (gate !== "prompt") return [];
+
+  const phase = roadmap.frontmatter.phases.find((p) => p.id === cursorPhaseId);
+  if (phase === undefined) return [];
+
+  return [
+    {
+      mission_id: missionId,
+      mission_title: roadmap.frontmatter.title,
+      phase_id: cursorPhaseId,
+      phase_title: phase.title,
+      exit_criteria: phase.exit_criteria,
+      exit_gate: gate,
+    },
+  ];
+}
+
+function isMissionPhaseDeferActive(
+  repoRoot: string,
+  missionId: string,
+  phaseId: string,
+): boolean {
+  const path = join(repoRoot, ".cairn", ".mission-phase-deferred-until");
+  if (!existsSync(path)) return false;
+  let raw: string;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch {
+    return false;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return false;
+  }
+  if (typeof parsed !== "object" || parsed === null) return false;
+  const o = parsed as Record<string, unknown>;
+  if (o["mission_id"] !== missionId || o["phase_id"] !== phaseId) return false;
+  const until = typeof o["deferred_until"] === "string" ? Date.parse(o["deferred_until"]) : NaN;
+  if (Number.isNaN(until)) return false;
+  return Date.now() < until;
+}
+
+function renderPhaseReadyHint(hints: PhaseReadyHint[]): string {
+  const lines: string[] = [];
+  const h = hints[0];
+  if (h === undefined) return "";
+  lines.push(`## Cairn — phase ready to exit`);
+  lines.push("");
+  lines.push(`Mission \`${h.mission_id}\` (${h.mission_title}) — phase \`${h.phase_id}\`: ${h.phase_title}.`);
+  lines.push("");
+  lines.push(`Exit criteria: ${h.exit_criteria}`);
+  lines.push("");
+  lines.push("Operator picks via `cairn-attention` skill (or directly invoke `cairn_mission_advance`):");
+  lines.push("");
+  lines.push("- `[a]` mark phase done, advance cursor (`choice: \"exit\"`)");
+  lines.push("- `[b]` not yet — more tasks needed for this phase (`choice: \"not_yet\"`)");
+  lines.push("- `[c]` defer 24h (`choice: \"defer\"`)");
+  return lines.join("\n");
 }
 
 function renderReviewerHint(pending: PendingReview[]): string {

@@ -28,6 +28,31 @@ export interface CtxMeterInput {
   usedTokens: number;
 }
 
+/**
+ * Mission-cursor segment input. Rendered as
+ * `✓ <slug> · <phase_id> (N/M)` between the signal and the ctx meter
+ * when `MissionCursorInput` is supplied. The slug auto-truncates with
+ * `…` so the segment stays inside ~40 chars.
+ */
+export interface MissionCursorInput {
+  /** Slug portion of the mission id (between `MIS-` and `-<hash7>`). */
+  slug: string;
+  phase_id: string;
+  done: number;
+  total: number;
+}
+
+const MISSION_SEGMENT_BUDGET = 40;
+
+export function renderMissionSegment(m: MissionCursorInput): string {
+  const counter = `(${m.done}/${m.total})`;
+  const fixed = ` · ${m.phase_id} ${counter}`;
+  // Slug trims to leave room for "✓ " (2) + fixed
+  const slugBudget = Math.max(4, MISSION_SEGMENT_BUDGET - (2 + fixed.length));
+  const slug = m.slug.length > slugBudget ? `${m.slug.slice(0, slugBudget - 1)}…` : m.slug;
+  return `✓ ${slug}${fixed}`;
+}
+
 const ANSI_RESET = "\x1b[0m";
 const ANSI_GREEN = "\x1b[32m";
 const ANSI_YELLOW = "\x1b[33m";
@@ -164,10 +189,12 @@ export function formatStatus(
   ctx?: CtxMeterInput,
   progress?: ProgressSnapshot | null,
   nowMs: number = Date.now(),
+  mission?: MissionCursorInput | null,
 ): string {
   const parts: string[] = ["⬡ cairn"];
   const signal = renderSignal(s, progress ?? null, nowMs);
   if (signal) parts.push(signal);
+  if (mission) parts.push(renderMissionSegment(mission));
   if (ctx) parts.push(renderCtxMeter(ctx));
   return parts.join("  ");
 }

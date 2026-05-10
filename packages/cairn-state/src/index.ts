@@ -20,3 +20,4 @@ export * from "./file-candidates-map.js";
 export * from "./drift.js";
 export * from "./alignment-pending.js";
 export * from "./sot-cache.js";
+export * from "./missions.js";

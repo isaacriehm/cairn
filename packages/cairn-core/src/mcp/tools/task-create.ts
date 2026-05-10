@@ -2,6 +2,11 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { stringify as stringifyYaml } from "yaml";
+import {
+  findActiveMission,
+  readMissionState,
+  readRoadmap,
+} from "@isaacriehm/cairn-state";
 import type { McpContext } from "../context.js";
 import { requireBootstrap } from "../bootstrap-guard.js";
 import { mcpError } from "../errors.js";
@@ -20,6 +25,8 @@ interface Input {
   acceptance?: string[];
   module?: string;
   needs_review?: boolean;
+  mission_id?: string;
+  phase_id?: string;
 }
 
 /**
@@ -70,6 +77,38 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
   const generatedAt = new Date().toISOString();
   const needsReview = input.needs_review ?? true;
 
+  // Mission anchor — explicit input wins; otherwise inherit from the
+  // active mission's cursor. Empty string means opt-out (side-task).
+  let missionId: string | null = null;
+  let phaseId: string | null = null;
+  if (input.mission_id === "") {
+    missionId = null;
+    phaseId = null;
+  } else if (input.mission_id !== undefined && input.mission_id !== null) {
+    missionId = input.mission_id;
+    phaseId = input.phase_id ?? null;
+  } else {
+    const activeMission = findActiveMission(ctx.repoRoot);
+    if (activeMission !== null) {
+      const state = readMissionState(ctx.repoRoot, activeMission);
+      const roadmap = readRoadmap(ctx.repoRoot, activeMission);
+      const cursorPhase = state?.cursor.active_phase ?? null;
+      if (cursorPhase !== null && roadmap?.frontmatter.phases.some((p) => p.id === cursorPhase)) {
+        missionId = activeMission;
+        phaseId = input.phase_id ?? cursorPhase;
+      }
+    }
+  }
+  if (missionId !== null && phaseId !== null) {
+    const roadmap = readRoadmap(ctx.repoRoot, missionId);
+    if (roadmap !== null && !roadmap.frontmatter.phases.some((p) => p.id === phaseId)) {
+      return mcpError(
+        "VALIDATION_FAILED",
+        `phase_id ${phaseId} not present in roadmap of ${missionId}`,
+      );
+    }
+  }
+
   const specFrontmatter = {
     id: taskId,
     title: input.title,
@@ -105,13 +144,18 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
   const specPath = join(taskDir, "spec.tightened.md");
   writeFileSync(specPath, specContent, "utf8");
 
-  const statusContent = stringifyYaml({
+  const statusFrame: Record<string, unknown> = {
     id: taskId,
     phase: "running",
     module: input.module ?? input.target_path_globs[0]?.split("/")[0] ?? ".",
     title: input.title,
     started_at: generatedAt,
-  });
+  };
+  if (missionId !== null && phaseId !== null) {
+    statusFrame["mission_id"] = missionId;
+    statusFrame["phase_id"] = phaseId;
+  }
+  const statusContent = stringifyYaml(statusFrame);
   const statusPath = join(taskDir, "status.yaml");
   writeFileSync(statusPath, statusContent, "utf8");
 
@@ -122,6 +166,8 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     status_path: `.cairn/tasks/active/${taskId}/status.yaml`,
     in_scope_decisions: input.in_scope_decisions ?? [],
     in_scope_invariants: (input.in_scope_invariants ?? []).map(renderInvariantId),
+    mission_id: missionId,
+    phase_id: phaseId,
   };
 }
 

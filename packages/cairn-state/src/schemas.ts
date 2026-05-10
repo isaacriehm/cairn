@@ -473,3 +473,104 @@ export interface CommentBlock {
   /** Index immediately after `raw`. */
   endOffset: number;
 }
+
+/* -------------------------------------------------------------------------- */
+/* Mission system — supra-task layer                                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Per-mission default exit gate, with optional per-phase override in
+ * roadmap.md frontmatter.
+ *   - `prompt` — Stop hook surfaces inline AskUserQuestion on phase complete.
+ *   - `auto`   — cursor advances silently when last phase task graduates.
+ *   - `manual` — operator advances explicitly via cairn_mission_advance.
+ */
+export const MissionExitGate = z.enum(["prompt", "auto", "manual"]);
+export type MissionExitGate = z.infer<typeof MissionExitGate>;
+
+export const MissionPhase = z.object({
+  id: z
+    .string()
+    .min(1)
+    .regex(/^[a-z0-9][a-z0-9-]*$/, "phase id must be kebab-case ([a-z0-9-]+)"),
+  title: z.string().min(1),
+  depends_on: z.array(z.string()).default([]),
+  exit_criteria: z.string().min(1),
+  exit_gate: MissionExitGate.optional(),
+});
+export type MissionPhase = z.infer<typeof MissionPhase>;
+
+/**
+ * Roadmap frontmatter — `.cairn/ground/missions/<id>/roadmap.md`. Lives
+ * in committed ground state; multi-dev visible. Phase YAML is canonical;
+ * any prose body is operator notes ignored by Cairn parsing.
+ */
+export const MissionRoadmapFrontmatter = z
+  .object({
+    mission_id: z.string().regex(/^MIS-[a-z0-9-]+-[0-9a-f]{7}$/, "mission id must match MIS-<slug>-<hash7>"),
+    title: z.string().min(1),
+    spec_path: z.string().min(1),
+    created_at: z.string(),
+    exit_gate: MissionExitGate,
+    phases: z.array(MissionPhase).min(1),
+  })
+  .passthrough();
+export type MissionRoadmapFrontmatter = z.infer<typeof MissionRoadmapFrontmatter>;
+
+export const MissionPhaseState = z.enum(["pending", "in_progress", "done"]);
+export type MissionPhaseState = z.infer<typeof MissionPhaseState>;
+
+export const MissionPhaseProgressEntry = z.object({
+  state: MissionPhaseState,
+  task_ids: z.array(z.string()).default([]),
+  graduated_at: z.string().optional(),
+});
+export type MissionPhaseProgressEntry = z.infer<typeof MissionPhaseProgressEntry>;
+
+export const MissionCursor = z.object({
+  active_phase: z.string().nullable(),
+  active_phase_started_at: z.string().nullable(),
+});
+export type MissionCursor = z.infer<typeof MissionCursor>;
+
+export const MissionOutcome = z.enum(["active", "done", "aborted"]);
+export type MissionOutcome = z.infer<typeof MissionOutcome>;
+
+/**
+ * Per-clone mission state — `.cairn/missions/<id>/state.json`.
+ * Tracks the cursor + phase progress. Never committed (gitignored under
+ * `.cairn/missions/`).
+ */
+export const MissionState = z.object({
+  mission_id: z.string(),
+  started_at: z.string(),
+  cursor: MissionCursor,
+  phase_progress: z.record(z.string(), MissionPhaseProgressEntry),
+  outcome: MissionOutcome.default("active"),
+  closed_at: z.string().optional(),
+  abort_reason: z.string().optional(),
+});
+export type MissionState = z.infer<typeof MissionState>;
+
+/**
+ * Mission journal entry — `.cairn/missions/<id>/journal.jsonl`. One
+ * record per mission-level event (start, advance, resync, close).
+ */
+export const MissionJournalEntry = z.object({
+  ts: z.string(),
+  kind: z.enum([
+    "started",
+    "phase-advanced",
+    "phase-deferred",
+    "task-attached",
+    "resync-pending",
+    "resync-applied",
+    "drift-detected",
+    "closed",
+    "reopened",
+  ]),
+  phase_id: z.string().optional(),
+  task_id: z.string().optional(),
+  detail: z.string().optional(),
+});
+export type MissionJournalEntry = z.infer<typeof MissionJournalEntry>;

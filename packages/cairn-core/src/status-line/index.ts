@@ -104,7 +104,13 @@ export {
   writeStatusJson,
 } from "./writer.js";
 export { readStatusForCLI } from "./reader.js";
-export { formatStatus, renderCtxMeter, type CtxMeterInput } from "./format.js";
+export {
+  formatStatus,
+  renderCtxMeter,
+  renderMissionSegment,
+  type CtxMeterInput,
+  type MissionCursorInput,
+} from "./format.js";
 export {
   pushEvent,
   bumpCounter,

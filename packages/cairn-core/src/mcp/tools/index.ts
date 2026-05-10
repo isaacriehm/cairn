@@ -17,6 +17,15 @@ import {
   initResumeTool,
   initRunTool,
 } from "./init-phases.js";
+import { missionStartTool } from "./mission-start.js";
+import { missionAcceptDraftTool } from "./mission-accept-draft.js";
+import { missionGetTool } from "./mission-get.js";
+import { missionAdvanceTool } from "./mission-advance.js";
+import { missionCloseTool } from "./mission-close.js";
+import { missionResumeTool } from "./mission-resume.js";
+import { missionResyncTool } from "./mission-resync.js";
+import { missionResyncAcceptTool } from "./mission-resync-accept.js";
+import { missionReopenTool } from "./mission-reopen.js";
 import { invariantGetTool } from "./invariant-get.js";
 import { queryHistoryTool } from "./query-history.js";
 import { recordDecisionTool } from "./record-decision.js";
@@ -72,6 +81,16 @@ export const allTools: ToolDef<never>[] = [
   // Write — init pipeline (v0.7.2 single-umbrella surface)
   initResumeTool,
   initRunTool,
+  // Mission system — supra-task layer
+  missionStartTool,
+  missionAcceptDraftTool,
+  missionGetTool,
+  missionAdvanceTool,
+  missionCloseTool,
+  missionResumeTool,
+  missionResyncTool,
+  missionResyncAcceptTool,
+  missionReopenTool,
 ];
 
 export type { ToolDef };

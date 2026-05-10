@@ -31,6 +31,7 @@ import {
 import { join } from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { writeInvalidationEvent } from "../events/index.js";
+import { onTaskCompleted } from "../missions/task-link.js";
 
 export type TaskOutcome = "succeeded" | "failed" | "aborted";
 export type TaskTransitionPhase =
@@ -140,6 +141,16 @@ export function completeTask(
     });
   } catch {
     // best-effort emission — completion already landed on disk
+  }
+
+  // Mission linkage — append the task id to its phase's task_ids,
+  // emit phase-ready-to-exit when last task graduated under
+  // gate=prompt, advance cursor under gate=auto. Best-effort; never
+  // block graduation.
+  try {
+    onTaskCompleted(args.repoRoot, args.taskId, args.outcome);
+  } catch {
+    // best-effort
   }
 
   return {
