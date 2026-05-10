@@ -4,6 +4,25 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.2] — 2026-05-10
+
+### Fixed
+
+- **Statusline `⚑ N pending` no longer counts soft baseline findings.**
+  `attention_count` was a flat sum of `pendingDrafts + baselineFindings
+  + driftFindings`, where `baselineFindings` was the *total* count from
+  the latest sensor audit including every `severity: soft` match. The
+  `commented-block-3-plus-lines` pattern alone produced 500+ soft hits
+  on a typical adoption (every 3+-line `//` block in test files,
+  fixtures, JSDoc-adjacent comments) — the operator saw "⚑ 517 pending"
+  and couldn't drain it item-by-item because soft findings are
+  inventory for the attestation cross-check, not actionable attention.
+  `readLatestBaselineAudit` now walks `sensors[].findings[]` and tallies
+  by severity; `attention_count` only counts hard baseline findings.
+  The first-session onboarding section breaks the audit total into
+  `(N hard · M soft)` and routes the operator to triage hard findings
+  via `cairn-attention` while flagging soft as bulk-drain inventory.
+
 ## [0.9.1] — 2026-05-10
 
 ### Fixed

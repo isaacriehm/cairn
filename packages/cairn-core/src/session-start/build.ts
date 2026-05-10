@@ -201,9 +201,14 @@ export async function buildSessionStartContext(
   const pendingDraftsSection = renderPendingDraftsSection(drafts);
 
   // Baseline findings drive the attention surface alongside drafts +
-  // drift; read the latest audit's total_findings count if present.
+  // drift. Only HARD findings count — soft findings (e.g. the
+  // commented-block-3-plus-lines pattern that fires on every
+  // 3+-line commented block in the repo) are inventory for the
+  // attestation cross-check, not actionable attention. Surfacing
+  // 500+ soft findings as "⚑ N pending" gives the operator a count
+  // they can't drain item-by-item.
   const latestBaseline = readLatestBaselineAudit(args.repoRoot, warnings);
-  counts.baselineFindings = latestBaseline?.totalFindings ?? 0;
+  counts.baselineFindings = latestBaseline?.hardFindings ?? 0;
 
   // ── Section 1.5 — brand + product positioning (always injected) ───
   const brandAndPositioningSection = readBrandAndPositioning(args.repoRoot, warnings);
@@ -710,12 +715,22 @@ function renderFirstSessionOnboarding(args: OnboardingArgs): string | null {
   }
 
   if (audit.totalFindings > 0) {
+    const breakdown =
+      audit.hardFindings > 0 || audit.softFindings > 0
+        ? ` (${audit.hardFindings} hard · ${audit.softFindings} soft)`
+        : "";
     lines.push(
-      `  Baseline debt: ${audit.totalFindings} pre-Cairn violation${audit.totalFindings === 1 ? "" : "s"} found in existing code.`,
+      `  Baseline debt: ${audit.totalFindings} pre-Cairn violation${audit.totalFindings === 1 ? "" : "s"}${breakdown} found in existing code.`,
     );
-    lines.push(
-      "  Invoke the cairn-attention skill to surface these inline before starting work.",
-    );
+    if (audit.hardFindings > 0) {
+      lines.push(
+        "  Invoke the cairn-attention skill to triage hard findings; soft findings are inventory, drained in bulk.",
+      );
+    } else {
+      lines.push(
+        "  All findings are soft (inventory only). No hard violations to triage.",
+      );
+    }
     lines.push("");
   } else {
     lines.push(
@@ -743,6 +758,15 @@ function renderFirstSessionOnboarding(args: OnboardingArgs): string | null {
 interface BaselineSummary {
   runAt: string | null;
   totalFindings: number;
+  /** Only `severity: hard` findings — these are real action items. */
+  hardFindings: number;
+  /**
+   * `severity: soft` findings — inventory for the attestation cross-check,
+   * NOT actionable attention. Excluded from `attention_count` so the
+   * statusline doesn't surface 500+ commented-block matches as "pending"
+   * when the operator can't action them individually.
+   */
+  softFindings: number;
   filesScanned: number;
 }
 
@@ -779,13 +803,37 @@ function readLatestBaselineAudit(
       typeof parsed["files_scanned"] === "number"
         ? (parsed["files_scanned"] as number)
         : 0;
-    return { runAt, totalFindings, filesScanned };
+    const { hard, soft } = countFindingsBySeverity(parsed["sensors"]);
+    return { runAt, totalFindings, hardFindings: hard, softFindings: soft, filesScanned };
   } catch (err) {
     warnings.push(
       `baseline audit unreadable: ${err instanceof Error ? err.message : String(err)}`,
     );
     return null;
   }
+}
+
+/**
+ * Walk the audit's `sensors[].findings[]` and tally by severity. Defensive
+ * against schema drift — anything that isn't string `"hard"` or `"soft"`
+ * is silently ignored rather than counted under the wrong bucket.
+ */
+function countFindingsBySeverity(sensorsRaw: unknown): { hard: number; soft: number } {
+  let hard = 0;
+  let soft = 0;
+  if (!Array.isArray(sensorsRaw)) return { hard, soft };
+  for (const sensor of sensorsRaw) {
+    if (typeof sensor !== "object" || sensor === null) continue;
+    const findings = (sensor as Record<string, unknown>)["findings"];
+    if (!Array.isArray(findings)) continue;
+    for (const f of findings) {
+      if (typeof f !== "object" || f === null) continue;
+      const sev = (f as Record<string, unknown>)["severity"];
+      if (sev === "hard") hard += 1;
+      else if (sev === "soft") soft += 1;
+    }
+  }
+  return { hard, soft };
 }
 
 function readActiveSensorIds(repoRoot: string, warnings: string[]): string[] {
