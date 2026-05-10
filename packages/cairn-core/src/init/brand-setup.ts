@@ -15,11 +15,23 @@ import { join } from "node:path";
 import { createInterface, type Interface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 
+export interface BrandPersona {
+  name: string;
+  description: string;
+}
+
 export interface BrandAnswers {
   /** Q1 → product/positioning.md body. */
   whatItDoes: string;
-  /** Q2 → product/personas.yaml first persona stub. */
+  /**
+   * Q2 → product/personas.yaml. Single-sentence freeform answer from the
+   * interactive prompt path; collapses into one `name: primary` persona.
+   * Auto-derive (Haiku) populates `personas` instead and leaves this empty
+   * — see `derivedToBrandAnswers`.
+   */
   mainUsers: string;
+  /** Structured personas from the auto-derive path. Takes precedence over `mainUsers` when non-empty. */
+  personas?: BrandPersona[];
   /** Q3 → brand/voice.md body. */
   voice: string;
   /** Q4 → appended to brand/voice.md as "avoid:" section. */
@@ -136,7 +148,16 @@ export function applyBrandAnswers(
     if (overviewOk) updated.push(overviewRel);
   }
 
-  if (answers.mainUsers.length > 0) {
+  if (answers.personas !== undefined && answers.personas.length > 0) {
+    const rel = ".cairn/ground/product/personas.yaml";
+    const ok = rewritePersonasStructured(
+      join(repoRoot, rel),
+      answers.personas,
+      warnings,
+      rel,
+    );
+    if (ok) updated.push(rel);
+  } else if (answers.mainUsers.length > 0) {
     const rel = ".cairn/ground/product/personas.yaml";
     const ok = rewritePersonas(join(repoRoot, rel), answers.mainUsers, warnings, rel);
     if (ok) updated.push(rel);
@@ -204,6 +225,40 @@ function rewritePersonas(
     `    description: ${yamlSingleLine(description)}\n`;
   try {
     writeFileSync(abs, next, "utf8");
+  } catch (err) {
+    warnings.push(`brand-setup: ${rel} write failed: ${stringifyErr(err)}`);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Write personas.yaml with one entry per structured persona. Used by
+ * the auto-derive path; the operator-typed interactive answer path
+ * still uses `rewritePersonas` (single freeform sentence collapses
+ * to one `name: primary`).
+ */
+function rewritePersonasStructured(
+  abs: string,
+  personas: BrandPersona[],
+  warnings: string[],
+  rel: string,
+): boolean {
+  if (!existsSync(abs)) {
+    warnings.push(`brand-setup: ${rel} missing — skipping`);
+    return false;
+  }
+  const lines: string[] = [];
+  lines.push(`# Product personas — who this is for. Read at every SessionStart.`);
+  lines.push(`# See DOCS_SPEC.md §3.4 for shape.`);
+  lines.push(`status: current`);
+  lines.push(`personas:`);
+  for (const p of personas) {
+    lines.push(`  - name: ${p.name}`);
+    lines.push(`    description: ${yamlSingleLine(p.description)}`);
+  }
+  try {
+    writeFileSync(abs, lines.join("\n") + "\n", "utf8");
   } catch (err) {
     warnings.push(`brand-setup: ${rel} write failed: ${stringifyErr(err)}`);
     return false;

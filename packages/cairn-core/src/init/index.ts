@@ -205,17 +205,14 @@ export {
   runPhase6Brand,
   runPhase7TopicIndex,
   runPhase8DocsIngest,
-  runPhase9SourceComments,
+  runPhase9aWalker,
+  runPhase9bCurate,
+  runPhase9cEmit,
+  CURATOR_FINAL_PATH,
   runPhase10RulesMerge,
   runPhase11Baseline,
   runPhase12Strip,
   runPhase13Multidev,
-  runPhases8910Parallel,
-  SOURCE_COMMENTS_WALK_PATH,
-  sourceCommentsWalkAbsPath,
-  readSourceCommentsWalkFile,
-  writeSourceCommentsWalkFile,
-  to7bResultPersisted,
 } from "./phases/index.js";
 export type {
   PhaseId,
@@ -227,9 +224,19 @@ export type {
   PhaseError,
   ResumeReport,
   MapperResultPersisted,
-  IngestSourceCommentsResultPersisted,
+  WalkerOutput,
+  CurateOutput,
+  EmitOutput,
+  NoopPhaseOutput,
   TopicIndexPhaseOutput,
 } from "./phases/index.js";
+
+export {
+  validateEntry,
+  stripLineRange,
+  type FinalEntry,
+  type ValidationResult,
+} from "./curator/index.js";
 
 export {
   buildTopicIndex,

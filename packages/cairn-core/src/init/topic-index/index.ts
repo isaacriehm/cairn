@@ -20,7 +20,7 @@ import {
   writeTopicIndex,
 } from "@isaacriehm/cairn-state";
 import { clearProgress, writeProgress } from "../progress.js";
-import { makeHaikuJudge } from "./judge.js";
+import { makeHaikuJudge, type JudgeTally } from "./judge.js";
 import { resolveTopics, type JudgeProgress, type ResolveResult, type SemanticJudge } from "./resolve.js";
 import { walkProseBlocks, type ProseBlock } from "./walk.js";
 
@@ -56,13 +56,23 @@ export interface BuildTopicIndexResult extends ResolveResult {
   fileCandidates: Record<string, number>;
   /** Slugs dropped from `_rejected.yaml` by the GC pass. */
   rejectedGcDropped: string[];
+  /**
+   * Cached vs fresh vs errored Haiku judge call breakdown. Only the
+   * default `makeHaikuJudge` path increments these — smokes that
+   * supply their own judge get all-zeros (correctly: no Haiku spend).
+   */
+  judgeCached: number;
+  judgeFresh: number;
+  judgeErrors: number;
 }
 
 export async function buildTopicIndex(
   args: BuildTopicIndexArgs,
 ): Promise<BuildTopicIndexResult> {
   const blocks = args.blocks ?? walkProseBlocks(args.repoRoot);
-  const judge = args.judge ?? makeHaikuJudge({ repoRoot: args.repoRoot });
+  const tally: JudgeTally = { cached: 0, fresh: 0, errors: 0 };
+  const judge =
+    args.judge ?? makeHaikuJudge({ repoRoot: args.repoRoot, tally });
 
   log.debug({ blockCount: blocks.length }, "phase-5b walk complete");
 
@@ -114,6 +124,7 @@ export async function buildTopicIndex(
       fileCandidatesMapPath: fileCandidatesMapAbs,
       fileCandidates,
       rejectedGcDropped,
+      tally,
     });
   } catch (err) {
     if (emitProgress) clearProgress(args.repoRoot);
@@ -158,6 +169,7 @@ function finishResult(args: {
   fileCandidatesMapPath: string;
   fileCandidates: Record<string, number>;
   rejectedGcDropped: string[];
+  tally: JudgeTally;
 }): BuildTopicIndexResult {
   const {
     result,
@@ -167,6 +179,7 @@ function finishResult(args: {
     fileCandidatesMapPath,
     fileCandidates,
     rejectedGcDropped,
+    tally,
   } = args;
 
   log.info(
@@ -175,6 +188,9 @@ function finishResult(args: {
       verbatim: result.verbatimCollisions,
       semantic: result.semanticCollisions,
       judgeCalls: result.judgeCalls,
+      judgeCached: tally.cached,
+      judgeFresh: tally.fresh,
+      judgeErrors: tally.errors,
       filesWithCandidates: Object.keys(fileCandidates).length,
       rejectedGcDropped: rejectedGcDropped.length,
     },
@@ -189,6 +205,9 @@ function finishResult(args: {
     fileCandidatesMapPath,
     fileCandidates,
     rejectedGcDropped,
+    judgeCached: tally.cached,
+    judgeFresh: tally.fresh,
+    judgeErrors: tally.errors,
   };
 }
 

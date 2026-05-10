@@ -82,7 +82,31 @@ export async function runClaude(
 ): Promise<RunClaudeResult> {
   if (opts.cacheable === true && opts.repoRoot !== undefined) {
     const cached = cacheLookup(opts.repoRoot, opts);
-    if (cached !== null) return cached;
+    if (cached !== null) {
+      // Emit a trace row for cache hits too — without this, the
+      // jsonl log only shows fresh subprocess calls, so an operator
+      // post-mortem can't distinguish "cached judge call" from "no
+      // call dispatched at all." Useful for verifying that a re-run
+      // after rate-limit actually pulled the prior verdicts from
+      // disk instead of silently skipping the work.
+      appendTrace({
+        ts: new Date().toISOString(),
+        source: "claude",
+        kind: "cache_hit",
+        repo_root: opts.repoRoot,
+        session_id: opts.sessionId ?? null,
+        duration_ms: cached.durationMs,
+        ok: true,
+        payload: {
+          tier: opts.tier,
+          model: cached.model,
+          purpose: opts.purpose ?? null,
+          response_chars: cached.text.length,
+          parsed_present: cached.parsed !== undefined,
+        },
+      });
+      return cached;
+    }
   }
 
   await acquireClaudeSlot();
@@ -314,6 +338,7 @@ export async function runClaude(
           model,
           envelope,
           ...(usage !== undefined ? { usage } : {}),
+          cached: false,
         };
         if (opts.cacheable === true && opts.repoRoot !== undefined) {
           cacheStore(opts.repoRoot, opts, runResult);

@@ -15,12 +15,9 @@
 
 import type { DetectionResult } from "../types.js";
 import type { RepoSummary } from "../walker.js";
-import type { IngestionResult } from "../ingest-docs.js";
-import type { RunRulesMergeResult } from "../rules-merge/index.js";
 import type { BaselineAuditResult } from "../baseline-audit.js";
 import type { MultiDevInstallResult } from "../multi-dev/index.js";
 import type { MapperResultPersisted } from "./mapper-output-io.js";
-import type { IngestSourceCommentsResultPersisted } from "./source-comments-output-io.js";
 import type { TopicIndexPhaseOutput } from "./7-topic-index.js";
 import type { PreflightOutput } from "./5-preflight.js";
 
@@ -34,7 +31,9 @@ export const PHASE_IDS = [
   "6-brand",
   "7-topic-index",
   "8-docs-ingest",
-  "9-source-comments",
+  "9a-walker",
+  "9b-curate",
+  "9c-emit",
   "10-rules-merge",
   "11-baseline",
   "12-strip",
@@ -81,7 +80,7 @@ export interface PhaseState {
   /** When the pipeline started (ISO-8601). */
   startedAt: string;
   /** Schema version for the on-disk state file (bump on breaking change). */
-  schemaVersion: 2;
+  schemaVersion: 3;
 }
 
 export interface SeedPhaseOutput {
@@ -105,6 +104,64 @@ export interface StripState {
   decisions: Record<string, "strip" | "keep" | "skip">;
 }
 
+/**
+ * Output of phases collapsed to no-ops by the curator pipeline merge
+ * (Phase 8 docs-ingest + Phase 10 rules-merge in v0.9.0). The runners
+ * stay registered so resumes from old state files don't blow up; they
+ * stamp this marker into outputs and advance.
+ */
+export interface NoopPhaseOutput {
+  skipped: "merged-into-9-curator" | "self-adopt";
+}
+
+/**
+ * Output of the unified curator walker (9a-walker). Counts what the
+ * regex pre-filter let through and points to the on-disk corpus +
+ * shard plan the skill driver picks up.
+ */
+export interface WalkerOutput {
+  skipped?: "self-adopt";
+  /** Repo-relative path to the spilled corpus.jsonl. */
+  corpus_path?: string;
+  /** Repo-relative path to the spilled shards.json. */
+  shards_path?: string;
+  /** Total surviving records across all sub-walkers. */
+  records_total?: number;
+  /** Per-source-kind count. */
+  records_by_kind?: { comment: number; doc: number; rule: number };
+  /** Records dropped by the regex pre-filter, by reason. */
+  dropped?: Record<string, number>;
+  /** Number of shards produced by the packer. */
+  shards?: number;
+  /** Total estimated input tokens across shards. */
+  total_input_tokens_estimate?: number;
+}
+
+/**
+ * Output stamped by the 9b-curate runner. The map+reduce dispatch is
+ * skill-driven (parallel subagents write JSONL); the runner merely
+ * confirms `final.jsonl` exists, counts its entries, and advances.
+ */
+export interface CurateOutput {
+  skipped?: "self-adopt";
+  /** Repo-relative path to final.jsonl. */
+  final_path?: string;
+  /** Number of candidate entries the reducer emitted. */
+  final_entries?: number;
+}
+
+/**
+ * Output of the deterministic emit phase (9c-emit). Records what
+ * passed the strict validators and what dropped silently.
+ */
+export interface EmitOutput {
+  skipped?: "self-adopt";
+  decsWritten?: { id: string; path: string; title: string }[];
+  invsWritten?: { id: string; path: string; title: string }[];
+  dropped?: number;
+  dropReasons?: Record<string, number>;
+}
+
 export interface PhaseOutputs {
   "1-detect"?: DetectionResult;
   "2-walker"?: RepoSummary;
@@ -113,12 +170,17 @@ export interface PhaseOutputs {
   "5-preflight"?: PreflightOutput;
   "6-brand"?: BrandOutput;
   "7-topic-index"?: TopicIndexPhaseOutput;
-  "8-docs-ingest"?: IngestionResult;
-  "9-source-comments"?: IngestSourceCommentsResultPersisted;
-  "10-rules-merge"?: RunRulesMergeResult;
+  "8-docs-ingest"?: NoopPhaseOutput;
+  "9a-walker"?: WalkerOutput;
+  "9b-curate"?: CurateOutput;
+  "9c-emit"?: EmitOutput;
+  "10-rules-merge"?: NoopPhaseOutput;
   "11-baseline"?: BaselineAuditResult;
   "12-strip"?: StripState;
-  "13-multidev"?: MultiDevInstallResult;
+  "13-multidev"?: MultiDevInstallResult & {
+    /** Number of files in the manifest after the phase 13 finalize rebuild. */
+    manifest_files?: number;
+  };
 }
 
 /** Discriminated union returned by every phase function. */

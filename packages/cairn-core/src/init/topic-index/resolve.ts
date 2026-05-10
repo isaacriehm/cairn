@@ -42,13 +42,21 @@ export type { ProseBlock, ProseBlockKind };
 const log = logger("init.topic-index.resolve");
 
 /**
- * Bail the rest of phase 7 after this many consecutive judge timeouts —
- * once the Haiku subprocess starts timing out, every subsequent call is
- * very likely to time out too (env / quota / network), and continuing
- * would burn TIMEOUT_MS × pair-count of wall-time. Quota / auth errors
- * trip the breaker on the first occurrence.
+ * Bail the rest of phase 7 after this many consecutive judge failures of
+ * ANY kind. Any sustained failure mode (timeout, overloaded, rate-limited
+ * via wording the regex didn't catch, broken pipe, JSON parse glitch on
+ * every call) means subsequent calls will almost certainly fail too;
+ * continuing would burn `TIMEOUT_MS × pair-count` of wall-time AND mask
+ * the true partial-completion as a successful phase output. Quota / auth
+ * errors trip the breaker on the first occurrence.
+ *
+ * Crucially, a breaker trip caused by quota/auth — or by reaching this
+ * consecutive-fail threshold — surfaces as a thrown error from
+ * `resolveTopics`, not a degraded-but-successful result. Phase 7 wraps
+ * that as `status: "error"` so the orchestrator stops instead of
+ * advancing on a partial topic index.
  */
-const CONSECUTIVE_TIMEOUT_BAIL = 5;
+const CONSECUTIVE_FAIL_BAIL = 5;
 
 export type SemanticVerdict = "same" | "different";
 
@@ -174,8 +182,18 @@ export async function resolveTopics(
   const concurrency = Math.max(1, opts.judgeConcurrency ?? 5);
   let judgeCalls = 0;
   let unresolvedAmbiguous = 0;
-  let consecutiveTimeouts = 0;
+  let consecutiveFails = 0;
   let judgeBroken = false;
+  /**
+   * First fatal error encountered. Set when:
+   *   - quota/auth error (immediate trip — no point retrying), OR
+   *   - the consecutive-fail threshold trips on any error kind.
+   * Re-thrown after Promise.all so phase 7 surfaces as an error and
+   * the orchestrator does NOT advance on a partial topic index.
+   * Non-fatal soft failures (isolated parse glitch, single timeout)
+   * still count toward `unresolvedAmbiguous` and let the phase finish.
+   */
+  let firstFatalErr: Error | null = null;
   let nextIdx = 0;
   const sameVerdicts: { i: number; j: number }[] = [];
 
@@ -194,24 +212,27 @@ export async function resolveTopics(
       judgeCalls += 1;
       try {
         const verdict = await opts.judge({ a: pair.a, b: pair.b });
-        consecutiveTimeouts = 0;
+        consecutiveFails = 0;
         if (verdict === "same") sameVerdicts.push({ i: pair.i, j: pair.j });
       } catch (err) {
         unresolvedAmbiguous += 1;
+        consecutiveFails += 1;
         if (err instanceof ClaudeError) {
           if (err.kind === "auth" || isQuotaKind(err.kind)) {
             log.warn({ kind: err.kind }, "phase 7 judge bailed on quota/auth error");
+            if (firstFatalErr === null) firstFatalErr = err;
             judgeBroken = true;
-          } else if (err.kind === "timeout") {
-            consecutiveTimeouts += 1;
-            if (consecutiveTimeouts >= CONSECUTIVE_TIMEOUT_BAIL) {
-              log.warn(
-                { consecutiveTimeouts },
-                "phase 7 judge bailed after consecutive timeouts; remaining pairs treated as different",
-              );
-              judgeBroken = true;
-            }
           }
+        }
+        if (!judgeBroken && consecutiveFails >= CONSECUTIVE_FAIL_BAIL) {
+          log.warn(
+            { consecutiveFails, errKind: err instanceof ClaudeError ? err.kind : "non-claude" },
+            "phase 7 judge bailed after consecutive fails; surfacing as phase error",
+          );
+          if (firstFatalErr === null) {
+            firstFatalErr = err instanceof Error ? err : new Error(String(err));
+          }
+          judgeBroken = true;
         }
       }
       if (opts.onProgress !== undefined) {
@@ -221,6 +242,12 @@ export async function resolveTopics(
   };
 
   await Promise.all(Array.from({ length: concurrency }, () => worker()));
+
+  // Surface fatal failure to phase 7. Doing this before applying merges
+  // / writing topicIndex prevents a partial topic-index from being
+  // written to ground state when quota / auth / sustained failures
+  // mean the resolver never got a clean run.
+  if (firstFatalErr !== null) throw firstFatalErr;
 
   // Apply union-find merges from successful "same" verdicts. Done after
   // all workers finish so concurrent verdicts can't race the merge map.

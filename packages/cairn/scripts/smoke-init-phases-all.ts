@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * smoke-init-phases-all — invoke each of the 13 phase functions
+ * smoke-init-phases-all — invoke each of the v0.9.0 phase functions
  * against a synthetic repo and assert the PhaseResult contract.
  *
  * Coverage:
@@ -8,19 +8,33 @@
  *     → status: complete, expected outputs stamped, nextPhase advances
  *   - Phase 5-preflight: auto-advances with ETA estimate stamped
  *   - Phase 6-brand: needs_input then complete on "skip"
+ *   - Phase 8-docs-ingest: stamps `skipped: "merged-into-9-curator"`
+ *     and advances to 9a-walker (v0.9.0 no-op)
+ *   - Phase 9a-walker: end-to-end on a fixture repo with synthetic
+ *     source comments + docs/ markdown → corpus.jsonl + shards.json
+ *   - Phase 9b-curate: errors when final.jsonl is missing
+ *   - Phase 9c-emit: emits a hand-rolled final.jsonl through the
+ *     validators and verifies survivors land in `.cairn/ground/`
+ *   - Phase 10-rules-merge: stamps `skipped: "merged-into-9-curator"`
+ *     and advances to 11-baseline (v0.9.0 no-op)
  *   - Phase 12-strip: completes silently when no flagged modules
- *   - Phases 3-mapper, 8-docs-ingest, 9-source-comments, 10-rules-merge,
- *     11-baseline, 13-multidev: prereq error path verified (each
- *     surfaces a typed error when its expected upstream output is
- *     missing). Full execution paths are covered by the existing
- *     smoke-init flow under `runInit`.
+ *   - Phases 3-mapper, 11-baseline, 13-multidev: prereq error
+ *     path / export surface verified
  */
 
 import { execSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  CURATOR_FINAL_PATH,
   freshPhaseState,
   runPhase12Strip,
   runPhase13Multidev,
@@ -30,7 +44,9 @@ import {
   runPhase5Preflight,
   runPhase6Brand,
   runPhase8DocsIngest,
-  runPhase9SourceComments,
+  runPhase9aWalker,
+  runPhase9bCurate,
+  runPhase9cEmit,
   runPhase10RulesMerge,
   runPhase11Baseline,
   type PhaseResult,
@@ -190,17 +206,17 @@ async function runSmoke(): Promise<void> {
     console.log("  ✓ Step 6 — prereq-missing error path for 3-mapper");
   }
 
-  // ── Step 7 — phase functions exposed for the long-running phases ─
+  // ── Step 7 — phase functions exposed for the long-running / curator phases ─
   {
     // Contract: each is a function returning a Promise. We don't run
-    // them here (they hit LLMs / sensors that need real wiring); the
-    // smoke just asserts the export surface so commit 5's MCP
-    // registration has a stable target.
+    // most of them here (they hit LLMs / sensors that need real wiring);
+    // the smoke just asserts the export surface so the MCP registration
+    // has a stable target.
     const fns = [
       ["runPhase3Mapper", runPhase3Mapper],
-      ["runPhase8DocsIngest", runPhase8DocsIngest],
-      ["runPhase9SourceComments", runPhase9SourceComments],
-      ["runPhase10RulesMerge", runPhase10RulesMerge],
+      ["runPhase9aWalker", runPhase9aWalker],
+      ["runPhase9bCurate", runPhase9bCurate],
+      ["runPhase9cEmit", runPhase9cEmit],
       ["runPhase11Baseline", runPhase11Baseline],
       ["runPhase13Multidev", runPhase13Multidev],
     ] as const;
@@ -208,6 +224,230 @@ async function runSmoke(): Promise<void> {
       assert(typeof fn === "function", `Step 7: ${name} must be exported as a function`);
     }
     console.log(`  ✓ Step 7 — long-running phase functions exported (${fns.length})`);
+  }
+
+  // ── Step 8 — phase 8 + 10 collapse to no-ops in v0.9.0 ───────────
+  {
+    const repo = mkRepo();
+    const fresh = freshPhaseState(repo);
+    const phase8Result = await runPhase8DocsIngest({
+      ...fresh,
+      currentPhase: "8-docs-ingest",
+    });
+    assert(
+      phase8Result.status === "complete",
+      `Step 8: phase 8 should complete as no-op, got ${phase8Result.status}`,
+    );
+    if (phase8Result.status !== "complete") return;
+    assert(
+      phase8Result.nextPhase === "9a-walker",
+      `Step 8: phase 8 should advance to 9a-walker, got ${phase8Result.nextPhase}`,
+    );
+    const out8 = phase8Result.state.outputs["8-docs-ingest"];
+    assert(
+      out8?.skipped === "merged-into-9-curator",
+      `Step 8: phase 8 should stamp 'merged-into-9-curator', got ${JSON.stringify(out8)}`,
+    );
+    const phase10Result = await runPhase10RulesMerge({
+      ...fresh,
+      currentPhase: "10-rules-merge",
+    });
+    assert(
+      phase10Result.status === "complete",
+      `Step 8: phase 10 should complete as no-op, got ${phase10Result.status}`,
+    );
+    if (phase10Result.status !== "complete") return;
+    assert(
+      phase10Result.nextPhase === "11-baseline",
+      `Step 8: phase 10 should advance to 11-baseline, got ${phase10Result.nextPhase}`,
+    );
+    const out10 = phase10Result.state.outputs["10-rules-merge"];
+    assert(
+      out10?.skipped === "merged-into-9-curator",
+      `Step 8: phase 10 should stamp 'merged-into-9-curator', got ${JSON.stringify(out10)}`,
+    );
+    console.log("  ✓ Step 8 — phase 8 + 10 no-op markers stamp + advance");
+  }
+
+  // ── Step 9 — phase 9a-walker end-to-end on a fixture repo ────────
+  {
+    const repo = mkRepo();
+    // Seed an essay-class block comment that survives the prefilter.
+    const srcDir = join(repo, "core", "src");
+    mkdirSync(srcDir, { recursive: true });
+    writeFileSync(
+      join(srcDir, "session.ts"),
+      [
+        "/**",
+        " * Session validation — must reject sessions older than 24h to keep",
+        " * privilege escalation off the table after operator deactivation.",
+        " * The cache TTL is the only enforcement point because every",
+        " * downstream lookup goes through it.",
+        " */",
+        "export function validateSession(): void {}",
+        "",
+      ].join("\n"),
+    );
+    // Seed a doc paragraph above the 80-char minimum.
+    const docsDir = join(repo, "docs");
+    mkdirSync(docsDir, { recursive: true });
+    writeFileSync(
+      join(docsDir, "auth.md"),
+      [
+        "# Auth",
+        "",
+        "Sessions are stored at the edge cache and expire after 24 hours of",
+        "wall-clock time, regardless of activity. Operators can revoke a",
+        "session by removing the cache entry directly.",
+        "",
+      ].join("\n"),
+    );
+    // Seed a CLAUDE.md H2 section (passes through rule sub-walker).
+    writeFileSync(
+      join(repo, "CLAUDE.md"),
+      [
+        "# Project rules",
+        "",
+        "## Authentication",
+        "",
+        "Auth tokens MUST expire after 24 hours. Renewals require a fresh",
+        "challenge so we never extend a stolen token's lifetime.",
+        "",
+      ].join("\n"),
+    );
+    const fresh = freshPhaseState(repo);
+    const r = await runPhase9aWalker({ ...fresh, currentPhase: "9a-walker" });
+    assert(r.status === "complete", `Step 9: 9a-walker should complete, got ${r.status}`);
+    if (r.status !== "complete") return;
+    assert(r.nextPhase === "9b-curate", `Step 9: nextPhase should be 9b-curate`);
+    const out = r.state.outputs["9a-walker"];
+    assert(out !== undefined, "Step 9: outputs['9a-walker'] populated");
+    assert(
+      typeof out.records_total === "number" && out.records_total >= 1,
+      `Step 9: walker should yield ≥1 surviving record, got ${out.records_total}`,
+    );
+    assert(
+      typeof out.shards === "number" && out.shards >= 1,
+      `Step 9: walker should pack ≥1 shard, got ${out.shards}`,
+    );
+    assert(
+      existsSync(join(repo, ".cairn/init/curator/corpus.jsonl")),
+      "Step 9: corpus.jsonl should be on disk",
+    );
+    assert(
+      existsSync(join(repo, ".cairn/init/curator/shards.json")),
+      "Step 9: shards.json should be on disk",
+    );
+    console.log("  ✓ Step 9 — 9a-walker end-to-end (corpus + shards on disk)");
+  }
+
+  // ── Step 10 — phase 9b-curate errors when final.jsonl missing ────
+  {
+    const repo = mkRepo();
+    const fresh = freshPhaseState(repo);
+    const r = await runPhase9bCurate({ ...fresh, currentPhase: "9b-curate" });
+    assert(
+      r.status === "error",
+      `Step 10: 9b-curate without final.jsonl should error, got ${r.status}`,
+    );
+    if (r.status !== "error") return;
+    assert(
+      r.error.code === "9b-curate-missing-final",
+      `Step 10: error code should be 9b-curate-missing-final, got ${r.error.code}`,
+    );
+    console.log("  ✓ Step 10 — 9b-curate errors when curator skill skipped");
+  }
+
+  // ── Step 11 — phase 9c-emit drops invalid + emits valid entries ──
+  {
+    const repo = mkRepo();
+    // Need an evidence file the validator can resolve.
+    const evRel = "core/src/auth/session.ts";
+    mkdirSync(join(repo, "core/src/auth"), { recursive: true });
+    writeFileSync(join(repo, evRel), "// seeded for 9c-emit smoke\n");
+    // Hand-write final.jsonl: one valid DEC, one valid INV, one invalid
+    // (missing scope_globs).
+    const finalAbs = join(repo, CURATOR_FINAL_PATH);
+    mkdirSync(join(repo, ".cairn/init/curator"), { recursive: true });
+    const validDec = {
+      kind: "DEC",
+      title: "Reject sessions older than 24h at every cache lookup",
+      body: [
+        "## Context",
+        "Sessions persist to the edge cache for 24h.",
+        "",
+        "## Decision",
+        "Cache lookup verifies TTL; expired sessions are rejected immediately.",
+        "",
+        "## Why",
+        "Stale sessions allow privilege escalation after operator deactivation.",
+      ].join("\n"),
+      scope_globs: ["core/src/auth/**"],
+      evidence_files: [`${evRel}:1-10`],
+      topic_tags: ["auth", "session"],
+    };
+    const validInv = {
+      kind: "INV",
+      title: "Cap login attempts to 5 per IP per minute",
+      body: [
+        "## Context",
+        "Login endpoint is the brute-force surface for credential stuffing.",
+        "",
+        "## Invariant",
+        "Per-IP rate limiter MUST cap login at 5 attempts per minute.",
+        "",
+        "## Why",
+        "Wider caps cost almost nothing to attackers and lock out real users.",
+      ].join("\n"),
+      scope_globs: ["core/src/auth/**"],
+      evidence_files: [evRel],
+      topic_tags: ["auth", "rate-limit"],
+    };
+    const invalid = {
+      kind: "DEC",
+      title: "No scope globs entry",
+      body: validDec.body,
+      scope_globs: [],
+      evidence_files: [evRel],
+      topic_tags: ["auth"],
+    };
+    writeFileSync(
+      finalAbs,
+      [validDec, validInv, invalid].map((e) => JSON.stringify(e)).join("\n") + "\n",
+      "utf8",
+    );
+    const fresh = freshPhaseState(repo);
+    const r = await runPhase9cEmit({ ...fresh, currentPhase: "9c-emit" });
+    assert(r.status === "complete", `Step 11: 9c-emit should complete, got ${r.status}`);
+    if (r.status !== "complete") return;
+    assert(r.nextPhase === "10-rules-merge", `Step 11: nextPhase should be 10-rules-merge`);
+    const out = r.state.outputs["9c-emit"];
+    assert(out !== undefined, "Step 11: outputs['9c-emit'] populated");
+    assert(
+      out.decsWritten?.length === 1,
+      `Step 11: 1 DEC should land in ground, got ${out.decsWritten?.length}`,
+    );
+    assert(
+      out.invsWritten?.length === 1,
+      `Step 11: 1 INV should land in ground, got ${out.invsWritten?.length}`,
+    );
+    assert(
+      out.dropped === 1,
+      `Step 11: 1 entry should drop, got ${out.dropped}`,
+    );
+    const decId = out.decsWritten?.[0]?.id;
+    const decPath = join(repo, ".cairn/ground/decisions", `${decId}.md`);
+    assert(existsSync(decPath), `Step 11: DEC file should exist at ${decPath}`);
+    const decBody = readFileSync(decPath, "utf8");
+    assert(
+      decBody.includes("capture_source: init-curator"),
+      "Step 11: DEC frontmatter should carry capture_source: init-curator",
+    );
+    assert(
+      decBody.includes("status: accepted"),
+      "Step 11: DEC frontmatter should carry status: accepted",
+    );
+    console.log("  ✓ Step 11 — 9c-emit emits validated entries, drops the rest");
   }
 
   console.log("smoke-init-phases-all — pass");

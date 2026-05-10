@@ -85,4 +85,12 @@ export interface RunClaudeResult {
   envelope?: Record<string, unknown>;
   /** Usage stats lifted from the envelope when present. */
   usage?: ClaudeUsage;
+  /**
+   * `true` when the result came from the on-disk cache (no
+   * subprocess spawned, no plan-quota burn). `false` for fresh
+   * subprocess calls. Surfaces upstream so callers can split
+   * counters into cached vs fresh and trace observers can
+   * distinguish the two paths.
+   */
+  cached: boolean;
 }

@@ -13,9 +13,11 @@
  *      domain summary; the rest of the merge is mechanical (union of
  *      arrays, dedupe sensors by id).
  *
- * If every module call fails, the orchestrator throws — there's no
- * fallback path. The operator re-runs `cairn init` with `--force` after
- * fixing whatever broke (auth, network, etc.).
+ * If ANY module call fails, the orchestrator throws — the seed must
+ * come from a complete map (partial fail-soft would silently degrade
+ * scope_index + sensor coverage for the affected module). Completed
+ * proposals are persisted to the on-disk Claude cache; re-running
+ * `cairn init` only re-issues the failed slice(s).
  *
  * Public surface (`MapperOutput`, `MapperResult`, validators, prompt + schema
  * constants) is consumed by both this orchestrator and the standalone
@@ -215,13 +217,21 @@ export async function runMapper(args: RunMapperArgs): Promise<MapperResult> {
     ...(args.onModuleEnd !== undefined ? { onModuleEnd: args.onModuleEnd } : {}),
   });
 
-  // 3. If every module call failed there's no fallback — surface the
-  //    error so the operator can re-run after fixing the upstream cause.
-  const allFailed = proposals.length > 0 && proposals.every((p) => p.failed);
-  if (allFailed) {
+  // 3. If ANY module call failed, surface the error. One-time adoption
+  //    must seed ground state from a complete map — a partial
+  //    fail-soft would silently degrade scope_index, sensor coverage,
+  //    and high-stakes globs for the affected module. Successful
+  //    module proposals are cached on disk (cacheable: true in the
+  //    runClaude call), so re-running `cairn init` only re-issues the
+  //    failed slice(s); completed modules hit the cache instantly and
+  //    don't burn coding-plan quota a second time.
+  const failed = proposals.filter((p) => p.failed);
+  if (failed.length > 0) {
+    const slugs = failed.map((p) => p.moduleSlug).join(", ");
     throw new Error(
-      `mapper failed: all ${proposals.length} module call(s) returned errors. ` +
-        `Re-run \`cairn init --force\` after fixing the upstream cause (auth, network, etc.).`,
+      `mapper failed: ${failed.length}/${proposals.length} module call(s) returned errors (${slugs}). ` +
+        `Re-run \`cairn init\` to retry — completed modules hit the on-disk cache. ` +
+        `If the same module keeps failing, check upstream (network/auth) or report the slice slug.`,
     );
   }
 

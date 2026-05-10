@@ -92,10 +92,10 @@ export function cacheLookup(
       return null;
     }
     log.info({ key, ageMs, tier: opts.tier }, "cache hit");
-    
+
     // Convert zod tier back to RunClaudeResult tier
     const tier = parsed.result.tier as RunClaudeResult["tier"];
-    
+
     const u = parsed.result.usage;
     return {
       text: parsed.result.text,
@@ -112,6 +112,7 @@ export function cacheLookup(
           ...(u.cache_creation_input_tokens !== undefined ? { cache_creation_input_tokens: u.cache_creation_input_tokens } : {}),
         }
       } : {}),
+      cached: true,
     };
   } catch {
     return null;

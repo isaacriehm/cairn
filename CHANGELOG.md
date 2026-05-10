@@ -4,6 +4,237 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.1] — 2026-05-10
+
+### Fixed
+
+- **Phase 3 mapper — per-module Sonnet timeout bumped 180s → 600s.**
+  Sonnet with `--json-schema` and a fat `scope_index.files` output
+  (one entry per file in the module) on a 35k-char prompt can
+  legitimately run 4-6 minutes. The 180s ceiling was timing out on
+  legitimate large modules in monorepos with sizable
+  `core/src`-style packages.
+- **Phase 3 mapper — flipped failure policy from all-failed to
+  any-failed.** Previously a single timed-out module silently
+  downgraded to a `failed: true` proposal (confidence 0.1, empty
+  globs, blanket-`unscoped: true` scope index) and the merge step
+  proceeded — seeding ground state with degraded scope coverage and
+  no surface error to the operator. Now any module failure throws
+  from `runMapper`; Phase 3 returns `error` and preserves
+  `init-state.json` so the operator can re-run. Successful module
+  proposals are persisted to the on-disk Claude cache
+  (`cacheable: true` was already wired); a re-run only re-issues
+  the failed slice — completed modules hit the cache instantly and
+  don't burn coding-plan quota a second time.
+- **Phase 6 brand — auto-derive personas now write structured entries
+  instead of mashing into a single `name: primary` line.** The
+  Haiku-derived path returned 1-3 named personas, but
+  `derivedToBrandAnswers` joined them with ` · ` into a single
+  `mainUsers` string and `rewritePersonas` wrote that mash as one
+  `name: primary` entry's description. New `BrandAnswers.personas`
+  array carries the structured shape; `applyBrandAnswers` writes one
+  YAML entry per persona via `rewritePersonasStructured`. The
+  freeform interactive-prompt path (single sentence) keeps the
+  `name: primary` collapse behavior since the operator answered with
+  one line.
+- **Phase 4 seed — canonical-map template trimmed of Cairn-internal
+  topics.** Template shipped with `cairn-architecture`,
+  `cairn-mcp-surface`, `cairn-filesystem-layout`, and
+  `cairn-plugin-architecture` entries pointing at Cairn's own `docs/*`
+  files — useless dead links for adopters whose project doesn't
+  contain those docs. Template now ships only the universal
+  `agents-md` and `claude-md` entries; adopters extend per project.
+- **Phase 13 multidev — finalize step now rebuilds
+  `ground/manifest.yaml`.** Manifest was previously empty
+  (`files: []`) at the end of adoption — `writeManifest()` only ran
+  from the GC canary path, so a freshly-adopted repo had to wait
+  for the first commit before the manifest reflected reality. Runs
+  as a non-fatal finalize step in Phase 13; failures log a warning
+  but don't abort the phase.
+
+### Removed
+
+- **`ground/capabilities/` directory ripped — no consumer.** Audit
+  found `mcp-tools.yaml`, `snippets.yaml`, and
+  `capabilities/skills.yaml` had zero readers anywhere in the
+  codebase: no MCP tool, no skill, no agent, no hook, no
+  SessionStart context-builder. Templates' own comments claimed
+  "Read at SessionStart" — false. Removed from `templates/`,
+  `docs/FILESYSTEM_LAYOUT.md`, and the in-flight `phase-13`
+  populator (`src/init/capabilities-skills.ts`). `topics.yaml`
+  under `canonical-map/` is the only remaining ground inventory
+  surface, and it has a real consumer
+  (`cairn_canonical_for_topic` MCP tool, called by the
+  `cairn-direction` skill). The 20s ceiling
+  was tripping the timeout classifier on legitimate slow Haiku calls
+  during sustained network or upstream-latency events; classified
+  timeouts then either tripped the breaker prematurely or
+  accumulated as `unresolvedAmbiguous` with no actual semantic
+  failure. 30s is the realistic upper bound for a single
+  semantic-similarity verdict; anything longer is genuinely stuck.
+- **Cache observability — `runClaude` cache hits now emit a
+  `cache_hit` trace row and surface a `cached: boolean` flag on
+  `RunClaudeResult`.** Previously cache hits were invisible in
+  `~/.cairn/trace/trace-*.jsonl` (only fresh subprocess calls hit
+  `appendTrace`), so an operator post-mortem couldn't distinguish
+  "cache hit served the verdict" from "no judge call dispatched."
+  Phase 7's `TopicIndexPhaseOutput` now splits `judge_calls` into
+  `judge_calls_cached` / `judge_calls_fresh` / `judge_calls_errors`
+  via a new `JudgeTally` counter threaded through `makeHaikuJudge`
+  — operators verifying a re-run-after-rate-limit can now read
+  exact cache-hit vs fresh-call counts straight off
+  `init-state.json` instead of inferring from elapsed wall-time.
+- **Adoption — mid-adoption resume now works after a partial run.**
+  Phase 4-seed writes `.cairn/config.yaml` early in the pipeline, so
+  any session opened after Phase 4 (the common case for an interrupted
+  adoption — `/exit`, rate-limit bail, crash) saw the
+  `resolveRepoRoot` gate match the repo as fully-adopted. Result:
+  SessionStart suppressed the adoption banner and the `cairn-adopt`
+  skill's trigger gate aborted with "already adopted." The skill now
+  classifies into three buckets — `fresh`, `mid-adoption:<phase>`,
+  `adopted` — by probing for `.cairn/init-state.json` first, and
+  jumps straight to `cairn_init_resume` when `init-state.json`
+  exists. SessionStart adds a third banner (`renderMidAdoptionBanner`)
+  that fires on `init-state.json` presence and instructs the agent
+  to invoke `Skill(cairn:cairn-adopt)` on the first operator reply.
+- **Phase 7 topic-index — quota / sustained-failure breaker now
+  surfaces as a phase error instead of a silently-partial topic
+  index.** The previous breaker tripped only on `auth` or
+  `isQuotaKind` (rate_limit / overloaded) classifications, and even
+  when it tripped, `resolveTopics` still returned a partial result
+  — the writer then persisted a truncated `topic-index.yaml` +
+  `anchor-map.yaml` to ground state and Phase 7 advanced. Rate-limit
+  wording the regex didn't match (e.g. plan-quota messages classified
+  as `other`) accumulated as `unresolvedAmbiguous` with no breaker,
+  no surface error, and full advance through 8 → 9a. Replaced
+  `consecutiveTimeouts` with `consecutiveFails` (any error kind
+  increments); breaker now records `firstFatalErr` on quota/auth
+  immediately or on `consecutiveFails ≥ 5` of any kind, and rethrows
+  after the worker pool drains. `index.ts`'s try/catch already
+  prevents the partial write, so Phase 7 wraps as `status: "error"`
+  and the orchestrator stops. Successful judge verdicts are cached
+  (`cacheable: true` on the Haiku call) so re-running after the
+  rate-limit window resets only retries the small failed subset.
+
+## [0.9.0] — 2026-05-10
+
+Adoption rewrite: the `8-docs-ingest`, `9-source-comments`, and
+`10-rules-merge` Haiku batch pipelines collapse into one unified
+**curator pipeline** under Sonnet plan-quota subagents. Old pipelines
+ran first-line `prose.split("\n")[0].slice(0, 120)` titles and pasted
+verbatim raw blocks into DEC bodies; on a typical ~50-package
+monorepo that produced 129 DECs + 169 INVs of mostly mid-sentence
+fragments, JSX leakage, and unsynthesized JSDoc tags. The new
+pipeline produces 30-80 synthesized entries with strict validators —
+auto-accepted into ground state because the quality bar is hard, not
+deferred.
+
+Hard cutover. `init-state.json` schemaVersion bumped 2 → 3; stale
+mid-init state files are treated as missing and adoption restarts
+from Phase 1.
+
+### Added
+
+- **Phase 9a-walker / 9b-curate / 9c-emit** replace `9-source-comments`.
+  - **9a-walker** (`packages/cairn-core/src/init/curator/walker.ts`)
+    — deterministic, no LLM. Runs three sub-walkers (source comments,
+    doc paragraphs ≥80 chars, rule sections) and applies a regex
+    pre-filter that drops 60-80% of raw blocks (test files, JSX block
+    comments, license headers, JSDoc with only @tags, TODO-only
+    banners, `.archive/` paths, `mapper.off_limits_globs`). Survivors
+    write to `.cairn/init/curator/corpus.jsonl`. Records pack into
+    shards capped at 120k input tokens by module + directory
+    hierarchy (never random shard) and persist to `shards.json`.
+  - **9b-curate** is a skill-driven pseudo-phase. The `cairn-adopt`
+    skill spawns `cairn:curator-map` subagents per shard in parallel
+    rounds of 4, then one `cairn:curator-reduce` subagent over the
+    aggregated candidates. Subagents are plan-quota Sonnet 4.6 only —
+    no API billing. The MCP runner only confirms `final.jsonl` exists
+    + counts entries before advancing.
+  - **9c-emit** (`packages/cairn-core/src/init/curator/emit.ts`)
+    validates each `final.jsonl` entry against
+    `packages/cairn-core/src/init/curator/validate.ts` (title ≤80
+    chars + capitalized + no `...`/`{/*` leakage; body has the literal
+    `## Context / ## Decision / ## Why` or `## Invariant` template;
+    no `@domain`/`@orgScope`/`@see`/`@param`/`@returns` JSDoc tag
+    leak; title not pasted in body; ≥1 `scope_globs`; ≥1
+    `evidence_files` that resolve to real files). Survivors write
+    directly to `.cairn/ground/decisions/<id>.md` with `status:
+    accepted` and `capture_source: init-curator`, or
+    `.cairn/ground/invariants/<id>.md` with `status: active`.
+    Frontmatter carries new `evidence_files` + `topic_tags` arrays.
+    Invalid entries drop silently with a per-reason counter logged.
+- **Subagent definitions**:
+  `packages/cairn-frontend-claudecode/agents/curator-map.md` and
+  `curator-reduce.md`. Map subagents cap at ≤15 entries per shard
+  (≤8 preferred), enforce imperative titles, drop borderline cases.
+  Reducer enforces 30-80-entry final cap (target 40-60), prioritizes
+  high-stakes (auth, billing, multi-tenant, payments, route
+  handlers), generalizes scope globs from cited evidence.
+- **`smoke-curator-validate`** (20 cases) feeds clean DECs / clean
+  INVs / every documented failure mode into `validateEntry` and
+  asserts the expected drop-vs-emit decisions. Added to the smoke
+  gate.
+- **`smoke-init-phases-all`** grew Step 8 (phase 8 + 10 no-op
+  markers), Step 9 (9a-walker end-to-end on a fixture repo), Step
+  10 (9b-curate errors when `final.jsonl` missing), Step 11 (9c-emit
+  emits validated entries + drops the rest).
+
+### Changed
+
+- **`init-state.json` schemaVersion 2 → 3.** Hard cutover — state
+  files written by 0.8.x fail validation and are treated as missing.
+  Adoption is one-shot per repo; restart is acceptable. zod schema
+  in `cairn_init_run` updated to `z.literal(3)`.
+- **PHASE_IDS** drops `9-source-comments`, adds `9a-walker`,
+  `9b-curate`, `9c-emit`. The runner registry in
+  `packages/cairn-core/src/mcp/tools/init-phases.ts` registers the
+  three new runners.
+- **Phase 8-docs-ingest + Phase 10-rules-merge** collapse to no-op
+  markers that stamp `skipped: "merged-into-9-curator"` and advance.
+  The runners stay registered so resumes from old `init-state.json`
+  files don't blow up; the operator-facing banner table in
+  `cairn-adopt/SKILL.md` no longer lists them.
+- **`cairn-adopt/SKILL.md`** Step 3.5 documents the curator
+  orchestration (read `shards.json`, slice per-shard inputs,
+  dispatch `curator-map` in parallel rounds of 4, dispatch
+  `curator-reduce`, then call `cairn_init_run` for `9b-curate` to
+  advance state). Step 5 summary jq query reads from `9c-emit`
+  (`decsWritten` / `invsWritten` / `dropped`) instead of the old
+  per-pipeline output fields. `allowed-tools` extends to
+  `Task(curator-map), Task(curator-reduce)` for subagent dispatch
+  pre-approval.
+
+### Removed
+
+- **`packages/cairn-core/src/init/phases/9-source-comments.ts`**
+  deleted. Replaced by `9a-walker.ts` + `9b-curate.ts` +
+  `9c-emit.ts`.
+- **`packages/cairn-core/src/init/phases/parallel-8910.ts`** deleted.
+  The fan-out runner that overlapped Phase 8/9/10 on wall-clock is
+  no longer needed — curator orchestration in the skill replaces it.
+  `runPhases8910Parallel` export removed from `cairn-core`.
+- **`packages/cairn-core/src/init/phases/source-comments-output-io.ts`**
+  deleted. The lightweight projection it spilled to disk is no
+  longer needed; curator output is its own JSONL stream.
+- **`runPhase9SourceComments`, `runPhases8910Parallel`,
+  `SOURCE_COMMENTS_WALK_PATH`** and related exports removed from
+  `@isaacriehm/cairn-core`. Callers must switch to
+  `runPhase9aWalker`, `runPhase9bCurate`, `runPhase9cEmit`.
+
+### Migration
+
+Existing `.cairn/` state stays valid. Decisions + invariants emitted
+by 0.8.x stay on disk under their original ids; the curator pipeline
+on the next adoption (or `cairn init --force`) writes new entries
+alongside without touching prior ones. `cairn attention` continues
+to drain pre-existing inbox drafts as before.
+
+The `init-state.json` schemaVersion bump only affects in-flight
+adoptions — sessions interrupted mid-init under 0.8.x will be
+treated as fresh starts on the first 0.9.0 session. Re-running
+adoption is the supported recovery path.
+
 ## [0.8.3] — 2026-05-10
 
 Hotfix: fresh adoption deadlocked at Phase 1-detect because

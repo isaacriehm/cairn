@@ -28,7 +28,13 @@ const log = logger("init.mapper-parallel");
 
 const PARALLEL_ROUND_SIZE = 4;
 const PARALLEL_THRESHOLD = 8;
-const PER_MODULE_TIMEOUT_MS = 180_000;
+// 10min ceiling. Sonnet with `--json-schema` and a fat scope_index.files
+// output (one entry per file in the module) on a 35k-char prompt can
+// genuinely run 4-6min. Below this ceiling we were timing out on
+// legitimate large modules. Successful proposals are cached
+// (`cacheable: true` below), so a re-run after a failure only retries
+// the slow module — no quota burn on the modules that already finished.
+const PER_MODULE_TIMEOUT_MS = 600_000;
 
 export interface ModuleProposal {
   moduleName: string;
