@@ -4,6 +4,26 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.4] — 2026-05-10
+
+### Fixed
+
+- **Statusline task segment now fits a 14" MacBook Pro terminal.**
+  The task signal previously rendered the full canonical task id
+  (`TSK-<slug>-<7hex>`) followed by the full module/title, producing
+  90+ char overflows on small terminals. The signal now strips the
+  slug body for display only — id renders as `TSK-<7hex>`, module
+  ellipsis-truncates to fit a 45-char total budget. The on-disk id
+  format is unchanged; the lens + CLI continue to use the
+  canonical id verbatim.
+- **`.claude/rules/cairn.md` trimmed.** The shipped project-level
+  rule file dropped from 47 lines to 27 by collapsing the
+  redundant "plugin installed" + "why this file exists" sections.
+  The plugin probe + install instruction are the load-bearing part;
+  the rest duplicated what the SessionStart context block and the
+  `cairn-direction` / `cairn-attention` skills already say. Hot-path
+  context savings on every conversation in adopted repos.
+
 ## [0.10.3] — 2026-05-10
 
 ### Fixed

@@ -136,8 +136,8 @@ function runSmoke(): void {
       `Step 4: session-a idle should render heartbeat, got ${a}`,
     );
     assert(
-      b.includes("TSK-0042 wiring auth middleware"),
-      `Step 4: session-b should surface "TSK-0042 wiring auth middleware", got ${b}`,
+      b.includes("TSK-0042 · wiring auth middleware"),
+      `Step 4: session-b should surface "TSK-0042 · wiring auth middleware", got ${b}`,
     );
     console.log("  ✓ Step 4 — concurrent sessions");
   }
@@ -200,8 +200,8 @@ function runSmoke(): void {
       }),
     );
     assert(
-      both === "⬡ cairn  TSK-0042 wiring auth middleware",
-      `Step 8: should be "⬡ cairn  TSK-0042 wiring auth middleware", got ${both}`,
+      both === "⬡ cairn  TSK-0042 · wiring auth middleware",
+      `Step 8: should be "⬡ cairn  TSK-0042 · wiring auth middleware", got ${both}`,
     );
 
     const idOnly = formatStatus(
@@ -212,6 +212,38 @@ function runSmoke(): void {
       `Step 8b: id-only should be "⬡ cairn  TSK-0042", got ${idOnly}`,
     );
     console.log("  ✓ Step 8 — task surface composition");
+  }
+
+  // ── Step 8c — long canonical task_id shortens to TSK-<7hex> ─────
+  {
+    const longId = formatStatus(
+      syntheticStatus({
+        task_state: "running",
+        task_id: "TSK-f01-route-claim-revalidate-via-status-svc-6c77c1b",
+        task_module: "F-01: route claim revalidation via status service",
+      }),
+    );
+    assert(
+      longId.includes("TSK-6c77c1b"),
+      `Step 8c: long id should shorten to TSK-6c77c1b, got ${longId}`,
+    );
+    assert(
+      !longId.includes("route-claim-revalidate"),
+      `Step 8c: slug body should be stripped, got ${longId}`,
+    );
+    assert(
+      longId.includes("…"),
+      `Step 8c: long module should ellipsis-truncate, got ${longId}`,
+    );
+    // Whole signal segment (after the leading "⬡ cairn  ") must fit
+    // the 45-char task budget — the operator's 14-inch terminal is
+    // the design target.
+    const segment = longId.replace(/^⬡ cairn {2}/, "");
+    assert(
+      segment.length <= 45,
+      `Step 8c: segment ${segment.length} chars > 45 budget, got "${segment}"`,
+    );
+    console.log("  ✓ Step 8c — long canonical id shortens + module truncates");
   }
 
   // ── Step 9 — bypass beats every other signal ────────────────────

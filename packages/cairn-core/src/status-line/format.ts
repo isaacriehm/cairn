@@ -13,7 +13,13 @@ import type { StatusEvent, StatusJson } from "./index.js";
  *   bypass_count > 0     → `⚠ N unattested`
  *   attention_count > 0  → `⚑ N pending` (drafts + baseline findings + drift)
  *   gc_running           → `◐ gc`
- *   task_state != idle   → `${task_id} ${task_module}` (or fallbacks)
+ *   task_state != idle   → `<short_id> · <short_title>` capped at 45 chars
+ *
+ * Task display strips the slug from `task_id` (`TSK-<slug>-<7hex>`
+ * → `TSK-<7hex>`) and ellipsis-truncates `task_module` so a 14"
+ * MacBook Pro terminal stays inside one row. The full id remains the
+ * canonical reference on disk + via the lens — the statusline is for
+ * human-glance only.
  *
  * Ctx meter is omitted when no payload is supplied. Color thresholds are
  * keyed on absolute used tokens (not percentage) so a 1M-window Opus
@@ -43,6 +49,49 @@ export interface MissionCursorInput {
 }
 
 const MISSION_SEGMENT_BUDGET = 40;
+const TASK_SEGMENT_BUDGET = 45;
+
+/**
+ * Strip the slug from a `TSK-<slug>-<7hex>` id, keeping the prefix +
+ * trailing 7-hex hash. Falls back to a generic ellipsis-truncate when
+ * the id does not match the canonical shape (defensive — should not
+ * happen for ids the server allocates, but external/legacy ids may
+ * leak through).
+ */
+export function shortenTaskId(taskId: string): string {
+  const m = taskId.match(/^TSK-.+-([0-9a-f]{7})$/);
+  if (m && m[1] !== undefined) return `TSK-${m[1]}`;
+  return taskId.length > 14 ? `${taskId.slice(0, 13)}…` : taskId;
+}
+
+/**
+ * Compose the task signal segment. Both the id and the module/title
+ * are size-bounded; either may be null. Returns null when both are
+ * absent so the caller can fall through to a generic `task: <state>`
+ * placeholder.
+ */
+export function renderTaskSegment(
+  taskId: string | null,
+  taskModule: string | null,
+): string | null {
+  const id = taskId !== null && taskId.length > 0 ? shortenTaskId(taskId) : null;
+  const sep = " · ";
+  if (id !== null && taskModule !== null && taskModule.length > 0) {
+    const moduleBudget = Math.max(8, TASK_SEGMENT_BUDGET - id.length - sep.length);
+    const mod =
+      taskModule.length > moduleBudget
+        ? `${taskModule.slice(0, moduleBudget - 1)}…`
+        : taskModule;
+    return `${id}${sep}${mod}`;
+  }
+  if (id !== null) return id;
+  if (taskModule !== null && taskModule.length > 0) {
+    return taskModule.length > TASK_SEGMENT_BUDGET
+      ? `${taskModule.slice(0, TASK_SEGMENT_BUDGET - 1)}…`
+      : taskModule;
+  }
+  return null;
+}
 
 export function renderMissionSegment(m: MissionCursorInput): string {
   const counter = `(${m.done}/${m.total})`;
@@ -149,9 +198,8 @@ function renderSignal(
   }
   if (s.gc_running) return "◐ gc";
   if (s.task_state !== "idle") {
-    if (s.task_id && s.task_module) return `${s.task_id} ${s.task_module}`;
-    if (s.task_id) return s.task_id;
-    if (s.task_module) return s.task_module;
+    const seg = renderTaskSegment(s.task_id ?? null, s.task_module ?? null);
+    if (seg !== null) return seg;
     return `task: ${s.task_state}`;
   }
 
