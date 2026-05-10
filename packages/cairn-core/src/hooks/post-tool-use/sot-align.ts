@@ -44,7 +44,7 @@
  *     so re-running the same prose hits cache instead of Haiku.
  *   - Source files outside Claude's repo (cwd) are skipped. Markdown
  *     (`.md`/`.mdx`) skipped entirely — operator-curated narrative is
- *     handled by phase 5b's topic-index + the doc-drift sensor.
+ *     handled by phase 7's topic-index + the doc-drift sensor.
  */
 
 import {
@@ -281,7 +281,7 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
   };
 
   // Plan §3.1 — markdown narrative (docs/, CLAUDE.md, AGENTS.md, rules)
-  // is operator-curated. Phase 5b's topic-index + the doc-drift sensor
+  // is operator-curated. Phase 7's topic-index + the doc-drift sensor
   // handle cross-source dedup there. Layer A only acts on code paths
   // where strip-replace + bare `// §DEC-<hash>` cites are the right
   // surface. Skipping markdown also avoids polluting docs with a
@@ -1305,7 +1305,7 @@ async function emitLedgerEntity(args: {
       updatedCache.generated = new Date().toISOString();
       writeSotCache(repoRoot, updatedCache);
 
-      // Topic-index entry so phase 5b sees this slug as already emitted.
+      // Topic-index entry so phase 7 sees this slug as already emitted.
       const slug = topicSlug(block.prose);
       const ti = readTopicIndex(repoRoot);
       const updatedTi = setTopic(ti, slug, {

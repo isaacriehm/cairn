@@ -4,6 +4,22 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.6] — 2026-05-10
+
+### Fixed
+
+- **Statusline phase label `5b-topic-index` → `7-topic-index`.**
+  `buildTopicIndex` was writing `phase: "5b-topic-index"` into
+  `.cairn/init/progress.json`, so the statusline rendered
+  `⏳ adopt 5b-topic-index 63/84 (75%)` while the cairn-adopt skill's
+  prompt said "Phase 7-topic-index — cross-source dedup pre-pass."
+  The `5b-` label was the legacy plan-§5.1 numbering before the
+  pipeline collapsed `7-topic-index → 8-docs-ingest → 9-source-comments`
+  into the current 7/9a/9b/9c sequence. Statusline now reads
+  `⏳ adopt 7-topic-index X/Y`. Stale `phase 5b` references in
+  hook comments (`sot-align.ts`, `sot-align-precommit.ts`) updated
+  for consistency — code-only, not user-visible.
+
 ## [0.9.5] — 2026-05-10
 
 ### Fixed

@@ -41,7 +41,7 @@ export interface BuildTopicIndexArgs {
   /**
    * When true (default), the resolver writes
    * `.cairn/init/progress.json` after each judge call so the
-   * statusline can render `phase-5b X/Y pairs`. Smokes opt out.
+   * statusline can render `phase 7-topic-index X/Y pairs`. Smokes opt out.
    */
   emitProgress?: boolean;
 }
@@ -74,14 +74,14 @@ export async function buildTopicIndex(
   const judge =
     args.judge ?? makeHaikuJudge({ repoRoot: args.repoRoot, tally });
 
-  log.debug({ blockCount: blocks.length }, "phase-5b walk complete");
+  log.debug({ blockCount: blocks.length }, "phase 7-topic-index walk complete");
 
   const emitProgress = args.emitProgress !== false;
   const startedAt = Date.now();
   const onProgress = emitProgress
     ? (snap: JudgeProgress): void => {
         writeProgress(args.repoRoot, {
-          phase: "5b-topic-index",
+          phase: "7-topic-index",
           batch: snap.judgeCalls,
           total: snap.totalPairs,
           startedAt,
@@ -194,7 +194,7 @@ function finishResult(args: {
       filesWithCandidates: Object.keys(fileCandidates).length,
       rejectedGcDropped: rejectedGcDropped.length,
     },
-    "phase-5b topic-index built",
+    "phase 7-topic-index built",
   );
 
   return {

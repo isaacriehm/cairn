@@ -85,7 +85,7 @@ export interface ResolveOptions {
   /**
    * Fired after each judge call resolves (success or failure). Used by
    * phase 7 to write `.cairn/init/progress.json` so the statusline can
-   * render `phase-5b X/Y pairs` while the phase runs.
+   * render `phase 7-topic-index X/Y pairs` while the phase runs.
    */
   onProgress?: (snap: JudgeProgress) => void;
 }

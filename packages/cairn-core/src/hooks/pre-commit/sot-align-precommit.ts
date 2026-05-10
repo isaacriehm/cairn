@@ -25,7 +25,7 @@
  *
  * Markdown paths (`.md`/`.mdx`) are skipped: their canonical form is
  * the doc itself, so a `// §DEC-<hash>` cite would corrupt the prose.
- * Markdown drift is handled by phase 5b's topic-index re-walk and
+ * Markdown drift is handled by phase 7's topic-index re-walk and
  * `cairn fix align` (Layer D).
  */
 
