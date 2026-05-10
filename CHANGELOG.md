@@ -4,6 +4,32 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.3] — 2026-05-10
+
+### Fixed
+
+- **Stub-pattern catalog: `empty-async-body` downgraded hard → soft.**
+  The regex `async (...) => {}` matches both real empty stubs and
+  legitimate mock factories (`vi.fn(async () => {})`,
+  `jest.fn(async () => {})`, no-op event-handler defaults). Hard
+  severity failed adoption baseline on test files where the empty
+  body is the contract; downgrading to soft keeps the signal
+  visible in attestation cross-check (`stubs_introduced` count
+  becomes a lie if matches appear in new code) without flagging
+  test mocks as actionable attention. After the 0.9.2 attention-count
+  filter, soft findings stay out of `⚑ N pending` automatically.
+
+### Added
+
+- **`StubPattern.skip_globs` per-project escape hatch.** Schema +
+  runner now accept an optional `skip_globs: ["..."]` array on each
+  pattern entry; the matched diff entry's path is checked against
+  the globs before regex evaluation. Operator opt-in only — the
+  shipped catalog ships zero defaults to keep the core
+  language-agnostic. Adopters extend
+  `.cairn/config/stub-patterns.yaml` per-project when their stack's
+  test conventions trip a specific pattern.
+
 ## [0.9.2] — 2026-05-10
 
 ### Fixed

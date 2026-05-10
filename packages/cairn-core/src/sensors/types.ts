@@ -42,6 +42,17 @@ export interface StubPattern {
   description: string;
   regex: string;
   severity: "hard" | "soft";
+  /**
+   * File-path globs to EXCLUDE from this pattern. Used to silence
+   * legitimate idioms that match the regex syntactically but are
+   * semantically correct in the matched context. Canonical case:
+   * `empty-async-body` matches `async () => {}` inside
+   * `vi.fn(async () => {})` — vitest mocks intentionally return
+   * `Promise<void>`. Test files get a default skip glob in the
+   * shipped catalog.
+   * Globs are POSIX-style, evaluated against the diff entry's path.
+   */
+  skip_globs?: string[];
 }
 
 export interface StubCatalog {
