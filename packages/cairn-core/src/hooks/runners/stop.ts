@@ -134,6 +134,10 @@ export async function runStopHook(): Promise<void> {
         const grad = autoGraduateTasks(repoRoot);
         if (grad.completed.length > 0) {
           warnings.push(`auto_graduated_completed:${grad.completed.length}`);
+          const ids = grad.completed.map((id) => `\`${id}\``).join(", ");
+          const noun = grad.completed.length === 1 ? "task" : "tasks";
+          const hint = `## Cairn — ${grad.completed.length} ${noun} graduated\n\n✓ ${ids} → done. Final attestation written.`;
+          reason = reason.length > 0 ? `${reason}\n\n${hint}` : hint;
         }
         if (grad.transitioned.length > 0) {
           warnings.push(`auto_graduated_review_ready:${grad.transitioned.length}`);

@@ -94,6 +94,48 @@ function readModelFromTranscript(path: string): string | null {
   return null;
 }
 
+interface CtxSnapshot {
+  usedPct: number;
+  usedTokens: number;
+  ts: number;
+}
+
+const CTX_SNAPSHOT_STALE_MS = 5 * 60 * 1000;
+
+/**
+ * Read the latest persisted ctx snapshot from the statusline writer.
+ * Statusline runs on every prompt so a fresh snapshot is normally
+ * <1s old. Returns null when missing, malformed, or older than 5min
+ * (e.g. session crashed, statusline hook misconfigured).
+ */
+function readPersistedCtx(repoRoot: string, sessionId: string): CtxSnapshot | null {
+  const path = join(repoRoot, ".cairn", "sessions", sessionId, "ctx.json");
+  if (!existsSync(path)) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as CtxSnapshot;
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      typeof parsed.usedPct === "number" &&
+      typeof parsed.usedTokens === "number" &&
+      typeof parsed.ts === "number"
+    ) {
+      if (Date.now() - parsed.ts > CTX_SNAPSHOT_STALE_MS) return null;
+      return parsed;
+    }
+  } catch {
+    // fall through
+  }
+  return null;
+}
+
+/**
+ * Fallback estimator when no persisted snapshot is available.
+ * Bytes/4 of the transcript over-estimates 1.5–2x because the
+ * transcript JSONL accumulates every tool I/O blob since session
+ * start, while the actual prompt sent to the model is much smaller
+ * after Claude Code's compaction. Used only as a safety net.
+ */
 function estimateTokens(transcriptPath: string): number {
   try {
     return Math.floor(statSync(transcriptPath).size / 4);
@@ -173,7 +215,9 @@ export function checkContextThreshold(
   const fraction = input.thresholdFraction ?? 0.5;
   const thresholdTokens = Math.floor(windowTokens * fraction);
 
-  const estimated = estimateTokens(input.transcriptPath);
+  const snapshot = readPersistedCtx(input.repoRoot, input.sessionId);
+  const estimated =
+    snapshot !== null ? snapshot.usedTokens : estimateTokens(input.transcriptPath);
   if (estimated < thresholdTokens) return { hit: false };
 
   const warned = readWarned(input.repoRoot, input.sessionId);

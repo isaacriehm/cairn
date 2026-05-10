@@ -75,6 +75,7 @@ import {
   type ReplaceItem,
 } from "../../init/source-comments/strip-replace.js";
 import { writeDeferState, clearDeferState, type DeferKind } from "../../hooks/defer.js";
+import { scanBypassedCommits } from "../../hooks/bypass-detection.js";
 import { logger } from "../../logger.js";
 
 const log = logger("mcp.tools.resolve-attention");
@@ -175,9 +176,16 @@ function resolveStopSignal(
 
   // a/b: the operator engaged with the surface (either acted on it or
   // dismissed it). Clear any prior defer so the next Stop sees the
-  // fresh state of the world.
+  // fresh state of the world. For bypass kind, also append the
+  // resolved SHAs to `.attested-commits` — without this the next Stop
+  // scan re-flags the same commits forever (the file is the only
+  // source of truth the bypass detector reads).
   return withWriteLock(ctx.repoRoot, () => {
     clearDeferState(ctx.repoRoot, kind);
+    let attested_count = 0;
+    if (kind === "bypass") {
+      attested_count = appendAttestedShas(ctx.repoRoot, flagged);
+    }
     const intent =
       kind === "bypass"
         ? input.choice === "a"
@@ -191,9 +199,62 @@ function resolveStopSignal(
       resolved_kind: intent,
       item_id: input.item_id,
       flagged_count: flagged.length,
+      ...(kind === "bypass" ? { attested_count } : {}),
       ...(input.rationale !== undefined ? { rationale: input.rationale } : {}),
     };
   });
+}
+
+/**
+ * Resolve operator-supplied SHAs (which may be short or full) against
+ * the current bypass scan, then append the matching full SHAs to
+ * `.cairn/.attested-commits`. Idempotent — skips entries already in
+ * the file. Returns the count actually appended.
+ *
+ * Why this lives here: the cairn-attention skill calls this tool with
+ * whatever `flagged_items` it surfaced (typically the short SHAs from
+ * the Stop hook hint). The bypass detector only matches against full
+ * 40-char SHAs, so we have to expand short → full before appending,
+ * and the scanner is the canonical place to do that.
+ */
+function appendAttestedShas(repoRoot: string, flagged: string[]): number {
+  if (flagged.length === 0) return 0;
+  const scan = scanBypassedCommits(repoRoot);
+  const flaggedSet = new Set(flagged);
+  const matchingFull: string[] = [];
+  for (const c of scan.bypassed) {
+    if (flaggedSet.has(c.sha) || flaggedSet.has(c.shortSha)) {
+      matchingFull.push(c.sha);
+    }
+  }
+  if (matchingFull.length === 0) return 0;
+
+  const path = join(repoRoot, ".cairn", ".attested-commits");
+  const existing = new Set<string>();
+  if (existsSync(path)) {
+    try {
+      for (const line of readFileSync(path, "utf8").split("\n")) {
+        const trimmed = line.trim();
+        if (trimmed.length > 0) existing.add(trimmed);
+      }
+    } catch {
+      // best-effort
+    }
+  }
+  const fresh = matchingFull.filter((s) => !existing.has(s));
+  if (fresh.length === 0) return 0;
+
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    appendFileSync(path, `${fresh.join("\n")}\n`, "utf8");
+  } catch (err) {
+    log.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      "attested_commits_append_failed",
+    );
+    return 0;
+  }
+  return fresh.length;
 }
 
 async function resolveDecisionDraft(ctx: McpContext, input: Input): Promise<unknown> {

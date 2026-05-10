@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { type CtxMeterInput, readStatusForCLI, VERSION } from "../index.js";
 import { alignCli } from "./align.js";
 import { attentionCli } from "./attention.js";
@@ -44,6 +46,36 @@ function decodePayload(text: string): StatusLinePayload {
     }
   }
   return { sessionId, ctx };
+}
+
+/**
+ * Persist the latest ctx snapshot from the statusline payload to
+ * `.cairn/sessions/<id>/ctx.json` so the Stop hook can read the real
+ * context-window usage (Claude Code only passes `context_window` to
+ * statusline hooks; Stop hooks see no token data). Best-effort —
+ * swallow any I/O error since statusline must never block the prompt.
+ */
+function persistCtxSnapshot(
+  projectRoot: string,
+  sessionId: string,
+  ctx: CtxMeterInput,
+): void {
+  // Bail on un-adopted projects so we never auto-create `.cairn/`
+  // outside of `cairn init`. Statusline runs on every prompt across
+  // every project Claude Code has the plugin configured for.
+  if (!existsSync(join(projectRoot, ".cairn"))) return;
+  try {
+    const dir = join(projectRoot, ".cairn", "sessions", sessionId);
+    mkdirSync(dir, { recursive: true });
+    const snapshot = {
+      usedPct: ctx.usedPct,
+      usedTokens: ctx.usedTokens,
+      ts: Date.now(),
+    };
+    writeFileSync(join(dir, "ctx.json"), JSON.stringify(snapshot), "utf8");
+  } catch {
+    // best-effort
+  }
 }
 
 async function readStatusLinePayload(): Promise<StatusLinePayload> {
@@ -136,6 +168,9 @@ switch (subcommand) {
       const payload = await readStatusLinePayload();
       sessionId = payload.sessionId;
       ctx = payload.ctx;
+    }
+    if (sessionId !== null && ctx !== null) {
+      persistCtxSnapshot(projectRoot, sessionId, ctx);
     }
     process.stdout.write(`${readStatusForCLI(projectRoot, sessionId, ctx ?? undefined)}\n`);
     process.exit(0);

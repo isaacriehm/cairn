@@ -4,6 +4,43 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.8] — 2026-05-10
+
+### Fixed
+
+- **ctx-threshold uses real token count, not transcript bytes/4.**
+  The Stop-hook context-window warning was estimating usage from
+  `statSync(transcriptPath).size / 4`. Transcripts are append-only
+  JSONL of every turn + every tool I/O blob, so the estimate
+  systematically over-counted by ~1.5–2x — a session at real
+  ~45% (`/context` truth) fired the 50% threshold at displayed
+  74%. Statusline already receives the real
+  `context_window.{remaining_percentage, total_tokens}` from
+  Claude Code on stdin; it now persists the snapshot to
+  `.cairn/sessions/<id>/ctx.json` on every render, and the Stop
+  hook reads that file first (falling back to `bytes/4` only
+  when missing or >5min stale). Result: 50% means real 50%.
+- **Bypass record/accept now actually clears the warning.**
+  `cairn_resolve_attention({kind: "bypass", choice: "a"|"b"})`
+  was clearing the defer file but never appending the resolved
+  SHAs to `.cairn/.attested-commits` — the only file the bypass
+  detector reads. Operators picking "record bypass" or "accept"
+  saw the same warning re-fire on every Stop tick forever; the
+  only escape was manually `git rev-parse $sha >>
+  .cairn/.attested-commits`. The tool now expands short→full
+  SHAs via `scanBypassedCommits`, dedupes against the existing
+  file, and appends the matches before returning. Response
+  carries `attested_count` so the calling skill can confirm the
+  write took.
+- **Auto-graduated tasks now surface in the Stop reason.**
+  `autoGraduateTasks` was logging `auto_graduated_completed:N`
+  to telemetry but emitting nothing to the operator. The skill
+  graduated the active TSK silently and the operator saw no
+  acknowledgement. The Stop hook now prepends
+  `## Cairn — N tasks graduated\n\n✓ TSK-x → done.` to the
+  reason text whenever a task transitions to `done` on a Stop
+  tick.
+
 ## [0.9.7] — 2026-05-10
 
 ### Added
