@@ -67,6 +67,10 @@ export type HookEventName =
  * `hookEventName` MUST match the hook event the runner was invoked
  * for; mismatches are rejected as `Hook returned incorrect event
  * name` in Claude Code 2.1+.
+ *
+ * `Stop`, `SessionEnd`, and `PreCompact` reject `hookSpecificOutput`
+ * entirely under Claude Code 2.1+ — those runners must call
+ * `emitContinue` instead.
  */
 export function emitShapeB(context: string, hookEventName: HookEventName): never {
   const payload = {
@@ -77,6 +81,16 @@ export function emitShapeB(context: string, hookEventName: HookEventName): never
     },
   };
   process.stdout.write(JSON.stringify(payload));
+  process.exit(0);
+}
+
+/**
+ * Write a bare `{continue: true}` payload and exit. Use for hook
+ * events that Claude Code 2.1+ refuses with a `hookSpecificOutput`
+ * envelope (currently `Stop`, `SessionEnd`, and `PreCompact`).
+ */
+export function emitContinue(): never {
+  process.stdout.write(JSON.stringify({ continue: true }));
   process.exit(0);
 }
 

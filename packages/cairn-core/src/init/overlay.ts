@@ -74,7 +74,6 @@ export function buildProjectOverlay(
     },
   };
   if (m !== undefined) {
-    overlay["pilot_module"] = m.pilot_module;
     overlay["domain_summary"] = m.domain_summary;
     overlay["key_modules"] = m.key_modules;
     overlay["mapper_proposed_sensors"] = m.proposed_sensors;

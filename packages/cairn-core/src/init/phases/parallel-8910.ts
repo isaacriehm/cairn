@@ -33,7 +33,7 @@ import { runDocsIngestion, type IngestionResult } from "../ingest-docs.js";
 import { clearProgress, writeProgress } from "../progress.js";
 import { runRulesMerge, type RunRulesMergeResult } from "../rules-merge/index.js";
 import { runSourceCommentsIngestion } from "../source-comments/index.js";
-import type { ProjectGlobs } from "../../sensors/types.js";
+import { recordSample } from "../eta-calibration.js";
 import {
   to7bResultPersisted,
   writeSourceCommentsWalkFile,
@@ -94,22 +94,6 @@ export async function runPhases8910Parallel(
     };
   }
 
-  const mapper = state.outputs["3-mapper"];
-  const globs: ProjectGlobs = mapper
-    ? {
-        route_handler_globs: mapper.output.route_handler_globs,
-        dto_globs: mapper.output.dto_globs,
-        generator_source_globs: mapper.output.generator_source_globs,
-        high_stakes_globs: mapper.output.high_stakes_globs,
-        off_limits: mapper.output.off_limits_globs,
-      }
-    : {};
-  const pilotOut = state.outputs["5-pilot"];
-  const pilotModule =
-    typeof pilotOut?.picked === "string" && pilotOut.picked.length > 0
-      ? pilotOut.picked
-      : undefined;
-
   const sharedDecIds = scanExistingDecisionIds(state.repoRoot);
   const sharedInvIds = scanExistingInvariantIds(state.repoRoot);
 
@@ -134,6 +118,7 @@ export async function runPhases8910Parallel(
   // (batch=30, concurrency=5) → Stage 4 emit drafts to `_inbox/`. Each
   // completed batch fires `onChunkProgress` with the active stage label
   // so the statusline can render the right ETA window.
+  const docsStartedAt = performance.now();
   const docsRes = await runPhaseSafely("docs-ingest-failed", async () =>
     runDocsIngestion({
       repoRoot: state.repoRoot,
@@ -147,35 +132,69 @@ export async function runPhases8910Parallel(
         }),
     }),
   );
+  const docsDurationMs = Math.round(performance.now() - docsStartedAt);
   if ("error" in docsRes) {
     clearProgress(state.repoRoot);
     return { status: "error", error: docsRes.error, state };
   }
 
+  const srcStartedAt = performance.now();
   const srcRes = await runPhaseSafely("source-comments-failed", async () =>
     runSourceCommentsIngestion({
       repoRoot: state.repoRoot,
-      ...(pilotModule !== undefined ? { pilotModule } : {}),
       dryRun: false,
     }),
   );
+  const srcDurationMs = Math.round(performance.now() - srcStartedAt);
   if ("error" in srcRes) {
     clearProgress(state.repoRoot);
     return { status: "error", error: srcRes.error, state };
   }
 
+  const rulesStartedAt = performance.now();
   const rulesRes = await runPhaseSafely("rules-merge-failed", async () =>
     runRulesMerge({
       repoRoot: state.repoRoot,
       dryRun: false,
     }),
   );
+  const rulesDurationMs = Math.round(performance.now() - rulesStartedAt);
   if ("error" in rulesRes) {
     clearProgress(state.repoRoot);
     return { status: "error", error: rulesRes.error, state };
   }
   const durationMs = Math.round(performance.now() - t0);
   clearProgress(state.repoRoot);
+
+  // ETA calibration writeback — fold measured rates into
+  // `~/.cairn/cache/eta-calibration.json` so future adoptions on this
+  // machine get a tighter pre-flight estimate. Pre-flight unit counts
+  // come from `5-preflight` output; fall back to in-result fields when
+  // the upstream phase didn't run (smoke-test path).
+  const preflight = state.outputs["5-preflight"];
+  if (preflight !== undefined && preflight.skipped === undefined) {
+    if (preflight.units.docParagraphs > 0) {
+      recordSample({
+        phase: "8-docs-ingest",
+        units: preflight.units.docParagraphs,
+        durationMs: docsDurationMs,
+      });
+    }
+    if (preflight.units.essayBlocks > 0) {
+      recordSample({
+        phase: "9-source-comments",
+        units: preflight.units.essayBlocks,
+        durationMs: srcDurationMs,
+      });
+    }
+    if (preflight.units.ruleH2Sections > 0) {
+      recordSample({
+        phase: "10-rules-merge",
+        units: preflight.units.ruleH2Sections,
+        durationMs: rulesDurationMs,
+      });
+    }
+  }
 
   writeSourceCommentsWalkFile(state.repoRoot, srcRes.value);
   const persistedSrc = to7bResultPersisted(srcRes.value);

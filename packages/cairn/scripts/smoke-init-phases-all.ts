@@ -1,16 +1,16 @@
 #!/usr/bin/env tsx
 /**
- * smoke-init-phases-all — invoke each of the 12 phase functions
+ * smoke-init-phases-all — invoke each of the 13 phase functions
  * against a synthetic repo and assert the PhaseResult contract.
  *
  * Coverage:
  *   - Phases 1-detect, 2-walker: full execution on a fixture TS repo
  *     → status: complete, expected outputs stamped, nextPhase advances
- *   - Phase 4-pilot: needs_input then complete after threading an answer
- *   - Phase 5-brand: needs_input then complete on "skip"
- *   - Phase 10-strip: completes silently when no flagged modules
- *   - Phases 3-mapper, 6-docs-ingest, 7b-source-comments, 7c-rules-merge,
- *     8-baseline, 12-multidev: prereq error path verified (each
+ *   - Phase 5-preflight: auto-advances with ETA estimate stamped
+ *   - Phase 6-brand: needs_input then complete on "skip"
+ *   - Phase 12-strip: completes silently when no flagged modules
+ *   - Phases 3-mapper, 8-docs-ingest, 9-source-comments, 10-rules-merge,
+ *     11-baseline, 13-multidev: prereq error path verified (each
  *     surfaces a typed error when its expected upstream output is
  *     missing). Full execution paths are covered by the existing
  *     smoke-init flow under `runInit`.
@@ -27,7 +27,7 @@ import {
   runPhase1Detect,
   runPhase2Walker,
   runPhase3Mapper,
-  runPhase5Pilot,
+  runPhase5Preflight,
   runPhase6Brand,
   runPhase8DocsIngest,
   runPhase9SourceComments,
@@ -114,54 +114,27 @@ async function runSmoke(): Promise<void> {
     console.log("  ✓ Step 2 — phase 2-walker → complete");
   }
 
-  // ── Step 3 — phase 5-pilot needs_input → complete with answer ───
+  // ── Step 3 — phase 5-preflight auto-advances with ETA estimate ──
   {
-    // Inject a synthetic mapper output so phase 5 has candidates.
-    const stateForPilot: PhaseState = {
+    const stateForPreflight: PhaseState = {
       ...after2,
-      outputs: {
-        ...after2.outputs,
-        "3-mapper": {
-          output: {
-            pilot_module: "src/auth",
-            domain_summary: "auth+billing",
-            key_modules: [
-              { name: "auth", path: "src/auth", purpose: "JWT issuance" },
-              { name: "billing", path: "src/billing", purpose: "Stripe webhooks" },
-            ],
-            route_handler_globs: [],
-            dto_globs: [],
-            generator_source_globs: [],
-            high_stakes_globs: [],
-            off_limits_globs: [],
-            proposed_sensors: [],
-            notes: "",
-            scope_index: { entries: [] },
-          },
-          duration_ms: 0,
-          tier: "sonnet",
-          model: "synthetic",
-        },
-      },
-      currentPhase: "5-pilot",
+      currentPhase: "5-preflight",
     };
-    const ask = await runPhase5Pilot(stateForPilot);
-    assert(ask.status === "needs_input", `Step 3: expected needs_input, got ${ask.status}`);
-    if (ask.status !== "needs_input") return;
-    assert(ask.question.id === "5-pilot", `Step 3: question.id should be 5-pilot`);
-    assert(ask.question.options.length >= 2, `Step 3: at least 2 options expected`);
+    const r = await runPhase5Preflight(stateForPreflight);
+    assert(r.status === "complete", `Step 3: expected complete, got ${r.status}`);
+    if (r.status !== "complete") return;
+    assert(r.nextPhase === "6-brand", `Step 3: nextPhase should be 6-brand`);
+    const out = r.state.outputs["5-preflight"];
+    assert(out !== undefined, `Step 3: outputs['5-preflight'] should be populated`);
     assert(
-      ask.question.options[0]!.id === "src/auth",
-      `Step 3: first option should be the mapper's pilot_module`,
+      Array.isArray(out.bannerLines) && out.bannerLines.length > 0,
+      `Step 3: bannerLines should be populated`,
     );
-    const stateWithAnswer: PhaseState = { ...ask.state, answer: "src/billing" };
-    const done = await runPhase5Pilot(stateWithAnswer);
-    assert(done.status === "complete", `Step 3: expected complete, got ${done.status}`);
-    if (done.status !== "complete") return;
-    assert(done.nextPhase === "6-brand", `Step 3: nextPhase should be 6-brand`);
-    const out = done.state.outputs["5-pilot"] as { picked: string };
-    assert(out.picked === "src/billing", `Step 3: picked should round-trip`);
-    console.log("  ✓ Step 3 — phase 5-pilot needs_input → complete");
+    assert(
+      typeof out.eta.totalSeconds === "number",
+      `Step 3: eta.totalSeconds should be a number`,
+    );
+    console.log("  ✓ Step 3 — phase 5-preflight → complete (ETA estimate emitted)");
   }
 
   // ── Step 4 — phase 6-brand needs_input → complete on "skip" ─────
@@ -201,7 +174,6 @@ async function runSmoke(): Promise<void> {
     const fresh = freshPhaseState(repo);
     const phasesWithPrereqs = [
       { id: "3-mapper", run: runPhase3Mapper, code: "missing-prereqs" },
-      { id: "5-pilot", run: runPhase5Pilot, code: "missing-prereqs" },
     ] as const;
     for (const p of phasesWithPrereqs) {
       const r = await p.run({ ...fresh, currentPhase: p.id as any });
@@ -215,7 +187,7 @@ async function runSmoke(): Promise<void> {
         `Step 6: ${p.id} error.code should be ${p.code}, got ${r.error.code}`,
       );
     }
-    console.log("  ✓ Step 6 — prereq-missing error path for 3-mapper, 5-pilot");
+    console.log("  ✓ Step 6 — prereq-missing error path for 3-mapper");
   }
 
   // ── Step 7 — phase functions exposed for the long-running phases ─

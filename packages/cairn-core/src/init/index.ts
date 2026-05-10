@@ -201,7 +201,7 @@ export {
   runPhase2Walker,
   runPhase3Mapper,
   runPhase4Seed,
-  runPhase5Pilot,
+  runPhase5Preflight,
   runPhase6Brand,
   runPhase7TopicIndex,
   runPhase8DocsIngest,

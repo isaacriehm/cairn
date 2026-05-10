@@ -3,12 +3,11 @@
  *
  * Merge strategy:
  *   - Cheap Haiku call gets all proposals + the workspace-level package.json.
- *   - Task: dedupe overlapping sensor proposals (same id → keep highest
- *     confidence), pick pilot module (first pilotModuleCandidate, else
- *     highest confidence), merge highStakesGlobs / offLimitsGlobs, assemble
- *     final scope_index by union, set top-level domain summary.
+ *   - Task: synthesize a 60-200 word `domain_summary` and short `notes`
+ *     covering anything cross-cutting. Sensors / globs / scope-index are
+ *     unioned mechanically; adoption always covers the whole repo.
  *   - If merge call fails: assemble MapperOutput mechanically from
- *     proposals (union arrays, first pilot candidate, no synthesized prose).
+ *     proposals (union arrays, no synthesized prose).
  *
  * Output is a `MapperOutput` matching the existing wire shape so downstream
  * init writers (workflow.md slug-block patcher, config.yaml builder, scope
@@ -39,22 +38,20 @@ const MERGE_OUTPUT_SCHEMA = {
   type: "object",
   additionalProperties: false,
   properties: {
-    pilot_module: { type: "string" },
     domain_summary: { type: "string" },
     notes: { type: "string" },
   },
-  required: ["pilot_module", "domain_summary", "notes"],
+  required: ["domain_summary", "notes"],
 } as const;
 
 const MERGE_SYSTEM_PROMPT = [
   "You are the MERGE step for a code-agent cairn adopting a new project.",
   "",
   "You receive per-module proposals from prior Sonnet calls (one per module). Your job is small and cheap:",
-  "  1. Pick the `pilot_module` glob — bias toward the proposal where pilot_module_candidate is true. If multiple candidates, pick the one with highest confidence. If none, pick the highest-confidence module overall.",
-  "  2. Write a 60-200 word `domain_summary` that synthesizes per-module domains into a single description of the whole project.",
-  "  3. Write a short `notes` string covering anything cross-cutting (monorepo layout, shared packages, etc.). EMPTY string is fine.",
+  "  1. Write a 60-200 word `domain_summary` that synthesizes per-module domains into a single description of the whole project.",
+  "  2. Write a short `notes` string covering anything cross-cutting (monorepo layout, shared packages, etc.). EMPTY string is fine.",
   "",
-  "You DO NOT pick globs or sensors — those are unioned mechanically by the cairn after your call. You only pick the pilot, write the summary, and add notes.",
+  "You DO NOT pick globs or sensors — those are unioned mechanically by the cairn after your call. You only write the summary and notes.",
   "",
   "Return ONLY the JSON object. No preamble.",
 ].join("\n");
@@ -85,7 +82,7 @@ export async function mergeModuleProposals(args: MergeArgs): Promise<MapperOutpu
     return baseline;
   }
 
-  // Haiku merge call — only synthesizes pilot pick + domain summary + notes.
+  // Haiku merge call — only synthesizes domain summary + notes.
   // If it fails, fall back to baseline (already complete).
   try {
     const userPrompt = buildMergeUserPrompt(args);
@@ -100,13 +97,12 @@ export async function mergeModuleProposals(args: MergeArgs): Promise<MapperOutpu
     const parsed = result.parsed;
     if (typeof parsed !== "object" || parsed === null) return baseline;
     const v = parsed as Record<string, unknown>;
-    const pilot = typeof v["pilot_module"] === "string" ? v["pilot_module"] : baseline.pilot_module;
     const summary =
       typeof v["domain_summary"] === "string" && v["domain_summary"].length > 0
         ? v["domain_summary"]
         : baseline.domain_summary;
     const notes = typeof v["notes"] === "string" ? v["notes"] : baseline.notes;
-    return { ...baseline, pilot_module: pilot, domain_summary: summary, notes };
+    return { ...baseline, domain_summary: summary, notes };
   } catch (err) {
     log.warn({ err: String(err) }, "merge call failed; using mechanical baseline");
     return baseline;
@@ -118,7 +114,6 @@ export async function mergeModuleProposals(args: MergeArgs): Promise<MapperOutpu
  *
  *   - sensors: dedupe by id, keeping the variant with the highest module confidence.
  *   - globs: union across all proposals, deduped (string equality).
- *   - pilot_module: first proposal flagged as candidate; else highest-confidence proposal's path.
  *   - domain_summary: per-module domain lines joined.
  *   - key_modules: one entry per proposal, name = slug, path = moduleRel, purpose = domain.
  *   - scope_index: union of per-module file maps.
@@ -133,21 +128,6 @@ export function mechanicalMerge(
     return emptyMapperOutput(detectionSensors, inferredGlobs);
   }
   const successful = proposals.filter((p) => !p.failed);
-
-  // pilot_module
-  const candidates = successful.filter((p) => p.pilotModuleCandidate);
-  const pilotProposal =
-    candidates.length > 0
-      ? sortByConfidence(candidates)[0]
-      : successful.length > 0
-        ? sortByConfidence(successful)[0]
-        : proposals[0];
-  const pilotPath =
-    pilotProposal === undefined
-      ? "ALL"
-      : pilotProposal.moduleRel === "."
-        ? "ALL"
-        : `${pilotProposal.moduleRel}/**`;
 
   // domain_summary — concat per-module domain lines, capped to 600 chars.
   const summaryParts: string[] = [];
@@ -215,7 +195,6 @@ export function mechanicalMerge(
   const notes = notesParts.join(" — ");
 
   return {
-    pilot_module: pilotPath,
     domain_summary: domainSummary,
     key_modules: keyModules,
     route_handler_globs: unionGlobSets(
@@ -263,10 +242,6 @@ function unionGlobSets(...sets: string[][]): string[] {
   return [...out];
 }
 
-function sortByConfidence(proposals: ModuleProposal[]): ModuleProposal[] {
-  return [...proposals].sort((a, b) => b.confidence - a.confidence);
-}
-
 function emptyMapperOutput(
   detectionSensors: SensorProposal[],
   inferredGlobs: InferredGlobs,
@@ -277,7 +252,6 @@ function emptyMapperOutput(
     applies_to_globs: [],
   }));
   return {
-    pilot_module: "ALL",
     domain_summary: "",
     key_modules: [],
     route_handler_globs: [...inferredGlobs.route_handler_globs],
@@ -315,12 +289,11 @@ function buildMergeUserPrompt(args: MergeArgs): string {
     parts.push(`### ${p.moduleSlug} — confidence ${p.confidence}`);
     parts.push(`Path: ${p.moduleRel}`);
     parts.push(`Domain: ${p.domain}`);
-    parts.push(`Pilot candidate: ${p.pilotModuleCandidate}`);
     parts.push(`Notes: ${p.notes || "(none)"}`);
     parts.push("");
   }
   parts.push(
-    `Now produce the JSON object: { pilot_module, domain_summary, notes }. Pilot must reference one of the module paths above (or the literal "ALL" for whole-repo).`,
+    `Now produce the JSON object: { domain_summary, notes }.`,
   );
   return parts.join("\n");
 }

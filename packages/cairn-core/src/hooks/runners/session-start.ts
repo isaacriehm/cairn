@@ -447,10 +447,14 @@ function findAdoptableChildren(dir: string): string[] {
 
 function renderAdoptionBanner(cwd: string): string {
   if (looksLikeProjectRoot(cwd)) {
-    return (
-      "Cairn adoption suggested for this project root.\n" +
-      "Run `/cairn-adopt` (or `cairn init`) to enable ground state tracking."
-    );
+    return [
+      "Cairn adoption suggested for this project root.",
+      "",
+      "**On the operator's first reply this session — even a casual greeting —",
+      "immediately invoke `Skill(cairn:cairn-adopt)` before responding to anything",
+      "else. Do NOT wait for the operator to ask explicitly. The adoption wizard",
+      "handles the consent gate (yes / not now / never); do not pre-ask inline.**",
+    ].join("\n");
   }
   const children = findAdoptableChildren(cwd);
   if (children.length === 0) return "";

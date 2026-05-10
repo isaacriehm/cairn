@@ -280,10 +280,7 @@ function parseThresholdFlag(argv: string[]): DraftConfidence {
   process.exit(2);
 }
 
-function loadProjectGlobs(repoRoot: string): {
-  globs: ProjectGlobs;
-  pilotModule?: string;
-} {
+function loadProjectGlobs(repoRoot: string): { globs: ProjectGlobs } {
   const configPath = join(repoRoot, ".cairn", "config.yaml");
   if (!existsSync(configPath)) {
     return { globs: {} };
@@ -328,8 +325,7 @@ function loadProjectGlobs(repoRoot: string): {
       globs.high_stakes_globs = hi;
     }
   }
-  const pilot = typeof cfg["pilot_module"] === "string" ? (cfg["pilot_module"] as string) : undefined;
-  return pilot !== undefined ? { globs, pilotModule: pilot } : { globs };
+  return { globs };
 }
 
 function renderBulkAcceptResult(
@@ -491,11 +487,10 @@ async function undoCli(repoRoot: string, argv: string[]): Promise<void> {
 async function bulkAcceptCli(repoRoot: string, argv: string[]): Promise<void> {
   const dryRun = argv.includes("--dry-run");
   const threshold = parseThresholdFlag(argv);
-  const { globs, pilotModule } = loadProjectGlobs(repoRoot);
+  const { globs } = loadProjectGlobs(repoRoot);
   const result = await bulkAcceptObvious({
     repoRoot,
     globs,
-    ...(pilotModule !== undefined ? { pilotModule } : {}),
     threshold,
     dryRun,
   });

@@ -7,8 +7,7 @@ import {
   runSourceCommentsIngestion,
   type IngestSourceCommentsResult,
 } from "../source-comments/index.js";
-import type { ProjectGlobs } from "../../sensors/types.js";
-import { clearProgress, writeProgress } from "../progress.js";
+import { clearProgress } from "../progress.js";
 import { advancePhase, isSelfAdoptState } from "./orchestrator.js";
 import {
   to7bResultPersisted,
@@ -30,23 +29,7 @@ export async function runPhase9SourceComments(state: PhaseState): Promise<PhaseR
       state: advancePhase(next),
     };
   }
-  const mapper = state.outputs["3-mapper"];
-  const globs: ProjectGlobs = mapper
-    ? {
-        route_handler_globs: mapper.output.route_handler_globs,
-        dto_globs: mapper.output.dto_globs,
-        generator_source_globs: mapper.output.generator_source_globs,
-        high_stakes_globs: mapper.output.high_stakes_globs,
-        off_limits: mapper.output.off_limits_globs,
-      }
-    : {};
-  const pilotOut = state.outputs["5-pilot"];
-  const pilotModule =
-    typeof pilotOut?.picked === "string" && pilotOut.picked.length > 0
-      ? pilotOut.picked
-      : undefined;
 
-  const startedAt = Date.now();
   try {
     const result: IngestSourceCommentsResult = await runSourceCommentsIngestion({
       repoRoot: state.repoRoot,

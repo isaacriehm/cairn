@@ -37,7 +37,6 @@ export interface ModuleProposal {
   /** "." for whole-repo single-package case. Else module-relative path. */
   moduleRel: string;
   domain: string;
-  pilotModuleCandidate: boolean;
   confidence: number;
   routeHandlerGlobs: string[];
   dtoGlobs: string[];
@@ -56,7 +55,6 @@ const MODULE_OUTPUT_SCHEMA = {
   additionalProperties: false,
   properties: {
     domain: { type: "string" },
-    pilot_module_candidate: { type: "boolean" },
     confidence: { type: "number" },
     route_handler_globs: { type: "array", items: { type: "string" } },
     dto_globs: { type: "array", items: { type: "string" } },
@@ -87,7 +85,6 @@ const MODULE_OUTPUT_SCHEMA = {
   },
   required: [
     "domain",
-    "pilot_module_candidate",
     "confidence",
     "route_handler_globs",
     "dto_globs",
@@ -115,7 +112,6 @@ const MODULE_SYSTEM_PROMPT = [
   "",
   "Required outputs (all paths must be REPO-ROOT-RELATIVE — prepend the module path):",
   "  - `domain` — one short sentence describing what this module does.",
-  "  - `pilot_module_candidate` — true if this module looks like the highest-change-velocity, smallest-blast-radius candidate to pilot first. Bias toward feature modules over infra / config / docs.",
   "  - `confidence` — 0.0–1.0 estimate of how reliable your output is. < 0.4 = low confidence, > 0.7 = high.",
   "  - `route_handler_globs` — globs matching HTTP / CLI / RPC handlers in this module. Examples: `core/src/**/*.controller.ts`, `apps/api/routes/**/*.py`. EMPTY if no handlers.",
   "  - `dto_globs` — globs matching DTO / schema / form-input / request-validator definitions in this module.",
@@ -356,7 +352,6 @@ function parseModuleProposal(
     modulePath: slice.modulePath,
     moduleRel: slice.moduleRel,
     domain: typeof v["domain"] === "string" ? v["domain"] : "",
-    pilotModuleCandidate: v["pilot_module_candidate"] === true,
     confidence: conf,
     routeHandlerGlobs: arr("route_handler_globs"),
     dtoGlobs: arr("dto_globs"),
@@ -457,7 +452,6 @@ function buildFailedProposal(
     modulePath: slice.modulePath,
     moduleRel,
     domain: `${slice.moduleSlug} module (analysis timed out — run cairn scope rebuild)`,
-    pilotModuleCandidate: false,
     confidence: 0.1,
     routeHandlerGlobs: [],
     dtoGlobs: [],

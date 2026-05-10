@@ -126,7 +126,7 @@ sibling slash command):
    {
      "type": "command",
      "command": "bash -c 'shim=$(ls -1t ~/.claude/plugins/cache/*/.active-version-path 2>/dev/null | head -1); [ -n \"$shim\" ] && node \"$(cat \"$shim\")\" status-line'",
-     "refreshInterval": 30
+     "refreshInterval": 10
    }
    ```
 
@@ -249,7 +249,7 @@ descriptions:
 | `2-walker` | repo summary scan | <1s / ~2s |
 | `3-mapper` | Sonnet domain map (per-module slice) | ~30-60s / 2-4min |
 | `4-seed` | seed `.cairn/` skeleton + grandfather commits | <1s |
-| `5-pilot` | pick seed module | operator |
+| `5-preflight` | count units + estimate ETA for long phases | <1s / ~3s |
 | `6-brand` | brand auto-fill (Haiku) | operator + ~30s |
 | `7-topic-index` | cross-source dedup pre-pass (Haiku judges semantically-similar pairs) | ~30s / 2-10min |
 | `8-docs-ingest` | Haiku ingest of README + docs/ → DEC drafts | ~15-30s / 1-3min |
@@ -269,8 +269,21 @@ row; do NOT improvise:
 | `3-mapper` | `Sonnet runs per detected module slice in parallel rounds of 4 (cap: 50 slices). Scales with module count.` |
 | `7-topic-index` | `Walker collects markdown paragraphs; Haiku judges every cross-file pair above the Jaccard threshold (5-way parallel, hard cap 200). Watch the `⏳` indicator on your statusline for live `X/Y pairs (P%) ~Nm` updates.` |
 | `8-docs-ingest` | `Haiku batch over README + docs/. Scales with doc file count and length.` |
-| `9-source-comments` | `Haiku classifies every essay-class block comment in scoped source files (4-way parallel). On busy monorepos this is the longest phase — expect minutes, not seconds. /exit is safe; SessionStart resumes. Watch the `⏳` indicator on your statusline for live `phase X/Y (P%) ~Nm` updates.` |
+| `9-source-comments` | `Haiku classifies every essay-class block comment across the whole repo (4-way parallel). On busy monorepos this is the longest phase — expect minutes, not seconds. /exit is safe; SessionStart resumes. Watch the `⏳` indicator on your statusline for live `phase X/Y (P%) ~Nm` updates.` |
 | `10-rules-merge` | `Haiku per H2 section across CLAUDE.md / AGENTS.md / .claude/rules/*. Scales with section count.` |
+
+**ETA banner — phase `5-preflight`**: when this phase completes, render
+its `bannerLines` verbatim as a single block before invoking phase
+`6-brand`. The pre-flight scan walks the source/doc/rule trees,
+counts the units each long Haiku phase will process, and computes
+`totalSeconds`/`totalSecondsHigh` against the per-machine calibration
+cache at `~/.cairn/cache/eta-calibration.json`. Read the banner from
+`.outputs["5-preflight"].bannerLines` and surface it so the operator
+sees an honest pre-commit estimate before the long phases start.
+After every long phase completes, the runtime folds the measured
+`seconds / units` rate back into the cache via EWMA so subsequent
+adoptions on this machine get a tighter estimate (self-corrects in
+3-4 runs).
 
 **Live progress**: phases `3-mapper`, `7-topic-index`, `8-docs-ingest`,
 `9-source-comments`, and `10-rules-merge` write
@@ -331,7 +344,6 @@ to source the summary fields:
 
 ```bash
 jq -c '{
-  pilot: .outputs["5-pilot"].picked,
   decs_docs: (.outputs["8-docs-ingest"].decDraftsWritten // [] | length),
   decs_comments: (.outputs["9-source-comments"].decDraftsWritten // [] | length),
   decs_rules: (.outputs["10-rules-merge"].decDraftsWritten // [] | length),
@@ -345,7 +357,6 @@ In the same assistant message, do both:
 
 1. Emit a tight summary using the values above:
 
-   - Pilot module
    - DEC drafts proposed (sum of `decs_docs + decs_comments + decs_rules`)
    - Invariants seeded into ground state (each entry is a `INV-<NNNN>`
      file already at status `active`)

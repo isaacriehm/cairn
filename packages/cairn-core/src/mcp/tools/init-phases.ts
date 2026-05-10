@@ -45,7 +45,7 @@ import {
   runPhase2Walker,
   runPhase3Mapper,
   runPhase4Seed,
-  runPhase5Pilot,
+  runPhase5Preflight,
   runPhase6Brand,
   runPhase7TopicIndex,
   runPhase8DocsIngest,
@@ -75,7 +75,7 @@ const phaseStateSchema = z.object({
   outputs: z.record(z.string(), z.unknown()),
   answer: z.string().optional(),
   startedAt: z.string().min(1),
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
 });
 
 const phaseRunInput = {
@@ -97,7 +97,7 @@ const RUNNERS: Record<PhaseId, (s: PhaseState) => Promise<PhaseResult>> = {
   "2-walker": runPhase2Walker,
   "3-mapper": runPhase3Mapper,
   "4-seed": runPhase4Seed,
-  "5-pilot": runPhase5Pilot,
+  "5-preflight": runPhase5Preflight,
   "6-brand": runPhase6Brand,
   "7-topic-index": runPhase7TopicIndex,
   "8-docs-ingest": runPhase8DocsIngest,
@@ -292,20 +292,36 @@ function makeResumeTool(): ToolDef<ResumeToolInput> {
   return {
     name: "cairn_init_resume",
     description:
-      "Read the on-disk init state for the current repo and return the next phase to invoke. The cairn-adopt skill calls this once at the start of the pipeline (and after any operator interruption) to find where to pick up. Returns { status: 'ready' | 'done', nextPhase: PhaseId | null, repoRoot }.",
+      "Read the on-disk init state for the current repo and return the next phase to invoke. The cairn-adopt skill calls this once at the start of the pipeline (and after any operator interruption) to find where to pick up. Returns { status: 'ready' | 'done', nextPhase: PhaseId | null, repoRoot }. For a fresh start (no `.cairn/init-state.json`), the tool persists a fresh PhaseState to disk so the very next `cairn_init_run` call can read it back without the skill having to thread state through tool arguments.",
     inputSchema: initResumeInput,
     handler: async (ctx) => {
       const report = resumePhases(ctx.repoRoot);
       // For a fresh start, ensure state.repoRoot matches ctx.repoRoot
       // (resumePhases uses freshPhaseState(ctx.repoRoot) for this case).
-      const repoRoot =
+      const stateForCtx =
         report.state.repoRoot !== ctx.repoRoot
-          ? freshPhaseState(ctx.repoRoot).repoRoot
-          : report.state.repoRoot;
+          ? freshPhaseState(ctx.repoRoot)
+          : report.state;
+      // Persist fresh state to disk so the next `cairn_init_run` call
+      // (which by SKILL.md contract omits the `state` arg) finds
+      // something to read. Without this, the loop deadlocks at Phase
+      // 1-detect with `VALIDATION_FAILED ... no init state at
+      // .cairn/init-state.json` on every fresh adoption.
+      const onDisk = readPhaseState(ctx.repoRoot);
+      if (onDisk === null) {
+        try {
+          writePhaseState(stateForCtx);
+        } catch (err) {
+          return mcpError(
+            "INTERNAL_ERROR",
+            `failed to seed init state: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
       return {
         status: report.status,
         nextPhase: report.nextPhase,
-        repoRoot,
+        repoRoot: stateForCtx.repoRoot,
       };
     },
   };

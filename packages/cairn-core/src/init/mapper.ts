@@ -9,9 +9,9 @@
  *   2. `mapper-parallel` dispatches one Sonnet call per slice in parallel
  *      (Promise.allSettled, 4-at-a-time batches when >8). Each call sees
  *      ~8k tokens of focused module input.
- *   3. `mapper-merge` runs a cheap Haiku call to pick the pilot module and
- *      synthesize the project domain summary; the rest of the merge is
- *      mechanical (union of arrays, dedupe sensors by id).
+ *   3. `mapper-merge` runs a cheap Haiku call to synthesize the project
+ *      domain summary; the rest of the merge is mechanical (union of
+ *      arrays, dedupe sensors by id).
  *
  * If every module call fails, the orchestrator throws — there's no
  * fallback path. The operator re-runs `cairn init` with `--force` after
@@ -75,7 +75,6 @@ export interface MapperScopeIndex {
 }
 
 export interface MapperOutput {
-  pilot_module: string;
   domain_summary: string;
   key_modules: MapperKeyModule[];
   route_handler_globs: string[];
@@ -119,7 +118,6 @@ function isMapperOutput(value: unknown): value is MapperOutput {
   const v = value as Record<string, unknown>;
   if (
     !(
-      typeof v["pilot_module"] === "string" &&
       typeof v["domain_summary"] === "string" &&
       Array.isArray(v["key_modules"]) &&
       Array.isArray(v["route_handler_globs"]) &&
@@ -242,7 +240,6 @@ export async function runMapper(args: RunMapperArgs): Promise<MapperResult> {
     {
       proposals: proposals.length,
       successful: proposals.filter((p) => !p.failed).length,
-      pilot_module: merged.pilot_module,
       total_sensors: merged.proposed_sensors.length,
     },
     "chunked mapper complete",

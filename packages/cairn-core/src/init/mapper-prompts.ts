@@ -15,7 +15,6 @@ export const MAPPER_OUTPUT_SCHEMA = {
   type: "object",
   additionalProperties: false,
   properties: {
-    pilot_module: { type: "string" },
     domain_summary: { type: "string" },
     key_modules: {
       type: "array",
@@ -74,7 +73,6 @@ export const MAPPER_OUTPUT_SCHEMA = {
     },
   },
   required: [
-    "pilot_module",
     "domain_summary",
     "key_modules",
     "route_handler_globs",
@@ -96,7 +94,6 @@ export const MAPPER_SYSTEM_PROMPT = [
   "",
   "Required outputs:",
   "",
-  "- `pilot_module` — a glob like `core/src/integrations/**` for the initial scope where the cairn should focus, OR the literal `ALL` if the project is small enough to cairn end-to-end on day one. Bias toward a focused module — operators add scope as confidence grows.",
   "- `domain_summary` — one paragraph (~80-200 words). What does this codebase appear to do? Inferred from package name, README contents (when in a manifest preview), top-level dirs, and manifest deps. State only what the inventory supports; if uncertain, say so.",
   "- `key_modules` — 3-8 modules the cairn should know about. Each `{ name, path, purpose }`. `path` is a directory path that EXISTS in the inventory (no glob); `purpose` is one short sentence.",
   "- `route_handler_globs` — file glob patterns matching HTTP / CLI / RPC / route handlers. Examples: `core/src/**/*.controller.ts` (NestJS), `app/controllers/**/*.rb` (Rails), `apps/api/routes/**/*.py` (FastAPI), `internal/handlers/**/*.go`. EMPTY array if no handlers detected.",
@@ -105,7 +102,7 @@ export const MAPPER_SYSTEM_PROMPT = [
   "- `high_stakes_globs` — globs for high-risk surfaces (auth, billing, multi-tenant boundaries, payments, integrations storing tokens, telephony, anything where a regression leaks user data or charges money). Be conservative; over-flagging dilutes the gate. EMPTY if not clear.",
   "- `off_limits_globs` — globs the cairn MUST NOT touch beyond the generic defaults already in place (`node_modules/**`, `dist/**`, `.git/**`, `.cairn/**`, `.archive/**`, generated artifact dirs are already excluded). Add things like vendored third-party code, copied snapshots, large binary fixtures, anything under a directory the operator should not let an agent rewrite. EMPTY if nothing extra.",
   "- `proposed_sensors` — project-specific sensors beyond the generic cairn Layer A/B/C/D. Each `{ id, description, applies_to_globs }`. Examples: `event-emit-coverage` (every emit() has a label), `migration-naming-convention`, `auth-guard-on-controllers`, `dto-discriminator-coverage`. EMPTY if nothing project-specific is obvious.",
-  "- `notes` — anything notable that didn't fit a structured field — e.g., \"truncated at file cap; pilot scope conservative\", \"no test infra detected\", \"monorepo with pnpm-workspace; cairn should adopt one package at a time\".",
+  "- `notes` — anything notable that didn't fit a structured field — e.g., \"truncated at file cap; coverage may be conservative\", \"no test infra detected\", \"monorepo with pnpm-workspace\".",
   "- `scope_index` — forward map from repo-relative file paths to the decisions and invariants whose `scope_globs` apply, keyed by file. Shape: `{ files: { \"<repo-relative-path>\": { decisions: [\"DEC-NNNN\"], invariants: [\"INV-NNNN\"], unscoped?: true } } }`. The user prompt provides a list of in-scope decisions + invariants when ground state already exists; classify which apply to each meaningful source file. Use `unscoped: true` for files that should never carry rules (lockfiles, generated, vendored, dotfile config) so the GC scope-coverage pass doesn't re-flag them. EMPTY `{ files: {} }` is acceptable on first-run adopters with no decisions yet. IDs ONLY in these arrays — never copy titles or descriptive prose.",
   "",
   "Rules:",
@@ -115,7 +112,6 @@ export const MAPPER_SYSTEM_PROMPT = [
   "- Do not invent paths that aren't in the inventory.",
   "- Prefer EMPTY arrays over guessed entries. The cairn propagates empty fields to operator review; guessed entries silently mislead and the operator may not catch them at adoption time.",
   "- Avoid overly-broad globs like `**/*.ts` for `route_handler_globs` — narrow to the controller / route directory.",
-  "- For `pilot_module`: if the repo has a clear modular layout (packages/, apps/, services/, core/src/<feature>/), name one. If it's a flat single-app codebase, use the literal `ALL` and let the operator narrow later.",
   "- `key_modules.path` MUST appear in the inventory's notable directories or the file-count breakdown.",
   "- Return ONLY the JSON object. No prose, no preamble, no code fences.",
 ].join("\n");
@@ -158,7 +154,7 @@ export function buildMapperUserPrompt(args: {
   );
   if (s.truncated_at_file_cap) parts.push(`(truncated at file cap)`);
   if (s.truncated_at_depth_cap)
-    parts.push(`(truncated at depth cap — pilot scope should be conservative)`);
+    parts.push(`(truncated at depth cap — coverage may be conservative)`);
   parts.push("");
   parts.push(`## Top-level entries`);
   parts.push(s.top_level.length === 0 ? "(none)" : s.top_level.join(", "));

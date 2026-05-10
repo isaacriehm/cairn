@@ -4,6 +4,101 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.3] — 2026-05-10
+
+Hotfix: fresh adoption deadlocked at Phase 1-detect because
+`cairn_init_resume` never seeded `.cairn/init-state.json` to disk.
+
+### Fixed
+
+- **Fresh adoption deadlock at Phase 1-detect.** `cairn_init_resume`
+  constructed `freshPhaseState(repoRoot)` but didn't persist it.
+  The cairn-adopt skill driver follows SKILL.md ("tool reads state
+  from disk") and omits the `state` arg on the next `cairn_init_run`
+  call — that handler then read disk, found nothing, and returned
+  `VALIDATION_FAILED ... no init state at .cairn/init-state.json`,
+  bouncing the loop. `cairn_init_resume` now writes the fresh
+  `PhaseState` (creating `.cairn/` upfront) so the next `init_run`
+  finds something to read. Existing-state callers are unaffected —
+  the seed-write only fires when `readPhaseState` returns null.
+
+## [0.8.2] — 2026-05-10
+
+Hotfix patch on top of 0.8.1: SessionEnd hook output now passes
+Claude Code 2.1+ schema validation, and `cairn_init_run`'s zod
+state schema agrees with the on-disk v2 format so adoption no longer
+deadlocks after Phase 1.
+
+### Fixed
+
+- **SessionEnd hook output rejected by Claude Code 2.1+.** Hook ran
+  `emitShapeB("", "SessionEnd")` which wraps the payload in
+  `hookSpecificOutput` — Claude Code 2.1+ refuses that envelope for
+  SessionEnd and surfaces `Hook JSON output validation failed —
+  (root): Invalid input.` New `emitContinue()` helper writes a bare
+  `{continue: true}` payload; SessionEnd runner switched to it.
+- **`cairn_init_run` zod state schema** still required
+  `schemaVersion: z.literal(1)` after the disk-format bump to v2.
+  Drivers passing explicit fresh state (`freshPhaseState` now emits
+  v2) failed zod parsing while disk reads via `isPhaseState`
+  expected v2 — the loop got stuck after Phase 1 with
+  `VALIDATION_FAILED ... no init state at .cairn/init-state.json`.
+  Bumped the zod literal to `2` so input + on-disk shapes agree.
+
+## [0.8.1] — 2026-05-10
+
+Adoption UX patch: kills the Phase 5 pilot-module prompt that
+confused operators on multi-package monorepos, replaces it with a
+no-input pre-flight ETA so the operator sees an honest pre-commit
+estimate before the long Haiku phases run, and fully removes the
+`pilot_module` field from the mapper / config / overlay surface so
+adoption always covers the whole repo. Hard cutover — `init-state.json`
+schema bumped to v2, stale mid-init state files are ignored on the
+next session and adoption restarts from Phase 1.
+
+### Added
+
+- **Phase 5 pre-flight ETA.** New `runPhase5Preflight` walks the
+  source tree once (no Haiku), counts the units each long phase will
+  process — markdown paragraphs, essay-class comment blocks,
+  rule-file H2 sections, jaccard pair estimate — and emits a
+  rendered banner the cairn-adopt skill prints verbatim before
+  invoking `6-brand`. Phase auto-advances; no operator input.
+- **ETA calibration cache** at `~/.cairn/cache/eta-calibration.json`.
+  Per-machine, per-phase `secondsPerUnit` averaged via EWMA
+  (α=0.3 for first 5 samples, α=0.1 thereafter; outliers clipped at
+  10× prior rate). Phases `7-topic-index`, `8-docs-ingest`,
+  `9-source-comments`, and `10-rules-merge` write measured rates
+  back after each successful run, so subsequent adoptions on the
+  same machine converge to ±20% accuracy in 3–4 runs. Shipped
+  defaults seed first-run estimates.
+
+### Changed
+
+- **`init-state.json` schemaVersion bumped 1 → 2.** Hard cutover —
+  state files written by 0.8.0 fail validation and are treated as
+  missing on the next session, restarting adoption from Phase 1.
+  Adoption is one-shot per repo; restart is acceptable.
+- **Phase 5 renamed `5-pilot` → `5-preflight`.** PHASE_IDS reordered
+  accordingly; MCP runner registry updated; `runPhase5Pilot` export
+  replaced with `runPhase5Preflight`. Smoke `smoke-init-phases-all`
+  Step 3 rewritten to assert auto-advance + bannerLines + numeric
+  ETA.
+
+### Removed
+
+- **`pilot_module` field deleted everywhere.** No more pilot scoping.
+  Mapper schema (`pilot_module` from `MAPPER_OUTPUT_SCHEMA` +
+  `MapperOutput`), per-module Sonnet schema (`pilot_module_candidate`
+  from `mapper-parallel.ts`), Haiku merge prompt, project overlay
+  (`.cairn/config.yaml`), workflow.md slug-block (`pilot_module: ALL`
+  template line), trust-policy `change_pilot_module` configuration
+  command, scoring bias (`inPilot` from `attention/scoring.ts` +
+  `pilotModule` from `bulk-accept` + tool wrappers), and CLI prompt
+  (`freeTextWithDefault` pilot prompt + `Pilot` printout) all gone.
+  Adoption always covers the whole repo; operators narrow surface
+  area later via `cairn scope`.
+
 ## [0.8.0] — 2026-05-09
 
 Major reliability + UX pass ahead of v1: task lifecycle now graduates

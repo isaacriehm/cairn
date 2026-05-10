@@ -123,8 +123,8 @@ export interface WalkResult {
 /**
  * Default file cap for the source-comment walker. Above this, the walker
  * reads only the first `DEFAULT_FILE_CAP` source files (sorted) and reports
- * truncation in the result. Operator can re-run `cairn init` with a
- * narrowed pilot scope to extend coverage.
+ * truncation in the result. Operator can re-run `cairn scope rebuild`
+ * after narrowing the off-limits set to extend coverage.
  */
 const DEFAULT_FILE_CAP = 5_000;
 

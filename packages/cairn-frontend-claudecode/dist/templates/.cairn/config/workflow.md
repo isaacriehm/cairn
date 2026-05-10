@@ -19,7 +19,6 @@ source-commits:
 # ──────────────────────────────────────────────────────────────────────────────
 
 <project_name>:
-  pilot_module: ALL                     # full repo, OR a glob like core/src/integrations/**
   off_limits:
     - .git/**
     - .archive/**

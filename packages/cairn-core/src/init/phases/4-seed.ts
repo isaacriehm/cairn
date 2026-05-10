@@ -66,7 +66,6 @@ export async function runPhase4Seed(state: PhaseState): Promise<PhaseResult> {
           workflowMdPath: join(state.repoRoot, wfRel),
           slug: projectSlug,
           update: {
-            pilot_module: mapperOutput.pilot_module,
             route_handler_globs: mapperOutput.route_handler_globs,
             dto_globs: mapperOutput.dto_globs,
             generator_source_globs: mapperOutput.generator_source_globs,
@@ -136,7 +135,7 @@ export async function runPhase4Seed(state: PhaseState): Promise<PhaseResult> {
     };
     return {
       status: "complete",
-      nextPhase: "5-pilot",
+      nextPhase: "5-preflight",
       state: advancePhase(next),
     };
   } catch (err) {

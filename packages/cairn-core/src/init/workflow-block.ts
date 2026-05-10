@@ -5,11 +5,11 @@
  *   1. `.cairn/config.yaml` — the project overlay (built by `init.ts` directly)
  *   2. `.cairn/config/workflow.md` — the `<slug>:` block in YAML frontmatter
  *
- * (2) is shipped as a template with placeholder values (pilot_module: ALL,
- * empty arrays). After seed substitutes `<project_name>:` → `<slug>:`, this
- * module patches the slug block with the mapper's outputs while preserving
- * the rest of the frontmatter (comments, key order, sibling keys) and the
- * markdown body below the closing `---`.
+ * (2) is shipped as a template with empty glob arrays. After seed
+ * substitutes `<project_name>:` → `<slug>:`, this module patches the slug
+ * block with the mapper's outputs while preserving the rest of the
+ * frontmatter (comments, key order, sibling keys) and the markdown body
+ * below the closing `---`.
  *
  * Round-trip uses `yaml`'s `parseDocument` API so comments outside the slug
  * block survive. Comments inside the slug block are dropped on the keys we
@@ -31,7 +31,6 @@ import {
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---/;
 
 export interface WorkflowSlugBlockUpdate {
-  pilot_module?: string;
   route_handler_globs?: string[];
   dto_globs?: string[];
   generator_source_globs?: string[];
@@ -79,10 +78,6 @@ export function updateWorkflowSlugBlock(args: {
 
   const applied: string[] = [];
   const u = args.update;
-  if (u.pilot_module !== undefined) {
-    slugBlock.set("pilot_module", u.pilot_module);
-    applied.push("pilot_module");
-  }
   if (u.route_handler_globs !== undefined) {
     slugBlock.set(
       "route_handler_globs",

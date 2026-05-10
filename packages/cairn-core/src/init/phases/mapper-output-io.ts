@@ -8,13 +8,13 @@
  * `.cairn/init-state.json` skinny enough that the cairn-adopt skill can
  * thread it through the LLM without spilling, the heavy fields live in
  * `.cairn/init/mapper-output.json` instead. State carries only the
- * persisted-light projection (small globs, pilot pick, key modules,
- * domain summary, mechanical sensor list, run metadata).
+ * persisted-light projection (small globs, key modules, domain summary,
+ * mechanical sensor list, run metadata).
  *
- * Phase 3b-seed reloads the full mapper output via `readMapperOutputFile`
+ * Phase 4-seed reloads the full mapper output via `readMapperOutputFile`
  * to write `.cairn/ground/scope-index.yaml`. Other downstream phases
- * (4-pilot / 5-brand / 8-baseline) only need the light fields, so they
- * read from `state.outputs["3-mapper"]` directly.
+ * only need the light fields, so they read from `state.outputs["3-mapper"]`
+ * directly.
  */
 
 import {

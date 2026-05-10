@@ -49,9 +49,6 @@ commands:
   - id: disable_sensor
     posture: configuration
     surface: workflow_yaml_edit
-  - id: change_pilot_module
-    posture: configuration
-    surface: workflow_yaml_edit
   - id: change_off_limits
     posture: configuration
     surface: workflow_yaml_edit

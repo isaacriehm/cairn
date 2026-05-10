@@ -4,7 +4,7 @@
  * Wraps `bulkAcceptObvious` so the cairn-attention skill can drain
  * obvious DEC drafts in one tool call instead of N rounds of
  * `cairn_resolve_attention(choice="a")` per draft. Loads the project
- * globs + pilot module from `.cairn/config.yaml` so the scoring
+ * globs from `.cairn/config.yaml` so the scoring
  * heuristic has the same context the cli subcommand does.
  *
  * Returns a slim count-distribution shape — no draft bodies, no file
@@ -47,13 +47,9 @@ const ConfigSchema = z.object({
   }).optional(),
   high_stakes_globs: z.array(z.string()).optional(),
   off_limits: z.array(z.string()).optional(),
-  pilot_module: z.string().optional(),
 }).passthrough();
 
-function loadProjectGlobs(repoRoot: string): {
-  globs: ProjectGlobs;
-  pilotModule?: string;
-} {
+function loadProjectGlobs(repoRoot: string): { globs: ProjectGlobs } {
   const configPath = join(repoRoot, ".cairn", "config.yaml");
   if (!existsSync(configPath)) {
     return { globs: {} };
@@ -66,12 +62,12 @@ function loadProjectGlobs(repoRoot: string): {
   }
   const result = ConfigSchema.safeParse(parsed);
   if (!result.success) return { globs: {} };
-  
+
   const cfg = result.data;
   const globs: ProjectGlobs = {};
   if (cfg.high_stakes_globs) globs.high_stakes_globs = cfg.high_stakes_globs;
   if (cfg.off_limits) globs.off_limits = cfg.off_limits;
-  
+
   const pg = cfg.project_globs;
   if (pg !== undefined) {
     if (pg.route_handler_globs) globs.route_handler_globs = pg.route_handler_globs;
@@ -81,24 +77,23 @@ function loadProjectGlobs(repoRoot: string): {
       globs.high_stakes_globs = pg.high_stakes_globs;
     }
   }
-  
-  return cfg.pilot_module !== undefined ? { globs, pilotModule: cfg.pilot_module } : { globs };
+
+  return { globs };
 }
 
 export const bulkAcceptAttentionTool: ToolDef<BulkAcceptInput> = {
   name: "cairn_bulk_accept_attention",
   description:
-    "Score every DEC draft + invariant in `.cairn/ground/decisions/_inbox/` and `.cairn/ground/invariants/` against a confidence heuristic (file in high_stakes_globs / pilot module / route or dto globs, prose substantiveness, decision verbs, JSDoc tags). Auto-promote DEC drafts at or above `threshold` (default 'high') out of the inbox to accepted state and rebuild the decisions ledger. Stamp `capture_confidence` on every draft + invariant so subsequent attention surfaces can sort. Use this once per adoption to drain the obvious classifications before per-item triage. Returns count distributions and the accepted ID list. `dryRun: true` reports the same distribution without writing.",
+    "Score every DEC draft + invariant in `.cairn/ground/decisions/_inbox/` and `.cairn/ground/invariants/` against a confidence heuristic (file in high_stakes_globs / route or dto globs, prose substantiveness, decision verbs, JSDoc tags). Auto-promote DEC drafts at or above `threshold` (default 'high') out of the inbox to accepted state and rebuild the decisions ledger. Stamp `capture_confidence` on every draft + invariant so subsequent attention surfaces can sort. Use this once per adoption to drain the obvious classifications before per-item triage. Returns count distributions and the accepted ID list. `dryRun: true` reports the same distribution without writing.",
   inputSchema: inputShape,
   handler: async (
     ctx: McpContext,
     input: BulkAcceptInput,
   ): Promise<BulkAcceptResult> => {
-    const { globs, pilotModule } = loadProjectGlobs(ctx.repoRoot);
+    const { globs } = loadProjectGlobs(ctx.repoRoot);
     return bulkAcceptObvious({
       repoRoot: ctx.repoRoot,
       globs,
-      ...(pilotModule !== undefined ? { pilotModule } : {}),
       threshold: input.threshold ?? "high",
       ...(input.dryRun !== undefined ? { dryRun: input.dryRun } : {}),
     });

@@ -68,7 +68,7 @@ function isStringOrUndef(v: unknown): v is string | undefined {
 function isPhaseState(x: unknown): x is PhaseState {
   if (x === null || typeof x !== "object") return false;
   const o = x as Record<string, unknown>;
-  if (o["schemaVersion"] !== 1) return false;
+  if (o["schemaVersion"] !== 2) return false;
   if (typeof o["repoRoot"] !== "string") return false;
   if (!isPhaseId(o["currentPhase"])) return false;
   if (typeof o["outputs"] !== "object" || o["outputs"] === null) return false;

@@ -37,8 +37,6 @@ export interface DraftScoreInput {
   rawComment: string;
   /** Project globs from `.cairn/config.yaml`. */
   globs: ProjectGlobs;
-  /** Pilot module path (e.g. `core/src`); empty / "." treated as no bias. */
-  pilotModule?: string;
 }
 
 const DECISION_VERBS =
@@ -55,14 +53,6 @@ function inHighStakes(file: string, globs: ProjectGlobs): boolean {
   return matchAnyGlob(file, globs.high_stakes_globs ?? []);
 }
 
-function inPilot(file: string, pilot: string | undefined): boolean {
-  if (pilot === undefined) return false;
-  const p = pilot.trim();
-  if (p.length === 0 || p === "." || p === "ALL") return false;
-  // Pilot module is a directory; treat any file under it as in-pilot.
-  return file === p || file.startsWith(`${p}/`);
-}
-
 function inRoutesOrDtos(file: string, globs: ProjectGlobs): boolean {
   const combined = [
     ...(globs.route_handler_globs ?? []),
@@ -72,12 +62,11 @@ function inRoutesOrDtos(file: string, globs: ProjectGlobs): boolean {
 }
 
 /**
- * Score a DEC draft. Max 9 / threshold 7→high / 4→medium.
+ * Score a DEC draft. Max 8 / threshold 7→high / 4→medium.
  */
 export function scoreDecDraft(input: DraftScoreInput): DraftConfidence {
   let score = 0;
   if (inHighStakes(input.sourceFile, input.globs)) score += 3;
-  if (inPilot(input.sourceFile, input.pilotModule)) score += 1;
   if (inRoutesOrDtos(input.sourceFile, input.globs)) score += 1;
   const proseLen = input.prose.trim().length;
   if (proseLen >= 80 && proseLen <= 800) score += 2;

@@ -79,13 +79,13 @@ renames don't break it:
   "statusLine": {
     "type": "command",
     "command": "bash -c 'shim=$(ls -1t ~/.claude/plugins/cache/*/.active-version-path 2>/dev/null | head -1); [ -n \"$shim\" ] && node \"$(cat \"$shim\")\" status-line'",
-    "refreshInterval": 30
+    "refreshInterval": 10
   }
 }
 ```
 
 The `bash -c` wrapper resolves the most-recently-written shim across
-any plugin slug. `refreshInterval: 30` keeps the badge live during long
+any plugin slug. `refreshInterval: 10` keeps the badge live during long
 subagent runs.
 
 Preserve any other top-level fields in `~/.claude/settings.json`. Use

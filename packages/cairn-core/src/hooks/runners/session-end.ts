@@ -8,15 +8,11 @@
 import { resolveRepoRoot } from "../../session-start/index.js";
 import { cleanupSession } from "../../session/index.js";
 import {
-  emitShapeB,
+  emitContinue,
   parseHookPayload,
   readHookStdin,
   appendTelemetry,
 } from "./payload.js";
-
-interface SessionEndShapeBOutput {
-  continue: boolean;
-}
 
 export async function runSessionEndHook(): Promise<void> {
   const startedAt = Date.now();
@@ -48,7 +44,5 @@ export async function runSessionEndHook(): Promise<void> {
     });
   }
 
-  const out: SessionEndShapeBOutput = { continue: true };
-  void out;
-  emitShapeB("", "SessionEnd");
+  emitContinue();
 }

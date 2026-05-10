@@ -240,7 +240,7 @@ cairn_task_create({
   constraints: [<one bullet per binding, citing DEC/§INV>],
   out_of_scope: [<explicit non-goals>],
   acceptance: [<what done looks like>],
-  module: <pilot module slug or top-level dir touched>,
+  module: <top-level dir or package slug touched>,
   needs_review: <true if complex or load-bearing; false for trivial fixes>,
 })
 ```

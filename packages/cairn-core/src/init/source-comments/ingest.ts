@@ -155,8 +155,6 @@ export interface IngestSourceCommentsArgs {
    * auto-promotes without scoring).
    */
   globs?: ProjectGlobs;
-  /** Pilot module path (workflow.md `pilot_module`). Same compat note. */
-  pilotModule?: string;
   /**
    * Caller-supplied DEC id Set — kept for symmetry with phases 6 / 7c.
    * Plan §3.2.1 derives content-addressed ids; collisions across phases

@@ -224,11 +224,11 @@ async function runSmoke(): Promise<void> {
     // Seed disk with valid 1-detect output.
     await tool.handler(ctx, { phase: "1-detect", state: freshPhaseState(repo) });
     const before = readFileSync(phaseStateAbsPath(repo), "utf8");
-    // Force an error: call 1-detect again with currentPhase="5-pilot"
+    // Force an error: call 1-detect again with currentPhase="5-preflight"
     // (mismatch).
     const bogus: PhaseState = {
       ...freshPhaseState(repo),
-      currentPhase: "5-pilot",
+      currentPhase: "5-preflight",
     };
     const errResult = (await tool.handler(ctx, { phase: "1-detect", state: bogus })) as {
       error?: { code: string };
@@ -252,7 +252,7 @@ async function runSmoke(): Promise<void> {
     const tool = findTool("cairn_init_run");
     const state: PhaseState = {
       ...freshPhaseState(repo),
-      currentPhase: "5-pilot", // wrong
+      currentPhase: "5-preflight", // wrong
     };
     const payload = (await tool.handler(ctx, { phase: "1-detect", state })) as {
       error?: { code: string; message: string };

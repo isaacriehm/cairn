@@ -22,6 +22,7 @@ import type { MultiDevInstallResult } from "../multi-dev/index.js";
 import type { MapperResultPersisted } from "./mapper-output-io.js";
 import type { IngestSourceCommentsResultPersisted } from "./source-comments-output-io.js";
 import type { TopicIndexPhaseOutput } from "./7-topic-index.js";
+import type { PreflightOutput } from "./5-preflight.js";
 
 /** Phase ids in execution order. */
 export const PHASE_IDS = [
@@ -29,7 +30,7 @@ export const PHASE_IDS = [
   "2-walker",
   "3-mapper",
   "4-seed",
-  "5-pilot",
+  "5-preflight",
   "6-brand",
   "7-topic-index",
   "8-docs-ingest",
@@ -80,7 +81,7 @@ export interface PhaseState {
   /** When the pipeline started (ISO-8601). */
   startedAt: string;
   /** Schema version for the on-disk state file (bump on breaking change). */
-  schemaVersion: 1;
+  schemaVersion: 2;
 }
 
 export interface SeedPhaseOutput {
@@ -92,10 +93,6 @@ export interface SeedPhaseOutput {
   workflow_patch_error: string | null;
   attested_seeded: number;
   attested_seed_status: "ok" | "skipped" | "error";
-}
-
-export interface PilotOutput {
-  picked: string;
 }
 
 export interface BrandOutput {
@@ -113,7 +110,7 @@ export interface PhaseOutputs {
   "2-walker"?: RepoSummary;
   "3-mapper"?: MapperResultPersisted;
   "4-seed"?: SeedPhaseOutput;
-  "5-pilot"?: PilotOutput;
+  "5-preflight"?: PreflightOutput;
   "6-brand"?: BrandOutput;
   "7-topic-index"?: TopicIndexPhaseOutput;
   "8-docs-ingest"?: IngestionResult;

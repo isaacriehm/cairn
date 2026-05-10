@@ -10,6 +10,7 @@
 
 import { logger } from "../../logger.js";
 import { buildTopicIndex } from "../topic-index/index.js";
+import { recordSample } from "../eta-calibration.js";
 import { advancePhase } from "./orchestrator.js";
 import type { PhaseResult, PhaseState } from "./types.js";
 
@@ -27,8 +28,17 @@ export interface TopicIndexPhaseOutput {
 }
 
 export async function runPhase7TopicIndex(state: PhaseState): Promise<PhaseResult> {
+  const startedAt = performance.now();
   try {
     const result = await buildTopicIndex({ repoRoot: state.repoRoot });
+    const durationMs = Math.round(performance.now() - startedAt);
+    if (result.judgeCalls > 0) {
+      recordSample({
+        phase: "7-topic-index",
+        units: result.judgeCalls,
+        durationMs,
+      });
+    }
     const topicCount = Object.keys(result.topicIndex.topics).length;
     const out: TopicIndexPhaseOutput = {
       block_count: result.blockCount,

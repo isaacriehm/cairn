@@ -86,7 +86,7 @@ cairn_bulk_accept_attention({})
 
 Tool default `threshold: "high"` only auto-promotes drafts the
 heuristic is confident about — file in `high_stakes_globs` /
-`pilot_module` / `route_handler_globs` / `dto_globs`, prose 80–800
+`route_handler_globs` / `dto_globs`, prose 80–800
 chars, decision-verb tokens (`chose`, `because`, `enforce`, …),
 JSDoc tags. Stamps `capture_confidence` on every draft + invariant
 so subsequent passes can sort. Returns counts:

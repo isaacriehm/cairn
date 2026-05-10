@@ -97,7 +97,6 @@ import {
 } from "./mapper.js";
 import {
   done,
-  freeTextWithDefault,
   header,
   info,
   squareIntoSquareHole,
@@ -349,7 +348,7 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   const repoSummary = buildRepoSummary({ repoRoot });
   if (repoSummary.truncated_at_file_cap) {
     warnings.push(
-      "repo walk truncated at file cap — pilot scope will be conservative",
+      "repo walk truncated at file cap — coverage may be conservative",
     );
   }
   if (repoSummary.truncated_at_depth_cap) {
@@ -395,7 +394,7 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   // those checks appear.
   const envState = detection.environment;
 
-  // ── Init mapper (Tier 2 / Sonnet) — proposes pilot_module + project_globs.
+  // ── Init mapper (Tier 2 / Sonnet) — proposes project_globs.
   // Without this, project_globs.{route_handler,dto,generator_source,high_stakes}
   // sit empty and Layer-D sensors never fire on real diffs.
   const mapperRunResult = await maybeRunMapper({
@@ -441,7 +440,6 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
         workflowMdPath: wfPath,
         slug: decidedSlug,
         update: {
-          pilot_module: mapperOutput.pilot_module,
           route_handler_globs: mapperOutput.route_handler_globs,
           dto_globs: mapperOutput.dto_globs,
           generator_source_globs: mapperOutput.generator_source_globs,
@@ -869,16 +867,6 @@ async function maybeRunMapper(
   }
   printMapperProposal(mapperResult);
 
-  // Single confirm — pilot module. Operator presses Enter to apply or types
-  // an alternate path to override. (args.mode narrowed to "interactive" above.)
-  const pilotChoice = await freeTextWithDefault({
-    mode: args.mode,
-    prompt: "Press Enter to apply, or type a different pilot path",
-    defaultValue: mapperResult.output.pilot_module,
-  });
-  if (pilotChoice.length > 0 && pilotChoice !== mapperResult.output.pilot_module) {
-    mapperResult.output.pilot_module = pilotChoice;
-  }
   const fallbackSlugs =
     mapperResult.module_proposals === undefined
       ? []
@@ -896,10 +884,7 @@ async function maybeRunMapper(
   return { output: mapperResult.output, fallbackSlugs };
 }
 
-function printMapperProposal(
-  r: MapperResult,
-  opts: { partialModules?: string[] } = {},
-): void {
+function printMapperProposal(r: MapperResult): void {
   const o = r.output;
   process.stdout.write("\n");
   // Project line: slug — domain summary (truncated)
@@ -934,12 +919,6 @@ function printMapperProposal(
     }
     process.stdout.write("\n");
   }
-  // Pilot line
-  const pilotNote =
-    opts.partialModules !== undefined && opts.partialModules.length > 0
-      ? `  ${visualC.dim(`(only fully-visible module — run cairn scope rebuild after submodules initialize)`)}`
-      : "";
-  process.stdout.write(`  ${visualC.bold("Pilot")}      ${o.pilot_module}${pilotNote}\n`);
 }
 
 function truncateOneLine(s: string, max: number): string {

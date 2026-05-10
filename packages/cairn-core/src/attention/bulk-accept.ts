@@ -54,8 +54,6 @@ export interface BulkAcceptArgs {
   repoRoot: string;
   /** Project globs sourced from `.cairn/config.yaml`. */
   globs: ProjectGlobs;
-  /** Pilot module path (workflow.md `pilot_module`) for scoring bias. */
-  pilotModule?: string;
   /**
    * Minimum confidence to auto-accept DEC drafts. Defaults to "high"
    * — only obvious accepts move out of the inbox. "medium" widens
@@ -160,7 +158,6 @@ export async function bulkAcceptObvious(
             title: titleFm,
             rawComment,
             globs: args.globs,
-            ...(args.pilotModule !== undefined ? { pilotModule: args.pilotModule } : {}),
           });
           decsByConfidence[score] += 1;
 
@@ -305,7 +302,6 @@ export async function bulkAcceptObvious(
             title: titleFm,
             rawComment,
             globs: args.globs,
-            ...(args.pilotModule !== undefined ? { pilotModule: args.pilotModule } : {}),
           });
           invariantsByConfidence[score] += 1;
           const prevConf = stringField(fm, "capture_confidence");
@@ -351,7 +347,6 @@ export async function bulkAcceptObvious(
           title: titleFm,
           rawComment,
           globs: args.globs,
-          ...(args.pilotModule !== undefined ? { pilotModule: args.pilotModule } : {}),
         });
         invariantsByConfidence[score] += 1;
       }

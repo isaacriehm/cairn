@@ -25,7 +25,7 @@ export function freshPhaseState(repoRoot: string): PhaseState {
     currentPhase: PHASE_IDS[0],
     outputs: {},
     startedAt: new Date().toISOString(),
-    schemaVersion: 1,
+    schemaVersion: 2,
   };
 }
 

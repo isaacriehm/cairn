@@ -42,7 +42,7 @@ function usage(): never {
       "Detects stack signatures (typescript / python / ruby / go / rust /\n" +
       "elixir / unknown), proposes sensors, dispatches a one-time Tier-2\n" +
       "mapper to fill route_handler_globs / dto_globs / generator_source_globs\n" +
-      "/ high_stakes_globs / pilot_module, seeds .cairn/ from the cairn\n" +
+      "/ high_stakes_globs, seeds .cairn/ from the cairn\n" +
       "package templates, writes .cairn/config.yaml with the project-specific\n" +
       "overlay (mapper output baked in), patches the `<slug>:` block in\n" +
       ".cairn/config/workflow.md, and clones the parallel mirror at\n" +
