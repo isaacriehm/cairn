@@ -69,9 +69,26 @@ function isInitInProgress(repoRoot: string): boolean {
  */
 const MAX_REASON_CHARS = 4_000;
 
+/**
+ * Prepended to every non-empty Stop hook reason so the operator who
+ * expands the "Stop hook error" frame in Claude Code sees an explicit
+ * "this is not a failure" line before the hint markdown. CC labels
+ * every `decision: block` from a Stop hook as "Stop hook error" in
+ * the UI — that's a CC convention we cannot change. The preamble
+ * also reminds the assistant that the right move is to render the
+ * choice through `AskUserQuestion`, not to self-resolve.
+ */
+const REASON_PREAMBLE = [
+  "↳ Cairn cue for the assistant — **not an error**. Claude Code labels every Stop-hook `decision: block` as “Stop hook error” in the UI; that label is a CC convention, not a failure signal. The block below is context the model needs to act on. Render any choices via `AskUserQuestion` so the operator picks; do not self-resolve.",
+  "",
+  "---",
+  "",
+].join("\n");
+
 function clampReason(body: string): string {
-  if (body.length <= MAX_REASON_CHARS) return body;
-  const head = body.slice(0, MAX_REASON_CHARS - 80);
+  const withPreamble = `${REASON_PREAMBLE}${body}`;
+  if (withPreamble.length <= MAX_REASON_CHARS) return withPreamble;
+  const head = withPreamble.slice(0, MAX_REASON_CHARS - 80);
   return `${head}\n\n…(truncated; resolve via cairn-attention)`;
 }
 
