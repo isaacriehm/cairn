@@ -4,6 +4,33 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.5] — 2026-05-10
+
+### Fixed
+
+- **Phase 6 brand-derive timeout 60s → 180s.** Haiku's structured-output
+  path for the 4-field brand schema on a 2-3kB context is consistently
+  25-50s on plan quota and occasionally tips past 60s during upstream
+  slowness. The previous ceiling fired the fallback path
+  (`Developers and operators working on <slug>` placeholder
+  `mainUsers`), leaving the operator with mechanical defaults until
+  they re-ran `cairn fix brand`. The retry path inside
+  `deriveBrandFromProject` still catches transient blips beneath the
+  new ceiling.
+- **`cairn_init_run` now clears `init-state.json` on terminal
+  completion.** Phase 13-multidev returns `nextPhase: null` to signal
+  the pipeline is done; the MCP tool was supposed to call
+  `clearPhaseState(repoRoot)` at that point but instead persisted the
+  state file again via `writePhaseState`. Result: every freshly-adopted
+  repo carried `.cairn/init-state.json` forever, which made the
+  `cairn-adopt` skill's mid-adoption probe + SessionStart's
+  `renderMidAdoptionBanner` classify the repo as "mid-adoption"
+  on every subsequent session. Now terminal completion deletes the
+  file; non-terminal completions still write through. Cleanup-failure
+  recovery (filesystem error during clear) is still handled by
+  `resumePhases` returning `ready / 13-multidev` so an idempotent
+  re-invoke retries the clear.
+
 ## [0.9.4] — 2026-05-10
 
 ### Added

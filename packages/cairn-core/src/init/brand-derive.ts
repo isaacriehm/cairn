@@ -16,7 +16,17 @@ import { z } from "zod";
 
 const log = logger("init.brand-derive");
 
-const TIMEOUT_MS = 60_000;
+// 180s ceiling for brand derive. Was 60s — Haiku's structured-output
+// path for the 4-field brand schema (overview + voice + avoid + 1-3
+// personas) on a 2-3kB context (project slug + domain summary +
+// README + AGENTS.md + CLAUDE.md tone signals) is consistently
+// 25-50s on plan quota and occasionally tips past 60s during
+// upstream slowness. Adoption hard-fell back to mechanical defaults
+// when this fired, leaving operators with `mainUsers: "Developers
+// and operators working on <slug>"` placeholder until they re-ran
+// `cairn fix brand`. 180s gives real headroom; the retry path
+// inside `deriveBrandFromProject` still catches transient blips.
+const TIMEOUT_MS = 180_000;
 const README_CHARS = 800;
 const RULES_CHARS = 1_000;
 
