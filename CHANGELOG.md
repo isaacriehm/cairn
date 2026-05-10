@@ -4,6 +4,20 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.2] — 2026-05-10
+
+### Fixed
+
+- **Phase-ready-to-exit hint no longer lets the agent self-resolve.**
+  The Stop hook's phase-ready hint copy ended with "Operator picks
+  via `cairn-attention` skill (or directly invoke
+  `cairn_mission_advance`)" — agents took the parenthetical as
+  permission to call `cairn_mission_advance` themselves, bypassing
+  the operator entirely (one observed session auto-picked `not_yet`
+  on a phase the operator had not yet looked at). Hint now mandates
+  `AskUserQuestion` and explicitly forbids the agent from invoking
+  the advance tool without an operator answer.
+
 ## [0.10.1] — 2026-05-10
 
 ### Fixed

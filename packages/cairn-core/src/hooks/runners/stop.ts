@@ -546,7 +546,9 @@ function renderPhaseReadyHint(hints: PhaseReadyHint[]): string {
   lines.push("");
   lines.push(`Exit criteria: ${h.exit_criteria}`);
   lines.push("");
-  lines.push("Operator picks via `cairn-attention` skill (or directly invoke `cairn_mission_advance`):");
+  lines.push(
+    "**Operator picks — surface this via the `cairn-attention` skill or render the choice directly through `AskUserQuestion`. Do NOT call `cairn_mission_advance` yourself; the operator's answer is the only valid input to that tool.**",
+  );
   lines.push("");
   lines.push("- `[a]` mark phase done, advance cursor (`choice: \"exit\"`)");
   lines.push("- `[b]` not yet — more tasks needed for this phase (`choice: \"not_yet\"`)");
