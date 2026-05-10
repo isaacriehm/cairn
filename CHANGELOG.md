@@ -4,6 +4,20 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.3] — 2026-05-10
+
+### Fixed
+
+- **Stop hook reason now self-labels as "not an error".** Claude
+  Code labels every Stop-hook `decision: block` as "Stop hook error"
+  in the UI — a CC convention Cairn cannot override. Operators who
+  expanded the frame saw raw markdown headed by `## Cairn — phase
+  ready to exit` (or similar) and assumed something failed. Cairn
+  now prepends a one-paragraph preamble to every Stop reason
+  explaining the "error" label is harmless, the block below is
+  assistant context, and the agent should render any choices via
+  `AskUserQuestion` rather than self-resolve.
+
 ## [0.10.2] — 2026-05-10
 
 ### Fixed
