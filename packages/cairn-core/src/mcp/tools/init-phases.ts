@@ -38,6 +38,7 @@
 import { z } from "zod";
 import {
   PHASE_IDS,
+  clearPhaseState,
   clearProgress,
   freshPhaseState,
   readPhaseState,
@@ -214,14 +215,26 @@ async function handlePhaseRun(
       Object.assign(phaseOut, { duration_ms: durationMs });
     }
   }
-  // Persist state ONLY on non-error results.
+  // Persist state ONLY on non-error results. Terminal completion
+  // (nextPhase === null) clears the state file instead of writing —
+  // adoption is done, so `.cairn/init-state.json` should disappear.
+  // If left behind, the resume probe in the cairn-adopt skill +
+  // SessionStart's renderMidAdoptionBanner classify the repo as
+  // "mid-adoption" forever, re-prompting on every session even
+  // though every phase succeeded.
   if (result.status !== "error") {
+    const isTerminalComplete =
+      result.status === "complete" && result.nextPhase === null;
     try {
-      writePhaseState(result.state);
+      if (isTerminalComplete) {
+        clearPhaseState(result.state.repoRoot);
+      } else {
+        writePhaseState(result.state);
+      }
     } catch (err) {
       return mcpError(
         "INTERNAL_ERROR",
-        `failed to persist init state: ${err instanceof Error ? err.message : String(err)}`,
+        `failed to ${isTerminalComplete ? "clear" : "persist"} init state: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }
