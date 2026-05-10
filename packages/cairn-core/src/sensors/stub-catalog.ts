@@ -8,7 +8,7 @@
  * Layer A mechanical stub-pattern catalog. Catalog grows additively via /oops dialog.
  */
 
-import { lineOf } from "@isaacriehm/cairn-state";
+import { lineOf, matchAnyGlob } from "@isaacriehm/cairn-state";
 import type {
   DiffEntry,
   SensorFinding,
@@ -70,6 +70,13 @@ export function detectStubMatches(args: {
     const afterLines = after.split(/\r?\n/);
     for (const pattern of args.catalog.patterns) {
       if (!pattern.languages.includes(lang)) continue;
+      if (
+        pattern.skip_globs !== undefined &&
+        pattern.skip_globs.length > 0 &&
+        matchAnyGlob(entry.path, pattern.skip_globs)
+      ) {
+        continue;
+      }
       const re = new RegExp(pattern.regex, "gm");
       let m: RegExpExecArray | null;
       while ((m = re.exec(after)) !== null) {

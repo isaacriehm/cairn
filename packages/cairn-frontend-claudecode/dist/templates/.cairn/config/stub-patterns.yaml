@@ -73,7 +73,15 @@ patterns:
     languages: [typescript, javascript]
     description: "async function with empty body — async fn () => {} masquerades as work."
     regex: 'async\s+(function\s+\w+\s*\([^)]*\)|\([^)]*\)\s*=>)\s*\{\s*\}'
-    severity: hard
+    # Severity: SOFT, not hard. The regex alone can't distinguish a real
+    # empty stub from a legitimate mock factory like
+    # `vi.fn(async () => {})` / `jest.fn(async () => {})` / a no-op
+    # event-handler default. Soft severity keeps the count visible for
+    # the attestation cross-check (`stubs_introduced: 0` becomes a lie
+    # if any soft pattern matches new code) without failing the run on
+    # an idiom the operator can't refactor away. Per-project opt-in
+    # tightening via `skip_globs:` in `.cairn/config/stub-patterns.yaml`.
+    severity: soft
 
   - id: arrow-returning-undefined
     languages: [typescript, javascript]
