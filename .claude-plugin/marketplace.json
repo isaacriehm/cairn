@@ -6,14 +6,14 @@
   },
   "metadata": {
     "description": "Persistent ground truth for Claude Code. Stop AI agents from drifting on your codebase.",
-    "version": "0.9.6"
+    "version": "0.9.7"
   },
   "plugins": [
     {
       "name": "cairn",
       "source": "./packages/cairn-frontend-claudecode",
       "description": "Cairn — state + context-loading layer for AI coding agents. Auto-adopt, daily-flow tightener, reviewer subagent, multi-dev enforcement.",
-      "version": "0.9.6",
+      "version": "0.9.7",
       "author": {
         "name": "Isaac Riehm"
       },

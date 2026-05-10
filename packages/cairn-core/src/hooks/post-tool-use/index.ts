@@ -24,3 +24,4 @@ export type {
   DedupVerdict,
 } from "./sot-align.js";
 export { runPostWriteHook } from "./post-write.js";
+export { containsEssayClassShape, isMarkdownPath } from "../sot-align-common.js";

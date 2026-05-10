@@ -4,6 +4,27 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.7] — 2026-05-10
+
+### Added
+
+- **Diff-aware sot-align short-circuit.** `executeSotAlign` now
+  reads `tool_input.{old_string, new_string}` (Edit) or
+  `tool_input.content` (Write) and skips the per-edit alignFile
+  pass entirely when neither contains an essay-class comment shape.
+  Variable renames, type tweaks, single-line bugfixes, and any
+  non-prose Edit therefore burn 0 Haiku calls instead of up to
+  ~30s of Tier 2/3 dedup latency. Detector
+  (`containsEssayClassShape` in `hooks/sot-align-common.ts`)
+  matches JSDoc blocks (`/** ... */`), JSDoc continuation lines
+  (`*<space><non-space>`), 3+ consecutive `//` lines, and Python
+  triple-quote docstrings. False-negatives — e.g. a single non-`*`
+  line tweak inside a pre-existing `// 3+` block — get caught at
+  commit boundary by Layer B's pre-commit pass + `cairn fix
+  align`. New smoke `smoke-essay-shape-detector` covers the
+  detector regex with 14 cases (8 expected-skip, 5 expected-run,
+  1 documented false-positive).
+
 ## [0.9.6] — 2026-05-10
 
 ### Fixed

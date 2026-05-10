@@ -106,6 +106,7 @@ import { pushEvent } from "../../status-line/event-queue.js";
 import {
   TIER2_JACCARD_FLOOR,
   TOP_K_CANDIDATES,
+  containsEssayClassShape,
   extractBlocks,
   isMarkdownPath,
   readEntityBody,
@@ -129,7 +130,13 @@ const ClaudePostToolUsePayloadSchema = z.object({
   tool_name: z.string().optional(),
   tool_input: z.object({
     file_path: z.string().optional(),
-  }).optional(),
+    // Edit tool — old/new strings let the diff-aware short-circuit
+    // detect whether the edit touched essay-class prose.
+    new_string: z.string().optional(),
+    old_string: z.string().optional(),
+    // Write tool — full file content. Same purpose.
+    content: z.string().optional(),
+  }).passthrough().optional(),
 }).passthrough();
 
 type ClaudePostToolUsePayload = z.infer<typeof ClaudePostToolUsePayloadSchema>;
@@ -1576,6 +1583,36 @@ export async function executeSotAlign(
   if (relPath === ".cairn" || relPath.startsWith(".cairn/")) return "";
   // Skip files outside the repo root.
   if (relPath.startsWith("../")) return "";
+
+  // Diff-aware short-circuit: skip the alignFile pass entirely when
+  // the edit's diff text contains no essay-class comment shape. Most
+  // Edits are mechanical (var rename, type tweak, single-line bugfix)
+  // and don't touch prose blocks; running alignFile against the whole
+  // file's existing comment blocks for those edits burns 1-30s of
+  // Haiku latency for zero signal. The shape detector matches JSDoc
+  // blocks, JSDoc continuation lines (the `*` prefix), 3+
+  // consecutive `//` lines, and Python `"""` docstrings. Any of those
+  // appearing in old_string OR new_string (Edit) or content (Write)
+  // means the edit COULD affect prose; alignFile runs as before.
+  // False-negatives (a single non-`*`-prefixed line tweak inside a
+  // pre-existing `// 3+` block) get caught at commit boundary by
+  // Layer B's pre-commit pass + `cairn fix align`.
+  const tool = payload.tool_name;
+  if (tool === "Edit") {
+    const newStr = payload.tool_input?.new_string ?? "";
+    const oldStr = payload.tool_input?.old_string ?? "";
+    if (
+      !containsEssayClassShape(newStr) &&
+      !containsEssayClassShape(oldStr)
+    ) {
+      return "";
+    }
+  } else if (tool === "Write") {
+    const content = payload.tool_input?.content ?? "";
+    if (!containsEssayClassShape(content)) {
+      return "";
+    }
+  }
 
   const sessionId =
     typeof payload.session_id === "string" && payload.session_id.length > 0

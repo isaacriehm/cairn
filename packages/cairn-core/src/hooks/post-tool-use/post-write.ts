@@ -23,7 +23,11 @@ const ClaudePostToolUsePayloadSchema = z.object({
   tool_name: z.string().optional(),
   tool_input: z.object({
     file_path: z.string().optional(),
+    // Edit tool fields
     new_string: z.string().optional(),
+    old_string: z.string().optional(),
+    // Write tool field
+    content: z.string().optional(),
   }).passthrough().optional(),
   tool_response: z.object({
     content: z.string().optional(),

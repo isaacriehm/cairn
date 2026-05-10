@@ -42,6 +42,43 @@ export function isMarkdownPath(filePath: string): boolean {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Essay-class shape detector — diff-aware sot-align short-circuit            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Detect whether a string contains an "essay-class" comment shape
+ * — JSDoc block, JSDoc continuation line, 3+ consecutive `//` lines,
+ * or a Python triple-quote docstring. Used by `executeSotAlign` to
+ * skip the per-Edit/per-Write Haiku dedup pass when the diff doesn't
+ * touch any prose. Most Edits are mechanical (var rename, type tweak,
+ * single-line bugfix) and don't change essay-class blocks; running
+ * `alignFile` against the whole file's blocks for those edits burns
+ * 1-30s of Haiku latency for zero signal.
+ *
+ * Conservative — anchors on shape markers a single-line edit usually
+ * preserves (the `*` prefix on JSDoc continuation lines is the most
+ * common). Cases where the regex misses (e.g. modifying one line in
+ * the MIDDLE of a `// 3+` block where new_string is just one bare
+ * `// foo bar` line) are a known false-negative; Layer B's
+ * pre-commit pass + `cairn fix align` catch the drift on commit
+ * boundary.
+ */
+const ESSAY_CLASS_SHAPE_RE = new RegExp(
+  [
+    String.raw`/\*\*[\s\S]*?\*/`,           // JSDoc block — /** ... */
+    String.raw`(?:^[ \t]*//[^\n]*\n){3,}`,  // 3+ consecutive // lines (TS/JS/Go/Rust)
+    String.raw`^[ \t]*"""[\s\S]*?"""`,      // Python triple-quote docstring
+    String.raw`^[ \t]*\*\s+\S`,             // JSDoc continuation line — *<space><non-space>
+  ].join("|"),
+  "m",
+);
+
+export function containsEssayClassShape(text: string): boolean {
+  if (text.length === 0) return false;
+  return ESSAY_CLASS_SHAPE_RE.test(text);
+}
+
+/* -------------------------------------------------------------------------- */
 /* Block extraction — wraps phase 7b's walker                                 */
 /* -------------------------------------------------------------------------- */
 
