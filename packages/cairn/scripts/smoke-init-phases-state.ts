@@ -59,7 +59,7 @@ function runSmoke(): void {
     const state = freshPhaseState(repo);
     assert(state.repoRoot === repo, `Step 1: repoRoot mismatch, got ${state.repoRoot}`);
     assert(state.currentPhase === "1-detect", `Step 1: first phase must be 1-detect, got ${state.currentPhase}`);
-    assert(state.schemaVersion === 2, `Step 1: schemaVersion must be 2, got ${state.schemaVersion}`);
+    assert(state.schemaVersion === 3, `Step 1: schemaVersion must be 3, got ${state.schemaVersion}`);
     assert(typeof state.startedAt === "string" && state.startedAt.length > 0, "Step 1: startedAt missing");
     assert(Object.keys(state.outputs).length === 0, "Step 1: outputs should be empty initially");
     console.log("  ✓ Step 1 — freshPhaseState shape");

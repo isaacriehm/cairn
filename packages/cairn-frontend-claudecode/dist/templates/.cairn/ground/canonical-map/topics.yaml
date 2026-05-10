@@ -17,15 +17,3 @@ topics:
   - topic: claude-md
     canonical_path: CLAUDE.md
     audience: dual
-  - topic: cairn-architecture
-    canonical_path: docs/ARCHITECTURE.md
-    audience: dual
-  - topic: cairn-mcp-surface
-    canonical_path: docs/MCP_SURFACE.md
-    audience: dual
-  - topic: cairn-filesystem-layout
-    canonical_path: docs/FILESYSTEM_LAYOUT.md
-    audience: dual
-  - topic: cairn-plugin-architecture
-    canonical_path: docs/PLUGIN_ARCHITECTURE.md
-    audience: dual

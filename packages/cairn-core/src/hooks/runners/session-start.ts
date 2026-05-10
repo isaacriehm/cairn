@@ -10,7 +10,7 @@
  * Spec: docs/CONTEXT_CONTINUITY_SPEC.md §3.
  */
 
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import {
@@ -233,7 +233,8 @@ export async function runSessionStartHook(): Promise<void> {
 
   const bootstrapBanner = renderBootstrapBanner(repoRoot);
   const resumeBanner = renderResumeBanner(repoRoot, sessionId);
-  const banners = [bootstrapBanner, resumeBanner].filter(
+  const midAdoptionBanner = renderMidAdoptionBanner(repoRoot);
+  const banners = [bootstrapBanner, resumeBanner, midAdoptionBanner].filter(
     (b): b is string => b !== null,
   );
   const additionalContext =
@@ -396,6 +397,42 @@ function renderResumeBanner(
     `Call \`cairn_resume({ task_id: "${taskId}" })\` for the full payload (in-scope DECs/INVs, all journal entries).`,
   );
   return lines.join("\n");
+}
+
+/**
+ * Render a "resume cairn-adopt" banner when `.cairn/init-state.json`
+ * exists. Phase 4-seed writes `.cairn/config.yaml` early, so
+ * `resolveRepoRoot` matches mid-adoption repos as fully-adopted —
+ * without this banner the operator sees the normal session-start
+ * surface and the adoption loop never restarts. The banner directs
+ * the agent to invoke the cairn-adopt skill, whose trigger gate
+ * detects `init-state.json` and resumes via `cairn_init_resume`
+ * instead of re-running consent.
+ */
+function renderMidAdoptionBanner(repoRoot: string): string | null {
+  const initStatePath = join(repoRoot, ".cairn", "init-state.json");
+  if (!existsSync(initStatePath)) return null;
+  let phaseLabel = "an in-progress phase";
+  try {
+    const raw = readFileSync(initStatePath, "utf8");
+    const parsed = JSON.parse(raw) as { currentPhase?: unknown };
+    if (typeof parsed.currentPhase === "string" && parsed.currentPhase.length > 0) {
+      phaseLabel = `\`${parsed.currentPhase}\``;
+    }
+  } catch {
+    // Unparseable init-state.json — keep the generic label and still
+    // surface the banner. The skill probe handles parse failure too.
+  }
+  return [
+    "## Cairn — adoption mid-stream",
+    "",
+    `Adoption was started but never finished — the loop is paused at ${phaseLabel}.`,
+    "",
+    "**On the operator's first reply this session — even a casual greeting —",
+    "immediately invoke `Skill(cairn:cairn-adopt)`. The skill's trigger gate",
+    "detects the in-progress state and resumes via `cairn_init_resume` without",
+    "re-asking consent. Do NOT pre-ask inline.**",
+  ].join("\n");
 }
 
 /**

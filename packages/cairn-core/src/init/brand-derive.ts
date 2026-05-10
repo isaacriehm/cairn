@@ -166,9 +166,14 @@ export async function deriveBrandFromProject(
 }
 
 export function derivedToBrandAnswers(d: DerivedBrand): BrandAnswers {
+  // Auto-derive populates the structured `personas` array directly so
+  // the writer emits one persona per entry. `mainUsers` is left empty
+  // — the structured-personas branch in `applyBrandAnswers` takes
+  // precedence and never falls through to the freeform-mash path.
   return {
     whatItDoes: d.overview,
-    mainUsers: d.personas.map((p) => `${p.name}: ${p.description}`).join(" · "),
+    mainUsers: "",
+    personas: d.personas.map((p) => ({ name: p.name, description: p.description })),
     voice: d.voice,
     avoid: d.avoid,
   };

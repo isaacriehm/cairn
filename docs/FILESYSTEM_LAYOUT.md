@@ -69,7 +69,6 @@ The layout below is **stack-agnostic**. Subdirectories under `.cairn/ground/{sch
 │   │   ├── scope-index.yaml        ← file path → {decisions[], invariants[]} (mapper-generated, refreshed by GC sweep)
 │   │   ├── brand/                  ← brand ground state (overview.md always injected at SessionStart)
 │   │   ├── product/                ← product positioning + personas
-│   │   ├── capabilities/           ← skills.yaml, mcp-tools.yaml, snippets.yaml
 │   │   ├── schema/                 ← stack-detected: ORM schema dump (Drizzle / Prisma / SQLAlchemy / etc.) — empty if no ORM
 │   │   ├── routes/                 ← stack-detected: API route table (OpenAPI / NestJS / FastAPI / etc.) — empty if no routes
 │   │   ├── events/                 ← stack-detected: event emitter+listener registry — empty if no event system

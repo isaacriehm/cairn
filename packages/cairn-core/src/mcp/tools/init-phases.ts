@@ -1,5 +1,5 @@
 /**
- * MCP tools for the v0.3.5 init pipeline.
+ * MCP tools for the v0.9.0 init pipeline.
  *
  * Two tools, single surface:
  *   1. `cairn_init_resume` → { status, nextPhase, repoRoot }
@@ -11,11 +11,12 @@
  *   3. AskUserQuestion if needs_input → re-call same tool with { answer }
  *   4. loop on complete + advance until nextPhase === null
  *
- * Phase 8 (`8-docs-ingest`) is special: `cairn_init_run` internally
- * dispatches the parallel 8/9/10 runner so the three Haiku-batched
- * ingestion phases overlap on wall-clock. The combined result advances
- * to `11-baseline`. The skill doesn't need a separate code path for
- * this — `cairn_init_run` is the only umbrella.
+ * Phase 9b-curate is a skill-driven pseudo-phase: between Phase 9a
+ * (walker) and Phase 9c (emit), the cairn-adopt skill spawns
+ * `cairn:curator-map` and `cairn:curator-reduce` subagents that write
+ * `.cairn/init/curator/final.jsonl`. The 9b runner only confirms the
+ * file exists + counts entries before advancing; the heavy work
+ * happens outside the MCP server.
  *
  * State persists to .cairn/init-state.json after every successful
  * phase result so the operator can crash-recover. The skill no longer
@@ -49,12 +50,13 @@ import {
   runPhase6Brand,
   runPhase7TopicIndex,
   runPhase8DocsIngest,
-  runPhase9SourceComments,
+  runPhase9aWalker,
+  runPhase9bCurate,
+  runPhase9cEmit,
   runPhase10RulesMerge,
   runPhase11Baseline,
   runPhase12Strip,
   runPhase13Multidev,
-  runPhases8910Parallel,
   writePhaseState,
   writeProgress,
   type PhaseError,
@@ -75,7 +77,7 @@ const phaseStateSchema = z.object({
   outputs: z.record(z.string(), z.unknown()),
   answer: z.string().optional(),
   startedAt: z.string().min(1),
-  schemaVersion: z.literal(2),
+  schemaVersion: z.literal(3),
 });
 
 const phaseRunInput = {
@@ -101,7 +103,9 @@ const RUNNERS: Record<PhaseId, (s: PhaseState) => Promise<PhaseResult>> = {
   "6-brand": runPhase6Brand,
   "7-topic-index": runPhase7TopicIndex,
   "8-docs-ingest": runPhase8DocsIngest,
-  "9-source-comments": runPhase9SourceComments,
+  "9a-walker": runPhase9aWalker,
+  "9b-curate": runPhase9bCurate,
+  "9c-emit": runPhase9cEmit,
   "10-rules-merge": runPhase10RulesMerge,
   "11-baseline": runPhase11Baseline,
   "12-strip": runPhase12Strip,
@@ -148,49 +152,6 @@ function toSlim(result: PhaseResult): SlimPhaseResponse {
   return { status: "error", error: result.error };
 }
 
-/**
- * Phase 8 fans out to phases 8/9/10 in parallel. Centralized here so
- * `cairn_init_run` callers don't have to special-case the gate.
- */
-async function handlePhase8Parallel(
-  ctx: McpContext,
-  state: PhaseState,
-): Promise<unknown> {
-  if (state.repoRoot !== ctx.repoRoot) {
-    return mcpError(
-      "VALIDATION_FAILED",
-      `state.repoRoot ${state.repoRoot} does not match MCP context ${ctx.repoRoot}`,
-    );
-  }
-  const t0 = performance.now();
-  const result = await runPhases8910Parallel(state);
-  const durationMs = Math.round(performance.now() - t0);
-  clearProgress(state.repoRoot);
-  if (result.status !== "error") {
-    for (const id of [
-      "8-docs-ingest",
-      "9-source-comments",
-      "10-rules-merge",
-    ] as const) {
-      const phaseOut = result.state.outputs[id];
-      if (typeof phaseOut === "object" && phaseOut !== null) {
-        if (!("duration_ms" in phaseOut)) {
-          Object.assign(phaseOut, { duration_ms: durationMs });
-        }
-      }
-    }
-    try {
-      writePhaseState(result.state);
-    } catch (err) {
-      return mcpError(
-        "INTERNAL_ERROR",
-        `failed to persist init state: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  }
-  return toSlim(result);
-}
-
 async function handlePhaseRun(
   ctx: McpContext,
   id: PhaseId,
@@ -230,19 +191,10 @@ async function handlePhaseRun(
       ? { ...state, answer: input.answer }
       : state;
 
-  // Phase 8 dispatches the parallel 8/9/10 runner — the three Haiku-
-  // batched ingestion phases overlap on wall-clock and the combined
-  // result advances to `11-baseline`. No separate MCP tool needed.
-  if (id === "8-docs-ingest") {
-    return handlePhase8Parallel(ctx, stateForRun);
-  }
-
   const runner = RUNNERS[id];
   // Coarse-grained statusline coverage
   const isLongPhase =
-    id === "3-mapper" ||
-    id === "9-source-comments" ||
-    id === "10-rules-merge";
+    id === "3-mapper" || id === "9a-walker" || id === "9c-emit";
   if (!isLongPhase) {
     writeProgress(state.repoRoot, {
       phase: id,
@@ -280,7 +232,7 @@ function makePhaseRunTool(): ToolDef<PhaseRunInput> {
   return {
     name: "cairn_init_run",
     description:
-      "Run the next initialization phase. Call cairn_init_resume to find the next phase, then invoke this tool with that phase ID. Phase 8-docs-ingest internally fans out to phases 8/9/10 in parallel and advances to 11-baseline; every other phase runs sequentially. The cairn-adopt skill loops on this tool until nextPhase === null.",
+      "Run the next initialization phase. Call cairn_init_resume to find the next phase, then invoke this tool with that phase ID. Phase 8-docs-ingest and 10-rules-merge are no-op markers in v0.9.0 (the curator pipeline 9a-walker → 9b-curate → 9c-emit subsumes both); 10-rules-merge advances to 11-baseline. Phase 9b-curate is a skill-driven pseudo-phase: the cairn-adopt skill must dispatch curator-map + curator-reduce subagents and write .cairn/init/curator/final.jsonl before invoking it. The cairn-adopt skill loops on this tool until nextPhase === null.",
     inputSchema: phaseRunInput,
     handler: async (ctx, input) => {
       return handlePhaseRun(ctx, input.phase as PhaseId, input);

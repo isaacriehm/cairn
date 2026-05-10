@@ -7,7 +7,7 @@ when_to_use: |
   cairn_init_run MCP tool as state machine — each phase returns
   complete (advance) or needs_input (AskUserQuestion, thread answer,
   re-invoke). Skip when `.cairn/` exists or operator picked "never".
-allowed-tools: Skill(cairn:cairn-attention)
+allowed-tools: Skill(cairn:cairn-attention), Task(curator-map), Task(curator-reduce)
 ---
 
 # Skill: cairn-adopt
@@ -34,18 +34,51 @@ attention resolver are loaded for the rest of the skill.
 
 ## Trigger gate
 
-Before doing anything else, verify the trigger conditions:
+Before doing anything else, classify the project's adoption state. There
+are three buckets, NOT two — fresh, mid-adoption, and fully adopted —
+because Phase 4-seed writes `.cairn/config.yaml` very early. A simple
+`ls .cairn` check can't distinguish "operator quit during Phase 7" from
+"adoption finished cleanly N sessions ago."
 
-1. The current project root has no `.cairn/` directory. Use the `Bash`
-   tool with `ls .cairn 2>/dev/null` (or read the SessionStart context
-   — if it included `cairn state` the project is already adopted and
-   this skill must abort).
-2. The operator has not previously declined adoption "forever" for this
-   project. Check `${CLAUDE_PLUGIN_DATA}/projects.json` if present;
-   abort if `decline-never` is recorded for the current absolute repo
-   path.
+Run this single shell probe to classify:
 
-If either gate fails, exit immediately with no output.
+```bash
+node -e '
+  const fs=require("node:fs");
+  const path=require("node:path");
+  const root=process.cwd();
+  const cairnDir=path.join(root,".cairn");
+  const initState=path.join(cairnDir,"init-state.json");
+  const config=path.join(cairnDir,"config.yaml");
+  if(!fs.existsSync(cairnDir)){console.log("fresh");process.exit(0);}
+  if(fs.existsSync(initState)){
+    try{
+      const s=JSON.parse(fs.readFileSync(initState,"utf8"));
+      console.log("mid-adoption:"+(s.currentPhase||"unknown"));
+    }catch{console.log("mid-adoption:unparseable");}
+    process.exit(0);
+  }
+  if(fs.existsSync(config)){console.log("adopted");process.exit(0);}
+  console.log("fresh");'
+```
+
+Branch on the output:
+
+- **`fresh`** → check operator decline-state, then continue to Step 1
+  (consent prompt). Decline check: `${CLAUDE_PLUGIN_DATA}/projects.json`
+  → abort if `decline-never` is recorded for the current absolute repo
+  path.
+- **`mid-adoption:<phase>`** → adoption is in progress and was
+  interrupted (operator `/exit`, crash, rate-limit bail, etc.). Consent
+  was already granted. Skip Step 1 + Step 1.5, jump straight to Step 2
+  (`cairn_init_resume`). Surface a one-line note like "Resuming Cairn
+  adoption from `<phase>`." so the operator sees the pickup is
+  intentional.
+- **`adopted`** → fully adopted. Surface a one-line note ("Project
+  already adopted — `/cairn:cairn-resume` or `/cairn:cairn-attention`
+  for daily flow.") and exit.
+
+If the probe errors entirely, fail closed by exiting with no output.
 
 ## Step 1 — propose adoption
 
@@ -195,12 +228,18 @@ fully adopted — abort and tell the operator to check
 
 ```
 while nextPhase != null:
+    if nextPhase == "9b-curate":
+        # Skill-driven pseudo-phase. Dispatch curator-map + curator-reduce
+        # subagents to write .cairn/init/curator/final.jsonl, THEN call
+        # cairn_init_run (which advances state once it sees the file).
+        # See Step 3.5.
+        run curator orchestration (Step 3.5)
     args = { "phase": nextPhase }
     result = call cairn_init_run(args)       # tool reads state from disk
-    # Note: when nextPhase == "8-docs-ingest" the tool internally
-    # fans out to phases 8 / 9 / 10 in parallel (shared DEC + INV id
-    # Sets) and advances to "11-baseline". The skill does NOT need a
-    # separate code path for the parallel runner.
+    # v0.9.0: phases 8-docs-ingest and 10-rules-merge are no-op markers.
+    # The unified curator pipeline (9a-walker → skill orchestration →
+    # 9c-emit) replaces them. Both no-op runners stamp `skipped:
+    # "merged-into-9-curator"` and advance the state machine.
     switch (result.status):
       case "needs_input":
         answer = AskUserQuestion(result.question.prompt, result.question.options)
@@ -252,25 +291,29 @@ descriptions:
 | `5-preflight` | count units + estimate ETA for long phases | <1s / ~3s |
 | `6-brand` | brand auto-fill (Haiku) | operator + ~30s |
 | `7-topic-index` | cross-source dedup pre-pass (Haiku judges semantically-similar pairs) | ~30s / 2-10min |
-| `8-docs-ingest` | Haiku ingest of README + docs/ → DEC drafts | ~15-30s / 1-3min |
-| `9-source-comments` | Haiku classify essay-class JSDoc → DEC + invariant drafts | ~30s / **5-20min** |
-| `10-rules-merge` | Haiku per H2 in CLAUDE.md / AGENTS.md / .claude/rules/* | ~30-90s / 1-3min |
+| `9a-walker` | unified curator corpus walk + regex pre-filter + shard pack | <5s |
+| `9c-emit` | validate curator output + write DEC/INV ground files | <5s |
 | `11-baseline` | first sensor sweep | <1s / ~5s |
 | `12-strip` | per-module strip-replace consent | operator |
 | `13-multidev` | per-host package manager hints | <1s |
 
-For phases `3-mapper`, `8-docs-ingest`, `9-source-comments`, and
-`10-rules-merge`, render a one-line context note immediately under
-the banner so the operator knows what's running. Pick the matching
-row; do NOT improvise:
+`8-docs-ingest`, `9b-curate`, and `10-rules-merge` are not listed. The
+first and last are v0.9.0 no-op markers (curator pipeline subsumed
+both). `9b-curate` is a skill-driven pseudo-phase — Step 3.5 below
+handles its surface (parallel Sonnet subagent dispatch); skip the
+banner for `9b-curate` since the subagent dispatch is the surface.
+
+For phases `3-mapper`, `7-topic-index`, `9a-walker`, and `9c-emit`,
+render a one-line context note immediately under the banner so the
+operator knows what's running. Pick the matching row; do NOT
+improvise:
 
 | `<id>` | context line |
 |---|---|
 | `3-mapper` | `Sonnet runs per detected module slice in parallel rounds of 4 (cap: 50 slices). Scales with module count.` |
 | `7-topic-index` | `Walker collects markdown paragraphs; Haiku judges every cross-file pair above the Jaccard threshold (5-way parallel, hard cap 200). Watch the `⏳` indicator on your statusline for live `X/Y pairs (P%) ~Nm` updates.` |
-| `8-docs-ingest` | `Haiku batch over README + docs/. Scales with doc file count and length.` |
-| `9-source-comments` | `Haiku classifies every essay-class block comment across the whole repo (4-way parallel). On busy monorepos this is the longest phase — expect minutes, not seconds. /exit is safe; SessionStart resumes. Watch the `⏳` indicator on your statusline for live `phase X/Y (P%) ~Nm` updates.` |
-| `10-rules-merge` | `Haiku per H2 section across CLAUDE.md / AGENTS.md / .claude/rules/*. Scales with section count.` |
+| `9a-walker` | `Unified walker collects source comments + doc paragraphs + rule sections, drops 60-80% via regex pre-filter, packs into ≤120k-token shards. Deterministic, no LLM.` |
+| `9c-emit` | `Validates curator output line-by-line and writes surviving entries directly to .cairn/ground/. Drops below the strict quality bar silently — counter logged.` |
 
 **ETA banner — phase `5-preflight`**: when this phase completes, render
 its `bannerLines` verbatim as a single block before invoking phase
@@ -285,13 +328,13 @@ After every long phase completes, the runtime folds the measured
 adoptions on this machine get a tighter estimate (self-corrects in
 3-4 runs).
 
-**Live progress**: phases `3-mapper`, `7-topic-index`, `8-docs-ingest`,
-`9-source-comments`, and `10-rules-merge` write
-`.cairn/init/progress.json` after every batch / pair / module / doc /
-section. The Cairn statusline reads it and renders
+**Live progress**: phases `3-mapper`, `7-topic-index`, and `9a-walker`
+write `.cairn/init/progress.json` after every batch / pair / module
+processed. The Cairn statusline reads it and renders
 `⬡ cairn ⏳ adopt <phase> X/Y (P%) ~Nm` in real time so the operator
 isn't staring at a frozen turn for minutes. Step 1.5 wires this if it
-isn't already.
+isn't already. The `9b-curate` subagent dispatch in Step 3.5 surfaces
+its own status — operator sees parallel subagent output in chat.
 
 When the phase is operator-driven (`<eta>` = `operator`) the
 `AskUserQuestion` widget appears immediately after the banner — do NOT
@@ -314,6 +357,90 @@ interactive widget.
 the orchestrator. Spawning a generic-purpose Agent to run the loop
 loses the operator-facing banner channel and burns tokens on a
 nested ToolSearch + state re-discovery — adoption stays in this turn.
+(Step 3.5 dispatches **typed** `curator-map` / `curator-reduce`
+subagents for the 9b-curate pseudo-phase only; that is not the
+pipeline driver, just one phase's parallel work.)
+
+## Step 3.5 — curator orchestration (Phase 9b-curate)
+
+When the loop hits `nextPhase === "9b-curate"`, run this orchestration
+**before** invoking `cairn_init_run` for that phase. The MCP runner
+for 9b-curate just confirms `.cairn/init/curator/final.jsonl` exists
++ counts entries; the actual map / reduce work happens here.
+
+Render a status banner before dispatch:
+
+```markdown
+---
+**Phase 9b-curate** — synthesize ground state from corpus · ~1-3 min
+Map: N parallel `curator-map` subagents (rounds of 4) over the shards
+9a-walker packed. Reduce: 1 `curator-reduce` subagent over aggregated
+candidates. Plan-quota Sonnet 4.6, no API billing.
+```
+
+### Step 3.5.1 — read the shard plan
+
+```bash
+cat .cairn/init/curator/shards.json
+```
+
+The file contains `{ shards: Shard[], total_input_tokens_estimate,
+cap_per_shard }`. Each `Shard` has `shard_id`, `module`, and
+`comment_ids`. If `shards` is empty (small repo or aggressive
+pre-filter), skip 3.5.2 and write an empty `final.jsonl`, then jump
+to 3.5.4 (advance via `cairn_init_run`).
+
+### Step 3.5.2 — slice corpus into per-shard JSONL inputs
+
+For each shard, write the shard's `CorpusRecord` lines to
+`.cairn/init/curator/shards/<shard_id>.jsonl`. The corpus lives at
+`.cairn/init/curator/corpus.jsonl` (one record per line). Use a
+single Bash script (jq, awk, or node) that reads the corpus once and
+filters per shard's `comment_ids` set — avoid one read-pass per
+shard.
+
+### Step 3.5.3 — dispatch `curator-map` subagents in parallel rounds of 4
+
+For each shard:
+
+1. Read the matching mapper `key_modules` row to source
+   `module_summary` and `module_flags`.
+2. Compose a Task brief that includes `shard_id`, absolute
+   `shard_path`, absolute `candidates_path` (target:
+   `.cairn/init/curator/candidates/<shard_id>.jsonl`), `module`,
+   `module_summary`, `module_flags`, and `project_domain`.
+3. Spawn the `curator-map` subagent via the `Task` tool. Send up to
+   four briefs in a single assistant message so they execute in
+   parallel; await all four before dispatching the next round.
+
+Each subagent writes its candidates JSONL to disk and returns a
+short summary. The skill reads disk; do not parse subagent return
+text as the canonical output.
+
+### Step 3.5.4 — dispatch `curator-reduce` subagent
+
+Once every shard's `candidates/<shard_id>.jsonl` exists, spawn one
+`curator-reduce` subagent. Its brief includes the
+`candidates_glob`, the absolute `final_path`
+(`.cairn/init/curator/final.jsonl`), `project_domain`, and the full
+`key_modules` array.
+
+The reducer is a single Sonnet call by default. If the aggregated
+candidates exceed ~150k tokens (rare; usually only on >1k-shard
+monorepos), the reducer's own brief tells it to run a
+domain-bucket pre-reduce internally and produce one final output.
+
+### Step 3.5.5 — advance the state machine
+
+Call `cairn_init_run({ phase: "9b-curate" })`. The MCP runner reads
+`final.jsonl`, counts entries, stamps `final_entries` into outputs,
+advances to `9c-emit`. If the runner errors with
+`9b-curate-missing-final`, the curator orchestration silently failed
+to write `final.jsonl` — surface the error to the operator and ask
+whether to `retry` or `abort`. Retries restart Step 3.5 from the top.
+
+The next loop iteration runs `9c-emit`, which validates each entry
+and writes ground state.
 
 ## Step 4 — auto-bootstrap the just-adopted clone
 
@@ -344,10 +471,12 @@ to source the summary fields:
 
 ```bash
 jq -c '{
-  decs_docs: (.outputs["8-docs-ingest"].decDraftsWritten // [] | length),
-  decs_comments: (.outputs["9-source-comments"].decDraftsWritten // [] | length),
-  decs_rules: (.outputs["10-rules-merge"].decDraftsWritten // [] | length),
-  invariants: (.outputs["9-source-comments"].invariantsWritten // [] | length),
+  curator_records: (.outputs["9a-walker"].records_total // 0),
+  curator_shards: (.outputs["9a-walker"].shards // 0),
+  curator_final: (.outputs["9b-curate"].final_entries // 0),
+  decs_emitted: (.outputs["9c-emit"].decsWritten // [] | length),
+  invs_emitted: (.outputs["9c-emit"].invsWritten // [] | length),
+  curator_dropped: (.outputs["9c-emit"].dropped // 0),
   baseline_findings: (.outputs["11-baseline"].totalFindings // 0),
   multidev_hosts: (.outputs["13-multidev"].hostKinds // [])
 }' .cairn/init-state.json
@@ -357,11 +486,15 @@ In the same assistant message, do both:
 
 1. Emit a tight summary using the values above:
 
-   - DEC drafts proposed (sum of `decs_docs + decs_comments + decs_rules`)
-   - Invariants seeded into ground state (each entry is a `INV-<NNNN>`
-     file already at status `active`)
-   - Baseline sensor findings
-   - Multi-dev install (host kinds rolled up)
+   - Decisions accepted into ground state (`decs_emitted`) — every
+     entry already at `status: accepted`
+   - Invariants seeded into ground state (`invs_emitted`) — every
+     entry already at `status: active`
+   - Curator drop count (`curator_dropped`) — entries the validators
+     refused; surface only when > 0 so the operator knows the bar
+     held
+   - Baseline sensor findings (`baseline_findings`)
+   - Multi-dev install host kinds (`multidev_hosts`)
 
    Use plain operator-facing language. Do **not** say "§INV invariant
    proposals" or other internal-spec jargon — say "invariant rules

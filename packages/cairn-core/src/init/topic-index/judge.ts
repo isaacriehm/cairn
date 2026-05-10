@@ -9,7 +9,7 @@
 import { logger } from "../../logger.js";
 import { runClaude } from "../../claude/index.js";
 import { ClaudeError } from "../../claude/error.js";
-import type { ProseBlock, SemanticJudge, SemanticVerdict } from "./resolve.js";
+import type { SemanticJudge, SemanticVerdict } from "./resolve.js";
 import { z } from "zod";
 
 const log = logger("init.topic-index.judge");
@@ -18,9 +18,25 @@ const VerdictSchema = z.object({
   verdict: z.enum(["same", "different"]),
 }).passthrough();
 
+/**
+ * Per-build counters for the Haiku judge. The orchestrator
+ * (`buildTopicIndex`) constructs one and threads it through
+ * `makeHaikuJudge`; the judge increments per call so the phase
+ * output can split `judge_calls` into cached vs fresh vs errored.
+ * Smokes that pass a mock judge skip this surface entirely — the
+ * tally fields stay at 0, which is correct (no Haiku spend at all).
+ */
+export interface JudgeTally {
+  cached: number;
+  fresh: number;
+  errors: number;
+}
+
 export interface JudgeOptions {
   repoRoot?: string;
   offline?: boolean;
+  /** Optional counter object — when provided, every judge call updates one of cached / fresh / errors. */
+  tally?: JudgeTally;
 }
 
 const SYSTEM =
@@ -35,7 +51,13 @@ const VERDICT_SCHEMA = {
   additionalProperties: false,
 };
 
-const TIMEOUT_MS = 20_000;
+// 30s ceiling per judge call. Was 20s before — under sustained
+// network or Haiku-side latency the 20s ceiling was hitting the
+// timeout classification before the call had a chance to return,
+// which then either tripped the breaker or accumulated as
+// `unresolvedAmbiguous`. 30s is the longest a single judge call
+// should ever take in practice; anything longer is genuinely stuck.
+const TIMEOUT_MS = 30_000;
 
 /**
  * Return a semantic judge implementation that calls Haiku.
@@ -64,11 +86,16 @@ export function makeHaikuJudge(opts: JudgeOptions = {}): SemanticJudge {
         isolateAmbientContext: true,
         ...(opts.repoRoot !== undefined ? { repoRoot: opts.repoRoot, cacheable: true } : {}),
       });
+      if (opts.tally !== undefined) {
+        if (result.cached) opts.tally.cached += 1;
+        else opts.tally.fresh += 1;
+      }
       const parsed = result.parsed;
       const resultParsed = VerdictSchema.safeParse(parsed);
       if (!resultParsed.success) return "different";
       return resultParsed.data.verdict;
     } catch (err) {
+      if (opts.tally !== undefined) opts.tally.errors += 1;
       // Surface ClaudeError (timeout / rate_limit / overloaded / auth) to
       // the resolver so it can trip its circuit breaker and stop calling
       // the judge instead of burning wall-time on doomed retries.

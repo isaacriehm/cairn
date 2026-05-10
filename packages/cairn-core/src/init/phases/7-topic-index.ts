@@ -21,6 +21,12 @@ export interface TopicIndexPhaseOutput {
   verbatim_collisions: number;
   semantic_collisions: number;
   judge_calls: number;
+  /** Subset of `judge_calls` served from the on-disk Claude cache (no plan-quota burn). */
+  judge_calls_cached: number;
+  /** Subset of `judge_calls` that spawned a fresh `claude --print` subprocess. */
+  judge_calls_fresh: number;
+  /** Judge calls that threw (cache write skipped, breaker counter incremented). */
+  judge_calls_errors: number;
   unresolved_ambiguous: number;
   topic_count: number;
   topic_index_path: string;
@@ -45,6 +51,9 @@ export async function runPhase7TopicIndex(state: PhaseState): Promise<PhaseResul
       verbatim_collisions: result.verbatimCollisions,
       semantic_collisions: result.semanticCollisions,
       judge_calls: result.judgeCalls,
+      judge_calls_cached: result.judgeCached,
+      judge_calls_fresh: result.judgeFresh,
+      judge_calls_errors: result.judgeErrors,
       unresolved_ambiguous: result.unresolvedAmbiguous,
       topic_count: topicCount,
       topic_index_path: result.topicIndexPath,

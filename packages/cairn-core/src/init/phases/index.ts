@@ -8,6 +8,10 @@ export {
   type PhaseOption,
   type PhaseError,
   type ResumeReport,
+  type WalkerOutput,
+  type CurateOutput,
+  type EmitOutput,
+  type NoopPhaseOutput,
 } from "./types.js";
 
 export {
@@ -44,18 +48,10 @@ export { runPhase6Brand } from "./6-brand.js";
 export { runPhase7TopicIndex } from "./7-topic-index.js";
 export type { TopicIndexPhaseOutput } from "./7-topic-index.js";
 export { runPhase8DocsIngest } from "./8-docs-ingest.js";
-export { runPhase9SourceComments } from "./9-source-comments.js";
+export { runPhase9aWalker } from "./9a-walker.js";
+export { runPhase9bCurate, CURATOR_FINAL_PATH } from "./9b-curate.js";
+export { runPhase9cEmit } from "./9c-emit.js";
 export { runPhase10RulesMerge } from "./10-rules-merge.js";
 export { runPhase11Baseline } from "./11-baseline.js";
 export { runPhase12Strip } from "./12-strip.js";
 export { runPhase13Multidev } from "./13-multidev.js";
-export { runPhases8910Parallel } from "./parallel-8910.js";
-
-export {
-  SOURCE_COMMENTS_WALK_PATH,
-  sourceCommentsWalkAbsPath,
-  readSourceCommentsWalkFile,
-  writeSourceCommentsWalkFile,
-  to7bResultPersisted,
-  type IngestSourceCommentsResultPersisted,
-} from "./source-comments-output-io.js";
