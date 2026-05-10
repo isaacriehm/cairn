@@ -41,6 +41,15 @@ interface SpecFrontmatter {
 interface ResumePayload {
   ok: true;
   task_id: string;
+  /** Where the task currently lives — `active` is the normal case;
+   *  `done` means the task graduated between the resume prompt being
+   *  rendered and the operator pasting the slash command. The slash
+   *  command renders a "task already shipped" frame instead of the
+   *  in-flight resume context. */
+  scope: "active" | "done";
+  /** ISO timestamp of completion when `scope === "done"`; null when
+   *  the task is still active. */
+  completed_at: string | null;
   title: string;
   goal: string;
   in_scope_decisions: string[];
@@ -60,11 +69,27 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     );
   }
 
-  const taskDir = join(ctx.repoRoot, ".cairn", "tasks", "active", taskId);
-  if (!existsSync(taskDir)) {
+  const activeTaskDir = join(ctx.repoRoot, ".cairn", "tasks", "active", taskId);
+  const doneTaskDir = join(ctx.repoRoot, ".cairn", "tasks", "done", taskId);
+  let scope: "active" | "done";
+  let taskDir: string;
+  let completedAt: string | null = null;
+
+  if (existsSync(activeTaskDir)) {
+    scope = "active";
+    taskDir = activeTaskDir;
+  } else if (existsSync(doneTaskDir)) {
+    // Race: task graduated between the Stop-hook resume prompt and the
+    // operator pasting `/cairn-resume`. Surface the final journal frame
+    // + completion timestamp instead of the cryptic "not found" error
+    // so the operator sees what shipped.
+    scope = "done";
+    taskDir = doneTaskDir;
+    completedAt = readCompletedAt(join(doneTaskDir, "status.yaml"));
+  } else {
     return mcpError(
       "TASK_NOT_FOUND",
-      `active task directory missing: .cairn/tasks/active/${taskId}/`,
+      `task directory missing in active/ and done/: ${taskId}`,
     );
   }
 
@@ -108,7 +133,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     }
   }
 
-  const journal = readTaskJournal(ctx.repoRoot, taskId, "active");
+  const journal = readTaskJournal(ctx.repoRoot, taskId, scope);
   const cap = Math.max(1, Math.min(50, input.max_entries ?? 7));
   const recent = journal.slice(-cap);
   const lastEntry = journal.length > 0 ? journal[journal.length - 1] : null;
@@ -117,6 +142,8 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
   const payload: ResumePayload = {
     ok: true,
     task_id: taskId,
+    scope,
+    completed_at: completedAt,
     title,
     goal,
     in_scope_decisions: inScopeDecisions,
@@ -127,6 +154,21 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     total_entries: journal.length,
   };
   return payload;
+}
+
+function readCompletedAt(statusPath: string): string | null {
+  if (!existsSync(statusPath)) return null;
+  try {
+    const raw = readFileSync(statusPath, "utf8");
+    const parsed = parseYaml(raw) as { completed_at?: unknown } | null;
+    if (parsed !== null && typeof parsed === "object") {
+      const v = parsed.completed_at;
+      if (typeof v === "string" && v.length > 0) return v;
+    }
+  } catch {
+    // fall through
+  }
+  return null;
 }
 
 export const resumeTool: ToolDef<Input> = {

@@ -71,10 +71,10 @@ function syncActiveVersionShim(warnings: string[]): void {
     return;
   }
 
-  const slug = pluginCacheSlug(pluginRoot);
+  const slug = pluginCacheSlug(pluginRoot) ?? localDevSlug(pluginRoot);
   if (slug === null) {
     warnings.push(
-      `statusline_shim_skipped: CLAUDE_PLUGIN_ROOT not under ~/.claude/plugins/cache (${pluginRoot})`,
+      `statusline_shim_skipped: cannot derive slug from CLAUDE_PLUGIN_ROOT (${pluginRoot})`,
     );
     return;
   }
@@ -103,6 +103,41 @@ function pluginCacheSlug(pluginRoot: string): string | null {
   if (rest.length === 0) return null;
   const parts = rest.split(/[\/\\]/).filter((p) => p.length > 0);
   return parts.length > 0 ? (parts[0] ?? null) : null;
+}
+
+/**
+ * Derive a cache slug for plugins loaded from a local-dev marketplace
+ * (`source: directory`). Walks up `pluginRoot` looking for a sibling
+ * `.claude-plugin/marketplace.json` and reads its `name` — this is the
+ * same slug Claude Code uses when the marketplace is installed
+ * normally, so the local-dev shim overwrites the cached-install shim
+ * (and vice-versa) on whichever ran most recently. The bash one-liner
+ * picks newest by mtime, so transitions stay consistent.
+ *
+ * Returns null when no marketplace manifest is found (caller emits
+ * skip warning).
+ */
+function localDevSlug(pluginRoot: string): string | null {
+  let dir = pluginRoot;
+  for (let i = 0; i < 8; i++) {
+    const manifest = join(dir, ".claude-plugin", "marketplace.json");
+    if (existsSync(manifest)) {
+      try {
+        const parsed = JSON.parse(readFileSync(manifest, "utf8")) as {
+          name?: unknown;
+        };
+        if (typeof parsed.name === "string" && parsed.name.length > 0) {
+          return parsed.name;
+        }
+      } catch {
+        return null;
+      }
+    }
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
 }
 
 interface SessionStartShapeBOutput {

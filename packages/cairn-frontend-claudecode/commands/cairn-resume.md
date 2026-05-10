@@ -45,6 +45,8 @@ The tool returns:
 {
   ok: true,
   task_id: "TSK-…",
+  scope: "active" | "done",      // see Step 2.5
+  completed_at: "<ISO-8601>" | null,
   title: "<spec H1>",
   goal: "<spec ## Goal section>",
   in_scope_decisions: ["DEC-…"],
@@ -61,7 +63,28 @@ The tool returns:
 If `cairn_resume` returns `TASK_NOT_FOUND`, surface the error to the
 operator and ask whether they want to start a fresh task instead.
 
-## Step 3 — render the resume context
+## Step 2.5 — handle a graduated task (scope: "done")
+
+If `scope === "done"`, the task graduated between the Stop-hook resume
+prompt and this `/cairn-resume` invocation (auto-graduator race).
+There is nothing in flight to resume. Render a "task already shipped"
+frame instead of the in-flight resume context, then **stop** — do not
+run Step 3, Step 4, or read `spec.tightened.md`. Format-locked:
+
+```markdown
+**`<task_id>` already shipped — <title>**
+
+Completed at `<completed_at>`. Final journal entry:
+
+> <last entry summary>
+
+The task is in `.cairn/tasks/done/<task_id>/`. Nothing left to resume.
+What's next?
+```
+
+End the turn after the frame; the operator decides the next ask.
+
+## Step 3 — render the resume context (scope: "active" only)
 
 Emit a tight resume block that re-primes context. Format-locked:
 

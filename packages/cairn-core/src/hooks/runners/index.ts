@@ -7,6 +7,11 @@
 export { runSessionStartHook } from "./session-start.js";
 export { runSessionEndHook } from "./session-end.js";
 export { runStopHook } from "./stop.js";
+export {
+  estimateTokensFromTranscript,
+  modelWindow,
+  readModelFromTranscript,
+} from "./context-threshold.js";
 export { runUserPromptSubmitHook } from "./user-prompt-submit.js";
 export { runGcAutotriggerCheck } from "./gc-autotrigger.js";
 export type {
