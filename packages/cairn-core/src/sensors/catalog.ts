@@ -20,6 +20,7 @@ const StubPatternSchema = z.object({
   regex: z.string(),
   severity: z.enum(["hard", "soft"]),
   skip_globs: z.array(z.string()).optional(),
+  must_contain: z.string().optional(),
 }).passthrough();
 
 const StubCatalogSchema = z.object({
@@ -108,6 +109,7 @@ export function parseStubCatalog(yamlText: string): StubCatalog {
       regex: p.regex,
       severity: p.severity,
       ...(p.skip_globs !== undefined ? { skip_globs: p.skip_globs } : {}),
+      ...(p.must_contain !== undefined ? { must_contain: p.must_contain } : {}),
     }));
   return { version: data.version ?? 1, patterns };
 }
