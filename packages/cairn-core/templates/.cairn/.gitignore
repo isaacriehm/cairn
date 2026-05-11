@@ -44,3 +44,39 @@ staleness/
 # clone safety net for `git checkout` recovery; teammates have their
 # own snapshots from their own adoption pass.
 backups/
+
+# Task state — per-developer work-in-flight (active spec, journal,
+# attestation; done archive). Tasks are local to whoever is driving
+# them; teammates see graduated knowledge via the DEC/§INV ground
+# layer, not via raw task dirs. Untrack via `cairn fix gitignore`
+# on projects adopted before v0.11.3.
+tasks/
+
+# Mission state — per-developer roadmap progress (cursor, phase
+# progress, journal). Same reasoning as tasks/: missions are local
+# planning artifacts; shared outputs land in ground/. Untrack via
+# `cairn fix gitignore` on projects adopted before v0.11.3.
+missions/
+
+# Draft decision inbox — operator-pending DEC review queue. Drafts
+# don't graduate to ground until accepted; per-developer attention
+# queue. Already excluded from canonical-zone reads in spec §2.2.
+ground/decisions/_inbox/
+
+# Per-clone GC marker — last-run timestamp for the Stop-hook GC
+# auto-trigger. Written locally by the hook, never shared.
+.gc-last-run
+
+# Per-clone phase-defer marker — sets a 24h suppression on the
+# mission phase-exit prompt. Local to whoever picked "Defer 24h"
+# in the cairn-attention surface.
+.mission-phase-deferred-until
+
+# Per-clone hook telemetry — `state/telemetry/hooks.jsonl` records
+# every plugin hook invocation locally for debug; not shareable.
+state/telemetry/
+
+# Per-clone sensor baseline snapshots — `cairn init` phase 11 +
+# `cairn baseline` rerun write `sensor-audit-<ISO>.yaml` here.
+# Regenerable from current source; not version-controlled.
+baseline/

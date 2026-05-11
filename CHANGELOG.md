@@ -4,6 +4,38 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.3] — 2026-05-11
+
+### Fixed
+
+- **Statusline no longer renders blank when a Claude Code session
+  opens in a subdirectory of an adopted repo.** The `cairn status-line`
+  CLI defaulted `projectRoot` to `process.cwd()` and never walked
+  upward, so opening a session in `apps/web/` (or any nested folder)
+  would miss the `.cairn/` lookup at the resolved cwd and return an
+  empty string — CC then rendered no statusline at all. The dispatch
+  now calls `resolveRepoRoot(cwd)` the same way the SessionStart,
+  Stop, and UserPromptSubmit hooks do, falling back to the raw cwd
+  only when no `.cairn/config.yaml` ancestor exists within 12 levels.
+  Symptom: operators who launched Claude Code from anywhere other
+  than the repo root saw the badge wink off for the entire session;
+  the post-fix path renders consistently regardless of where the
+  session started.
+- **`.cairn/.gitignore` template tightened for tasks, missions,
+  drafts, and per-clone runtime markers.** Seven new entries match
+  the actual policy: `tasks/` and `missions/` are per-developer
+  work-in-flight (shared knowledge lives in `ground/`, not in raw
+  task or mission directories); `ground/decisions/_inbox/` is the
+  operator-pending DEC review queue; `.gc-last-run`,
+  `.mission-phase-deferred-until`, `state/telemetry/`, and
+  `baseline/` are per-clone runtime artifacts that regenerate on
+  the local machine. Projects adopted under v0.11.2 or earlier
+  retroactively clean up via `cairn fix gitignore`, which rewrites
+  the file from the bundled template and runs
+  `git rm --cached -r --ignore-unmatch` against the newly-ignored
+  paths so they drop out of the index. Untracked working state
+  stops leaking into shared history.
+
 ## [0.11.2] — 2026-05-10
 
 ### Fixed
