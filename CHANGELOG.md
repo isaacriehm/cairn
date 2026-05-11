@@ -4,6 +4,24 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.2] — 2026-05-10
+
+### Fixed
+
+- **Statusline ctx meter no longer flickers off when CC pipes the
+  payload slowly.** The `cairn status-line` stdin reader had a hard
+  250ms deadline that fired unconditionally — any chunks already
+  buffered when the timer expired were discarded, so the meter saw
+  a null `context_window` block and dropped the `███░░░░░░░ N%`
+  segment for that prompt tick. The reader now decodes whatever
+  bytes have buffered when the deadline hits (instead of returning
+  empty), auto-extends the deadline on every `data` event so a
+  large payload streaming in slowly still completes, and raises
+  the headline budget to 1.5s — well under CC's 10s refresh
+  interval. Symptom: the operator would see the meter wink in/out
+  between prompts; the post-fix snapshot persists to
+  `.cairn/sessions/<id>/ctx.json` consistently each tick.
+
 ## [0.11.1] — 2026-05-10
 
 ### Fixed
