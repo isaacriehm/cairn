@@ -99,7 +99,44 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
       }
     }
   }
-  if (missionId !== null && phaseId !== null) {
+  // Scope-mismatch warning. When a task auto-attaches to the cursor
+  // phase (operator didn't pass an explicit `mission_id`), check whether
+  // the task title + module + slug share any signal-bearing token with
+  // the phase exit_criteria. If nothing matches, surface a non-blocking
+  // warning so the caller can offer the operator a `mission_id: ""`
+  // opt-out. Real-world bleed: regression-fix tasks silently piling onto
+  // an unrelated wave phase's `task_ids`.
+  let scopeWarning: string | null = null;
+  if (
+    missionId !== null &&
+    phaseId !== null &&
+    (input.mission_id === undefined || input.mission_id === null)
+  ) {
+    const roadmap = readRoadmap(ctx.repoRoot, missionId);
+    if (roadmap !== null && !roadmap.frontmatter.phases.some((p) => p.id === phaseId)) {
+      return mcpError(
+        "VALIDATION_FAILED",
+        `phase_id ${phaseId} not present in roadmap of ${missionId}`,
+      );
+    }
+    const phaseDef = roadmap?.frontmatter.phases.find((p) => p.id === phaseId);
+    if (phaseDef !== undefined) {
+      const tokens = new Set<string>();
+      for (const s of [input.title, input.slug, input.module ?? ""]) {
+        for (const tok of s.toLowerCase().split(/[^a-z0-9]+/)) {
+          if (tok.length >= 3) tokens.add(tok);
+        }
+      }
+      const criteria = `${phaseDef.title} ${phaseDef.exit_criteria}`.toLowerCase();
+      const hit = [...tokens].some((tok) => criteria.includes(tok));
+      if (!hit && tokens.size > 0) {
+        scopeWarning =
+          `Task auto-attached to cursor phase \`${phaseId}\` but title/module/slug share no token with the phase exit_criteria. ` +
+          `If this is a side-task (regression fix, unrelated refactor), re-create with \`mission_id: ""\` so it doesn't pollute \`phase_progress.task_ids\`. ` +
+          `Phase title: "${phaseDef.title}".`;
+      }
+    }
+  } else if (missionId !== null && phaseId !== null) {
     const roadmap = readRoadmap(ctx.repoRoot, missionId);
     if (roadmap !== null && !roadmap.frontmatter.phases.some((p) => p.id === phaseId)) {
       return mcpError(
@@ -168,6 +205,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     in_scope_invariants: (input.in_scope_invariants ?? []).map(renderInvariantId),
     mission_id: missionId,
     phase_id: phaseId,
+    ...(scopeWarning !== null ? { warning: scopeWarning } : {}),
   };
 }
 

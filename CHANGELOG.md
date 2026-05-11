@@ -4,6 +4,42 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.1] — 2026-05-10
+
+### Fixed
+
+- **SessionStart Active-mission banner now surfaces phase-ready
+  hint + per-phase task counter.** When all linked tasks in the
+  cursor phase have graduated and the phase `exit_gate=prompt`,
+  the banner injects a `**Phase ready to exit**` block with the
+  exact `cairn_mission_advance` call — re-derived from live state
+  each session so the prompt survives `/clear` (the Stop-hook
+  `phase-ready-pending.json` is session-scoped + consume-once and
+  was dropping the signal after a context reset). Banner now also
+  prints `tasks linked: N (X graduated, Y in-flight)` for the
+  cursor phase, replacing the ambiguous bare-cursor line that was
+  reading as "no work done" even after multiple successful task
+  completions. Progress phrasing tightened from
+  `progress: X/Y phases` to `progress: X of Y phases done` so the
+  meaning is unambiguous on first read. The side-task callout was
+  also reworded to spell out which kinds of work (regression
+  fixes, unrelated refactors) belong outside the cursor's
+  `phase_progress.task_ids`.
+- **`cairn_mission_advance({choice: "not_yet"})` now clears
+  `ready_emitted`** so the next task-completion in the deferred
+  phase re-fires the operator-facing phase-ready prompt. Before
+  the fix, picking `not_yet` once would silence the prompt until
+  the cursor actually advanced (or the phase reopened), which
+  matched the in-session idempotency intent but broke the
+  long-form "remind me again when more work lands" flow.
+- **`cairn_task_create` returns a `warning` field when an
+  auto-attached task shares no signal-bearing token with the
+  cursor phase's `title + exit_criteria`.** Caller can surface the
+  warning + offer a `mission_id: ""` opt-out so unrelated work
+  (boot regressions, side refactors) stops silently polluting
+  `phase_progress.task_ids`. Non-blocking — explicit `mission_id`
+  passes through untouched.
+
 ## [0.11.0] — 2026-05-10
 
 ### Changed

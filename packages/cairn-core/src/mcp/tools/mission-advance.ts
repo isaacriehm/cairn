@@ -95,6 +95,15 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
   }
 
   if (input.choice === "not_yet") {
+    // Clear `ready_emitted` so the next task-completion in this phase
+    // re-fires the phase-ready prompt. Without this, `task-link.ts`
+    // skips the re-emit and the operator never gets prompted again
+    // until the cursor actually advances or the mission reopens.
+    const progress = state.phase_progress[input.phase_id];
+    if (progress !== undefined && progress.ready_emitted === true) {
+      state.phase_progress[input.phase_id] = { ...progress, ready_emitted: false };
+      writeMissionState(ctx.repoRoot, missionId, state);
+    }
     appendMissionJournal(ctx.repoRoot, missionId, {
       ts: new Date().toISOString(),
       kind: "phase-deferred",

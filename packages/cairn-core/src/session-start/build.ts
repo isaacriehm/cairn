@@ -13,11 +13,13 @@ import {
   buildInvariantsLedger,
   countDonePhases,
   detectRoadmapDrift,
+  effectivePhaseExitGate,
   findActiveMission,
   parseFrontmatter,
   readMissionState,
   readRoadmap,
 } from "@isaacriehm/cairn-state";
+import { allPhaseTasksDone } from "../missions/cursor.js";
 import { loadSensorRegistry } from "../sensors/catalog.js";
 import {
   CODE_CHANGE_CONTRACT,
@@ -360,12 +362,43 @@ function renderActiveMissionSection(repoRoot: string, warnings: string[]): strin
   lines.push(`## Active mission — ${roadmap.frontmatter.title}`);
   lines.push("");
   lines.push(`- mission: \`${missionId}\``);
-  lines.push(`- progress: ${done}/${total} phases · exit_gate: ${roadmap.frontmatter.exit_gate}`);
+  lines.push(
+    `- progress: ${done} of ${total} phases done · exit_gate: ${roadmap.frontmatter.exit_gate}`,
+  );
   if (cursorPhase !== null) {
-    lines.push(`- cursor: \`${cursorPhase.id}\` — ${cursorPhase.title}`);
+    lines.push(`- cursor phase: \`${cursorPhase.id}\` — ${cursorPhase.title}`);
     lines.push(`  - exit_criteria: ${cursorPhase.exit_criteria}`);
+    const phaseProg = state.phase_progress[cursorPhase.id];
+    const taskIds = phaseProg?.task_ids ?? [];
+    const doneTaskIds = taskIds.filter((id) =>
+      existsSync(join(repoRoot, ".cairn", "tasks", "done", id)),
+    );
+    if (taskIds.length > 0) {
+      lines.push(
+        `  - tasks linked: ${taskIds.length} (${doneTaskIds.length} graduated, ${taskIds.length - doneTaskIds.length} in-flight)`,
+      );
+    } else {
+      lines.push(`  - tasks linked: 0 (no work attempted yet under this phase)`);
+    }
+    // Phase-ready hint — re-derived from live state each session so the
+    // operator gets the prompt back after `/clear` (the Stop-hook
+    // pending file is session-scoped + consume-once).
+    const gate = effectivePhaseExitGate(roadmap.frontmatter, cursorPhase.id);
+    const phaseReady =
+      gate === "prompt" &&
+      taskIds.length > 0 &&
+      allPhaseTasksDone(state, cursorPhase.id, (id) =>
+        existsSync(join(repoRoot, ".cairn", "tasks", "done", id)),
+      ) &&
+      !isMissionPhaseDeferActive(repoRoot, missionId, cursorPhase.id);
+    if (phaseReady) {
+      lines.push("");
+      lines.push(
+        `**Phase ready to exit** — all ${taskIds.length} linked task(s) graduated. Use \`AskUserQuestion\` to confirm, then call \`cairn_mission_advance({phase_id: "${cursorPhase.id}", choice: "exit"})\` to graduate, or \`choice: "not_yet"\` / \`"defer"\` to keep the cursor.`,
+      );
+    }
   } else {
-    lines.push(`- cursor: (no active phase — mission ready to close)`);
+    lines.push(`- cursor phase: (none — mission ready to close)`);
   }
   lines.push(`- spec: \`${roadmap.frontmatter.spec_path}\``);
   if (drift.length > 0) {
@@ -376,9 +409,36 @@ function renderActiveMissionSection(repoRoot: string, warnings: string[]): strin
   }
   lines.push("");
   lines.push(
-    "Tasks under this cursor inherit `mission_id` + `phase_id` automatically. To work off-mission, pass `mission_id: \"\"` to `cairn_task_create` (side-task, no phase progress).",
+    "Tasks under this cursor inherit `mission_id` + `phase_id` automatically. Side-tasks (regression fixes, refactors unrelated to the phase exit_criteria) must pass `mission_id: \"\"` to `cairn_task_create` so they don't pollute `phase_progress.task_ids`.",
   );
   return lines.join("\n");
+}
+
+function isMissionPhaseDeferActive(
+  repoRoot: string,
+  missionId: string,
+  phaseId: string,
+): boolean {
+  const path = join(repoRoot, ".cairn", ".mission-phase-deferred-until");
+  if (!existsSync(path)) return false;
+  let raw: string;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch {
+    return false;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return false;
+  }
+  if (typeof parsed !== "object" || parsed === null) return false;
+  const o = parsed as Record<string, unknown>;
+  if (o["mission_id"] !== missionId || o["phase_id"] !== phaseId) return false;
+  const until = typeof o["deferred_until"] === "string" ? Date.parse(o["deferred_until"]) : NaN;
+  if (Number.isNaN(until)) return false;
+  return Date.now() < until;
 }
 
 function readBrandAndPositioning(repoRoot: string, warnings: string[]): string | null {
