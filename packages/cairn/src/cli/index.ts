@@ -3,9 +3,6 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   type CtxMeterInput,
-  estimateTokensFromTranscript,
-  modelWindow,
-  readModelFromTranscript,
   readStatusForCLI,
   VERSION,
 } from "../index.js";
@@ -41,11 +38,12 @@ function decodePayload(text: string): StatusLinePayload {
   const sid = parsed["session_id"];
   const sessionId = typeof sid === "string" && sid.length > 0 ? sid : null;
 
-  // Preferred path: Claude Code sends a `context_window` block with
-  // `remaining_percentage` + `total_tokens`. When present we trust it
-  // verbatim. CC schema has historically been unstable — older builds
-  // omit the block entirely, and some configs send only one of the two
-  // fields — so we fall back to transcript usage parsing below.
+  // Single source of truth: Claude Code's `context_window` block with
+  // `remaining_percentage` + `total_tokens`. CC sets `total_tokens` to
+  // the active model's window (e.g. 200k Sonnet, 1M Opus-1m) so we
+  // trust it verbatim — no model-keyed fallback, no transcript parsing.
+  // If CC omits the block, ctx stays null and the Stop hook + meter
+  // skip the threshold check rather than firing on a guessed number.
   const cw = parsed["context_window"];
   let ctx: CtxMeterInput | null = null;
   if (cw !== null && typeof cw === "object") {
@@ -55,41 +53,7 @@ function decodePayload(text: string): StatusLinePayload {
     if (typeof remaining === "number" && typeof total === "number" && total > 0) {
       const usedPct = Math.max(0, Math.min(100, 100 - remaining));
       const usedTokens = Math.round((total * usedPct) / 100);
-      ctx = { usedPct, usedTokens };
-    }
-  }
-
-  // Fallback: derive ctx from the transcript's last assistant-turn
-  // `usage` block. Summing `input + cache_creation + cache_read` gives
-  // the exact prompt size at that turn — much more accurate than
-  // bytes/4. We pair it with the model window keyed off the same
-  // transcript so a Sonnet session renders 100% at 200k, an Opus 1M
-  // session renders 100% at 1M.
-  if (ctx === null) {
-    const transcriptPath =
-      typeof parsed["transcript_path"] === "string"
-        ? (parsed["transcript_path"] as string)
-        : null;
-    const modelFromPayload =
-      typeof parsed["model"] === "object" &&
-      parsed["model"] !== null &&
-      typeof (parsed["model"] as Record<string, unknown>)["id"] === "string"
-        ? ((parsed["model"] as Record<string, unknown>)["id"] as string)
-        : typeof parsed["model"] === "string"
-          ? (parsed["model"] as string)
-          : null;
-    if (transcriptPath !== null) {
-      const used = estimateTokensFromTranscript(transcriptPath);
-      const model =
-        modelFromPayload ?? readModelFromTranscript(transcriptPath) ?? "unknown";
-      const window = modelWindow(model);
-      if (used !== null && window > 0) {
-        const usedPct = Math.max(
-          0,
-          Math.min(100, Math.round((used / window) * 100)),
-        );
-        ctx = { usedPct, usedTokens: used };
-      }
+      ctx = { usedPct, usedTokens, windowTokens: total };
     }
   }
   return { sessionId, ctx };
@@ -117,6 +81,7 @@ function persistCtxSnapshot(
     const snapshot = {
       usedPct: ctx.usedPct,
       usedTokens: ctx.usedTokens,
+      windowTokens: ctx.windowTokens,
       ts: Date.now(),
     };
     writeFileSync(join(dir, "ctx.json"), JSON.stringify(snapshot), "utf8");

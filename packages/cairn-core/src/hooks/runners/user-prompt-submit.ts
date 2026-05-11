@@ -26,6 +26,10 @@ import {
 } from "@isaacriehm/cairn-state";
 import { buildLegend, type ScopeIndexHint } from "../post-tool-use/legend-builder.js";
 import { readHookStdin } from "./payload.js";
+import {
+  readAndConsumePhaseReadyPending,
+  renderPhaseReadyHint,
+} from "./phase-ready-surface.js";
 
 const MAX_FILE_BYTES = 512_000;
 // Match `@<path>` only when `@` follows whitespace or is at start of
@@ -99,22 +103,42 @@ export async function runUserPromptSubmitHook(): Promise<void> {
     const payload = parsePayload(raw);
     const prompt = typeof payload.prompt === "string" ? payload.prompt : "";
     const cwd = typeof payload.cwd === "string" ? payload.cwd : process.cwd();
+    const sessionId =
+      typeof payload.session_id === "string" ? payload.session_id : null;
 
-    // Fast-path: no `@` token in prompt → no work.
+    const repoRoot = resolveRepoRoot(cwd);
+
+    // Phase-ready surface: Stop hook stashed phase-ready hints in
+    // `.cairn/sessions/<id>/phase-ready-pending.json` so we could
+    // inject them here as `additionalContext` (no red "Stop hook
+    // error" banner). Consume once — file is deleted on read so the
+    // operator sees the prompt exactly once per Stop emission.
+    let phaseReadyContext = "";
+    if (repoRoot !== null && sessionId !== null && sessionId.length > 0) {
+      try {
+        const hints = readAndConsumePhaseReadyPending(repoRoot, sessionId);
+        if (hints !== null && hints.length > 0) {
+          phaseReadyContext = renderPhaseReadyHint(hints);
+        }
+      } catch {
+        // best-effort — never block the prompt on this
+      }
+    }
+
+    // Fast-path: no `@` token in prompt → emit phase-ready alone (if any).
     if (prompt.length === 0 || !prompt.includes("@")) {
-      emitShapeB("");
+      emitShapeB(phaseReadyContext);
       return;
     }
 
-    const repoRoot = resolveRepoRoot(cwd);
     if (repoRoot === null) {
-      emitShapeB("");
+      emitShapeB(phaseReadyContext);
       return;
     }
 
     const paths = extractAttachedPaths(prompt);
     if (paths.length === 0) {
-      emitShapeB("");
+      emitShapeB(phaseReadyContext);
       return;
     }
 
@@ -152,7 +176,7 @@ export async function runUserPromptSubmitHook(): Promise<void> {
       aggregated.todos.length === 0 &&
       aggregated.decisions.length === 0
     ) {
-      emitShapeB("");
+      emitShapeB(phaseReadyContext);
       return;
     }
 
@@ -179,7 +203,10 @@ export async function runUserPromptSubmitHook(): Promise<void> {
       resolveTaskFn,
     );
 
-    emitShapeB(legend ?? "");
+    // Stitch phase-ready (if any) ahead of the legend so the operator
+    // sees the higher-priority surface first.
+    const combined = [phaseReadyContext, legend ?? ""].filter((s) => s.length > 0).join("\n\n");
+    emitShapeB(combined);
   } catch {
     try {
       emitShapeB("");

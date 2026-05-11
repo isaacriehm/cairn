@@ -8,16 +8,16 @@
  * `decision: block` with an instructional reason that prompts main
  * Claude to render the question.
  *
- * Threshold defaults to 50 % of the active model's window:
- *   - claude-opus-*    → 1_000_000 tokens, fire at 500_000
- *   - claude-sonnet-*  →   200_000 tokens, fire at 100_000
- *   - claude-haiku-*   →   200_000 tokens, fire at 100_000
- *   - unknown model    → assume Opus shape (1M / 500k threshold)
+ * Single source of truth: Claude Code's statusline payload ships a
+ * `context_window` block with `total_tokens` (the active model's
+ * window — 200k Sonnet, 1M Opus-1m) + `remaining_percentage`. The
+ * statusline hook persists those numbers to
+ * `.cairn/sessions/<id>/ctx.json` on every prompt. The Stop hook reads
+ * that snapshot — there is no model-keyed fallback and no transcript-
+ * usage estimator. If CC omits the block, ctx.json is absent or stale
+ * and the threshold check stays silent rather than firing on a guess.
  *
- * Token count is estimated from the transcript file size (`bytes / 4`)
- * — overcounts a little on JSON whitespace, undercounts on unicode-
- * heavy turns. Good enough to fire near the threshold; not a budget
- * check.
+ * Threshold defaults to 50 % of CC's reported window.
  *
  * Suppress re-fire within the same session by stamping
  * `.cairn/sessions/<id>/ctx-threshold-warned.json`. Once stamped, the
@@ -25,27 +25,21 @@
  * past the last warning.
  */
 
-import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export interface ContextThresholdInput {
-  transcriptPath: string | null;
   repoRoot: string;
   sessionId: string;
-  /** Override the model lookup (rarely needed). */
-  modelOverride?: string | null;
   /** Override the threshold fraction (default 0.5). */
   thresholdFraction?: number;
-  /** Override the window size in tokens (default keyed on model). */
-  windowOverride?: number;
 }
 
 export interface ContextThresholdHit {
   hit: true;
-  estimatedTokens: number;
+  usedTokens: number;
   windowTokens: number;
   pct: number;
-  model: string;
   taskId: string | null;
 }
 
@@ -55,53 +49,10 @@ export interface ContextThresholdMiss {
 
 export type ContextThresholdResult = ContextThresholdHit | ContextThresholdMiss;
 
-const MODEL_WINDOW_FALLBACK = 1_000_000;
-
-export function modelWindow(model: string): number {
-  // Opus 4.7 ships with a 1M-token window when the `[1m]` variant is
-  // selected; the base alias still resolves to 200k. Treat any model
-  // string that contains `1m` (the variant suffix Claude Code prints)
-  // as the 1M tier so the statusline percentage reads correctly.
-  if (/1m/i.test(model)) return 1_000_000;
-  if (/opus/i.test(model)) return 1_000_000;
-  if (/sonnet/i.test(model)) return 200_000;
-  if (/haiku/i.test(model)) return 200_000;
-  return MODEL_WINDOW_FALLBACK;
-}
-
-/**
- * Walk the last ~64 KB of the transcript looking for the most recent
- * `model` field. Claude Code transcript lines are JSON; each assistant
- * turn carries a `message.model` string. Skipping the full file keeps
- * the hook fast on long sessions.
- */
-export function readModelFromTranscript(path: string): string | null {
-  try {
-    const stat = statSync(path);
-    const tail = Math.min(stat.size, 65_536);
-    const fd = readFileSync(path, "utf8");
-    const slice = fd.slice(Math.max(0, fd.length - tail));
-    const lines = slice.split(/\r?\n/);
-    for (let i = lines.length - 1; i >= 0; i--) {
-      const line = lines[i];
-      if (line === undefined || line.length === 0) continue;
-      try {
-        const obj = JSON.parse(line) as { message?: { model?: string } };
-        const m = obj.message?.model;
-        if (typeof m === "string" && m.length > 0) return m;
-      } catch {
-        // skip malformed lines
-      }
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
 interface CtxSnapshot {
   usedPct: number;
   usedTokens: number;
+  windowTokens: number;
   ts: number;
 }
 
@@ -111,7 +62,8 @@ const CTX_SNAPSHOT_STALE_MS = 5 * 60 * 1000;
  * Read the latest persisted ctx snapshot from the statusline writer.
  * Statusline runs on every prompt so a fresh snapshot is normally
  * <1s old. Returns null when missing, malformed, or older than 5min
- * (e.g. session crashed, statusline hook misconfigured).
+ * (e.g. session crashed, statusline hook misconfigured, or CC did
+ * not ship a `context_window` block on the last prompt).
  */
 function readPersistedCtx(repoRoot: string, sessionId: string): CtxSnapshot | null {
   const path = join(repoRoot, ".cairn", "sessions", sessionId, "ctx.json");
@@ -123,6 +75,8 @@ function readPersistedCtx(repoRoot: string, sessionId: string): CtxSnapshot | nu
       parsed !== null &&
       typeof parsed.usedPct === "number" &&
       typeof parsed.usedTokens === "number" &&
+      typeof parsed.windowTokens === "number" &&
+      parsed.windowTokens > 0 &&
       typeof parsed.ts === "number"
     ) {
       if (Date.now() - parsed.ts > CTX_SNAPSHOT_STALE_MS) return null;
@@ -130,64 +84,6 @@ function readPersistedCtx(repoRoot: string, sessionId: string): CtxSnapshot | nu
     }
   } catch {
     // fall through
-  }
-  return null;
-}
-
-/**
- * Fallback estimator when no persisted ctx snapshot is available.
- *
- * Walks the last ~256 KB of the transcript backward looking for the
- * most recent `message.usage` block from an assistant turn. Claude
- * Code transcript lines are JSON; assistant turns carry an exact token
- * count under `message.usage.{input_tokens, cache_creation_input_tokens,
- * cache_read_input_tokens}` — summing those three gives the actual
- * prompt size at that turn (output_tokens are produced, not consumed
- * by context).
- *
- * Returns null when no usage block is found (e.g. fresh session, no
- * assistant turn yet). Caller can choose to skip threshold check or
- * fall back to bytes/4. We never fall back here — bytes/4 over-counts
- * 1.5–2x because the transcript JSONL accumulates every tool I/O blob
- * since session start, which is what produced the 113%-of-window bug.
- */
-export function estimateTokensFromTranscript(transcriptPath: string): number | null {
-  try {
-    const stat = statSync(transcriptPath);
-    const tail = Math.min(stat.size, 262_144);
-    const fd = readFileSync(transcriptPath, "utf8");
-    const slice = fd.slice(Math.max(0, fd.length - tail));
-    const lines = slice.split(/\r?\n/);
-    for (let i = lines.length - 1; i >= 0; i--) {
-      const line = lines[i];
-      if (line === undefined || line.length === 0) continue;
-      try {
-        const obj = JSON.parse(line) as {
-          message?: {
-            usage?: {
-              input_tokens?: number;
-              cache_creation_input_tokens?: number;
-              cache_read_input_tokens?: number;
-            };
-          };
-        };
-        const u = obj.message?.usage;
-        if (u === undefined) continue;
-        const i_t = typeof u.input_tokens === "number" ? u.input_tokens : 0;
-        const cc = typeof u.cache_creation_input_tokens === "number"
-          ? u.cache_creation_input_tokens
-          : 0;
-        const cr = typeof u.cache_read_input_tokens === "number"
-          ? u.cache_read_input_tokens
-          : 0;
-        const total = i_t + cc + cr;
-        if (total > 0) return total;
-      } catch {
-        // skip malformed lines
-      }
-    }
-  } catch {
-    return null;
   }
   return null;
 }
@@ -252,42 +148,31 @@ function writeWarned(
 export function checkContextThreshold(
   input: ContextThresholdInput,
 ): ContextThresholdResult {
-  if (input.transcriptPath === null || input.transcriptPath.length === 0) {
-    return { hit: false };
-  }
-  if (!existsSync(input.transcriptPath)) return { hit: false };
+  const snapshot = readPersistedCtx(input.repoRoot, input.sessionId);
+  if (snapshot === null) return { hit: false };
 
-  const model =
-    input.modelOverride ?? readModelFromTranscript(input.transcriptPath) ?? "unknown";
-  const windowTokens = input.windowOverride ?? modelWindow(model);
+  const windowTokens = snapshot.windowTokens;
   const fraction = input.thresholdFraction ?? 0.5;
   const thresholdTokens = Math.floor(windowTokens * fraction);
 
-  const snapshot = readPersistedCtx(input.repoRoot, input.sessionId);
-  const fallback = estimateTokensFromTranscript(input.transcriptPath);
-  // Skip the check when neither source is available — better to stay
-  // silent than fire on bytes/4 garbage like we used to.
-  if (snapshot === null && fallback === null) return { hit: false };
-  const estimated = snapshot !== null ? snapshot.usedTokens : (fallback ?? 0);
-  if (estimated < thresholdTokens) return { hit: false };
+  if (snapshot.usedTokens < thresholdTokens) return { hit: false };
 
   const warned = readWarned(input.repoRoot, input.sessionId);
   const reFireSlackTokens = Math.floor(windowTokens * 0.1);
-  if (warned !== null && estimated < warned.warned_at_tokens + reFireSlackTokens) {
+  if (warned !== null && snapshot.usedTokens < warned.warned_at_tokens + reFireSlackTokens) {
     return { hit: false };
   }
 
   writeWarned(input.repoRoot, input.sessionId, {
     ts: Date.now(),
-    warned_at_tokens: estimated,
+    warned_at_tokens: snapshot.usedTokens,
   });
 
   return {
     hit: true,
-    estimatedTokens: estimated,
+    usedTokens: snapshot.usedTokens,
     windowTokens,
-    pct: Math.min(100, Math.round((estimated / windowTokens) * 100)),
-    model,
+    pct: Math.min(100, Math.round((snapshot.usedTokens / windowTokens) * 100)),
     taskId: null,
   };
 }
@@ -309,7 +194,7 @@ export function renderContextThresholdHint(
   const header = [
     `## Cairn — context threshold reached`,
     "",
-    `Estimated **${hit.estimatedTokens.toLocaleString()} / ${hit.windowTokens.toLocaleString()} tokens (${hit.pct}%)** for \`${hit.model}\`. Trust degrades as context climbs — best to compact now.`,
+    `**${hit.usedTokens.toLocaleString()} / ${hit.windowTokens.toLocaleString()} tokens (${hit.pct}%)** in use. Trust degrades as context climbs — best to compact now.`,
     "",
   ];
 
@@ -320,7 +205,7 @@ export function renderContextThresholdHint(
       "",
       "Render this question via the `AskUserQuestion` tool — do not skip:",
       "",
-      "> Context at " + hit.pct + "% of " + hit.model + " window. Pick:",
+      "> Context at " + hit.pct + "% of window. Pick:",
       "> ",
       "> - `[a]` keep going (warn re-fires every +10 %)",
       "> - `[b]` `/clear` and start fresh (no task to resume)",
@@ -335,7 +220,7 @@ export function renderContextThresholdHint(
     "",
     "Render this question via the `AskUserQuestion` tool — do not skip:",
     "",
-    "> Context at " + hit.pct + "% of " + hit.model + " window. Pick:",
+    "> Context at " + hit.pct + "% of window. Pick:",
     "> ",
     "> - `[a]` keep going (warn re-fires every +10 %)",
     "> - `[b]` `/clear` and resume now (Cairn writes the resume prompt)",

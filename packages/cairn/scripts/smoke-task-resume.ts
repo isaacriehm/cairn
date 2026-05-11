@@ -7,8 +7,9 @@
  *   2. `readTaskJournal` round-trip parses appended entries.
  *   3. `findCurrentActiveTask` picks the most-recently-touched active
  *      task whose phase is in the active set.
- *   4. `checkContextThreshold` fires once when the transcript proxy
- *      crosses the model window fraction; suppresses re-fire within
+ *   4. `checkContextThreshold` fires once when the ctx.json snapshot
+ *      (persisted by the statusline hook from CC's context_window
+ *      payload) crosses 50% of the window; suppresses re-fire within
  *      the same session until usage climbs another +10 %.
  *   5. SessionStart resume banner fires when the active task journal
  *      has entries from a different session id.
@@ -210,45 +211,50 @@ async function main(): Promise<void> {
     console.log("  ✓ Step 3 — findCurrentActiveTask picks most-recently-touched");
   }
 
-  // Step 4 — checkContextThreshold
+  // Step 4 — checkContextThreshold (reads ctx.json snapshot persisted by
+  // the statusline hook from CC's `context_window` payload — no fallback).
   {
     const repo = mkRepoRoot();
     const sessionId = "session-ctx";
     mkSession(repo, sessionId);
-    const transcriptPath = join(repo, "transcript.jsonl");
-    // Below threshold — write a tiny transcript with explicit Sonnet model.
-    const sonnetLine =
-      JSON.stringify({ type: "assistant", message: { model: "claude-sonnet-4-6" } }) +
-      "\n";
-    writeFileSync(transcriptPath, sonnetLine.repeat(10), "utf8");
-    const miss = checkContextThreshold({
-      transcriptPath,
-      repoRoot: repo,
-      sessionId,
-    });
-    assert(miss.hit === false, "Step 4 — small transcript should NOT cross threshold");
+    const ctxPath = join(repo, ".cairn", "sessions", sessionId, "ctx.json");
 
-    // Above threshold for Sonnet (200k window, 50% = 100k tokens ≈ 400k bytes).
-    // Pad with literal junk that still parses-to-skip on the readModel pass.
-    const big = "x".repeat(500_000) + "\n" + sonnetLine;
-    writeFileSync(transcriptPath, big, "utf8");
-    const hit = checkContextThreshold({
-      transcriptPath,
-      repoRoot: repo,
-      sessionId,
-    });
-    assert(hit.hit === true, "Step 4 — large transcript should cross threshold");
+    // No snapshot → silent miss (was the bytes/4 fallback case; now skip).
+    const noSnap = checkContextThreshold({ repoRoot: repo, sessionId });
+    assert(noSnap.hit === false, "Step 4 — missing ctx.json should silent-miss");
+
+    // Below threshold — 20% of Sonnet 200k window.
+    writeFileSync(
+      ctxPath,
+      JSON.stringify({
+        usedPct: 20,
+        usedTokens: 40_000,
+        windowTokens: 200_000,
+        ts: Date.now(),
+      }),
+    );
+    const miss = checkContextThreshold({ repoRoot: repo, sessionId });
+    assert(miss.hit === false, "Step 4 — 20% usage should NOT cross threshold");
+
+    // Above threshold — 60% of Sonnet 200k window.
+    writeFileSync(
+      ctxPath,
+      JSON.stringify({
+        usedPct: 60,
+        usedTokens: 120_000,
+        windowTokens: 200_000,
+        ts: Date.now(),
+      }),
+    );
+    const hit = checkContextThreshold({ repoRoot: repo, sessionId });
+    assert(hit.hit === true, "Step 4 — 60% usage should cross threshold");
     if (hit.hit) {
-      assert(hit.windowTokens === 200_000, `Step 4 — Sonnet window expected 200k, got ${hit.windowTokens}`);
+      assert(hit.windowTokens === 200_000, `Step 4 — window expected 200k, got ${hit.windowTokens}`);
       assert(hit.pct >= 50, `Step 4 — expected pct≥50, got ${hit.pct}`);
     }
 
     // Re-fire suppression: same call should now miss (warned-state stamped).
-    const reMiss = checkContextThreshold({
-      transcriptPath,
-      repoRoot: repo,
-      sessionId,
-    });
+    const reMiss = checkContextThreshold({ repoRoot: repo, sessionId });
     assert(reMiss.hit === false, "Step 4 — re-fire within same session should be suppressed");
     console.log("  ✓ Step 4 — context threshold fires once + suppresses re-fire");
   }

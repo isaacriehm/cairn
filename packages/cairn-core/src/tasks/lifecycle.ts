@@ -70,12 +70,39 @@ export interface CompleteTaskArgs {
   source?: string;
 }
 
+/**
+ * Mission-linkage outcome surfaced to the caller of `completeTask`.
+ * When the task graduated a phase under `exit_gate=prompt`, the
+ * `kind: "phase-ready-to-exit"` variant carries the operator-facing
+ * info (mission title, phase title, exit criteria) so the MCP tool
+ * response can include a render instruction the model uses to
+ * surface AskUserQuestion in the same turn. No hook handoff needed.
+ *
+ * Auto-graduator path (Stop hook) gets the same struct but writes it
+ * to the pending file for UPS to inject on the next prompt — see
+ * `phase-ready-surface.ts`.
+ */
+export interface PhaseReadyToExitInfo {
+  mission_id: string;
+  mission_title: string;
+  phase_id: string;
+  phase_title: string;
+  exit_criteria: string;
+}
+
 export interface CompleteTaskResult {
   ok: true;
   taskId: string;
   outcome: TaskOutcome;
   completedAt: string;
   movedTo: string;
+  /**
+   * When non-null, the phase's exit gate is `prompt` and every linked
+   * task has graduated. Caller should surface the operator-facing
+   * AskUserQuestion. Null when the phase isn't ready, auto-advanced
+   * silently, or the idempotency flag already suppressed re-emission.
+   */
+  phase_ready_to_exit: PhaseReadyToExitInfo | null;
 }
 
 export interface CompleteTaskError {
@@ -146,9 +173,22 @@ export function completeTask(
   // Mission linkage — append the task id to its phase's task_ids,
   // emit phase-ready-to-exit when last task graduated under
   // gate=prompt, advance cursor under gate=auto. Best-effort; never
-  // block graduation.
+  // block graduation. When the result is `phase-ready-to-exit` we
+  // pass the enriched info through to the caller so the MCP tool
+  // can render the operator-facing AskUserQuestion instruction in
+  // the same turn (no hook handoff, no banner).
+  let phaseReadyToExit: PhaseReadyToExitInfo | null = null;
   try {
-    onTaskCompleted(args.repoRoot, args.taskId, args.outcome);
+    const link = onTaskCompleted(args.repoRoot, args.taskId, args.outcome);
+    if (link.kind === "phase-ready-to-exit") {
+      phaseReadyToExit = {
+        mission_id: link.mission_id,
+        mission_title: link.mission_title,
+        phase_id: link.phase_id,
+        phase_title: link.phase_title,
+        exit_criteria: link.exit_criteria,
+      };
+    }
   } catch {
     // best-effort
   }
@@ -159,6 +199,7 @@ export function completeTask(
     outcome: args.outcome,
     completedAt,
     movedTo: `.cairn/tasks/done/${args.taskId}/`,
+    phase_ready_to_exit: phaseReadyToExit,
   };
 }
 

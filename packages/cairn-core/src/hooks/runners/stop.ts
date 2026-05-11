@@ -48,6 +48,10 @@ import {
   checkContextThreshold,
   renderContextThresholdHint,
 } from "./context-threshold.js";
+import {
+  type PhaseReadyHint,
+  writePhaseReadyPending,
+} from "./phase-ready-surface.js";
 import { runGcAutotriggerCheck } from "./gc-autotrigger.js";
 import {
   emitShapeB,
@@ -92,15 +96,36 @@ function clampReason(body: string): string {
   return `${head}\n\n…(truncated; resolve via cairn-attention)`;
 }
 
-/** Stop hook emits decision:block+reason to inject context into Claude. */
+/**
+ * Stop hook emits `decision: "block"` + `reason` to inject markdown
+ * context into Claude — used for ctx-threshold + reviewer/bypass
+ * prompts that need the model to surface AskUserQuestion in the
+ * same Stop tick. CC renders this as a "Stop hook error" frame
+ * (visual convention, not a real failure); operator gets the
+ * preamble explaining that.
+ */
 interface StopBlockOutput {
   decision: "block";
   reason: string;
+  /**
+   * Optional non-blocking operator-facing warning. Per CC's hook
+   * spec, `systemMessage` is rendered as a notice to the operator
+   * (not red error styling) and is NOT injected into Claude's
+   * context. Used for the phase-ready surface — operator sees a
+   * notice that a phase-exit prompt is pending and will surface on
+   * the next prompt submission via UPS.
+   */
+  systemMessage?: string;
 }
 
-/** Stop hook emits continue:true when nothing to surface. */
+/**
+ * Stop hook emits `continue: true` when nothing to inject. May still
+ * carry a `systemMessage` operator notice (e.g. phase-ready pending)
+ * without forcing a block.
+ */
 interface StopPassOutput {
   continue: true;
+  systemMessage?: string;
 }
 
 interface PendingReview {
@@ -113,8 +138,6 @@ export async function runStopHook(): Promise<void> {
   const raw = await readHookStdin();
   const payload = parseHookPayload(raw);
   const sessionId = typeof payload.session_id === "string" ? payload.session_id : null;
-  const transcriptPath =
-    typeof payload.transcript_path === "string" ? payload.transcript_path : null;
   const cwdInput = typeof payload.cwd === "string" ? payload.cwd : process.cwd();
   const repoRoot = resolveRepoRoot(cwdInput);
   const warnings: string[] = [];
@@ -123,6 +146,10 @@ export async function runStopHook(): Promise<void> {
   let pendingReviews: PendingReview[] = [];
   let bypassed: BypassedCommit[] = [];
   let reason = "";
+  // Operator-facing notice (non-blocking, no banner). Used to alert
+  // the operator that a phase-exit prompt is pending and will surface
+  // on the next prompt submission via the UPS hook.
+  let systemMessage = "";
 
   if (repoRoot !== null && sessionId !== null && sessionId.length > 0) {
     try {
@@ -198,9 +225,8 @@ export async function runStopHook(): Promise<void> {
       // window fraction. Stamps `ctx-threshold-warned.json` on hit so
       // re-fires are suppressed until usage climbs another +10 %.
       try {
-        if (sessionId !== null && sessionId.length > 0 && transcriptPath !== null) {
+        if (sessionId !== null && sessionId.length > 0) {
           const ctxResult = checkContextThreshold({
-            transcriptPath,
             repoRoot,
             sessionId,
           });
@@ -217,12 +243,35 @@ export async function runStopHook(): Promise<void> {
         );
       }
 
+      // Phase-ready surface: hand off to the UserPromptSubmit hook via
+      // a session-scoped pending file. The Stop hook deliberately does
+      // NOT inject this into `reason` — `decision: block` makes Claude
+      // Code render a red "Stop hook error" frame regardless of the
+      // preamble we attach, and that visual reads as a real failure
+      // for an informational prompt.
+      //
+      // Two-channel surface instead:
+      //   1. `phase-ready-pending.json` — UPS reads it on the next
+      //      prompt submission and injects via `additionalContext`.
+      //      The model surfaces the AskUserQuestion in that turn.
+      //   2. `systemMessage` — non-error operator notice in the same
+      //      Stop tick. Lets the operator know a decision is pending
+      //      and that submitting any prompt will render it. Critical
+      //      because the assistant just ended its turn and the model
+      //      isn't in the loop until UPS fires.
+      //
+      // Primary surface (when the model called `cairn_task_complete`
+      // directly) lives in the MCP tool response itself — same-turn,
+      // no hook handoff. This Stop-hook path only covers the
+      // auto-graduator case (attestation written, task graduated
+      // without an explicit MCP call in the same tick).
       try {
         const phaseHints = collectPhaseReadyHints(repoRoot, drained);
         if (phaseHints.length > 0) {
-          const hint = renderPhaseReadyHint(phaseHints);
-          reason = reason.length > 0 ? `${reason}\n\n${hint}` : hint;
-          warnings.push(`mission_phase_ready:${phaseHints.length}`);
+          writePhaseReadyPending(repoRoot, sessionId, phaseHints);
+          warnings.push(`mission_phase_ready_deferred_to_ups:${phaseHints.length}`);
+          const phaseLabel = phaseHints[0]?.phase_title ?? phaseHints[0]?.phase_id ?? "phase";
+          systemMessage = `⬡ Cairn — phase "${phaseLabel}" ready to exit. Submit any prompt to surface the move-on / keep-going decision.`;
         }
       } catch (err) {
         warnings.push(
@@ -284,15 +333,32 @@ export async function runStopHook(): Promise<void> {
     }
   }
 
-  // Stop hook uses decision:block+reason to inject context into Claude
-  // (Stop does not support hookSpecificOutput.additionalContext — that
-  // field is silently ignored by Claude Code for Stop events). When
-  // reason is non-empty, blocking keeps the session alive so Claude
-  // reads the reason and acts on it (e.g. invokes cairn-attention).
+  // Stop hook output channels:
+  //   - `decision: "block"` + `reason` injects markdown into Claude's
+  //     next inference, used for ctx-threshold + reviewer + bypass
+  //     surfaces that need a same-turn AskUserQuestion render. CC
+  //     frames this as a "Stop hook error" notice (visual convention,
+  //     not a real failure).
+  //   - `systemMessage` is a non-blocking operator-facing notice that
+  //     does NOT inject into Claude's context. Used for phase-ready
+  //     so the operator sees a clean alert while the actual prompt
+  //     fires on the next UPS turn.
+  //   - `continue: true` when neither channel is active.
+  //
+  // Stop does NOT support `hookSpecificOutput.additionalContext` —
+  // that field is silently ignored by Claude Code for Stop events,
+  // so we cannot reach the model context without `decision: "block"`.
   const out: StopBlockOutput | StopPassOutput =
     reason.length > 0
-      ? { decision: "block", reason: clampReason(reason) }
-      : { continue: true };
+      ? {
+          decision: "block",
+          reason: clampReason(reason),
+          ...(systemMessage.length > 0 ? { systemMessage } : {}),
+        }
+      : {
+          continue: true,
+          ...(systemMessage.length > 0 ? { systemMessage } : {}),
+        };
   process.stdout.write(JSON.stringify(out) + "\n");
 
   appendTelemetry({
@@ -308,6 +374,7 @@ export async function runStopHook(): Promise<void> {
       bypassed_commits: bypassed.length,
       decision: reason.length > 0 ? "block" : "continue",
       ...(reason.length > 0 ? { reason } : {}),
+      ...(systemMessage.length > 0 ? { systemMessage } : {}),
     },
   });
 }
@@ -468,15 +535,6 @@ function autoGraduateTasks(
   return result;
 }
 
-interface PhaseReadyHint {
-  mission_id: string;
-  mission_title: string;
-  phase_id: string;
-  phase_title: string;
-  exit_criteria: string;
-  exit_gate: "prompt" | "auto" | "manual";
-}
-
 /**
  * Read the latest `phase-ready-to-exit` event(s) for active missions
  * out of the drained event list. Cross-checks against the live mission
@@ -521,7 +579,6 @@ function collectPhaseReadyHints(
       phase_id: cursorPhaseId,
       phase_title: phase.title,
       exit_criteria: phase.exit_criteria,
-      exit_gate: gate,
     },
   ];
 }
@@ -551,26 +608,6 @@ function isMissionPhaseDeferActive(
   const until = typeof o["deferred_until"] === "string" ? Date.parse(o["deferred_until"]) : NaN;
   if (Number.isNaN(until)) return false;
   return Date.now() < until;
-}
-
-function renderPhaseReadyHint(hints: PhaseReadyHint[]): string {
-  const lines: string[] = [];
-  const h = hints[0];
-  if (h === undefined) return "";
-  lines.push(`## Cairn — phase ready to exit`);
-  lines.push("");
-  lines.push(`Mission \`${h.mission_id}\` (${h.mission_title}) — phase \`${h.phase_id}\`: ${h.phase_title}.`);
-  lines.push("");
-  lines.push(`Exit criteria: ${h.exit_criteria}`);
-  lines.push("");
-  lines.push(
-    "**Operator picks — surface this via the `cairn-attention` skill or render the choice directly through `AskUserQuestion`. Do NOT call `cairn_mission_advance` yourself; the operator's answer is the only valid input to that tool.**",
-  );
-  lines.push("");
-  lines.push("- `[a]` mark phase done, advance cursor (`choice: \"exit\"`)");
-  lines.push("- `[b]` not yet — more tasks needed for this phase (`choice: \"not_yet\"`)");
-  lines.push("- `[c]` defer 24h (`choice: \"defer\"`)");
-  return lines.join("\n");
 }
 
 function renderReviewerHint(pending: PendingReview[]): string {

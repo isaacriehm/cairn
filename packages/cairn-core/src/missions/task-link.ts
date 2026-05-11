@@ -123,7 +123,10 @@ export type TaskCompletionLink =
   | {
       kind: "phase-ready-to-exit";
       mission_id: string;
+      mission_title: string;
       phase_id: string;
+      phase_title: string;
+      exit_criteria: string;
     };
 
 /**
@@ -174,6 +177,16 @@ export function onTaskCompleted(
   }
 
   if (gate === "prompt") {
+    // Idempotency: only emit `phase-ready-to-exit` once per phase. Once
+    // the operator has been prompted, follow-up task completions in the
+    // same phase (e.g. operator added another TSK after seeing the
+    // prompt) do NOT re-fire the surface. The flag clears on advance /
+    // reopen via `cursor.ts`.
+    const progress = state.phase_progress[anchor.phase_id];
+    if (progress?.ready_emitted === true) {
+      return { kind: "linked", mission_id: anchor.mission_id, phase_id: anchor.phase_id, gate };
+    }
+
     try {
       writeInvalidationEvent(repoRoot, {
         kind: "phase-ready-to-exit",
@@ -184,10 +197,24 @@ export function onTaskCompleted(
     } catch {
       // best-effort
     }
+
+    if (progress !== undefined) {
+      state.phase_progress[anchor.phase_id] = { ...progress, ready_emitted: true };
+      try {
+        writeMissionState(repoRoot, anchor.mission_id, state);
+      } catch {
+        // best-effort — at worst we re-emit on the next task completion
+      }
+    }
+
+    const phaseDef = roadmap.frontmatter.phases.find((p) => p.id === anchor.phase_id);
     return {
       kind: "phase-ready-to-exit",
       mission_id: anchor.mission_id,
+      mission_title: roadmap.frontmatter.title,
       phase_id: anchor.phase_id,
+      phase_title: phaseDef?.title ?? anchor.phase_id,
+      exit_criteria: phaseDef?.exit_criteria ?? "",
     };
   }
 
