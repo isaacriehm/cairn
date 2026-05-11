@@ -52,29 +52,42 @@ If `active: false`, skip this step.
 
 ### 0.2a — phase ready to exit
 
-Stop hook injected a `phase_ready_to_exit` hint into the reason block
-when the active phase's tasks all graduated. Surface a single
-`AskUserQuestion`:
+When the active phase's tasks all graduate under `exit_gate=prompt`,
+Cairn surfaces a phase-exit decision via one of two channels — both
+arrive as plain context, no red "Stop hook error" frame:
 
-> Mission `<mission_id>` (`<title>`) — phase `<active_phase>`:
-> `<active_phase_title>` ready to exit.
+1. **MCP response (primary).** When the model itself calls
+   `cairn_task_complete`, the response carries a
+   `phase_ready_to_exit` block with a literal `render_instruction`.
+   The model surfaces the AskUserQuestion in the SAME turn — no
+   hook handoff, no waiting for the next prompt.
+2. **UPS additionalContext (auto-graduator fallback).** When the
+   Stop-hook auto-graduator completes a task (attestation written
+   without an explicit MCP call), it writes the pending hint to
+   `.cairn/sessions/<id>/phase-ready-pending.json` and emits a
+   `systemMessage` operator notice. The UserPromptSubmit hook reads
+   the file on the next prompt and injects via `additionalContext`.
+
+The hint fires exactly once per phase (the `ready_emitted` flag on
+`phase_progress` suppresses re-emission until the cursor advances or
+reopens). Surface a single `AskUserQuestion`:
+
+> Phase `<active_phase_title>` looks done. Move on?
 >
 > Exit criteria: `<active_phase_exit_criteria>`.
 >
-> - `[a]` mark phase done, advance cursor (`exit`)
-> - `[b]` not yet — more tasks needed (`not_yet`)
-> - `[c]` defer 24h (`defer`)
+> - `[a]` Mark phase done, advance to next phase
+> - `[b]` Keep working on this phase
 
 Dispatch:
 
 ```
-cairn_mission_advance({phase_id: "<active_phase>", choice: "exit" | "not_yet" | "defer"})
+cairn_mission_advance({phase_id: "<active_phase>", choice: "exit" | "not_yet"})
 ```
 
 When the mission's `exit_gate` is `auto`, the cursor already
-advanced silently (no prompt fires). When `manual`, the Stop hook
-suppresses the surface entirely — operator must invoke advance
-directly.
+advanced silently (no prompt fires). When `manual`, the prompt
+is suppressed entirely — operator must invoke advance directly.
 
 Render a one-line outcome after the call:
 

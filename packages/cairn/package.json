@@ -1,6 +1,6 @@
 {
   "name": "@isaacriehm/cairn",
-  "version": "0.10.4",
+  "version": "0.11.0",
   "description": "Cairn — state + context-loading layer for AI coding agents.",
   "author": "Isaac Riehm",
   "license": "MIT",
@@ -67,6 +67,7 @@
     "smoke:init-mcp-tools": "tsx scripts/smoke-init-mcp-tools.ts",
     "smoke:init-progress-heartbeat": "tsx scripts/smoke-init-progress-heartbeat.ts",
     "smoke:stop-debounce": "tsx scripts/smoke-stop-debounce.ts",
+    "smoke:phase-ready-surface": "tsx scripts/smoke-phase-ready-surface.ts",
     "smoke:id-content-addressed": "tsx scripts/smoke-id-content-addressed.ts",
     "smoke:attention-serve": "tsx scripts/smoke-attention-serve.ts",
     "smoke:topic-index": "tsx scripts/smoke-topic-index.ts",
@@ -84,7 +85,7 @@
     "smoke:attention-undo": "tsx scripts/smoke-attention-undo.ts",
     "smoke:curator-validate": "tsx scripts/smoke-curator-validate.ts",
     "smoke:essay-shape-detector": "tsx scripts/smoke-essay-shape-detector.ts",
-    "smokes": "pnpm smoke:plugin-layout && pnpm smoke:resolve-attention && pnpm smoke:stop-hook && pnpm smoke:events && pnpm smoke:session-state && pnpm smoke:status-line && pnpm smoke:session-start && pnpm smoke:handoff && pnpm smoke:scope-index && pnpm smoke:read-enrich && pnpm smoke:init && pnpm smoke:ingestion-baseline && pnpm smoke:gc && pnpm smoke:lock && pnpm smoke:source-comments && pnpm smoke:rules-merge && pnpm smoke:join && pnpm smoke:bypass-detection && pnpm smoke:bootstrap-guard && pnpm smoke:e2e-adoption && pnpm smoke:e2e-daily-flow && pnpm smoke:plugin-bundle && pnpm smoke:init-phases-state && pnpm smoke:init-phases-all && pnpm smoke:init-mcp-tools && pnpm smoke:init-progress-heartbeat && pnpm smoke:stop-debounce && pnpm smoke:curator-validate && pnpm smoke:essay-shape-detector",
+    "smokes": "pnpm smoke:plugin-layout && pnpm smoke:resolve-attention && pnpm smoke:stop-hook && pnpm smoke:events && pnpm smoke:session-state && pnpm smoke:status-line && pnpm smoke:session-start && pnpm smoke:handoff && pnpm smoke:scope-index && pnpm smoke:read-enrich && pnpm smoke:init && pnpm smoke:ingestion-baseline && pnpm smoke:gc && pnpm smoke:lock && pnpm smoke:source-comments && pnpm smoke:rules-merge && pnpm smoke:join && pnpm smoke:bypass-detection && pnpm smoke:bootstrap-guard && pnpm smoke:e2e-adoption && pnpm smoke:e2e-daily-flow && pnpm smoke:plugin-bundle && pnpm smoke:init-phases-state && pnpm smoke:init-phases-all && pnpm smoke:init-mcp-tools && pnpm smoke:init-progress-heartbeat && pnpm smoke:stop-debounce && pnpm smoke:phase-ready-surface && pnpm smoke:curator-validate && pnpm smoke:essay-shape-detector",
     "smokes:all": "pnpm run \"/^smoke:/\""
   },
   "dependencies": {

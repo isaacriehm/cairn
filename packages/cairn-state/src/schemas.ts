@@ -524,6 +524,15 @@ export const MissionPhaseProgressEntry = z.object({
   state: MissionPhaseState,
   task_ids: z.array(z.string()).default([]),
   graduated_at: z.string().optional(),
+  /**
+   * True once a `phase-ready-to-exit` invalidation event has been
+   * emitted for this phase. Suppresses re-emission on subsequent task
+   * completions within the same phase (prevents the prompt storm where
+   * every late task completion re-fires the operator-facing
+   * "phase ready to exit" surface). Cleared when the cursor advances
+   * past the phase or the phase is reopened.
+   */
+  ready_emitted: z.boolean().optional(),
 });
 export type MissionPhaseProgressEntry = z.infer<typeof MissionPhaseProgressEntry>;
 

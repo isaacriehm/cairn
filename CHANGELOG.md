@@ -4,6 +4,64 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] — 2026-05-10
+
+### Changed
+
+- **Context-threshold detection now trusts Claude Code's
+  `context_window` payload exclusively.** The statusline hook reads
+  `total_tokens` + `remaining_percentage` from CC's hook input and
+  persists both to `.cairn/sessions/<id>/ctx.json`; the Stop hook
+  reads that snapshot to decide whether to fire the 50%-window
+  threshold prompt. Removed the transcript-usage and bytes/4
+  fallbacks along with the model-keyed `modelWindow` lookup,
+  `readModelFromTranscript`, and `estimateTokensFromTranscript`
+  exports — when CC doesn't ship a `context_window` block the
+  threshold check stays silent rather than firing on a guess. The
+  statusline ctx meter also recolors on percentage rather than
+  absolute tokens so a 200k Sonnet session and a 1M Opus-1m
+  session signal danger at comparable points (green <50, yellow
+  <70, orange <85, red).
+- **Phase-exit prompt now fires once per phase.** Added a
+  `ready_emitted` flag on `MissionPhaseProgressEntry` so a phase
+  that has already surfaced `phase-ready-to-exit` stays silent on
+  subsequent task completions until the cursor advances or the
+  phase reopens. Stops the prompt-storm where every task
+  completion in a `gate=prompt` phase re-fired the operator-facing
+  surface even after the operator had already deferred.
+- **Phase-ready surface moved off Stop hook `decision: "block"`.**
+  Claude Code labels every Stop-hook block as "Stop hook error" in
+  the UI; that framing reads as a real failure for an
+  informational decision. The surface now flows through one of two
+  clean channels: (1) when the model calls `cairn_task_complete`
+  directly, the MCP response carries a `phase_ready_to_exit` block
+  with a literal `render_instruction` and the model invokes
+  `AskUserQuestion` in the same turn — no hook handoff; (2) when
+  the Stop-hook auto-graduator graduates a task (attestation
+  written without an explicit MCP call), it writes the hint to
+  `.cairn/sessions/<id>/phase-ready-pending.json` and emits a
+  non-blocking `systemMessage` operator notice. The
+  UserPromptSubmit hook reads the pending file on the next prompt
+  and injects via `additionalContext`.
+- **Phase-exit prompt option labels cleaned up.** Dropped the
+  `(choice: "exit")` tool-call tail visible in the AskUserQuestion
+  options, dropped the "Defer 24h" option from the surfaced UI
+  (still callable via direct MCP), and switched the question to
+  use the phase TITLE rather than the bare phase id.
+
+### Added
+
+- `cairn_task_complete` MCP response now includes a
+  `phase_ready_to_exit` block (mission/phase ids + titles + exit
+  criteria + a `render_instruction`) when the completion satisfies
+  a `gate=prompt` phase. The tool description directs the caller
+  to surface via `AskUserQuestion` in the same turn.
+- `phase-ready-surface.ts` — new module owning the Stop↔UPS
+  pending-file shuttle and the shared `renderPhaseReadyHint`.
+- `smoke-phase-ready-surface` — 5-step smoke covering the pending
+  file write/consume cycle, the operator-facing markdown render,
+  and end-to-end Stop→UPS injection.
+
 ## [0.10.4] — 2026-05-10
 
 ### Fixed

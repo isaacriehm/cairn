@@ -32,6 +32,8 @@ export interface CtxMeterInput {
   usedPct: number;
   /** absolute used tokens — keys the color threshold. */
   usedTokens: number;
+  /** absolute window size in tokens (CC's `context_window.total_tokens`). */
+  windowTokens: number;
 }
 
 /**
@@ -108,10 +110,10 @@ const ANSI_YELLOW = "\x1b[33m";
 const ANSI_ORANGE = "\x1b[38;5;208m";
 const ANSI_RED = "\x1b[31m";
 
-function ctxColor(usedTokens: number): string {
-  if (usedTokens < 100_000) return ANSI_GREEN;
-  if (usedTokens < 300_000) return ANSI_YELLOW;
-  if (usedTokens < 600_000) return ANSI_ORANGE;
+function ctxColor(pct: number): string {
+  if (pct < 50) return ANSI_GREEN;
+  if (pct < 70) return ANSI_YELLOW;
+  if (pct < 85) return ANSI_ORANGE;
   return ANSI_RED;
 }
 
@@ -119,7 +121,7 @@ export function renderCtxMeter(ctx: CtxMeterInput): string {
   const pct = Math.max(0, Math.min(100, Math.round(ctx.usedPct)));
   const filled = Math.floor(pct / 10);
   const bar = "█".repeat(filled) + "░".repeat(10 - filled);
-  return `${ctxColor(ctx.usedTokens)}${bar} ${pct}%${ANSI_RESET}`;
+  return `${ctxColor(pct)}${bar} ${pct}%${ANSI_RESET}`;
 }
 
 /**

@@ -170,23 +170,41 @@ function runSmoke(): void {
     console.log("  ✓ Step 6 — gc priority");
   }
 
-  // ── Step 7 — ctx meter renders + colors absolute-token thresholds ─
+  // ── Step 7 — ctx meter renders + colors percentage thresholds ────
+  // Color scales with CC's reported usedPct so a 200k Sonnet session
+  // and a 1M Opus-1m session signal danger at comparable percentages.
   {
-    const green = formatStatus(syntheticStatus(), { usedPct: 30, usedTokens: 60_000 });
-    assert(green.includes("\x1b[32m"), `Step 7: <100k used should be green, got ${green}`);
+    const green = formatStatus(syntheticStatus(), {
+      usedPct: 30,
+      usedTokens: 60_000,
+      windowTokens: 200_000,
+    });
+    assert(green.includes("\x1b[32m"), `Step 7: <50% should be green, got ${green}`);
     assert(green.includes("30%"), `Step 7: pct missing, got ${green}`);
 
-    const yellow = formatStatus(syntheticStatus(), { usedPct: 50, usedTokens: 200_000 });
-    assert(yellow.includes("\x1b[33m"), `Step 7: <300k used should be yellow, got ${yellow}`);
+    const yellow = formatStatus(syntheticStatus(), {
+      usedPct: 60,
+      usedTokens: 120_000,
+      windowTokens: 200_000,
+    });
+    assert(yellow.includes("\x1b[33m"), `Step 7: 50-70% should be yellow, got ${yellow}`);
 
-    const orange = formatStatus(syntheticStatus(), { usedPct: 50, usedTokens: 500_000 });
+    const orange = formatStatus(syntheticStatus(), {
+      usedPct: 78,
+      usedTokens: 156_000,
+      windowTokens: 200_000,
+    });
     assert(
       orange.includes("\x1b[38;5;208m"),
-      `Step 7: <600k used should be orange, got ${orange}`,
+      `Step 7: 70-85% should be orange, got ${orange}`,
     );
 
-    const red = formatStatus(syntheticStatus(), { usedPct: 70, usedTokens: 700_000 });
-    assert(red.includes("\x1b[31m"), `Step 7: ≥600k used should be red, got ${red}`);
+    const red = formatStatus(syntheticStatus(), {
+      usedPct: 92,
+      usedTokens: 184_000,
+      windowTokens: 200_000,
+    });
+    assert(red.includes("\x1b[31m"), `Step 7: ≥85% should be red, got ${red}`);
     console.log("  ✓ Step 7 — ctx meter color thresholds");
   }
 

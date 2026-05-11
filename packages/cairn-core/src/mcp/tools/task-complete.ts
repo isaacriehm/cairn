@@ -46,6 +46,44 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     return mcpError("INTERNAL_ERROR", result.message);
   }
 
+  // When the task graduating closed out a `gate=prompt` phase, the
+  // completion ALSO means the operator owes a phase-exit decision.
+  // Surface that inline in the tool response with a literal render
+  // instruction. The calling model invokes `AskUserQuestion` in the
+  // SAME turn — no hook handoff, no Stop-banner. The Stop hook's
+  // auto-graduator path still writes the pending file + a
+  // `systemMessage` warning so the operator knows to wake UPS on
+  // the next prompt when the model isn't in the loop.
+  const phaseReady = result.phase_ready_to_exit;
+  if (phaseReady !== null) {
+    return {
+      ok: true,
+      task_id: result.taskId,
+      outcome: result.outcome,
+      completed_at: result.completedAt,
+      moved_to: result.movedTo,
+      phase_ready_to_exit: {
+        mission_id: phaseReady.mission_id,
+        mission_title: phaseReady.mission_title,
+        phase_id: phaseReady.phase_id,
+        phase_title: phaseReady.phase_title,
+        exit_criteria: phaseReady.exit_criteria,
+        render_instruction: [
+          `The phase \`${phaseReady.phase_title}\` is ready to exit (all linked tasks graduated). Surface this question to the operator via \`AskUserQuestion\` BEFORE ending your turn:`,
+          ``,
+          `> Phase \`${phaseReady.phase_title}\` looks done. Move on?`,
+          `>`,
+          `> Exit criteria: ${phaseReady.exit_criteria}`,
+          `>`,
+          `> - [a] Mark phase done, advance to next phase`,
+          `> - [b] Keep working on this phase`,
+          ``,
+          `On [a], call \`cairn_mission_advance({phase_id: "${phaseReady.phase_id}", choice: "exit"})\`. On [b], call \`cairn_mission_advance({phase_id: "${phaseReady.phase_id}", choice: "not_yet"})\`.`,
+        ].join("\n"),
+      },
+    };
+  }
+
   return {
     ok: true,
     task_id: result.taskId,
@@ -58,7 +96,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
 export const taskCompleteTool: ToolDef<Input> = {
   name: "cairn_task_complete",
   description:
-    "Graduate an active task (`.cairn/tasks/active/<task_id>/`) to a terminal phase (succeeded / failed / aborted) and move its directory to `.cairn/tasks/done/`. Called by the reviewer subagent after writing attestation.yaml, by the cairn-direction skill on a confirmed pivot, or by the Stop-hook auto-graduator. Returns TASK_NOT_FOUND if the task was already completed.",
+    "Graduate an active task (`.cairn/tasks/active/<task_id>/`) to a terminal phase (succeeded / failed / aborted) and move its directory to `.cairn/tasks/done/`. Called by the reviewer subagent after writing attestation.yaml, by the cairn-direction skill on a confirmed pivot, or by the Stop-hook auto-graduator. Returns TASK_NOT_FOUND if the task was already completed. When the completion satisfies the active phase's exit criteria under `exit_gate=prompt`, the response includes a `phase_ready_to_exit` block carrying a literal `render_instruction` — the caller MUST surface the operator question via `AskUserQuestion` in the same turn before ending.",
   inputSchema: taskCompleteInput,
   handler,
 };
