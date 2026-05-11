@@ -26,38 +26,127 @@ import { traceCli } from "./trace.js";
 interface StatusLinePayload {
   sessionId: string | null;
   ctx: CtxMeterInput | null;
+  /** Raw stdin text — captured for the per-session diagnostic dump. */
+  rawText: string;
+  /** Why ctx parsing fell through; null when ctx parsed successfully. */
+  ctxReason: CtxParseReason | null;
 }
 
+/**
+ * Why `ctx` ended up null after decoding CC's statusline payload. Captured
+ * to `statusline-last.json` so operators can see which branch fired without
+ * having to instrument the CLI manually. Most fields exist because CC has
+ * shipped multiple statusline payload shapes over time and we need to spot
+ * which one is in play.
+ */
+type CtxParseReason =
+  | "empty-stdin"
+  | "json-parse-failed"
+  | "context-window-missing"
+  | "context-window-null"
+  | "context-window-not-object"
+  | "used-percentage-not-number"
+  | "context-window-size-not-number"
+  | "context-window-size-zero-or-negative";
+
 function decodePayload(text: string): StatusLinePayload {
-  if (text.length === 0) return { sessionId: null, ctx: null };
+  const base = { rawText: text };
+  if (text.length === 0) {
+    return { sessionId: null, ctx: null, ctxReason: "empty-stdin", ...base };
+  }
   let parsed: Record<string, unknown>;
   try {
     parsed = JSON.parse(text) as Record<string, unknown>;
   } catch {
-    return { sessionId: null, ctx: null };
+    return { sessionId: null, ctx: null, ctxReason: "json-parse-failed", ...base };
   }
   const sid = parsed["session_id"];
   const sessionId = typeof sid === "string" && sid.length > 0 ? sid : null;
 
-  // Single source of truth: Claude Code's `context_window` block with
-  // `remaining_percentage` + `total_tokens`. CC sets `total_tokens` to
-  // the active model's window (e.g. 200k Sonnet, 1M Opus-1m) so we
-  // trust it verbatim — no model-keyed fallback, no transcript parsing.
-  // If CC omits the block, ctx stays null and the Stop hook + meter
-  // skip the threshold check rather than firing on a guessed number.
-  const cw = parsed["context_window"];
+  // Source of truth: Claude Code's `context_window` block as shipped
+  // by CC v2.1.138+ — `context_window_size` is the model's window
+  // (e.g. 200k Sonnet, 1M Opus-1m) and `used_percentage` is the
+  // already-computed in-use share. Cairn trusts both verbatim — no
+  // model-keyed fallback, no transcript parsing. If CC omits the
+  // block, ctx stays null and the Stop hook + meter skip the
+  // threshold check rather than firing on a guessed number. The
+  // older `total_tokens`/`remaining_percentage`-only schema is not
+  // supported — operators who need ctx telemetry update CC.
   let ctx: CtxMeterInput | null = null;
-  if (cw !== null && typeof cw === "object") {
-    const w = cw as Record<string, unknown>;
-    const remaining = w["remaining_percentage"];
-    const total = w["total_tokens"];
-    if (typeof remaining === "number" && typeof total === "number" && total > 0) {
-      const usedPct = Math.max(0, Math.min(100, 100 - remaining));
-      const usedTokens = Math.round((total * usedPct) / 100);
-      ctx = { usedPct, usedTokens, windowTokens: total };
+  let ctxReason: CtxParseReason | null = null;
+  if (!("context_window" in parsed)) {
+    ctxReason = "context-window-missing";
+  } else {
+    const cw = parsed["context_window"];
+    if (cw === null) {
+      ctxReason = "context-window-null";
+    } else if (typeof cw !== "object") {
+      ctxReason = "context-window-not-object";
+    } else {
+      const w = cw as Record<string, unknown>;
+      const used = w["used_percentage"];
+      const windowSize = w["context_window_size"];
+      if (typeof used !== "number") {
+        ctxReason = "used-percentage-not-number";
+      } else if (typeof windowSize !== "number") {
+        ctxReason = "context-window-size-not-number";
+      } else if (windowSize <= 0) {
+        ctxReason = "context-window-size-zero-or-negative";
+      } else {
+        const usedPct = Math.max(0, Math.min(100, used));
+        const usedTokens = Math.round((windowSize * usedPct) / 100);
+        ctx = { usedPct, usedTokens, windowTokens: windowSize };
+      }
     }
   }
-  return { sessionId, ctx };
+  return { sessionId, ctx, ctxReason, ...base };
+}
+
+/**
+ * Per-session statusline diagnostic. Writes the raw stdin payload plus
+ * the parse outcome to `.cairn/sessions/<id>/statusline-last.json` so
+ * operators can see what CC actually shipped on the most-recent tick.
+ * Resolves the long-running "ctx meter is missing for this session"
+ * mystery: instead of guessing whether CC omitted the block, malformed
+ * it, or the CLI rejected it, the file shows the raw + the rejection
+ * reason. Overwritten every tick; no growth.
+ *
+ * Best-effort — swallow any I/O error since statusline must never
+ * block the prompt. Caller passes the already-resolved `repoRoot` so
+ * the diagnostic lands in the same `.cairn/` we'd use for ctx.json.
+ */
+function persistStatuslineDiagnostic(
+  repoRoot: string,
+  sessionId: string,
+  payload: StatusLinePayload,
+): void {
+  if (!existsSync(join(repoRoot, ".cairn"))) return;
+  try {
+    const dir = join(repoRoot, ".cairn", "sessions", sessionId);
+    mkdirSync(dir, { recursive: true });
+    // Cap raw text to 8 KiB so a runaway CC payload can't blow the
+    // file up; statusline payloads are typically <2 KiB in practice.
+    const rawCapped =
+      payload.rawText.length > 8192
+        ? `${payload.rawText.slice(0, 8192)}…<truncated>`
+        : payload.rawText;
+    const snapshot = {
+      ts: Date.now(),
+      session_id: sessionId,
+      ctx_parsed: payload.ctx !== null,
+      ctx_reason: payload.ctxReason,
+      ctx: payload.ctx,
+      raw: rawCapped,
+      raw_bytes: payload.rawText.length,
+    };
+    writeFileSync(
+      join(dir, "statusline-last.json"),
+      `${JSON.stringify(snapshot, null, 2)}\n`,
+      "utf8",
+    );
+  } catch {
+    // best-effort
+  }
 }
 
 /**
@@ -201,6 +290,7 @@ switch (subcommand) {
     const sessionIdIdx = rest.indexOf("--session-id");
     let sessionId: string | null = null;
     let ctx: CtxMeterInput | null = null;
+    let payload: StatusLinePayload | null = null;
     if (sessionIdIdx !== -1 && sessionIdIdx + 1 < rest.length) {
       const candidate = rest[sessionIdIdx + 1];
       if (candidate === undefined) {
@@ -209,12 +299,21 @@ switch (subcommand) {
       }
       sessionId = candidate;
     } else if (!process.stdin.isTTY) {
-      const payload = await readStatusLinePayload();
+      payload = await readStatusLinePayload();
       sessionId = payload.sessionId;
       ctx = payload.ctx;
     }
     if (sessionId !== null && ctx !== null) {
       persistCtxSnapshot(projectRoot, sessionId, ctx);
+    }
+    // Diagnostic dump — captures the raw CC stdin payload + parse outcome
+    // so an operator who sees "no ctx meter" can read the snapshot at
+    // `.cairn/sessions/<id>/statusline-last.json` and learn whether CC
+    // shipped the `context_window` block at all, what fields it carried,
+    // and which decode branch rejected it. Only writes when a payload was
+    // actually received via stdin (skipped on --session-id-only calls).
+    if (sessionId !== null && payload !== null) {
+      persistStatuslineDiagnostic(projectRoot, sessionId, payload);
     }
     process.stdout.write(`${readStatusForCLI(projectRoot, sessionId, ctx ?? undefined)}\n`);
     process.exit(0);
