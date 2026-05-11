@@ -4,6 +4,46 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.6] — 2026-05-11
+
+### Fixed
+
+- **Autonomous mission execution: `cairn_task_complete` now returns
+  a `next_action_hint` block** so the model has a concrete next
+  step after each successful task instead of ending the turn and
+  waiting for the operator. The hint carries the active mission
+  id, the cursor phase + title + exit criteria, and the list of
+  tasks already graduated under that phase (so the model doesn't
+  re-spawn already-done work). The `instruction` field is a
+  literal directive: either call `cairn_task_create` for the next
+  pending PR named in the exit criteria, or call
+  `cairn_mission_advance({choice: "exit"})` when the exit criteria
+  is fully covered but the auto-graduator hasn't moved the cursor
+  yet, or end the turn cleanly when the mission has closed. Three
+  kinds emitted: `continue-phase` (more work in the current
+  cursor), `next-phase` (cursor auto-advanced under `exit_gate:
+  auto`), `mission-complete` (last phase closed). The hint is
+  suppressed when `phase_ready_to_exit` already owns the response
+  (the AskUserQuestion takes precedence so the model doesn't race
+  the operator prompt with an auto-create). Resolves the
+  "autonomous mode keeps blocking after each task" gap where the
+  model had no programmatic way to look up the next mission task
+  and would end its turn after every `cairn_task_complete` call.
+- **Stop hook now surfaces stalled `running` tasks.** A new
+  `scanStalledRunningTasks` pass detects tasks stuck in
+  `phase: running` with no attestation and no `status.yaml`
+  activity for 30 min+ (upper-bounded at 7 days). These are
+  tasks the autonomous flow finished but skipped the
+  reviewer-spawn step on, so the auto-graduator never fired and
+  the task accumulated as an orphan. The hint surfaces only when
+  no higher-priority surface (reviewer-pending, ctx-threshold,
+  phase-ready) already owns the reason channel, and instructs the
+  operator via `AskUserQuestion`: `[a]` close all as succeeded,
+  `[b]` spawn reviewer for each, `[c]` keep open. The hint
+  honors the existing `review` defer state — picking "defer" on
+  a reviewer-pending prompt suppresses the stalled prompt for
+  the same task ids too.
+
 ## [0.11.5] — 2026-05-11
 
 ### Fixed

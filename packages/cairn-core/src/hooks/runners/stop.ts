@@ -220,6 +220,39 @@ export async function runStopHook(): Promise<void> {
         );
       }
 
+      // Stalled-task scanner — surfaces tasks stuck in phase=running
+      // with no attestation for 30min+. Catches the failure mode where
+      // the autonomous flow finished the work but skipped spawning the
+      // reviewer subagent (no attestation → auto-graduator never fires
+      // → task accumulates as orphaned). Only fires when no other
+      // higher-priority surface (reviewer hint, ctx threshold) already
+      // owns the reason channel — stalled-task triage is informational
+      // catch-up, not blocking.
+      if (reason.length === 0) {
+        try {
+          const stalled = scanStalledRunningTasks(repoRoot);
+          if (stalled.length > 0) {
+            const reviewDefer = readDeferState(repoRoot, "review");
+            const suppressed =
+              reviewDefer !== null &&
+              isDeferActive(reviewDefer, new Date(), {
+                kind: "task_ids",
+                values: stalled.map((t) => t.task_id),
+              });
+            if (suppressed) {
+              warnings.push(`stalled_suppressed_until:${reviewDefer.deferred_at}`);
+            } else {
+              reason = renderStalledTasksHint(stalled);
+              warnings.push(`stalled_running_tasks:${stalled.length}`);
+            }
+          }
+        } catch (err) {
+          warnings.push(
+            `stalled_scan_failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+
       // Context-threshold check — fires inline AskUserQuestion prompt
       // when the transcript token estimate crosses the configured
       // window fraction. Stamps `ctx-threshold-warned.json` on hit so
@@ -464,6 +497,154 @@ function scanPendingReviews(repoRoot: string): PendingReview[] {
     });
   }
   return out;
+}
+
+interface StalledTask {
+  task_id: string;
+  title: string;
+  module: string | null;
+  idle_minutes: number;
+}
+
+/**
+ * Scan `tasks/active/` for tasks stuck in `phase: running` with no
+ * attestation and no recent activity. The auto-graduator only fires
+ * when a reviewer subagent has written attestation.yaml; tasks that
+ * were committed manually (or where the autonomous flow skipped the
+ * reviewer-spawn step) never graduate. They accumulate silently and
+ * resurface only on a fresh session as "wait, why are these still
+ * open?".
+ *
+ * Definition of stalled:
+ *   - phase = "running"
+ *   - tightened spec exists
+ *   - no `attestation.yaml`
+ *   - no `subagents/<id>/attestation.yaml` either (else the regular
+ *     auto-graduator path will transition it)
+ *   - `status.yaml` mtime > 30min ago (recent enough activity stays
+ *     under the radar to avoid spamming during in-flight work)
+ *   - upper bound 7d so we don't surface long-archived noise that
+ *     the operator already mentally retired
+ *
+ * Returned list drives the Stop-hook hint that asks the operator to
+ * triage stalled tasks — close, abort, or keep open while spawning
+ * a reviewer.
+ */
+function scanStalledRunningTasks(
+  repoRoot: string,
+  nowMs: number = Date.now(),
+): StalledTask[] {
+  const activeDir = join(repoRoot, ".cairn", "tasks", "active");
+  if (!existsSync(activeDir)) return [];
+  const out: StalledTask[] = [];
+  const idleThresholdMs = 30 * 60 * 1000;
+  const upperBoundMs = 7 * 24 * 60 * 60 * 1000;
+
+  let entries;
+  try {
+    entries = readdirSync(activeDir, { withFileTypes: true, encoding: "utf8" });
+  } catch {
+    return [];
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const taskId = entry.name;
+    const taskDir = join(activeDir, taskId);
+    const tightenedSpec = join(taskDir, "spec.tightened.md");
+    if (!existsSync(tightenedSpec)) continue;
+    if (existsSync(join(taskDir, "attestation.yaml"))) continue;
+
+    // If a subagent attestation already lives under subagents/, the
+    // regular auto-graduator owns the transition. Skip — surfacing
+    // would race that path.
+    const subagentsDir = join(taskDir, "subagents");
+    if (existsSync(subagentsDir)) {
+      try {
+        const subagentEntries = readdirSync(subagentsDir, {
+          withFileTypes: true,
+          encoding: "utf8",
+        });
+        let hasSubagentAttestation = false;
+        for (const sub of subagentEntries) {
+          if (sub.isDirectory() && existsSync(join(subagentsDir, sub.name, "attestation.yaml"))) {
+            hasSubagentAttestation = true;
+            break;
+          }
+        }
+        if (hasSubagentAttestation) continue;
+      } catch {
+        // continue — best-effort
+      }
+    }
+
+    if (readTaskPhase(taskDir) !== "running") continue;
+
+    const statusPath = join(taskDir, "status.yaml");
+    let statusMtime = 0;
+    try {
+      statusMtime = statSync(statusPath).mtimeMs;
+    } catch {
+      continue;
+    }
+
+    const idleMs = nowMs - statusMtime;
+    if (idleMs < idleThresholdMs) continue;
+    if (idleMs > upperBoundMs) continue;
+
+    let title = taskId;
+    let module: string | null = null;
+    try {
+      const raw = readFileSync(statusPath, "utf8");
+      for (const line of raw.split(/\r?\n/)) {
+        const t = line.match(/^title:\s*(.+)$/);
+        if (t && t[1] !== undefined) title = t[1].trim().replace(/^['"]|['"]$/g, "");
+        const m = line.match(/^module:\s*(.+)$/);
+        if (m && m[1] !== undefined) module = m[1].trim().replace(/^['"]|['"]$/g, "");
+      }
+    } catch {
+      // fall through with id-as-title
+    }
+
+    out.push({
+      task_id: taskId,
+      title,
+      module,
+      idle_minutes: Math.round(idleMs / 60000),
+    });
+  }
+
+  return out;
+}
+
+function renderStalledTasksHint(stalled: StalledTask[]): string {
+  if (stalled.length === 0) return "";
+  const noun = stalled.length === 1 ? "task" : "tasks";
+  const lines: string[] = [
+    `## Cairn — ${stalled.length} stalled ${noun}`,
+    ``,
+    `${stalled.length} active ${noun} idle 30min+ with no attestation. ` +
+      `Either the autonomous flow skipped the reviewer-spawn step, or the ` +
+      `session was interrupted mid-task. Triage before continuing:`,
+    ``,
+  ];
+  for (const t of stalled) {
+    const mod = t.module !== null ? ` [${t.module}]` : "";
+    lines.push(`- \`${t.task_id}\` — ${t.title}${mod} (idle ${t.idle_minutes}m)`);
+  }
+  lines.push("");
+  lines.push("Render this question via `AskUserQuestion` — do not skip:");
+  lines.push("");
+  lines.push(`> ${stalled.length} stalled ${noun}. Pick once for all (or address one at a time after):`);
+  lines.push(`>`);
+  lines.push(`> - [a] Mark all as \`succeeded\` — work landed but the reviewer skipped attestation. Closes each via \`cairn_task_complete\`.`);
+  lines.push(`> - [b] Spawn reviewer subagent for each — proper attestation flow, slower but correct.`);
+  lines.push(`> - [c] Keep open — they're still active; you'll resume the work.`);
+  lines.push(``);
+  lines.push("On [a], call `cairn_task_complete({task_id, outcome: \"succeeded\", summary: \"closing stalled task — work landed via prior session\"})` for each id above.");
+  lines.push("On [b], dispatch the `reviewer` subagent for each task in turn (one task brief per Task call).");
+  lines.push("On [c], end the turn — the prompt re-fires only when status.yaml stays idle past the next 30min mark.");
+  return lines.join("\n");
 }
 
 /**
