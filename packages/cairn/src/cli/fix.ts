@@ -268,9 +268,13 @@ async function fixDecStrip(repoRoot: string, dryRun: boolean): Promise<void> {
 async function fixClaudeRules(repoRoot: string, dryRun: boolean): Promise<void> {
   const targetRel = ".claude/rules/cairn.md";
   const targetAbs = join(repoRoot, targetRel);
-  // Locate the bundled template alongside the gitignore template.
+  // Locate the bundled template. In the Claude Code plugin bundle layout
+  // (esbuild + dist/templates mirror) the template sits at
+  // `here/templates/.claude/rules/cairn.md`; in the workspace dev layout
+  // it's reachable from one of the cairn-core/templates ancestors.
   const here = dirname(fileURLToPath(import.meta.url));
   const candidates = [
+    join(here, "templates", ".claude", "rules", "cairn.md"),
     join(here, "..", "..", "..", "cairn-core", "templates", ".claude", "rules", "cairn.md"),
     join(here, "..", "..", "..", "..", "cairn-core", "templates", ".claude", "rules", "cairn.md"),
     join(here, "..", "..", "templates", ".claude", "rules", "cairn.md"),
@@ -382,12 +386,14 @@ async function fixGitignore(repoRoot: string, dryRun: boolean): Promise<void> {
     process.exit(2);
   }
   // Resolve the bundled template via the cli's own location. In the
-  // npm-published layout dist/cli/index.js sits next to the cairn-core
-  // package; the templates live under cairn-core/templates/. In the
-  // Claude Code plugin bundle layout, the template is shipped under
-  // dist/templates/. Try both — fail loudly if neither exists.
+  // Claude Code plugin bundle layout (esbuild + dist/templates mirror)
+  // the template is `here/templates/.cairn/.gitignore`. In the
+  // workspace dev layout it's reachable from one of the
+  // cairn-core/templates ancestors. Try the bundled path first so a
+  // plugin install never falls through to a four-line error.
   const here = dirname(fileURLToPath(import.meta.url));
   const candidates = [
+    join(here, "templates", ".cairn", ".gitignore"),
     join(here, "..", "..", "..", "cairn-core", "templates", ".cairn", ".gitignore"),
     join(here, "..", "..", "..", "..", "cairn-core", "templates", ".cairn", ".gitignore"),
     join(here, "..", "..", "templates", ".cairn", ".gitignore"),

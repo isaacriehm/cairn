@@ -4,6 +4,25 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.5] — 2026-05-11
+
+### Fixed
+
+- **`cairn fix gitignore` and `cairn fix claude-rules` now find their
+  bundled templates when invoked from the Claude Code plugin install
+  path.** Both commands resolved templates via relative-ancestor walks
+  off `import.meta.url`, but every candidate started two-or-more
+  parent directories above `dist/cli.mjs` — none matched the actual
+  bundle layout (`dist/templates/.cairn/.gitignore` and
+  `dist/templates/.claude/rules/cairn.md`, both populated by the
+  build-bundle mirror). Operators running
+  `node ~/.claude/plugins/cache/isaacriehm-cairn/cairn/<ver>/dist/cli.mjs fix gitignore`
+  saw `cannot locate bundled .cairn/.gitignore template (looked in …)`
+  with four wrong paths and no way forward. Both candidate lists now
+  start with `here/templates/<…>` so the plugin-install path resolves
+  on the first probe; the source-layout candidates stay as fallback
+  for `pnpm` workspace usage.
+
 ## [0.11.4] — 2026-05-11
 
 ### Fixed
