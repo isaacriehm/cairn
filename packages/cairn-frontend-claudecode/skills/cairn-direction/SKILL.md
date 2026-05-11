@@ -6,27 +6,29 @@ when_to_use: |
 
     1. Task verbs — "build", "add", "fix", "refactor", "implement",
        "change", "rip out", "wire up", "remove".
-    2. Bug reports — "X broken", "users get Y when should get Z",
-       "production fails on …", "crashes when …".
+    2. Bug reports — "X broken", "production fails on …", "crashes
+       when …".
     3. Problem observations — "X leaks Y", "endpoint returns wrong
-       data", "tokens older than 24h still authenticate".
+       data".
     4. Modal-verb requests — "should reject", "must enforce".
     5. Symptom+cause — operator names what's wrong + where, no
        explicit "fix this" verb needed.
+    6. Mission continuation — active mission + short prompt like
+       "continue", "go", "next", "do it", "keep going", "ship it",
+       or autonomy phrase ("autonomously", "until ctx",
+       "don't pause"). Vibe coders type "continue" expecting work
+       to happen — Step 2.6 handles the auto-pick.
 
-  Bug reports + observations ARE tasks. Conservative trigger
-  defeats the spec-tightener pipeline.
+  Bug reports + observations ARE tasks.
 
   Skip ONLY when:
-    - Pure info question ("what does X do", "where Z defined") no
-      implied change.
-    - Operator opted out: "skip cairn", "just do it".
-    - Trivial one-line edit fully specified ("rename foo to bar in
-      baz.ts:42").
+    - Pure info question ("what does X do", "where Z defined") AND
+      no active mission to continue.
+    - Operator opted out: "skip cairn", "just do it" (pinpointed).
+    - Trivial fully-specified edit ("rename foo to bar at f.ts:42").
 
-  **Active-task case is NOT a skip.** When a task exists at
-  `.cairn/tasks/active/<id>/` with `phase: running`, engage the
-  pivot-detection branch (Step 0.5).
+  Active-task case is NOT a skip — engage Step 0.5 (pivot
+  detection).
 ---
 
 # Skill: cairn-direction
@@ -339,80 +341,136 @@ cursor phase is the anchor.
 phase): no extra prompt; default cursor pickup handles everything.
 The task gets `mission_id` + `phase_id` stamps automatically.
 
-## Step 2.6 — autonomy intent detection (one-time per mission)
+## Step 2.6 — autonomous mission continuation (vibe-coder mode)
 
-Operators sometimes ask for the whole mission to be executed
-without further prompts ("just execute autonomously", "keep going",
-"run the whole mission", "don't pause", "ship it end-to-end").
-When that intent collides with a mission whose `exit_gate` is
-`prompt`, every phase boundary blocks on `AskUserQuestion` — the
-operator effectively can't get the autonomous behavior they asked
-for. This step offers the one-time fix: flip the mission to
-`exit_gate: auto`.
+Operators are often "vibe coders" who don't know what a mission is,
+don't know PR names like `3.5-BH1`, and don't read mission internals.
+They type `continue` or `go` and expect the next chunk of work to
+just happen. The autonomy-config friction (AskUserQuestion about
+`exit_gate`, AskUserQuestion about which PR) defeats the point.
+
+This step replaces both questions with **silent action**: detect the
+continuation intent, flip the mission to `exit_gate: auto` if it
+isn't already, auto-pick the next pending PR from the cursor phase's
+exit criteria, and skip straight to spec tightening.
 
 Trigger gate — ALL must hold:
 
-1. `cairn_mission_get` returned `active: true` (handled in Step 2.5).
-2. The response's `exit_gate` field equals `"prompt"`.
-3. The operator's current prompt contains an autonomy phrase. Match
-   any of these (case-insensitive substring):
-   - "execute autonomously"
-   - "operate autonomously"
-   - "run autonomously"
-   - "just keep going"
-   - "don't pause"
-   - "do not pause"
-   - "don't stop"
-   - "do not stop"
-   - "no questions"
-   - "don't ask"
-   - "ship the whole"
-   - "ship the entire"
-   - "execute the whole mission"
-   - "run the entire mission"
-   - "until context"
-   - "until ctx"
-4. `.cairn/missions/<mission_id>/.autonomy-prompted` does NOT exist
-   (the file is the one-time marker — once stamped, this step is a
-   no-op for that mission until the operator manually removes the
-   file or starts a new mission).
+1. `cairn_mission_get` returned `active: true`.
+2. No active task in `.cairn/tasks/active/` (Step 0.5 already
+   determined this; if Step 0.5 routed you here, an active task
+   would have taken the "continue prior work" path instead).
+3. Operator's prompt matches a continuation intent. Match any of:
+   - Bare continuation (case-insensitive, ≤30 chars after trim):
+     `continue`, `go`, `next`, `more`, `do it`, `run it`,
+     `keep going`, `ship it`, `proceed`, `more please`,
+     `the mission`, `execute`, `start`, `begin`
+   - Autonomy phrase (case-insensitive substring, any length):
+     `execute autonomously`, `operate autonomously`,
+     `run autonomously`, `just keep going`, `don't pause`,
+     `do not pause`, `don't stop`, `do not stop`, `no questions`,
+     `don't ask`, `ship the whole`, `ship the entire`,
+     `execute the whole mission`, `run the entire mission`,
+     `until context`, `until ctx`, `autonomously`
 
-When all four hit, surface a SINGLE `AskUserQuestion`:
+   Do NOT trigger on bare `yes` / `ok` / `sure` — those are
+   typically answers to AskUserQuestion prompts from the prior
+   turn, not mission continuation requests.
 
-> The mission `<mission_id>` is configured with `exit_gate: prompt`
-> — every phase boundary will ask before advancing, which blocks
-> the autonomous run you requested. Flip the mission to
-> `exit_gate: auto`?
->
-> - `[a]` yes, flip to auto — cursor auto-advances across phase
->   boundaries silently; the model self-chains via the
->   `next_action_hint` returned by `cairn_task_complete`. Persists
->   across sessions via `roadmap.md`.
-> - `[b]` no, keep prompts — phase boundaries still ask. This run
->   stays semi-autonomous (within-phase chaining works, phase
->   exits prompt). Use this when phase exits genuinely need a
->   sanity check.
+When all three hit, proceed silently:
 
-Dispatch:
+### 2.6a — flip `exit_gate` if needed (one-time, no AskUserQuestion)
 
-- On `[a]`: call
-  `cairn_mission_set_exit_gate({exit_gate: "auto"})`. Then write the
-  marker file via the `Write` tool — path
-  `.cairn/missions/<mission_id>/.autonomy-prompted`, body the
-  current ISO timestamp. Render a one-line confirmation: "✓ exit
-  gate flipped to auto. Phase boundaries will advance silently."
-- On `[b]`: write the marker only (no MCP call). Render: "Keeping
-  `exit_gate: prompt`. Won't ask again this mission."
+If `cairn_mission_get` returned `exit_gate: "prompt"` AND
+`.cairn/missions/<mission_id>/.autonomy-prompted` does NOT exist:
 
-The marker prevents the question from re-firing every prompt for
-the same mission. Operators who change their mind can `rm
-.cairn/missions/<mission_id>/.autonomy-prompted` to re-enable the
-question.
+```
+cairn_mission_set_exit_gate({exit_gate: "auto"})
+```
 
-Skip silently when any trigger gate condition fails. Do NOT ask
-when the operator's prompt is a normal task instruction without an
-autonomy phrase — the default-prompt behavior is the conservative
-right answer for everyday work.
+Then write the marker file (Write tool, path
+`.cairn/missions/<mission_id>/.autonomy-prompted`, body the current
+ISO timestamp). Surface ONE LINE:
+
+```
+Mission set to auto-advance — phase boundaries won't pause.
+```
+
+No AskUserQuestion. The operator just told you to continue; they
+don't want a config confirmation. The marker prevents this step from
+firing again for the same mission (operators who change their mind
+can `rm .cairn/missions/<mission_id>/.autonomy-prompted`).
+
+When the marker already exists OR `exit_gate` was already `auto`,
+skip the flip silently and move to 2.6b.
+
+### 2.6b — auto-pick the next pending PR from exit_criteria
+
+Read the cursor phase from `cairn_mission_get`:
+
+- `cursor.active_phase` → phase id
+- `cursor.active_phase_exit_criteria` (or look it up in
+  `phases[<active_phase>].exit_criteria` from the same response)
+
+Extract PR slugs from the exit_criteria prose. Pattern:
+`\d+\.\d+-[A-Z]+\d+` (e.g. `3.5-BH1`, `3.5-OP1`, `3.5-LR1`).
+Preserve order — the operator-authored exit_criteria lists PRs in
+intended execution order.
+
+For each PR slug, check whether it has already graduated. A PR is
+considered graduated when any task in
+`phase_progress[<active_phase>].task_ids` has a `done/<task_id>/`
+directory whose `status.yaml` contains a `title` or `id`
+referencing the PR's bare token (e.g. `bh1`, case-insensitive).
+
+Pick the FIRST PR slug whose bare token is NOT in the graduated set.
+This is the next task to spawn.
+
+When the exit_criteria has no PR-shaped tokens (free-form text),
+infer the next deliverable from the prose — pick the first
+sentence-clause that names a concrete output ("BullMQ queue", "AI
+follow-up", etc.). Use it as the task `slug` + `title`. The vibe
+coder doesn't care that you inferred; they care that work starts.
+
+### 2.6c — render one-line status, then jump to Step 3
+
+Surface a single line:
+
+```
+Continuing mission `<mission_id>` → starting `<pr-or-deliverable>`.
+```
+
+Then skip Steps 1, 2, 2.5 (all handled implicitly here) and proceed
+to **Step 3 — write the tightened spec**. Use the picked PR slug as
+the task `slug`, the PR's role from exit_criteria as the `title`,
+and the phase's overall goal as the `goal`. `cairn_task_create`
+auto-stamps `mission_id` and `phase_id` from the cursor.
+
+After dispatch + completion, `cairn_task_complete` returns a
+`next_action_hint` block that tells the model what's next — another
+PR in the same phase, the first PR of an auto-advanced next phase,
+or "mission complete". The model self-chains via that hint without
+returning here, so a single `continue` from the operator covers the
+entire remaining mission (modulo ctx-window limits).
+
+### 2.6d — when does this step yield to the operator?
+
+Yield ONLY when:
+
+- The phase's exit_criteria has no PR slugs AND the prose is too
+  ambiguous to infer a concrete deliverable. Surface ONE
+  `AskUserQuestion` asking the operator to name what's next.
+- A spawned subagent reports a failure that needs operator review
+  (the reviewer's normal attestation path handles this).
+- Context approaches the configured threshold (the Stop hook's
+  ctx-threshold surface handles this independently).
+
+Otherwise, keep going. The vibe coder asked for autonomy; deliver
+it.
+
+Skip this step silently when the trigger gate fails. Normal
+cairn-direction flow (Steps 1+ on a code-change prompt) still works
+as before.
 
 ## Step 3 — write the tightened spec (ALWAYS, server-enforced)
 
