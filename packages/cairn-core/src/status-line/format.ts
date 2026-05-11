@@ -38,20 +38,22 @@ export interface CtxMeterInput {
 
 /**
  * Mission-cursor segment input. Rendered as
- * `✓ <slug> · <phase_id> (N/M)` between the signal and the ctx meter
- * when `MissionCursorInput` is supplied. The slug auto-truncates with
- * `…` so the segment stays inside ~40 chars.
+ * `<phase_label> · <done> of <total>` between the signal and the
+ * ctx meter when supplied. The phase label is the cursor phase's
+ * human title trimmed to ~22 chars at the first `:` / `(` / `+`
+ * boundary, so an operator-readable "Wave 4: behavior" surfaces
+ * instead of the internal phase id ("wave4-behavior") or the
+ * never-disambiguating mission slug.
  */
 export interface MissionCursorInput {
-  /** Slug portion of the mission id (between `MIS-` and `-<hash7>`). */
-  slug: string;
-  phase_id: string;
+  /** Human-readable cursor phase title from the roadmap. */
+  phase_title: string;
   done: number;
   total: number;
 }
 
-const MISSION_SEGMENT_BUDGET = 40;
 const TASK_SEGMENT_BUDGET = 45;
+const MISSION_PHASE_LABEL_BUDGET = 22;
 
 /**
  * Strip the slug from a `TSK-<slug>-<7hex>` id, keeping the prefix +
@@ -96,12 +98,29 @@ export function renderTaskSegment(
 }
 
 export function renderMissionSegment(m: MissionCursorInput): string {
-  const counter = `(${m.done}/${m.total})`;
-  const fixed = ` · ${m.phase_id} ${counter}`;
-  // Slug trims to leave room for "✓ " (2) + fixed
-  const slugBudget = Math.max(4, MISSION_SEGMENT_BUDGET - (2 + fixed.length));
-  const slug = m.slug.length > slugBudget ? `${m.slug.slice(0, slugBudget - 1)}…` : m.slug;
-  return `✓ ${slug}${fixed}`;
+  const label = shortenPhaseTitle(m.phase_title);
+  return `${label} · ${m.done} of ${m.total}`;
+}
+
+/**
+ * Compact the cursor phase title to a glanceable label. Cuts at the
+ * first `:`, `(`, or `+` boundary (operators write
+ * `"Wave 4: behavior + org-pattern + …"` style titles where the
+ * leading segment is the clear short name), then ellipsis-truncates
+ * to `MISSION_PHASE_LABEL_BUDGET` chars. Falls back to the raw
+ * (truncated) title when no boundary char appears.
+ */
+function shortenPhaseTitle(title: string): string {
+  const trimmed = title.trim();
+  if (trimmed.length === 0) return "phase";
+  const cutAt = Math.min(
+    ...[":", "(", "+"]
+      .map((ch) => trimmed.indexOf(ch))
+      .filter((i) => i > 0),
+  );
+  const head = Number.isFinite(cutAt) ? trimmed.slice(0, cutAt).trimEnd() : trimmed;
+  if (head.length <= MISSION_PHASE_LABEL_BUDGET) return head;
+  return `${head.slice(0, MISSION_PHASE_LABEL_BUDGET - 1).trimEnd()}…`;
 }
 
 const ANSI_RESET = "\x1b[0m";

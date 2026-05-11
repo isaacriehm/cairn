@@ -78,6 +78,135 @@ codebase, treat it as a request to fix.
 deciding what to do. Cairn must help the operator graduate or pivot
 the existing task, not silently hide.
 
+## Step 0.4 — operator-rejection capture (auto-learn from "bad")
+
+When the operator pushes back on prior work ("bad, I don't like X",
+"stop using Y", "never do Z again", "remove that cast", "that's
+wrong"), they're surfacing a project rule that isn't yet codified.
+If you only apply the local fix and move on, the same pattern will
+re-appear next session and the operator will catch it again.
+Capture the rejection as a draft DEC so the rule materializes into
+ground state — sensor + reviewer + agent SessionStart context all
+read DECs, so a once-rejected pattern stays rejected.
+
+Run this step BEFORE Step 0.5 (pivot detection) and BEFORE the
+main direction flow. It's additive — it does not replace whatever
+fix the operator's prompt also requests; you still apply that
+fix in the same turn after capturing the rejection.
+
+Trigger gate — ALL must hold:
+
+1. Operator's current prompt contains a rejection signal
+   (case-insensitive substring match):
+   - `bad,` / `bad.` / `is bad` / `was bad` (as a verdict — not
+     embedded in words like "badge")
+   - `don't like` / `do not like` / `dislike` / `i hate`
+   - `stop using` / `don't use` / `do not use` / `never use`
+   - `avoid` (as a directive)
+   - `remove that` / `kill that` / `kill the`
+   - `that's wrong` / `that is wrong` / `wrong approach`
+   - `no, ` as a standalone sentence starter rejecting prior work
+2. The prior assistant turn produced visible code or a concrete
+   pattern (file edit, diff, code snippet, MCP tool call output).
+   Skip when the rejection is about a question or proposal, not
+   shipped code.
+3. The rejection points at an extractable pattern — a specific
+   identifier, token sequence, or code shape you can encode as a
+   regex. Skip vague "this whole thing is bad" rejections with no
+   anchor (they need conversational follow-up, not a DEC).
+
+When all three hit, capture before doing anything else:
+
+### 0.4a — extract the pattern
+
+Read the prior turn's diff or proposed code. Identify the exact
+shape the operator rejected:
+
+- Concrete regex that catches the shape (e.g.
+  `\bas\s+unknown\s+as\b` for an "as unknown as" cast rejection,
+  `@ts-ignore` for ts-ignore rejection,
+  `console\.log` for stray console-log rejection).
+- Scope globs where the rule applies (default to a sensible
+  language-wide glob — `**/*.ts` / `**/*.tsx` for TypeScript,
+  `**/*.py` for Python, etc.). When the rejection was in a
+  specific subsystem and the operator's language scopes it
+  there ("don't do this in the API layer"), narrow the globs.
+- A one-line rationale (operator's reason, or your best
+  inference from context).
+
+When you cannot extract a concrete regex within ~30s of
+reasoning, skip this step — the rejection is too vague.
+Conversationally acknowledge and apply the local fix; do NOT
+draft a DEC with a hand-wavy assertion.
+
+### 0.4b — draft the DEC
+
+Call `cairn_record_decision` with the inbox-targeted shape (target
+defaults to `"inbox"` so the entry lands as a draft in
+`.cairn/ground/decisions/_inbox/` for operator review):
+
+```
+cairn_record_decision({
+  title: "Reject `<rejected pattern>`",
+  summary: "<one-line rationale — operator's reason or inferred>",
+  scope_globs: [<extracted globs>],
+  body_markdown: <markdown body — see template below>,
+  assertions: [{
+    id: "a1",
+    kind: "text_must_not_match",
+    pattern: "<extracted regex>",
+    in_globs: [<extracted globs>],
+  }],
+})
+```
+
+`body_markdown` template:
+
+```
+## Decision
+
+Reject `<pattern>` in <scope>. Operator flagged the shape inline:
+"<verbatim rejection quote, trimmed to ~80 chars>".
+
+## Why
+
+<one-line rationale — operator's reason or inferred>.
+
+## Enforcement
+
+Pre-commit sensor + reviewer subagent diff scan via assertion
+`a1` (text_must_not_match). Any commit introducing this pattern
+blocks unless a paired `// cairn-allow: <reason>` justification
+sits on the same line.
+```
+
+### 0.4c — surface ONE LINE, then continue
+
+After the tool call returns successfully:
+
+```
+Captured rejection → draft `DEC-<id>` queued for review (`/cairn-attention`).
+```
+
+Then continue the normal direction flow (Step 0.5 → Step 1 →
+…). The operator's current-turn fix request still needs handling
+— don't end the turn on the capture line.
+
+### 0.4d — duplicate-guard
+
+Before drafting, do a quick check that the same pattern isn't
+already a DEC. Call `cairn_search({query: "<the regex or token>",
+kind: "decision"})` and skip the draft when a DEC with the same
+`assertion.pattern` already exists in `accepted` status. Surface:
+
+```
+Pattern already in DEC-<existing-id>; not re-drafting.
+```
+
+This keeps the inbox clean across multi-session rejection
+volleys (operator rejects the same thing twice → one DEC, not
+two duplicate drafts).
+
 ## Step 0.5 — pivot detection (run when an active task exists)
 
 Before Step 1, check for an active task:

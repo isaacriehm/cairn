@@ -30,12 +30,12 @@ function readMissionCursorForStatusline(repoRoot: string): MissionCursorInput | 
   const state = readMissionState(repoRoot, id);
   const roadmap = readRoadmap(repoRoot, id);
   if (state === null || roadmap === null) return null;
-  if (state.cursor.active_phase === null) return null;
-  // Slug = "MIS-<slug>-<hash7>" → strip prefix + suffix
-  const slug = id.replace(/^MIS-/, "").replace(/-[0-9a-f]{7}$/, "");
+  const cursor = state.cursor.active_phase;
+  if (cursor === null) return null;
+  const phaseDef = roadmap.frontmatter.phases.find((p) => p.id === cursor);
+  const phase_title = phaseDef?.title ?? cursor;
   return {
-    slug,
-    phase_id: state.cursor.active_phase,
+    phase_title,
     done: countDonePhases(state),
     total: roadmap.frontmatter.phases.length,
   };

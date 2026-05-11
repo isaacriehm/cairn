@@ -4,6 +4,42 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.9] — 2026-05-11
+
+### Added
+
+- **Operator-rejection auto-capture into a DEC draft.** When the
+  operator pushes back on prior work inline ("bad", "I don't like
+  X", "stop using Y", "remove that cast", "that's wrong"), the
+  rejection is a project rule that hasn't been codified yet. The
+  previous behavior was to apply the local fix and move on — the
+  rule died in the chat transcript and the same pattern resurfaced
+  next session. New `Step 0.4` in the cairn-direction skill scans
+  every operator turn for rejection language paired with a
+  concrete pattern reference, extracts a regex from the rejected
+  shape, and calls `cairn_record_decision` to drop a draft DEC
+  into `.cairn/ground/decisions/_inbox/`. The draft carries a
+  `text_must_not_match` assertion so once the operator accepts
+  via `/cairn-attention`, the pre-commit sensor blocks any
+  future commit reintroducing the same pattern. A duplicate-guard
+  via `cairn_search` skips the draft when an existing DEC with
+  the same regex is already accepted. Closes the loop: operator
+  says "bad" once, never sees the pattern again.
+
+### Changed
+
+- **Statusline mission segment shows the human phase title +
+  "N of M" instead of the slug-and-id slurry.** Old render:
+  `✓ phase-3-5-3-6… · wave4-behavior (3/10)`. New render:
+  `Wave 4 · 3 of 10`. The mission slug never disambiguated
+  anything (only one mission active at a time) and the 15-char
+  auto-truncate (`phase-3-5-3-6…`) carried no information.
+  Cursor phase title is now drawn from
+  `roadmap.frontmatter.phases[<cursor>].title`, trimmed at the
+  first `:` / `(` / `+` boundary, then capped at 22 chars. Hard
+  cutover — the `slug` field on `MissionCursorInput` was
+  removed; callers updated.
+
 ## [0.11.8] — 2026-05-11
 
 ### Changed
