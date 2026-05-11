@@ -4,6 +4,36 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.8] — 2026-05-11
+
+### Changed
+
+- **Vibe-coder mission continuation: `continue` / `go` / `next`
+  is now enough.** The previous v0.11.7 flow detected autonomy
+  phrases like "execute autonomously" but still required the
+  operator to know the phrase + answer an `AskUserQuestion`
+  about flipping `exit_gate`. Vibe coders don't know PR names,
+  don't know what a "mission" is in Cairn parlance, and won't
+  type the magic words. Step 2.6 in the cairn-direction skill is
+  now silent action: when an active mission exists and the
+  operator's prompt is any of `continue`, `go`, `next`, `more`,
+  `do it`, `run it`, `keep going`, `ship it`, `proceed`,
+  `execute`, `start`, `begin` (or the older autonomy phrases),
+  the skill silently flips `exit_gate` to `auto` if needed,
+  auto-picks the next pending PR from the cursor phase's
+  exit_criteria (regex `\d+\.\d+-[A-Z]+\d+` against the prose,
+  cross-checked against graduated task titles), and skips
+  straight to spec tightening. One-line status surfaces but no
+  config prompt and no PR-pick prompt. The `next_action_hint`
+  on `cairn_task_complete` chains the rest. Operators still
+  yield to the operator on genuinely ambiguous exit_criteria,
+  subagent failures, and the ctx-threshold surface.
+- **`cairn-direction` `when_to_use` trigger extended.** Adds
+  mission-continuation as a sixth trigger so short continuation
+  prompts are no longer routed to the conversational fallback.
+  Bare `yes` / `ok` / `sure` are explicitly excluded — those are
+  typically answers to prior AskUserQuestion prompts.
+
 ## [0.11.7] — 2026-05-11
 
 ### Added
