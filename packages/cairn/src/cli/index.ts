@@ -91,20 +91,41 @@ function persistCtxSnapshot(
 }
 
 async function readStatusLinePayload(): Promise<StatusLinePayload> {
+  // Hard deadline: Claude Code re-runs statusline every ~10s, so a
+  // 1.5s budget leaves plenty of headroom. The earlier 250ms cap was
+  // racing CC's stdin write on the first prompt of a session — the
+  // timeout would fire, we'd discard whatever had already buffered
+  // in `chunks`, and the resulting null `ctx_window` would suppress
+  // the meter even though CC had shipped the block correctly. Now
+  // the timeout decodes whatever's buffered instead of throwing it
+  // away, and the deadline auto-extends while bytes are still
+  // arriving so a slow large payload still completes cleanly.
   return new Promise((resolveP) => {
     const chunks: Buffer[] = [];
     let settled = false;
+    let timer: NodeJS.Timeout | null = null;
     const settle = (value: StatusLinePayload): void => {
       if (settled) return;
       settled = true;
+      if (timer !== null) clearTimeout(timer);
       resolveP(value);
     };
-    process.stdin.on("data", (chunk: Buffer) => chunks.push(chunk));
-    process.stdin.on("end", () => {
-      settle(decodePayload(Buffer.concat(chunks).toString("utf8").trim()));
+    const decodeBuffered = (): StatusLinePayload =>
+      decodePayload(Buffer.concat(chunks).toString("utf8").trim());
+    const resetDeadline = (): void => {
+      if (timer !== null) clearTimeout(timer);
+      timer = setTimeout(() => settle(decodeBuffered()), 1500);
+    };
+    process.stdin.on("data", (chunk: Buffer) => {
+      chunks.push(chunk);
+      // CC writes the payload then closes stdin, but on slow boxes
+      // the close event can lag the last data event. Re-arm so the
+      // deadline starts from "last byte seen", not from spawn.
+      resetDeadline();
     });
-    process.stdin.on("error", () => settle({ sessionId: null, ctx: null }));
-    setTimeout(() => settle({ sessionId: null, ctx: null }), 250);
+    process.stdin.on("end", () => settle(decodeBuffered()));
+    process.stdin.on("error", () => settle(decodeBuffered()));
+    resetDeadline();
   });
 }
 
