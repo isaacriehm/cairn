@@ -4,6 +4,33 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.4] — 2026-05-11
+
+### Fixed
+
+- **Ctx meter now parses Claude Code v2.1.138's `context_window`
+  payload.** CC changed the statusline payload schema: the window
+  size is now reported as `context_window_size` and usage as a
+  pre-computed `used_percentage`, replacing the older `total_tokens`
+  / `remaining_percentage`-only fields. Cairn's decoder still looked
+  for `total_tokens`, so every statusline tick on a v2.1.138 CC
+  returned `ctx = null`, skipped the `ctx.json` persist, and
+  rendered the badge without the `███░░░░░░░ NN%` segment. Decoder
+  now keys on the new fields directly. Hard cutover — the old
+  schema is no longer accepted. Operators on older CC builds
+  update CC to get the meter back.
+
+### Added
+
+- **Per-tick statusline diagnostic at
+  `.cairn/sessions/<id>/statusline-last.json`.** Captures the raw
+  CC stdin payload (cap 8 KiB), the parse outcome, and the rejection
+  reason on every statusline tick. Resolves "why is my ctx meter
+  missing for this session" without instrumenting the CLI manually:
+  the file shows whether CC shipped `context_window` at all, what
+  fields it carried, and which decode branch (if any) rejected it.
+  Overwritten each tick; no growth.
+
 ## [0.11.3] — 2026-05-11
 
 ### Fixed
