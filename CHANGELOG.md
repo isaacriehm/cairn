@@ -4,6 +4,37 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.7] — 2026-05-11
+
+### Added
+
+- **`cairn-direction` skill detects autonomy intent and offers a
+  one-time mission-config flip.** When the operator's prompt
+  contains an autonomy phrase ("execute autonomously", "just keep
+  going", "run the whole mission", "don't pause", "until ctx",
+  etc.) AND the active mission has `exit_gate: prompt`, the skill
+  surfaces a single `AskUserQuestion`: "flip mission to
+  `exit_gate: auto` so phase boundaries advance silently?". On
+  `[a]` the skill calls the new `cairn_mission_set_exit_gate` MCP
+  tool and stamps a per-mission marker
+  (`.cairn/missions/<id>/.autonomy-prompted`). On `[b]` it stamps
+  the marker without flipping. The marker prevents the question
+  from re-firing every prompt for the same mission. Operators
+  who change their mind delete the marker file to re-enable the
+  question. Resolves the "I asked for autonomous, why does it
+  keep asking" pain on missions where the operator wants to
+  flip permanently but doesn't know about the roadmap.md
+  frontmatter knob.
+- **`cairn_mission_set_exit_gate` MCP tool.** Server-validated
+  rewrite of the active mission's top-level `exit_gate`
+  (`prompt | auto | manual`). Uses the existing
+  `readRoadmap`/`writeRoadmap` helpers so the frontmatter stays
+  schema-validated and per-phase `exit_gate` overrides are not
+  touched. Journals an `exit-gate-changed` entry with the
+  before/after gates. Returns `{ok, exit_gate, previous_exit_gate,
+  changed}`; `changed: false` when the gate already matched the
+  request (idempotent).
+
 ## [0.11.6] — 2026-05-11
 
 ### Fixed

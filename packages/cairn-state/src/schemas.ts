@@ -577,6 +577,7 @@ export const MissionJournalEntry = z.object({
     "drift-detected",
     "closed",
     "reopened",
+    "exit-gate-changed",
   ]),
   phase_id: z.string().optional(),
   task_id: z.string().optional(),
