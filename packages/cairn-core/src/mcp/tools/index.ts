@@ -26,6 +26,7 @@ import { missionResumeTool } from "./mission-resume.js";
 import { missionResyncTool } from "./mission-resync.js";
 import { missionResyncAcceptTool } from "./mission-resync-accept.js";
 import { missionReopenTool } from "./mission-reopen.js";
+import { missionSetExitGateTool } from "./mission-set-exit-gate.js";
 import { invariantGetTool } from "./invariant-get.js";
 import { queryHistoryTool } from "./query-history.js";
 import { recordDecisionTool } from "./record-decision.js";
@@ -91,6 +92,7 @@ export const allTools: ToolDef<never>[] = [
   missionResyncTool,
   missionResyncAcceptTool,
   missionReopenTool,
+  missionSetExitGateTool,
 ];
 
 export type { ToolDef };

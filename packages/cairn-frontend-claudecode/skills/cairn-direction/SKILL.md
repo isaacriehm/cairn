@@ -45,7 +45,7 @@ every deferred tool the rest of the skill needs. The cairn MCP tools
 back to inline prose questions and the contract breaks.
 
 ```
-ToolSearch(select:mcp__plugin_cairn_cairn__cairn_task_create,mcp__plugin_cairn_cairn__cairn_task_complete,mcp__plugin_cairn_cairn__cairn_in_scope,mcp__plugin_cairn_cairn__cairn_canonical_for_topic,mcp__plugin_cairn_cairn__cairn_search,mcp__plugin_cairn_cairn__cairn_mission_get,mcp__plugin_cairn_cairn__cairn_mission_start,mcp__plugin_cairn_cairn__cairn_mission_accept_draft,AskUserQuestion)
+ToolSearch(select:mcp__plugin_cairn_cairn__cairn_task_create,mcp__plugin_cairn_cairn__cairn_task_complete,mcp__plugin_cairn_cairn__cairn_in_scope,mcp__plugin_cairn_cairn__cairn_canonical_for_topic,mcp__plugin_cairn_cairn__cairn_search,mcp__plugin_cairn_cairn__cairn_mission_get,mcp__plugin_cairn_cairn__cairn_mission_start,mcp__plugin_cairn_cairn__cairn_mission_accept_draft,mcp__plugin_cairn_cairn__cairn_mission_set_exit_gate,AskUserQuestion)
 ```
 
 After this call, all phase tools + the question tool are loaded for
@@ -338,6 +338,81 @@ cursor phase is the anchor.
 **Aligned-on-mission case** (operator's prompt matches the cursor
 phase): no extra prompt; default cursor pickup handles everything.
 The task gets `mission_id` + `phase_id` stamps automatically.
+
+## Step 2.6 — autonomy intent detection (one-time per mission)
+
+Operators sometimes ask for the whole mission to be executed
+without further prompts ("just execute autonomously", "keep going",
+"run the whole mission", "don't pause", "ship it end-to-end").
+When that intent collides with a mission whose `exit_gate` is
+`prompt`, every phase boundary blocks on `AskUserQuestion` — the
+operator effectively can't get the autonomous behavior they asked
+for. This step offers the one-time fix: flip the mission to
+`exit_gate: auto`.
+
+Trigger gate — ALL must hold:
+
+1. `cairn_mission_get` returned `active: true` (handled in Step 2.5).
+2. The response's `exit_gate` field equals `"prompt"`.
+3. The operator's current prompt contains an autonomy phrase. Match
+   any of these (case-insensitive substring):
+   - "execute autonomously"
+   - "operate autonomously"
+   - "run autonomously"
+   - "just keep going"
+   - "don't pause"
+   - "do not pause"
+   - "don't stop"
+   - "do not stop"
+   - "no questions"
+   - "don't ask"
+   - "ship the whole"
+   - "ship the entire"
+   - "execute the whole mission"
+   - "run the entire mission"
+   - "until context"
+   - "until ctx"
+4. `.cairn/missions/<mission_id>/.autonomy-prompted` does NOT exist
+   (the file is the one-time marker — once stamped, this step is a
+   no-op for that mission until the operator manually removes the
+   file or starts a new mission).
+
+When all four hit, surface a SINGLE `AskUserQuestion`:
+
+> The mission `<mission_id>` is configured with `exit_gate: prompt`
+> — every phase boundary will ask before advancing, which blocks
+> the autonomous run you requested. Flip the mission to
+> `exit_gate: auto`?
+>
+> - `[a]` yes, flip to auto — cursor auto-advances across phase
+>   boundaries silently; the model self-chains via the
+>   `next_action_hint` returned by `cairn_task_complete`. Persists
+>   across sessions via `roadmap.md`.
+> - `[b]` no, keep prompts — phase boundaries still ask. This run
+>   stays semi-autonomous (within-phase chaining works, phase
+>   exits prompt). Use this when phase exits genuinely need a
+>   sanity check.
+
+Dispatch:
+
+- On `[a]`: call
+  `cairn_mission_set_exit_gate({exit_gate: "auto"})`. Then write the
+  marker file via the `Write` tool — path
+  `.cairn/missions/<mission_id>/.autonomy-prompted`, body the
+  current ISO timestamp. Render a one-line confirmation: "✓ exit
+  gate flipped to auto. Phase boundaries will advance silently."
+- On `[b]`: write the marker only (no MCP call). Render: "Keeping
+  `exit_gate: prompt`. Won't ask again this mission."
+
+The marker prevents the question from re-firing every prompt for
+the same mission. Operators who change their mind can `rm
+.cairn/missions/<mission_id>/.autonomy-prompted` to re-enable the
+question.
+
+Skip silently when any trigger gate condition fails. Do NOT ask
+when the operator's prompt is a normal task instruction without an
+autonomy phrase — the default-prompt behavior is the conservative
+right answer for everyday work.
 
 ## Step 3 — write the tightened spec (ALWAYS, server-enforced)
 
