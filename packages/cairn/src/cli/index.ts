@@ -4,6 +4,7 @@ import { join } from "node:path";
 import {
   type CtxMeterInput,
   readStatusForCLI,
+  resolveRepoRoot,
   VERSION,
 } from "../index.js";
 import { alignCli } from "./align.js";
@@ -188,7 +189,14 @@ switch (subcommand) {
       }
       projectRoot = candidate;
     } else {
-      projectRoot = process.cwd();
+      // Claude Code spawns the statusline hook with cwd = wherever the
+      // operator opened the session. Sessions opened in a subdirectory
+      // of an adopted repo would default to that subdir, miss the
+      // `.cairn/` lookup, and render an empty status — the "statusline
+      // disappears intermittently" symptom. Walk up the same way the
+      // SessionStart / Stop / UserPromptSubmit hooks do.
+      const cwd = process.cwd();
+      projectRoot = resolveRepoRoot(cwd) ?? cwd;
     }
     const sessionIdIdx = rest.indexOf("--session-id");
     let sessionId: string | null = null;
