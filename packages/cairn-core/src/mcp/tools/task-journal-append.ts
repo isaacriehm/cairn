@@ -26,6 +26,25 @@ interface Input {
   session_id?: string;
 }
 
+const SUMMARY_ADVISORY = 320;
+
+/**
+ * Soft-truncate to `advisory` chars with a trailing marker. Returns the
+ * unchanged string when it fits. Splits at the last word boundary
+ * before the cap to avoid mid-token truncation.
+ */
+function softTruncate(s: string, advisory: number): { value: string; truncated: boolean } {
+  if (s.length <= advisory) return { value: s, truncated: false };
+  // Reserve room for the marker so the final string lands at ≤advisory.
+  const removed = s.length - advisory;
+  const markerSuffix = `…[+${removed} chars truncated]`;
+  const keep = Math.max(0, advisory - markerSuffix.length);
+  let cut = s.slice(0, keep);
+  const lastSpace = cut.lastIndexOf(" ");
+  if (lastSpace > advisory - 80) cut = cut.slice(0, lastSpace);
+  return { value: cut + markerSuffix, truncated: true };
+}
+
 async function handler(ctx: McpContext, input: Input): Promise<unknown> {
   const block = requireBootstrap(ctx.repoRoot);
   if (block !== null) return block;
@@ -38,12 +57,16 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     );
   }
 
+  const summaryResult = softTruncate(input.summary, SUMMARY_ADVISORY);
+  const nextStepResult =
+    input.next_step !== undefined ? softTruncate(input.next_step, SUMMARY_ADVISORY) : null;
+
   const ok = appendTaskJournal({
     repoRoot: ctx.repoRoot,
     taskId,
     sessionId: input.session_id ?? null,
-    summary: input.summary,
-    ...(input.next_step !== undefined ? { nextStep: input.next_step } : {}),
+    summary: summaryResult.value,
+    ...(nextStepResult !== null ? { nextStep: nextStepResult.value } : {}),
     ...(input.files_touched !== undefined ? { filesTouched: input.files_touched } : {}),
     ...(input.decisions_loaded !== undefined ? { decisionsLoaded: input.decisions_loaded } : {}),
   });
@@ -55,13 +78,25 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     );
   }
 
-  return { ok: true, task_id: taskId };
+  const truncatedFields: string[] = [];
+  if (summaryResult.truncated) truncatedFields.push("summary");
+  if (nextStepResult?.truncated === true) truncatedFields.push("next_step");
+
+  return {
+    ok: true,
+    task_id: taskId,
+    ...(truncatedFields.length > 0 ? { truncated: truncatedFields } : {}),
+  };
 }
 
 export const taskJournalAppendTool: ToolDef<Input> = {
   name: "cairn_task_journal_append",
   description:
-    "Append one journal entry to the active task's journal.jsonl. Call at the end of every assistant turn while a task is active so that `/cairn-resume <task_id>` after a `/clear` rebuilds the operator's mental state cold. `summary` is a ≤160-char one-liner of what just happened; `next_step` is what comes next. `task_id` is optional — Cairn picks the most-recently-touched active task when omitted.",
+    "Append one journal entry to the active task's journal.jsonl. Call at the end of every assistant turn while a task is active so that `/cairn-resume <task_id>` after a `/clear` rebuilds the operator's mental state cold. " +
+    "`summary` is a terse one-liner (~320 chars; soft-truncated above that with a trailing marker — no validation reject). " +
+    "`next_step` is what comes next, same length budget. " +
+    "`task_id` is optional — Cairn picks the most-recently-touched active task when omitted. " +
+    "Response includes `truncated: [field…]` when any input was soft-truncated.",
   inputSchema: taskJournalAppendInput,
   handler,
 };

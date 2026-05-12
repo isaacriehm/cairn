@@ -518,7 +518,24 @@ function isMissionPhaseDeferActive(
 function readBrandAndPositioning(repoRoot: string, warnings: string[]): string | null {
   const brandPath = join(repoRoot, ".cairn", "ground", "brand", "overview.md");
   const positioningPath = join(repoRoot, ".cairn", "ground", "product", "positioning.md");
-  const parts: string[] = [];
+
+  // Read both files first, then dedupe.
+  //
+  // Phase 6-brand currently pre-fills overview.md and positioning.md with
+  // the same domain summary (operator's free-form Q1 answer). When the
+  // operator hasn't diverged them yet, surfacing both verbatim wastes
+  // ~150-300 tokens of SessionStart context per session. Render once
+  // under a merged heading when bodies match (whitespace-collapsed); fall
+  // back to separate sections only when operator has actually edited
+  // one of the files. Bug-mine: sample-project's SessionStart was emitting the
+  // brand paragraph twice (overview heading + positioning heading,
+  // identical body).
+  interface Section {
+    label: string;
+    body: string;
+    draftHint: string;
+  }
+  const sections: Section[] = [];
   for (const [label, path] of [
     ["Brand overview", brandPath] as const,
     ["Product positioning", positioningPath] as const,
@@ -535,14 +552,36 @@ function readBrandAndPositioning(repoRoot: string, warnings: string[]): string |
         status === "draft"
           ? "  [DRAFT — operator has not filled this in; ask before making design decisions]"
           : "";
-      parts.push(`### ${label}${draftHint}\n\n${body}`);
+      sections.push({ label, body, draftHint });
     } catch (err) {
       warnings.push(
         `${label} read failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }
-  if (parts.length === 0) return null;
+
+  if (sections.length === 0) return null;
+
+  // Dedupe by normalized body. Strip leading `#`-headings + collapse
+  // whitespace so `# Brand overview\n\nfoo` and `# Product positioning\n\nfoo`
+  // are recognized as identical prose under different titles. Phase
+  // 6-brand pre-fills both files from the same Q1 answer; in practice
+  // adopted repos ship a SessionStart with the same paragraph appearing
+  // twice under two headings until the operator manually diverges them.
+  // Render once with a merged label.
+  const normalize = (s: string): string =>
+    s
+      .replace(/^\s*#{1,6}\s+.*$/gm, "") // drop H1-H6 lines entirely
+      .replace(/\s+/g, " ")
+      .trim();
+  const uniqBodies = new Set(sections.map((s) => normalize(s.body)));
+  if (uniqBodies.size === 1 && sections.length > 1) {
+    const first = sections[0]!;
+    const mergedLabel = sections.map((s) => s.label).join(" / ");
+    return `## Brand and product context\n\n### ${mergedLabel}${first.draftHint}\n\n${first.body}`;
+  }
+
+  const parts = sections.map((s) => `### ${s.label}${s.draftHint}\n\n${s.body}`);
   return `## Brand and product context\n\n${parts.join("\n\n")}`;
 }
 

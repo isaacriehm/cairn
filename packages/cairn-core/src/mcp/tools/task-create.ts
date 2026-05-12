@@ -11,13 +11,14 @@ import type { McpContext } from "../context.js";
 import { requireBootstrap } from "../bootstrap-guard.js";
 import { mcpError } from "../errors.js";
 import { taskCreateInput } from "../schemas.js";
+import { linkTaskToPhase } from "../../missions/task-link.js";
 import type { ToolDef } from "./types.js";
 
 interface Input {
   slug: string;
   title: string;
   goal: string;
-  target_path_globs: string[];
+  target_path_globs?: string[];
   in_scope_decisions?: string[];
   in_scope_invariants?: string[];
   constraints?: string[];
@@ -153,7 +154,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     status: "ready",
     audience: "dual",
     generated: generatedAt,
-    target_path_globs: input.target_path_globs,
+    target_path_globs: input.target_path_globs ?? [],
     in_scope_decisions: input.in_scope_decisions ?? [],
     in_scope_invariants: input.in_scope_invariants ?? [],
     needs_review: needsReview,
@@ -184,7 +185,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
   const statusFrame: Record<string, unknown> = {
     id: taskId,
     phase: "running",
-    module: input.module ?? input.target_path_globs[0]?.split("/")[0] ?? ".",
+    module: input.module ?? input.target_path_globs?.[0]?.split("/")[0] ?? ".",
     title: input.title,
     started_at: generatedAt,
   };
@@ -195,6 +196,16 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
   const statusContent = stringifyYaml(statusFrame);
   const statusPath = join(taskDir, "status.yaml");
   writeFileSync(statusPath, statusContent, "utf8");
+
+  // Eagerly link the task to its phase's `task_ids`. Before this, linkage
+  // only fired in `onTaskCompleted` — meaning a phase that had pending
+  // (not-yet-completed) tasks looked empty to `mission_advance choice=exit`,
+  // forcing operators to pass `choice=force` even though real work was
+  // anchored to the phase. Linking on create makes the phase ledger
+  // reflect intent, not just graduation.
+  if (missionId !== null && phaseId !== null) {
+    linkTaskToPhase(ctx.repoRoot, missionId, phaseId, taskId);
+  }
 
   return {
     ok: true,
@@ -212,7 +223,12 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
 export const taskCreateTool: ToolDef<Input> = {
   name: "cairn_task_create",
   description:
-    "Allocate a task_id and atomically write spec.tightened.md + status.yaml under .cairn/tasks/active/<task_id>/. The server controls task_id format (TSK-YYYY-MM-DD-<slug>-<5-digit-ms>) — callers cannot misformat it. Required by the cairn-direction skill before any source mutation.",
+    "Allocate a task_id and atomically write spec.tightened.md + status.yaml under .cairn/tasks/active/<task_id>/. " +
+    "**Required fields**: `slug` (lowercase kebab, 3-80 chars), `title` (≤80 chars), `goal` (free-form). " +
+    "**Optional**: `target_path_globs` (defaults to []; pass paths to pin scope), `in_scope_decisions`, `in_scope_invariants`, `constraints`, `out_of_scope`, `acceptance`, `module`, `needs_review`, `mission_id` (anchor to mission; defaults to active mission's cursor — pass `''` to opt out as side-task), `phase_id`. " +
+    "Server controls task_id format (`TSK-<slug>-<7-hex>`); callers cannot misformat it. " +
+    "Auto-links the new task to its phase's `task_ids` immediately so `cairn_mission_advance choice='exit'` sees the task without waiting for `cairn_task_complete`. " +
+    "Required by the cairn-direction skill before any source mutation.",
   inputSchema: taskCreateInput,
   handler,
 };

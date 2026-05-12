@@ -22,7 +22,13 @@
     "release:patch": "node scripts/sync-version.mjs --bump patch",
     "release:minor": "node scripts/sync-version.mjs --bump minor",
     "release:major": "node scripts/sync-version.mjs --bump major",
-    "release:set": "node scripts/sync-version.mjs --set"
+    "release:set": "node scripts/sync-version.mjs --set",
+    "mine": "node tools/mine/mine.mjs",
+    "mine:ls": "node tools/mine/mine.mjs ls",
+    "mine:session": "node tools/mine/mine.mjs session",
+    "mine:histogram": "node tools/mine/mine.mjs histogram",
+    "mine:errors": "node tools/mine/mine.mjs errors",
+    "mine:cairn": "node tools/mine/mine.mjs cairn"
   },
   "devDependencies": {
     "knip": "^6.11.0",

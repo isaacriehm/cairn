@@ -50,13 +50,37 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
       };
     }
   }
-  return mcpError("DECISION_NOT_FOUND", `No decision with id ${input.id}`);
+  // Suggest near-matches so an AI that hallucinated a sequential id
+  // (`DEC-0001`, `DEC-0002`, etc. — the bug-mine top error) can pick the
+  // right one on the retry. Real ids are `DEC-<7-hex>` content-addressed.
+  const allIds = collectExistingIds(searchDirs);
+  return mcpError(
+    "DECISION_NOT_FOUND",
+    `No decision with id ${input.id}. Real ids are content-addressed (DEC-<7-hex>); sequential placeholders like DEC-0001 don't exist. Try \`cairn_search\` or \`cairn_in_scope\` to find the right id.`,
+    allIds.length > 0 ? { available_ids_sample: allIds.slice(0, 10) } : undefined,
+  );
+}
+
+function collectExistingIds(dirs: string[]): string[] {
+  const ids: string[] = [];
+  for (const d of dirs) {
+    try {
+      for (const f of readdirSync(d, { withFileTypes: true, encoding: "utf8" })) {
+        if (!f.isFile() || !f.name.endsWith(".md")) continue;
+        const m = f.name.match(/^(DEC-[0-9a-f]{7,})\.md$/) ?? f.name.match(/^(DEC-[0-9a-f]{7,})\.draft\.md$/);
+        if (m && m[1]) ids.push(m[1]);
+      }
+    } catch {
+      // ignore — caller already gated on existsSync
+    }
+  }
+  return ids.sort();
 }
 
 export const decisionGetTool: ToolDef<Input> = {
   name: "cairn_decision_get",
   description:
-    "Returns full ADR + assertions block for a decision id. Resolves both accepted decisions (`.cairn/ground/decisions/<id>.md`) and pending drafts (`_inbox/<id>.draft.md`); the response's `status` field tells the caller which layer the decision came from.",
+    "Returns full ADR + assertions block for a decision id. **ID format is `DEC-<7-or-more-hex-chars>` (e.g. `DEC-0ae6a8b`), content-addressed — sequential placeholders like `DEC-0001` do not exist; do not invent them.** Resolves both accepted decisions (`.cairn/ground/decisions/<id>.md`) and pending drafts (`_inbox/<id>.draft.md`); the response's `status` field tells the caller which layer the decision came from. Use `cairn_in_scope({path_globs, types: ['decision']})` or `cairn_search(query)` to discover real ids first if you only have a topic.",
   inputSchema: decisionGetInput,
   handler,
 };

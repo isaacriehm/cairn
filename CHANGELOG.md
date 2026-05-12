@@ -4,6 +4,170 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] — 2026-05-12
+
+Second bug-mine pass over real autonomous-execution sessions
+sampled across six adopted codebases. ~5k transcripts /
+~440k events parsed via a new dev-internal datamining tool. Surface
+finds drove a sweep across MCP tool ergonomics, the SessionStart
+payload, ground-state quality, and the statusline behavioural contract.
+
+### Added
+
+- **Statusline always-on with adoption-state badge.** Previously the
+  `⬡ cairn` badge rendered only when `.cairn/` was on disk. Operators
+  who hadn't adopted yet (or who declined Cairn on a given repo) saw
+  no badge at all and had no way to know Cairn was installed but
+  dormant. The reader now glob-merges every `~/.claude/plugins/data/
+  cairn-*-cairn/projects.json` to discover the operator's decline
+  state per-repo and renders:
+
+  - `⬡ cairn  ⊘ off`           — operator picked `decline-never`
+  - `⬡ cairn  ⊝ later`         — operator picked `not now` (`decline-temp`)
+  - `⬡ cairn  ⊝ not adopted`   — fresh project, no decision yet
+
+  `⊘` (U+2298 CIRCLED DIVISION SLASH) is the universal "off / not in
+  use" glyph and renders cleanly in every common monospace terminal
+  font. Earlier iterations used `💤` (emoji — tofu-box risk), `☾`
+  (crescent — ambiguous with night-mode toggles), and `⏸` (PAUSE —
+  misleading because it implies temporary suspension when
+  `decline-never` is permanent for the repo).
+
+- **`tools/mine/` — dev-internal Claude Code transcript datamining
+  tool.** Not shipped (lives outside `packages/`); used by the
+  Cairn-coding AI loop to pull signal from real session JSONL across
+  every monitored project. Pipeline: streaming line-by-line readline
+  parse → noise-strip projection (head+tail truncation with per-field
+  policy, code-edit diffs reduced to head 10 lines + tail 5 lines) →
+  optional Cairn enrichment (detect `cairn_*` MCP calls, phase
+  transitions, attention resolutions, decision writes). Five
+  subcommands: `ls`, `session`, `histogram`, `errors`, `cairn`.
+  Output modes: `md` (default, AI-context-budgeted ≤2k tokens) or
+  `ndjson` (machine pipe). Default scope:
+  `~/.claude/projects/**/*.jsonl`; restrictable by `--repo`,
+  `--session`, `--tool`, `--since`/`--until`, `--errors-only`.
+  Wired via `pnpm mine[:ls|:session|:histogram|:errors|:cairn]`
+  root scripts.
+
+### Fixed
+
+- **Mission `phase has no linked tasks` UX trap.** When the operator
+  finished work for a phase and called
+  `cairn_mission_advance({phase_id, choice: "exit"})`, the MCP
+  rejected the call with `VALIDATION_FAILED: phase X has no linked
+  tasks. Pass choice="force" to advance an empty phase.` — even
+  though the operator had actually called `cairn_task_create` for
+  that phase. Linkage was only happening in `onTaskCompleted` (i.e.
+  on `cairn_task_complete`), so a phase whose tasks were created
+  but not yet graduated looked empty to `mission_advance`.
+  Real-world bleed observed in mined sessions: a wave phase had
+  three running tasks when the AI tried `choice=exit` — got refused,
+  retried with `force`, then the `task-attached` journal events
+  fired 5 minutes later (after the phase had already been
+  force-advanced). Fix:
+  `cairn_task_create` now eagerly calls `linkTaskToPhase` after
+  writing `status.yaml`, so the phase ledger reflects intent
+  immediately. The cursor doesn't have to wait for `task_complete`
+  to know work is anchored.
+
+- **INV titles leaked source-comment prefixes.** Phase 9c-emit was
+  pulling the first prose-bearing line of a comment block as the
+  invariant title verbatim. Operators with an `// AI: …` comment
+  convention ended up with up to 59% of INVs (96 of 163 in the
+  worst sampled case) titled `AI: <ModuleName> — <description>`
+  and a couple of INVs literally titled
+  `──────────────────────────`. A new
+  `normalizeSotTitle` helper strips known semantic-noise prefixes
+  before id derivation + file write: `AI:` / `@AI:` /
+  `NOTE:|TODO:|XXX:|FIXME:|HACK:|WARN:|IMPORTANT:` /
+  `§?(INV|DEC|ADR|RULE|CONSTRAINT):` / leading `INV-<id>` /
+  `DEC-<id>` refs / bullet markers. Applied in `firstLineFallback`,
+  in the classifier-title path, and defensively at every file-write
+  call site.
+
+- **SessionStart duplicate brand prose.** Phase 6-brand pre-fills
+  both `.cairn/ground/brand/overview.md` and
+  `.cairn/ground/product/positioning.md` with the same Q1 answer
+  ("what does the product do"). The SessionStart payload then
+  surfaced the same paragraph twice — once under each H1 — wasting
+  ~150-300 tokens per session. Mining confirmed multiple adopted
+  repos shipped duplicate sections to every cold session.
+  `readBrandAndPositioning` now normalizes both bodies (strips
+  H1-H6 lines + collapses whitespace) and renders once under a
+  merged label `### Brand overview / Product positioning` when
+  the prose matches. Operator-diverged content still renders as
+  two distinct sections.
+
+- **`target_path_globs` falsely required on `cairn_task_create`.**
+  Mining counted 10+ recent sessions where the AI burned a turn (or
+  three) retrying after the schema rejected calls missing
+  `target_path_globs`. The field is now optional (handler defaults
+  to `[]`); pass it when you can pin scope, omit it for cross-cutting
+  work. Tool description rewritten to enumerate required vs optional
+  fields. Module inference also tightened to safely handle the
+  missing-array path.
+
+- **Slug + title length caps too tight.** The slug regex enforced
+  3-42 chars and the title cap was 50. Real-world PR-style slugs
+  like `f01-route-claim-revalidation-via-status-svc` (43) were
+  getting rejected, forcing operators to invent abbreviations.
+  Slug is now 3-80 chars and title is ≤80. Direction skill example
+  + tool description updated.
+
+- **`task_journal_append.summary` + `task_complete.summary` reject
+  on length.** Schemas raised to 4000 / 8000 char ceilings, but the
+  ergonomically-correct advisory bound (320 / 2000) is now soft-
+  truncated by the handler instead of rejected. Responses carry a
+  `truncated: [field…]` marker when soft-truncation fires. AI keeps
+  shipping; no wasted turn re-shrinking a 350-char one-liner.
+
+- **AI hallucinating sequential `DEC-0001` placeholders.**
+  `cairn_decision_get` was getting called with sequential numeric
+  IDs (`DEC-0001` through `DEC-0008`) — a pattern the AI invented
+  from prior ADR conventions. Real IDs are content-addressed
+  `DEC-<7-or-more-hex>`. Tool description now explicitly names the
+  format and tells the AI not to invent sequential placeholders.
+  `DECISION_NOT_FOUND` error now returns up to 10
+  `available_ids_sample` real ids so the AI self-corrects on retry
+  + steers toward `cairn_in_scope` / `cairn_search` for discovery.
+
+- **AI hallucinating `assertion.kind` values.** `cairn_record_decision`
+  was rejecting `kind: "no-pattern"` and `text_must_not_match` with
+  `scope_globs` instead of `in_globs` (only the top-level decision
+  field is `scope_globs`; per-assertion field is `in_globs`). Tool
+  description now enumerates all 11 valid kinds with their required
+  field shapes. `INVALID_ASSERTION_KIND` error inlines the valid
+  kinds + the submitted kind so the AI sees what it sent vs what's
+  allowed.
+
+- **`cairn_mission_advance` description didn't tell the AI when to
+  pick which choice.** Rewritten with intent-first framing: `exit`
+  for normal completion, `force` for genuinely empty phases (rare
+  now that `task_create` auto-links), `not_yet` to keep cursor,
+  `defer` to mute the prompt, `drop` for drift resolution. Calls
+  out the "no linked tasks" error as a now-rare case pointing to
+  `cairn_task_create` as the fix.
+
+- **`cairn_in_scope` description didn't redirect the legacy tool
+  names.** Now explicitly states that `cairn_decisions_in_scope`
+  and `cairn_invariants_in_scope` don't exist; pass `types: [...]`
+  to this tool.
+
+- **Stale char-limit refs in operator-facing prompts.**
+  `cairn_task_journal_append` description said `≤160-char one-liner`
+  (schema is now 4000 ceiling / 320 advisory). `reviewer.md` agent
+  prompt said `<≤500 chars — one-sentence wrap>` (schema is now
+  8000 ceiling / 2000 advisory). Both refreshed; both now mention
+  the soft-truncate behaviour.
+
+- **`mine histogram --tool` filter dropping `tool_result` events.**
+  The filter only matched on `ev.kind === "tool_use"` and `tools
+  has(ev.tool)`, so `tool_result` events (which have no `tool`
+  field — only `tool_use_id`) got dropped. Result: `mine histogram
+  --tool foo` reported `results: 0` for every filtered tool.
+  Stateful `tool_use_id` passthrough now lets paired results
+  survive.
+
 ## [0.12.0] — 2026-05-12
 
 Sweep of friction surfaces uncovered by a transcript audit of five

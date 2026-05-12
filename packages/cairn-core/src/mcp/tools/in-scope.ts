@@ -160,7 +160,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
 export const inScopeTool: ToolDef<Input> = {
   name: "cairn_in_scope",
   description:
-    "List decisions and/or invariants whose scope overlaps the given path_globs. Returns summaries with ID, title, and status.",
+    "List decisions AND/OR invariants whose scope overlaps the given path_globs. Returns summaries with ID, title, and status. Use `types: ['decision']` or `types: ['invariant']` to filter; omit `types` for both. Replaces the legacy `cairn_decisions_in_scope` and `cairn_invariants_in_scope` tools — those names no longer exist; pass `types` to this tool instead.",
   inputSchema: inScopeInput,
   handler,
 };

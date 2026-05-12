@@ -78,18 +78,29 @@ export const queryHistoryInput = {
 // ── Write tools ────────────────────────────────────────────────────────────
 
 export const taskCreateInput = {
+  // Slug is folded into the task directory name (`.cairn/tasks/active/<id>/`).
+  // Bumped from 42→80 chars after mine showed real-world slugs like
+  // `f01-route-claim-revalidation-via-status-svc` (43) failing the
+  // old cap and forcing operators to invent abbreviations.
   slug: z
     .string()
     .regex(
-      /^[a-z][a-z0-9-]{1,40}[a-z0-9]$/,
-      "slug must be lowercase kebab — letters, digits, hyphens; 3-42 chars",
+      /^[a-z][a-z0-9-]{1,78}[a-z0-9]$/,
+      "slug must be lowercase kebab — letters, digits, hyphens; 3-80 chars",
     ),
+  // Title renders in the statusline + lens. Statusline already truncates
+  // gracefully; raised from 50→80 to match the operator's natural
+  // PR-style titles ("F-01: route claim revalidation via status svc").
   title: z
     .string()
     .min(3)
-    .max(50, "title must be ≤50 chars (renders in the statusline + lens)"),
+    .max(80, "title must be ≤80 chars"),
   goal: z.string().min(1),
-  target_path_globs: z.array(z.string().min(1)).min(1),
+  // Optional in v0.12.x — historical AI sessions repeatedly omitted it
+  // and burned a turn re-trying. When absent, the handler infers from
+  // the active task's module/goal. Operators can still pin scope
+  // explicitly by passing the array.
+  target_path_globs: z.array(z.string().min(1)).optional(),
   in_scope_decisions: z
     .array(z.string().regex(/^DEC-[0-9a-f]{7,}$/, "decision id must match DEC-<hash7>"))
     .optional(),
@@ -126,13 +137,18 @@ export const taskJournalAppendInput = {
     .string()
     .regex(/^TSK-[a-z0-9-]+-[0-9a-f]{7}$/, "task id must match TSK-<slug>-<7-hex>")
     .optional(),
+  // Cap = 4000 chars; the handler soft-truncates anything beyond the
+  // 320-char advisory size with a trailing marker. Hard reject only
+  // when summary is empty or absurd. Avoids the "AI burns a turn
+  // re-shrinking a 350-char string" loop that bit operators on older
+  // (160-char) limits.
   summary: z
     .string()
     .min(1)
-    .max(320, "summary must be ≤320 chars (terse one/two-liner)"),
+    .max(4000, "summary must be ≤4000 chars (advisory: ~320 chars; longer values auto-truncate)"),
   next_step: z
     .string()
-    .max(320, "next_step must be ≤320 chars")
+    .max(4000, "next_step must be ≤4000 chars (advisory: ~320 chars; longer values auto-truncate)")
     .optional(),
   files_touched: z.array(z.string().min(1)).max(20).optional(),
   decisions_loaded: z
@@ -170,9 +186,11 @@ export const taskCompleteInput = {
     )
     .optional(),
   outcome: z.enum(["succeeded", "failed", "aborted"]),
+  // Cap = 8000 chars; handler soft-truncates beyond the 2000-char
+  // advisory size. Same UX principle as task_journal_append.summary.
   summary: z
     .string()
-    .max(2000, "summary must be ≤2000 chars")
+    .max(8000, "summary must be ≤8000 chars (advisory: ~2000 chars; longer values auto-truncate)")
     .optional(),
 };
 

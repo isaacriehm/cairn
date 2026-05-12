@@ -636,10 +636,10 @@ atomically writes `spec.tightened.md` and `status.yaml` under
 
 ```
 cairn_task_create({
-  slug: <kebab-2-to-4-words, e.g. "token-expiry">,
-  title: <≤50 chars, statusline-friendly, e.g. "Fix token expiry">,
+  slug: <kebab, 3-80 chars, e.g. "token-expiry" or "f01-route-claim-revalidation-via-status-svc">,
+  title: <≤80 chars, statusline-friendly, e.g. "Fix token expiry">,
   goal: <1-2 sentence narrative of the operator's intent>,
-  target_path_globs: [<resolved globs>],
+  target_path_globs: [<resolved globs>],  // optional — pass when you can pin scope; omit to let Cairn infer
   in_scope_decisions: [<DEC-NNNN ids from Step 1>],
   in_scope_invariants: [<INV-NNNN ids from Step 1>],
   constraints: [<one bullet per binding, citing DEC/§INV>],
@@ -651,9 +651,12 @@ cairn_task_create({
 ```
 
 `title` is the short label that renders in the statusline + lens (e.g.
-`⬡ cairn  TSK-… Fix token expiry`). Keep it ≤50 chars or the server
-rejects with `VALIDATION_FAILED`. `goal` is the longer 1–2 sentence
-description that fills the spec body's Goal section.
+`⬡ cairn  TSK-… Fix token expiry`). Keep it ≤80 chars or the server
+rejects with `VALIDATION_FAILED`. `slug` is 3-80 lowercase-kebab chars
+(letters, digits, hyphens). `goal` is the longer 1–2 sentence
+description that fills the spec body's Goal section. `target_path_globs`
+is optional in v0.12.x — pass it when you can pin scope cleanly;
+omit it for cross-cutting work and Cairn infers from `module`/`goal`.
 
 The tool returns `{ task_id, spec_path, status_path, in_scope_decisions,
 in_scope_invariants }`. Capture `task_id` for Steps 4-5; cite

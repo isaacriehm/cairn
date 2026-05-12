@@ -208,7 +208,7 @@ Operator types prompt
         ▼
 Main Claude spawns subagents via Task tool
    - Each subagent inherits Cairn MCP tools
-   - Reads spec.tightened.md + queries decisions_in_scope
+   - Reads spec.tightened.md + queries `cairn_in_scope`
    - Works in main repo (no mirror, no runtime checkout)
         │
         ▼

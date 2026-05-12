@@ -152,7 +152,8 @@ export async function emitFromTopicIndex(args: EmitArgs): Promise<EmitResult> {
       continue;
     }
 
-    const titleSeed = cls.title.length > 0 ? cls.title : firstLineFallback(body);
+    const rawTitle = cls.title.length > 0 ? cls.title : firstLineFallback(body);
+    const titleSeed = normalizeSotTitle(rawTitle);
     const kindForId: "decision" | "constraint" =
       cls.kind === "constraint" ? "constraint" : "decision";
     const derivedId = idDeriver !== undefined
@@ -308,9 +309,39 @@ export function firstLineFallback(body: string): string {
     if (PURE_MARKER_LINE.test(cleaned)) continue;             // block-comment boundary
     if (cleaned.startsWith("@")) continue;                    // JSDoc / language annotation
     if (/^[─━–—=*~_-]+$/.test(cleaned)) continue;             // pure separator
-    return cleaned.slice(0, 120);
+    return normalizeSotTitle(cleaned).slice(0, 120);
   }
   return "(untitled)";
+}
+
+/**
+ * Strip semantic-noise prefixes operators sprinkle in source comments
+ * so the derived title reads as a clean rule/decision statement.
+ *
+ * Repeated trimming handles compounded prefixes like
+ * `AI: §INV INV-001 —` collapsing to just the meaningful sentence.
+ *
+ * Patterns stripped (case-insensitive, repeated until stable):
+ *   - `AI:` / `@AI:` / `AI —` / `// AI:` (project comment-tag convention)
+ *   - `NOTE:` / `TODO:` / `XXX:` / `FIXME:` / `HACK:`
+ *   - `INV:` / `DEC:` / `ADR:` / `§INV` / `§DEC`
+ *   - leading `INV-<id>` / `DEC-<id>` references
+ *   - leading bullet markers `- ` / `* `
+ */
+export function normalizeSotTitle(raw: string): string {
+  let s = raw.trim();
+  for (let i = 0; i < 6; i++) {
+    const before = s;
+    s = s
+      .replace(/^(?:@?AI\s*[:\-—]\s*)/i, "")
+      .replace(/^(?:NOTE|TODO|XXX|FIXME|HACK|WARN|WARNING|IMPORTANT)\s*[:\-—]\s*/i, "")
+      .replace(/^(?:§?\s*(?:INV|DEC|ADR|RULE|CONSTRAINT))\s*[:\-—]\s*/i, "")
+      .replace(/^(?:INV|DEC|ADR)-[0-9a-zA-Z]{3,}\s*[:\-—]\s*/i, "")
+      .replace(/^[-*]\s+/, "")
+      .trim();
+    if (s === before) break;
+  }
+  return s.length === 0 ? raw.trim() : s;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -332,7 +363,8 @@ function writeDecisionFile(args: WriteEntityArgs): void {
   const dir = decisionsDir(args.repoRoot);
   mkdirSync(dir, { recursive: true });
   const abs = join(dir, `${args.id}.md`);
-  writeFileSync(abs, renderEntity({ ...args, kind: "DEC" }), "utf8");
+  const normalized = { ...args, title: normalizeSotTitle(args.title) };
+  writeFileSync(abs, renderEntity({ ...normalized, kind: "DEC" }), "utf8");
   log.debug({ abs, id: args.id }, "wrote decision");
 }
 
@@ -340,7 +372,8 @@ function writeInvariantFile(args: WriteEntityArgs): void {
   const dir = invariantsDir(args.repoRoot);
   mkdirSync(dir, { recursive: true });
   const abs = join(dir, `${args.id}.md`);
-  writeFileSync(abs, renderEntity({ ...args, kind: "INV" }), "utf8");
+  const normalized = { ...args, title: normalizeSotTitle(args.title) };
+  writeFileSync(abs, renderEntity({ ...normalized, kind: "INV" }), "utf8");
   log.debug({ abs, id: args.id }, "wrote invariant");
 }
 

@@ -35,6 +35,24 @@ interface Input {
   summary?: string;
 }
 
+const SUMMARY_ADVISORY = 2000;
+
+/**
+ * Soft-truncate to `advisory` chars with a trailing marker. Returns
+ * the unchanged string when it fits. Splits at the last word boundary
+ * before the cap to avoid mid-token truncation.
+ */
+function softTruncate(s: string, advisory: number): { value: string; truncated: boolean } {
+  if (s.length <= advisory) return { value: s, truncated: false };
+  const removed = s.length - advisory;
+  const markerSuffix = `…[+${removed} chars truncated]`;
+  const keep = Math.max(0, advisory - markerSuffix.length);
+  let cut = s.slice(0, keep);
+  const lastSpace = cut.lastIndexOf(" ");
+  if (lastSpace > advisory - 200) cut = cut.slice(0, lastSpace);
+  return { value: cut + markerSuffix, truncated: true };
+}
+
 interface GraduatedTaskSummary {
   task_id: string;
   title: string;
@@ -215,11 +233,13 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     );
   }
 
+  const summaryResult = input.summary !== undefined ? softTruncate(input.summary, SUMMARY_ADVISORY) : null;
+
   const result = completeTask({
     repoRoot: ctx.repoRoot,
     taskId,
     outcome: input.outcome,
-    ...(input.summary !== undefined ? { summary: input.summary } : {}),
+    ...(summaryResult !== null ? { summary: summaryResult.value } : {}),
     source: "cairn_task_complete",
   });
 
@@ -246,6 +266,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
       outcome: result.outcome,
       completed_at: result.completedAt,
       moved_to: result.movedTo,
+      ...(summaryResult?.truncated === true ? { truncated: ["summary"] } : {}),
       phase_ready_to_exit: {
         mission_id: phaseReady.mission_id,
         mission_title: phaseReady.mission_title,
@@ -276,6 +297,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
       outcome: result.outcome,
       completed_at: result.completedAt,
       moved_to: result.movedTo,
+      ...(summaryResult?.truncated === true ? { truncated: ["summary"] } : {}),
       next_action_hint: nextAction,
     };
   }
@@ -286,6 +308,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     outcome: result.outcome,
     completed_at: result.completedAt,
     moved_to: result.movedTo,
+    ...(summaryResult?.truncated === true ? { truncated: ["summary"] } : {}),
   };
 }
 

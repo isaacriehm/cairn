@@ -68,11 +68,23 @@ function syntheticStatus(overrides: Partial<StatusJson> = {}): StatusJson {
 function runSmoke(): void {
   console.log("smoke-status-line — start");
 
-  // ── Step 1 — no .cairn/ dir → empty string (badge hidden) ───────
+  // ── Step 1 — no .cairn/ dir → always-show adoption badge ────────
+  // Operator request: the bar should never go dark. Unadopted repos
+  // render `⬡ cairn  ⊝ unadopted`; declined repos render
+  // `⬡ cairn  💤 sleeping`; deferred render `⬡ cairn  ⊝ adopt later`.
+  // We test the fresh path here; declined/deferred require touching
+  // the user-home plugin data dir (covered by manual verification).
   {
     const out = readStatusForCLI("/no/such/dir/that/exists/anywhere", "abc-123");
-    assert(out === "", `Step 1: expected empty string when no .cairn/, got ${JSON.stringify(out)}`);
-    console.log("  ✓ Step 1 — no .cairn/ → empty string");
+    assert(
+      out.startsWith("⬡ cairn"),
+      `Step 1: unadopted should start with ⬡ cairn, got ${JSON.stringify(out)}`,
+    );
+    assert(
+      out.includes("⊝") || out.includes("💤"),
+      `Step 1: unadopted should carry adoption-state marker, got ${JSON.stringify(out)}`,
+    );
+    console.log("  ✓ Step 1 — no .cairn/ → adoption-state badge");
   }
 
   // ── Step 2 — null/empty sessionId with .cairn/ → ground fallback ─

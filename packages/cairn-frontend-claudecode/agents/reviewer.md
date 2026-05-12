@@ -141,7 +141,7 @@ move the task to its terminal state:
 cairn_task_complete({
   task_id: "<task_id>",
   outcome: "succeeded",  // or "failed" if sensor_status === "failed" / blocking concerns
-  summary: "<≤500 chars — one-sentence wrap of what landed>"
+  summary: "<~2000 chars — what landed; soft-truncates above without rejecting>"
 })
 ```
 

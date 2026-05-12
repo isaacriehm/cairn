@@ -1,4 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import {
   countDonePhases,
@@ -100,9 +101,98 @@ function normalizeStatusJson(partial: Partial<StatusJson>): StatusJson {
 }
 
 /**
+ * Read per-repo adoption state from the Claude Code plugin data dir.
+ *
+ * The cairn-adopt skill records operator consent picks in
+ * `~/.claude/plugins/data/cairn-*-cairn/projects.json` keyed by absolute
+ * repo path. We don't know the marketplace slug at read time (multiple
+ * plugin installs can coexist), so glob every `cairn-*` data dir and
+ * pick the most recent record for this repo. Returns:
+ *
+ *   - "adopted"  → `.cairn/` exists on disk (no projects.json needed)
+ *   - "declined" → most recent record is `decline-never`
+ *   - "deferred" → most recent record is `decline-temp` (re-prompt later)
+ *   - "fresh"    → no record, no `.cairn/` → operator hasn't decided
+ */
+type AdoptionState = "adopted" | "declined" | "deferred" | "fresh";
+
+function readAdoptionState(repoRoot: string): AdoptionState {
+  if (existsSync(join(repoRoot, ".cairn"))) return "adopted";
+
+  const dataRoot = join(homedir(), ".claude", "plugins", "data");
+  if (!existsSync(dataRoot)) return "fresh";
+
+  let mostRecent: { state: string; ts: number } | null = null;
+  let candidates: string[];
+  try {
+    candidates = readdirSync(dataRoot);
+  } catch {
+    return "fresh";
+  }
+  for (const slug of candidates) {
+    if (!slug.startsWith("cairn-") || !slug.endsWith("-cairn")) continue;
+    const path = join(dataRoot, slug, "projects.json");
+    if (!existsSync(path)) continue;
+    let raw: string;
+    try {
+      raw = readFileSync(path, "utf8");
+    } catch {
+      continue;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      continue;
+    }
+    if (parsed === null || typeof parsed !== "object") continue;
+    const rec = (parsed as Record<string, unknown>)[repoRoot];
+    if (rec === null || typeof rec !== "object") continue;
+    const r = rec as Record<string, unknown>;
+    const state = typeof r["state"] === "string" ? r["state"] : "";
+    const tsStr = typeof r["ts"] === "string" ? r["ts"] : "";
+    const tsMs = tsStr.length > 0 ? Date.parse(tsStr) : 0;
+    if (mostRecent === null || tsMs > mostRecent.ts) {
+      mostRecent = { state, ts: tsMs };
+    }
+  }
+  if (mostRecent === null) return "fresh";
+  if (mostRecent.state === "decline-never") return "declined";
+  if (mostRecent.state === "decline-temp") return "deferred";
+  return "fresh";
+}
+
+/**
+ * Render a minimal `⬡ cairn` badge variant when the project is not
+ * fully adopted. Operator asked the bar to always show:
+ *
+ *   - declined → `⬡ cairn  ⊘ off`           (operator opted out — permanent)
+ *   - deferred → `⬡ cairn  ⊝ later`         (decline-temp; will re-prompt)
+ *   - fresh    → `⬡ cairn  ⊝ not adopted`   (no decision yet)
+ *
+ * `⊘` (U+2298 CIRCLED DIVISION SLASH) is the universal "off / not in
+ * use" glyph; renders cleanly in monospace. Prior attempts: `💤`
+ * (emoji, tofu-box risk), `☾` (crescent, ambiguous with night-mode),
+ * `⏸` (PAUSE — misleading because it implies temporary suspension
+ * when decline-never is permanent for this repo).
+ */
+function renderUnadoptedBadge(state: AdoptionState, ctx?: CtxMeterInput): string {
+  const tail: string =
+    state === "declined"
+      ? "⊘ off"
+      : state === "deferred"
+        ? "⊝ later"
+        : "⊝ not adopted";
+  const parts: string[] = ["⬡ cairn", tail];
+  if (ctx) parts.push(renderCtxMeter(ctx));
+  return parts.join("  ");
+}
+
+/**
  * Ground-state fallback when no per-session status.json is available.
  * Counts pending drafts from `_inbox/`; renders `⬡ cairn  ⚑ N drafts` or
- * just `⬡ cairn`. Returns empty string when `.cairn/` is absent.
+ * just `⬡ cairn`. Always renders something — when `.cairn/` is absent
+ * we surface adoption state instead of going dark.
  *
  * Mid-adoption: `.cairn/init/progress.json` exists and overrides everything
  * else with the live `⏳ adopt …` indicator so the operator sees motion
@@ -113,7 +203,9 @@ function normalizeStatusJson(partial: Partial<StatusJson>): StatusJson {
  */
 function groundStateFallback(repoRoot: string, ctx?: CtxMeterInput): string {
   const cairnDir = join(repoRoot, ".cairn");
-  if (!existsSync(cairnDir)) return "";
+  if (!existsSync(cairnDir)) {
+    return renderUnadoptedBadge(readAdoptionState(repoRoot), ctx);
+  }
 
   const progress = readProgress(repoRoot);
   if (progress !== null) {

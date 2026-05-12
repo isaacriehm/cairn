@@ -46,15 +46,39 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
   const dir = decisionsDir(ctx.repoRoot);
   const inboxDir = join(dir, "_inbox");
 
-  // Validate assertions, if provided.
+  // Validate assertions, if provided. Inline the valid-kind list in the
+  // error envelope so an AI that hallucinates a kind (e.g. `no-pattern`)
+  // can self-correct on the retry — saving an MCP round-trip.
+  const VALID_KINDS = [
+    "schema_must_contain",
+    "text_must_match",
+    "text_must_not_match",
+    "index_must_exist",
+    "ast_pattern",
+    "file_must_not_be_modified",
+    "query_must_filter_by",
+    "route_must_have_guard",
+    "event_must_emit",
+    "service_method_must_call",
+    "human_review_hint",
+  ];
   if (input.assertions !== undefined) {
     for (const a of input.assertions) {
       const result = DecisionAssertion.safeParse(a);
       if (!result.success) {
-        return mcpError("INVALID_ASSERTION_KIND", "assertion failed schema", {
-          assertion: a,
-          issues: result.error.issues,
-        });
+        const submittedKind =
+          a !== null && typeof a === "object" && "kind" in (a as object)
+            ? (a as Record<string, unknown>)["kind"]
+            : undefined;
+        return mcpError(
+          "INVALID_ASSERTION_KIND",
+          `assertion failed schema (kind=${JSON.stringify(submittedKind)}); valid kinds: ${VALID_KINDS.join(", ")}. Per-assertion glob field is 'in_globs', not 'scope_globs'.`,
+          {
+            assertion: a,
+            valid_kinds: VALID_KINDS,
+            issues: result.error.issues,
+          },
+        );
       }
     }
   }
@@ -238,7 +262,19 @@ function allocateUniqueDecId(
 export const recordDecisionTool: ToolDef<Input> = {
   name: "cairn_record_decision",
   description:
-    "Record a decision in the ledger or inbox. Use `slug` to promote a candidate from the topic index, or provide `title` and `summary` for a manual entry. Use `target=accepted` (operator only) to bypass the inbox.",
+    "Record a decision in the ledger or inbox. Use `slug` to promote a candidate from the topic index, or provide `title` and `summary` for a manual entry. Use `target='accepted'` (operator only) to bypass the inbox.\n\n" +
+    "**`assertions` schema** (only emit one of these `kind` values — anything else returns INVALID_ASSERTION_KIND):\n" +
+    "- `text_must_match` / `text_must_not_match`: `{id, kind, pattern, in_globs[]}` — regex over files in globs.\n" +
+    "- `ast_pattern`: `{id, kind, language, pattern, in_globs[]}` — AST grep in named lang over globs.\n" +
+    "- `file_must_not_be_modified`: `{id, kind, path}` — single file is read-only.\n" +
+    "- `schema_must_contain`: `{id, kind, table, column, column_type?, nullable?}` — DB schema.\n" +
+    "- `index_must_exist`: `{id, kind, table, columns[], where?}` — DB index.\n" +
+    "- `query_must_filter_by`: `{id, kind, orm, in_globs[], table, columns[], operator: 'eq'|'in'|'between'|'is_not_null', require_combination: 'and'|'or'}`.\n" +
+    "- `route_must_have_guard`: `{id, kind, in_globs[], guard, require_on[]}`.\n" +
+    "- `event_must_emit`: `{id, kind, in_globs[], after_method, event_key, payload_must_include?[]}`.\n" +
+    "- `service_method_must_call`: `{id, kind, in_globs[], in_method, must_call, before_returning?}`.\n" +
+    "- `human_review_hint`: `{id, kind, description}` — fallback when the rule can't be machine-checked.\n" +
+    "**Field hint**: the field is `in_globs` (where to scan), not `scope_globs`. `scope_globs` is the top-level decision field; per-assertion globs use `in_globs`.",
   inputSchema: recordDecisionInput,
   handler,
 };

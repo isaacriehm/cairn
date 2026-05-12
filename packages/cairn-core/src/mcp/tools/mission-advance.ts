@@ -186,7 +186,15 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
 export const missionAdvanceTool: ToolDef<Input> = {
   name: "cairn_mission_advance",
   description:
-    "Resolve a phase-exit prompt (or manually advance the mission). `choice=exit` marks the named phase done and advances the cursor; refused when the phase has zero linked tasks (use force). `choice=force` advances even when the phase has zero linked tasks. `choice=not_yet` keeps the cursor — next code-change task gets attached to the same phase. `choice=defer` suppresses the phase-exit prompt for `defer_hours` (default 24). `choice=drop` removes a drifted phase id from `phase_progress` (the id was deleted from roadmap.md mid-mission); refuses if the phase is still present in roadmap.md. When the advance hits the last pending phase, the mission is auto-closed and archived.",
+    "Resolve a phase-exit prompt (or manually advance the mission). " +
+    "**Pick `choice` based on intent**: " +
+    "`exit` — phase work is done, advance the cursor. Refused only when the phase has zero linked tasks (rare in v0.12.x because `cairn_task_create` auto-links on creation). If you hit the refusal, the phase truly is empty — pass `force`. " +
+    "`force` — advance even when zero tasks are linked (skip a phase that wasn't worked on at all). " +
+    "`not_yet` — keep cursor on this phase; next `cairn_task_create` auto-attaches here. Use when more work is pending. " +
+    "`defer` — suppress the phase-exit prompt for `defer_hours` (default 24) without changing cursor. " +
+    "`drop` — remove a drifted phase id from `phase_progress` (id was deleted from `roadmap.md` mid-mission); refused if still in `roadmap.md`. " +
+    "When advance hits the last pending phase, mission auto-closes and archives. " +
+    "**Common UX**: after completing work and committing, call with `choice=exit`. The 'no linked tasks' error means the task was never created via `cairn_task_create` — go create one and retry.",
   inputSchema: missionAdvanceInput,
   handler,
 };
