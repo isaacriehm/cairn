@@ -58,6 +58,13 @@ interface ResumePayload {
   recent_entries: JournalEntry[];
   next_step: string | null;
   total_entries: number;
+  /**
+   * Deduplicated union of `files_touched` from the journal entries
+   * returned in `recent_entries`. Lets the resume primer Read these
+   * paths upfront so post-`/clear` Edit calls don't trip the "File
+   * has not been read yet" wall (bug-mine report #10).
+   */
+  files_touched: string[];
 }
 
 async function handler(ctx: McpContext, input: Input): Promise<unknown> {
@@ -139,6 +146,23 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
   const lastEntry = journal.length > 0 ? journal[journal.length - 1] : null;
   const nextStep = lastEntry?.next_step ?? null;
 
+  // Union files_touched across recent entries, last write wins for order
+  // (most recently touched first). Caller (cairn-resume primer) Reads
+  // these upfront to prime the post-`/clear` session's Read cache.
+  const seen = new Set<string>();
+  const filesTouched: string[] = [];
+  for (let i = recent.length - 1; i >= 0; i -= 1) {
+    const entry = recent[i];
+    const ft = entry?.files_touched;
+    if (!Array.isArray(ft)) continue;
+    for (const f of ft) {
+      if (typeof f !== "string" || f.length === 0) continue;
+      if (seen.has(f)) continue;
+      seen.add(f);
+      filesTouched.push(f);
+    }
+  }
+
   const payload: ResumePayload = {
     ok: true,
     task_id: taskId,
@@ -152,6 +176,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     recent_entries: recent,
     next_step: nextStep,
     total_entries: journal.length,
+    files_touched: filesTouched,
   };
   return payload;
 }
@@ -174,7 +199,7 @@ function readCompletedAt(statusPath: string): string | null {
 export const resumeTool: ToolDef<Input> = {
   name: "cairn_resume",
   description:
-    "Read the active task's journal + tightened spec and emit a resume payload (title, goal, in-scope DECs/INVs, last N journal entries, last-known next_step). Used after `/clear` to rebuild operator context cold. `task_id` defaults to the most-recently-touched active task.",
+    "Read the active task's journal + tightened spec and emit a resume payload (title, goal, in-scope DECs/INVs, last N journal entries, last-known next_step, deduplicated `files_touched` union across the returned entries). Used after `/clear` to rebuild operator context cold. The caller should Read the `files_touched` paths upfront so subsequent Edits don't trip Claude Code's per-session Read tracker. `task_id` defaults to the most-recently-touched active task.",
   inputSchema: resumeInput,
   handler,
 };

@@ -4,6 +4,127 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] — 2026-05-12
+
+Sweep of friction surfaces uncovered by a transcript audit of five
+real autonomous-execution sessions. Fourteen bugs fixed across the
+SessionStart contract, the stalled-task / phase-ready stop-hook
+surfaces, the resume flow after `/clear`, MCP tool ergonomics, and
+docs drift.
+
+### Fixed
+
+- **Phantom `cairn_decisions_in_scope` / `cairn_invariants_in_scope`
+  tool refs.** The SessionStart `CODE_CHANGE_CONTRACT` template and
+  every docs page named two tools that no longer exist — the
+  decisions/invariants in-scope lookups were unified into a single
+  `cairn_in_scope({path_globs, types?})` tool but the contract,
+  build.ts summary lines, and docs were never updated. Each
+  code-change prompt cost ~5-10s of `ToolSearch` recovery + visible
+  red tool-not-found blobs. The contract is now a one-line gate that
+  delegates the full workflow to `Skill(cairn:cairn-direction)`;
+  the skill owns the in-scope lookup and uses the real tool name.
+  `MCP_SURFACE.md`, `ARCHITECTURE.md`, `PLUGIN_ARCHITECTURE.md`,
+  `SYSTEM_OVERVIEW.md`, and every `docs/guide/*.md` updated to
+  match.
+
+- **Stalled-task triage re-fires during active work.**
+  `cairn_task_journal_append` wrote `journal.jsonl` but did not
+  touch `status.yaml`, while the stalled-task scanner gauges idle
+  time off `status.yaml` mtime alone. Journal-only turns left the
+  30-min idle clock untouched, surfacing the "task stalled" prompt
+  on top of in-progress work. Journal append now bumps
+  `status.yaml` mtime, and the scanner reads
+  `max(status.yaml.mtime, journal.jsonl.mtime)` as the liveness
+  signal.
+
+- **Stalled-task prompt re-fires every Stop tick.** Once a stalled
+  hint fired, every subsequent assistant turn re-ran the scan and
+  re-rendered the same `AskUserQuestion` triage block. A new
+  per-task suppression window (`.cairn/.stalled-warned/<task_id>.iso`)
+  caps re-fires at one per task per 60 minutes.
+
+- **Stop hook surfaces fire on the first turn of a fresh session.**
+  Phase-exit / stalled-task / ctx-threshold prompts injected before
+  the SessionStart resume primer had a chance to land, short-circuiting
+  the resume flow. Stop hook now suppresses heavy surfaces during a
+  30-second warmup window measured from the per-session dir's
+  birth time.
+
+- **`cairn_task_complete.task_id` required, breaking the
+  auto-pick-most-recent pattern.** Every other lifecycle tool
+  (`cairn_task_journal_append`, `cairn_resume`,
+  `cairn_mission_get`) treats `task_id` as optional with auto-pick
+  semantics. `cairn_task_complete` rejected empty input, which the
+  model occasionally tried after working through the rest of the
+  surface. `task_id` is now optional; it falls back to
+  `findCurrentActiveTask` when omitted.
+
+- **Resume after `/clear` left the operator with a "Which task?"
+  picker even when an active task existed.** The SessionStart
+  resume banner now reads as a directive primer that names the
+  active task as the focus and instructs the model to (a) skip any
+  next-task picker, (b) auto-invoke `cairn_resume`, and (c) Read
+  every recently-touched file from the journal tail before its
+  first `Edit`. `cairn_resume` returns a deduplicated
+  `files_touched` union so the slash command + the cairn-direction
+  skill's pivot-detection step can prime the per-session Read
+  tracker without copy-paste from the operator.
+
+- **`/cairn-resume` did not pre-Read recently-touched files.** Post-
+  `/clear` sessions hit a wall of `File has not been read yet`
+  errors when the first `Edit` landed on a file the prior session
+  had cached. The slash command + cairn-direction Step 0.5 now
+  Read every entry in `cairn_resume.files_touched` upfront so the
+  Read tracker is primed.
+
+- **Phase-exit "not yet" answer did not survive `/clear`.**
+  `cairn_mission_advance({choice: "not_yet"})` only cleared the
+  in-session `ready_emitted` flag — the SessionStart phase-ready
+  detector re-fired the same prompt on the next session opening.
+  `not_yet` now also writes a 24-hour cross-session defer file
+  alongside the in-session reset.
+
+- **Phase auto-exit accounting ignored `exit_criteria` PR slugs.**
+  When the operator's phase exit criteria enumerated specific PRs
+  (e.g. `3.5-MK2`, `3.5-MK3`) but only some of those PRs created
+  Cairn tasks, the phase-ready detector counted graduated tasks
+  alone and fired phase-exit early. The phase-link logic now parses
+  `exit_criteria` for PR-slug tokens, cross-checks against
+  graduated task ids (substring + kebab-segment match), and
+  refuses to surface phase-ready until every named PR has a
+  graduated task. SessionStart renders a "PRs missing" hint
+  instead of a "ready to exit" prompt when the cross-check fails.
+
+- **`cairn_task_journal_append.summary` 160-char cap was tighter
+  than the model's natural summary length.** Multi-PR summaries
+  routinely landed at 180-220 chars and got rejected, forcing the
+  model to retry with a worse summary. Cap raised to 320 chars.
+
+- **`cairn_task_complete.summary` 500-char cap rejected legitimate
+  attestation bodies.** Cap raised to 2000 chars.
+
+- **Stop hook reason preamble was 200+ chars of disclaimer prose
+  ("Cairn cue for the assistant — not an error") on every fire.**
+  Trimmed to a single cue line; empty reason bodies emit no
+  preamble at all.
+
+### Changed
+
+- **`CODE_CHANGE_CONTRACT` is now a delegation gate.** The
+  SessionStart template no longer enumerates a 5-step inline
+  workflow that duplicated (and drifted from) the cairn-direction
+  skill. The contract tells the model to invoke
+  `Skill(cairn:cairn-direction)` on any code-change prompt — the
+  skill owns ToolSearch preload, in-scope lookup, tightening, and
+  dispatch as the single source of truth.
+
+- **`cairn_resume` payload includes a `files_touched` union** of
+  the paths the recent journal entries touched, deduplicated
+  most-recent-first. Callers (slash command, cairn-direction
+  Step 0.5) Read these upfront after `/clear` so the per-session
+  Read tracker is primed before any `Edit`.
+
 ## [0.11.9] — 2026-05-11
 
 ### Added

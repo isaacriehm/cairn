@@ -33,6 +33,50 @@ function taskIsCompletedOnDisk(repoRoot: string, taskId: string): boolean {
     return false;
   }
 }
+
+/**
+ * Extract PR-shaped tokens from a phase's `exit_criteria` prose. The
+ * pattern matches things like `3.5-MK2`, `3.5-HSH1`, `1.2-AUTH99` —
+ * `<digit-cluster>.<digit>-<ALPHA><digits>`. Free-form prose with no
+ * matching tokens returns an empty list (caller falls back to plain
+ * `allPhaseTasksDone` accounting).
+ */
+const PR_SLUG_RE = /\b\d+\.\d+-[A-Z]+\d+\b/g;
+
+function extractExitCriteriaPrSlugs(exitCriteria: string): string[] {
+  const matches = exitCriteria.match(PR_SLUG_RE);
+  if (matches === null) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const m of matches) {
+    if (seen.has(m)) continue;
+    seen.add(m);
+    out.push(m);
+  }
+  return out;
+}
+
+/**
+ * Returns true when any task id covers the named PR slug. Slug `3.5-MK2`
+ * is checked two ways: full slug normalized to lower-kebab
+ * (`3-5-mk2`) appears as a substring of the task id, OR the bare PR
+ * token (`mk2`) appears as a kebab-delimited segment of the task id.
+ * The cairn-direction Step 2.6b auto-pick embeds the PR token into
+ * the task slug directly, so substring matching is reliable. Case
+ * insensitive throughout.
+ */
+function graduatedIdsCoverPrSlug(taskIds: string[], prSlug: string): boolean {
+  const fullKebab = prSlug.replace(/\./g, "-").toLowerCase();
+  const bareToken = prSlug.split("-").slice(1).join("-").toLowerCase();
+  for (const id of taskIds) {
+    const lower = id.toLowerCase();
+    if (lower.includes(fullKebab)) return true;
+    if (bareToken.length > 0 && new RegExp(`(^|-)${bareToken}(-|$)`).test(lower)) {
+      return true;
+    }
+  }
+  return false;
+}
 import {
   appendMissionJournal,
   effectivePhaseExitGate,
@@ -162,6 +206,25 @@ export function onTaskCompleted(
     return { kind: "linked", mission_id: anchor.mission_id, phase_id: anchor.phase_id, gate };
   }
 
+  // Cross-check: if the phase's exit_criteria enumerates PR slugs
+  // (e.g. `3.5-MK2`, `3.5-MK3`), refuse to fire phase-ready until a
+  // task has graduated for each named PR. Counting `task_ids.length`
+  // alone passes false-positive when only some PRs ever got a task
+  // (bug-mine report #13). Free-form exit criteria with no PR slugs
+  // skip this check — `allPhaseTasksDone` is authoritative there.
+  const phaseDef = roadmap.frontmatter.phases.find((p) => p.id === anchor.phase_id);
+  const exitCriteriaText = phaseDef?.exit_criteria ?? "";
+  const prSlugs = extractExitCriteriaPrSlugs(exitCriteriaText);
+  if (prSlugs.length > 0) {
+    const graduatedIds = state.phase_progress[anchor.phase_id]?.task_ids ?? [];
+    const missing = prSlugs.filter(
+      (slug) => !graduatedIdsCoverPrSlug(graduatedIds, slug),
+    );
+    if (missing.length > 0) {
+      return { kind: "linked", mission_id: anchor.mission_id, phase_id: anchor.phase_id, gate };
+    }
+  }
+
   if (gate === "auto") {
     const r = advancePhase(repoRoot, anchor.mission_id, anchor.phase_id);
     if (r.ok) {
@@ -207,7 +270,6 @@ export function onTaskCompleted(
       }
     }
 
-    const phaseDef = roadmap.frontmatter.phases.find((p) => p.id === anchor.phase_id);
     return {
       kind: "phase-ready-to-exit",
       mission_id: anchor.mission_id,

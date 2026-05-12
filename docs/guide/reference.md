@@ -87,10 +87,9 @@ The MCP server exposes 25 typed tools. Source of truth is
 | Tool                          | Returns                                                                |
 | ----------------------------- | ---------------------------------------------------------------------- |
 | `cairn_decision_get`          | Full DEC by id (frontmatter + assertions + body).                      |
-| `cairn_decisions_in_scope`    | DEC summaries whose `scope_globs` overlap supplied path-globs.         |
+| `cairn_in_scope`              | DEC + §INV summaries whose `scope_globs` overlap supplied path-globs; filter via `types: ["decision"|"invariant"]`. |
 | `cairn_decisions_for_symbol`  | Like in-scope, narrowed to DECs whose body mentions a specific symbol. |
 | `cairn_invariant_get`         | Full §INV by id.                                                       |
-| `cairn_invariants_in_scope`   | §INV summaries by path-glob overlap.                                   |
 | `cairn_canonical_for_topic`   | `topic → { canonical_path, sha256, verified_at }`.                     |
 | `cairn_ground_get`            | Bulk extract by category (schema / routes / events / glossary).        |
 | `cairn_supersedes_chain`      | Full chain forward to current binding decision.                        |
@@ -160,7 +159,7 @@ Phase IDs (passed as `phase` arg): `1-detect`, `2-walker`, `3-mapper`,
 ```bash
 cairn mcp call cairn_decision_get '{"id":"DEC-0042"}'
 
-cairn mcp call cairn_decisions_in_scope '{"path_globs":["src/auth/**"]}'
+cairn mcp call cairn_in_scope '{"path_globs":["src/auth/**"]}'
 
 cairn mcp call cairn_canonical_for_topic '{"topic":"rate limiting"}'
 

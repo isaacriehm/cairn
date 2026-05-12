@@ -104,13 +104,30 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
       state.phase_progress[input.phase_id] = { ...progress, ready_emitted: false };
       writeMissionState(ctx.repoRoot, missionId, state);
     }
+    // Persist the deferral so the next session (post `/clear`) does
+    // not re-fire the same phase-exit AskUserQuestion. The defer file
+    // only suppresses the cross-session SessionStart re-ask; in-session
+    // re-emit on a new task completion still flows via the
+    // `ready_emitted = false` reset above (bug-mine report #15).
+    const deferredUntil = writeMissionPhaseDefer(
+      ctx.repoRoot,
+      missionId,
+      input.phase_id,
+      24,
+    );
     appendMissionJournal(ctx.repoRoot, missionId, {
       ts: new Date().toISOString(),
       kind: "phase-deferred",
       phase_id: input.phase_id,
-      detail: "operator chose not_yet",
+      detail: "operator chose not_yet (deferred 24h cross-session)",
     });
-    return { ok: true, action: "deferred", mission_id: missionId, phase_id: input.phase_id };
+    return {
+      ok: true,
+      action: "deferred",
+      mission_id: missionId,
+      phase_id: input.phase_id,
+      deferred_until: deferredUntil,
+    };
   }
 
   if (input.choice === "defer") {

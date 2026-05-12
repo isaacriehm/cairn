@@ -60,15 +60,14 @@ Conventions:
 
 Source of truth: `packages/cairn-core/src/mcp/tools/index.ts` (`allTools`).
 
-**Read — graph traversal (8)**
+**Read — graph traversal (7)**
 
 | Tool                          | What                                                                          |
 | ----------------------------- | ----------------------------------------------------------------------------- |
 | `cairn_decision_get`          | Full DEC by id (frontmatter + assertions + body markdown).                    |
-| `cairn_decisions_in_scope`    | DEC summaries whose scope_globs overlap supplied path-globs.                  |
+| `cairn_in_scope`              | DEC + §INV summaries whose scope_globs overlap supplied path-globs. Pass `types: ["decision"]` or `["invariant"]` to filter. |
 | `cairn_decisions_for_symbol`  | Like in-scope, narrowed to decisions whose body mentions a specific symbol.   |
 | `cairn_invariant_get`         | Full §INV by id.                                                              |
-| `cairn_invariants_in_scope`   | §INV summaries by path-glob overlap.                                          |
 | `cairn_canonical_for_topic`   | `topic → canonical_path + sha256 + verified_at`. Curated topic registry.      |
 | `cairn_ground_get`            | Bulk extract by category (schema / routes / events / quality_grades / glossary). |
 | `cairn_supersedes_chain`      | Full chain forward to current binding decision.                               |
@@ -169,14 +168,15 @@ Returns:
 
 Errors: `DECISION_NOT_FOUND`.
 
-#### `cairn_decisions_in_scope`
+#### `cairn_in_scope`
 
 | Field | Type | Notes |
 |-------|------|-------|
 | `path_globs` | string[] | Required. e.g., `["core/src/dashboard/**"]` |
-| `status` | string[] | Optional. Default `["accepted"]`; allow `["accepted","superseded"]` for full history |
+| `types` | string[] | Optional. Filter to `["decision"]` or `["invariant"]`. Default: both. |
+| `status` | string[] | Optional. For decisions, default `["accepted"]`; for invariants, default `["active"]`. |
 
-Returns array of decision summary records (no body) sorted by `decided_at` desc.
+Returns array of DEC + §INV summary records (no body) whose scope overlaps the supplied path-globs. Each record carries `kind: "decision" | "invariant"` so callers can split. Sorted by id.
 
 #### `cairn_decisions_for_symbol`
 
@@ -235,10 +235,6 @@ Returns the chain forward to current binding decision:
 #### `cairn_invariant_get`
 
 Same shape as `cairn_decision_get` but for `.cairn/ground/invariants/INV-<N>.md`. Returns `id, title, status, source-run, source-decision, sensor, e2e, body_markdown`.
-
-#### `cairn_invariants_in_scope`
-
-Same shape as `cairn_decisions_in_scope`, returns invariant summaries.
 
 ### Read tools — 3-layer progressive retrieval
 
@@ -420,7 +416,7 @@ Deliberate omissions, with reasons:
    summary into context (per docs/SESSIONSTART_SPEC.md)
 2. Agent sees DEC-0042 in the rendered list ("actor_user_id denormalization on dashboard/")
 3. Agent calls: cairn_decision_get("DEC-0042") → full ADR + assertions
-4. Agent calls: cairn_invariants_in_scope(["core/src/dashboard/**"]) → [INV-0042]
+4. Agent calls: cairn_in_scope({path_globs:["core/src/dashboard/**"], types:["invariant"]}) → [INV-0042]
 5. Agent reads relevant code (canonical zone — Cairn walkers exclude historical paths)
 6. Agent makes change
 7. Agent emits `attestation.yaml` (runtime reads it directly from run dir)
@@ -442,9 +438,8 @@ Deliberate omissions, with reasons:
 1. Operator types prompt in Claude Code chat
 2. cairn-direction skill engages on the operator message (verb-led OR
    bug report OR observation per its when_to_use trigger gate)
-3. Skill gathers in-scope context (cairn_decisions_in_scope,
-   cairn_invariants_in_scope), asks ≤3 clarifying questions per round,
-   tightens the spec via cairn_task_create
+3. Skill gathers in-scope context (cairn_in_scope), asks ≤3 clarifying
+   questions per round, tightens the spec via cairn_task_create
 4. Reviewer subagent (after dispatch) calls cairn_record_decision → DEC-0099 draft lands in _inbox/
 5. Stop hook surfaces inline: "Review DEC-0099 draft? [a] accept [b] reject [c] edit"
 6. Operator picks [a]

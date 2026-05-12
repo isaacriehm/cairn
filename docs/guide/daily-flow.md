@@ -126,9 +126,8 @@ Skip cases (the skill doesn't engage):
 
 In sequence:
 
-1. **Loads in-scope context** via three parallel MCP calls:
-   - `cairn_decisions_in_scope({ path_globs: <heuristic from prompt> })`
-   - `cairn_invariants_in_scope(...)`
+1. **Loads in-scope context** via parallel MCP calls:
+   - `cairn_in_scope({ path_globs: <heuristic from prompt> })` — returns both DECs + §INVs; filter with `types: ["decision"]` / `["invariant"]` when you need only one.
    - `cairn_canonical_for_topic({ topic: <main keyword> })`
    - Plus `git log --oneline -5` for recent context.
 2. **Decides ready vs questions.** "Ready" means every fork the
@@ -523,8 +522,7 @@ Before opening a tricky file, ask:
 
 > What's in scope for `packages/api/src/routes/me.ts`?
 
-Claude calls `cairn_decisions_in_scope` and `cairn_invariants_in_scope`
-and reports back. Useful when:
+Claude calls `cairn_in_scope` and reports back. Useful when:
 
 - You're about to refactor and want to know what constraints apply.
 - You're reviewing someone else's PR and want context.

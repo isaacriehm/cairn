@@ -158,10 +158,10 @@ From the agent's perspective, **the MCP is what Cairn IS**. Tools group
 into:
 
 - **Read — graph traversal** — `cairn_decision_get`,
-  `cairn_decisions_in_scope`, `cairn_decisions_for_symbol`,
-  `cairn_invariant_get`, `cairn_invariants_in_scope`,
-  `cairn_canonical_for_topic`, `cairn_ground_get`,
-  `cairn_supersedes_chain`.
+  `cairn_in_scope` (unified path-glob lookup for DECs + INVs;
+  filter via `types`), `cairn_decisions_for_symbol`,
+  `cairn_invariant_get`, `cairn_canonical_for_topic`,
+  `cairn_ground_get`, `cairn_supersedes_chain`.
 - **Read — search + retrieval** — `cairn_search`, `cairn_timeline`,
   `cairn_get_full`, `cairn_search_candidates`.
 - **Read — historical (gated)** — `cairn_query_history` (only path to

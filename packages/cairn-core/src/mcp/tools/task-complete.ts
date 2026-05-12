@@ -22,7 +22,7 @@ import { requireBootstrap } from "../bootstrap-guard.js";
 import { mcpError } from "../errors.js";
 import { taskCompleteInput } from "../schemas.js";
 import type { ToolDef } from "./types.js";
-import { completeTask } from "../../tasks/index.js";
+import { completeTask, findCurrentActiveTask } from "../../tasks/index.js";
 import {
   findActiveMission,
   readMissionState,
@@ -30,7 +30,7 @@ import {
 } from "@isaacriehm/cairn-state";
 
 interface Input {
-  task_id: string;
+  task_id?: string;
   outcome: "succeeded" | "failed" | "aborted";
   summary?: string;
 }
@@ -207,9 +207,17 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
   const block = requireBootstrap(ctx.repoRoot);
   if (block !== null) return block;
 
+  const taskId = input.task_id ?? findCurrentActiveTask(ctx.repoRoot);
+  if (taskId === null) {
+    return mcpError(
+      "TASK_NOT_FOUND",
+      "no active task — pass task_id explicitly or call cairn_task_create first",
+    );
+  }
+
   const result = completeTask({
     repoRoot: ctx.repoRoot,
-    taskId: input.task_id,
+    taskId,
     outcome: input.outcome,
     ...(input.summary !== undefined ? { summary: input.summary } : {}),
     source: "cairn_task_complete",
@@ -284,7 +292,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
 export const taskCompleteTool: ToolDef<Input> = {
   name: "cairn_task_complete",
   description:
-    "Graduate an active task (`.cairn/tasks/active/<task_id>/`) to a terminal phase (succeeded / failed / aborted) and move its directory to `.cairn/tasks/done/`. Called by the reviewer subagent after writing attestation.yaml, by the cairn-direction skill on a confirmed pivot, or by the Stop-hook auto-graduator. Returns TASK_NOT_FOUND if the task was already completed. When the completion satisfies the active phase's exit criteria under `exit_gate=prompt`, the response includes a `phase_ready_to_exit` block carrying a literal `render_instruction` — the caller MUST surface the operator question via `AskUserQuestion` in the same turn before ending. When the task was mission-anchored, succeeded, and no phase-exit prompt fired, the response also carries a `next_action_hint` block telling the model what to do next (continue with the next pending PR in the cursor phase, start the auto-advanced next phase, or end the turn because the mission closed). The hint is the autonomous-continuation contract: the model reads `next_action_hint.instruction` and either calls `cairn_task_create` for the gap or ends the turn cleanly.",
+    "Graduate an active task (`.cairn/tasks/active/<task_id>/`) to a terminal phase (succeeded / failed / aborted) and move its directory to `.cairn/tasks/done/`. `task_id` is optional — defaults to the most-recently-touched active task. Called by the reviewer subagent after writing attestation.yaml, by the cairn-direction skill on a confirmed pivot, or by the Stop-hook auto-graduator. Returns TASK_NOT_FOUND if the task was already completed or no active task exists. When the completion satisfies the active phase's exit criteria under `exit_gate=prompt`, the response includes a `phase_ready_to_exit` block carrying a literal `render_instruction` — the caller MUST surface the operator question via `AskUserQuestion` in the same turn before ending. When the task was mission-anchored, succeeded, and no phase-exit prompt fired, the response also carries a `next_action_hint` block telling the model what to do next (continue with the next pending PR in the cursor phase, start the auto-advanced next phase, or end the turn because the mission closed). The hint is the autonomous-continuation contract: the model reads `next_action_hint.instruction` and either calls `cairn_task_create` for the gap or ends the turn cleanly.",
   inputSchema: taskCompleteInput,
   handler,
 };

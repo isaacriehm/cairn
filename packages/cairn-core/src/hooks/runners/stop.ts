@@ -13,8 +13,15 @@
  * When nothing: emits `{ continue: true }` and Claude stops normally.
  */
 
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, join } from "node:path";
 import { readActiveTaskSummary } from "../../context/index.js";
 import {
   eventsSince,
@@ -66,6 +73,30 @@ function isInitInProgress(repoRoot: string): boolean {
 }
 
 /**
+ * Returns true when the session was opened within `windowSeconds` ago,
+ * gauged by the per-session dir's birth time. Used to suppress heavy
+ * Stop-hook surfaces (stalled-task triage, phase-ready prompt,
+ * ctx-threshold) on the first turn of a fresh session — those need
+ * to wait for the SessionStart resume primer to land before the
+ * operator can act on them.
+ */
+function inFirstTurnWarmup(
+  repoRoot: string,
+  sessionId: string | null,
+  windowSeconds: number,
+): boolean {
+  if (sessionId === null || sessionId.length === 0) return false;
+  const dir = join(repoRoot, ".cairn", "sessions", sessionId);
+  try {
+    const st = statSync(dir);
+    const ageMs = Date.now() - st.birthtimeMs;
+    return ageMs < windowSeconds * 1000;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Cap the reason text that flows back to Claude Code via decision:block.
  * Both the reviewer hint and the bypass hint can fire on the same Stop
  * tick; 4 KB is generous for two A/B/C strips but small enough that
@@ -74,22 +105,15 @@ function isInitInProgress(repoRoot: string): boolean {
 const MAX_REASON_CHARS = 4_000;
 
 /**
- * Prepended to every non-empty Stop hook reason so the operator who
- * expands the "Stop hook error" frame in Claude Code sees an explicit
- * "this is not a failure" line before the hint markdown. CC labels
- * every `decision: block` from a Stop hook as "Stop hook error" in
- * the UI — that's a CC convention we cannot change. The preamble
- * also reminds the assistant that the right move is to render the
- * choice through `AskUserQuestion`, not to self-resolve.
+ * Single short cue prepended to non-empty Stop hook reasons. CC labels
+ * every Stop `decision: block` as "Stop hook error" — the label is a
+ * CC convention, not a failure signal. One short line keeps the chat
+ * tidy without dropping the cue entirely.
  */
-const REASON_PREAMBLE = [
-  "↳ Cairn cue for the assistant — **not an error**. Claude Code labels every Stop-hook `decision: block` as “Stop hook error” in the UI; that label is a CC convention, not a failure signal. The block below is context the model needs to act on. Render any choices via `AskUserQuestion` so the operator picks; do not self-resolve.",
-  "",
-  "---",
-  "",
-].join("\n");
+const REASON_PREAMBLE = "↳ Cairn cue — render any choice via `AskUserQuestion`.\n\n";
 
 function clampReason(body: string): string {
+  if (body.length === 0) return body;
   const withPreamble = `${REASON_PREAMBLE}${body}`;
   if (withPreamble.length <= MAX_REASON_CHARS) return withPreamble;
   const head = withPreamble.slice(0, MAX_REASON_CHARS - 80);
@@ -179,6 +203,16 @@ export async function runStopHook(): Promise<void> {
       warnings.push("init_in_progress:scans_suppressed");
     }
 
+    // First-turn warmup: if the session is very young (<30s since the
+    // SessionStart hook seeded the per-session dir), suppress the
+    // heavy stalled-task / phase-ready / ctx-threshold surfaces.
+    // First-turn stops fire before the assistant has done any real
+    // work (e.g. operator typed "continue", SessionStart resume primer
+    // hasn't been processed yet) and surfacing prompts immediately
+    // short-circuits the resume flow (bug-mine report #18).
+    const isFirstTurnWarmup = inFirstTurnWarmup(repoRoot, sessionId, 30);
+    if (isFirstTurnWarmup) warnings.push("first_turn_warmup:suppress_surfaces");
+
     if (!initInProgress) {
       try {
         const grad = autoGraduateTasks(repoRoot);
@@ -228,23 +262,34 @@ export async function runStopHook(): Promise<void> {
       // higher-priority surface (reviewer hint, ctx threshold) already
       // owns the reason channel — stalled-task triage is informational
       // catch-up, not blocking.
-      if (reason.length === 0) {
+      //
+      // Per-task suppression window: once a stalled hint fires for a
+      // given task id, suppress re-fires on the same id for 60 min so
+      // the operator isn't asked the same triage question every Stop
+      // tick (bug-mine report #9 — same task flagged 3× in 90s).
+      if (reason.length === 0 && !isFirstTurnWarmup) {
         try {
           const stalled = scanStalledRunningTasks(repoRoot);
-          if (stalled.length > 0) {
+          const surfaced = stalled.filter(
+            (t) => !isStalledFireSuppressed(repoRoot, t.task_id),
+          );
+          if (surfaced.length > 0) {
             const reviewDefer = readDeferState(repoRoot, "review");
             const suppressed =
               reviewDefer !== null &&
               isDeferActive(reviewDefer, new Date(), {
                 kind: "task_ids",
-                values: stalled.map((t) => t.task_id),
+                values: surfaced.map((t) => t.task_id),
               });
             if (suppressed) {
               warnings.push(`stalled_suppressed_until:${reviewDefer.deferred_at}`);
             } else {
-              reason = renderStalledTasksHint(stalled);
-              warnings.push(`stalled_running_tasks:${stalled.length}`);
+              reason = renderStalledTasksHint(surfaced);
+              for (const t of surfaced) stampStalledFire(repoRoot, t.task_id);
+              warnings.push(`stalled_running_tasks:${surfaced.length}`);
             }
+          } else if (stalled.length > 0) {
+            warnings.push(`stalled_window_suppressed:${stalled.length}`);
           }
         } catch (err) {
           warnings.push(
@@ -258,7 +303,7 @@ export async function runStopHook(): Promise<void> {
       // window fraction. Stamps `ctx-threshold-warned.json` on hit so
       // re-fires are suppressed until usage climbs another +10 %.
       try {
-        if (sessionId !== null && sessionId.length > 0) {
+        if (sessionId !== null && sessionId.length > 0 && !isFirstTurnWarmup) {
           const ctxResult = checkContextThreshold({
             repoRoot,
             sessionId,
@@ -299,7 +344,9 @@ export async function runStopHook(): Promise<void> {
       // auto-graduator case (attestation written, task graduated
       // without an explicit MCP call in the same tick).
       try {
-        const phaseHints = collectPhaseReadyHints(repoRoot, drained);
+        const phaseHints = isFirstTurnWarmup
+          ? []
+          : collectPhaseReadyHints(repoRoot, drained);
         if (phaseHints.length > 0) {
           writePhaseReadyPending(repoRoot, sessionId, phaseHints);
           warnings.push(`mission_phase_ready_deferred_to_ups:${phaseHints.length}`);
@@ -499,6 +546,42 @@ function scanPendingReviews(repoRoot: string): PendingReview[] {
   return out;
 }
 
+/**
+ * Per-task stalled-fire suppression window. The Stop hook re-runs on
+ * every assistant turn end; without a window, a stalled task gets the
+ * same AskUserQuestion triage prompt every single turn until the
+ * operator finally writes status.yaml. Stamp on fire, gate on read.
+ *
+ * 60-minute window matches the doubling of the 30-min idle threshold —
+ * one stalled task ≈ one prompt per hour, not one per turn.
+ */
+const STALLED_FIRE_WINDOW_MS = 60 * 60 * 1000;
+
+function stalledFireMarkerPath(repoRoot: string, taskId: string): string {
+  return join(repoRoot, ".cairn", ".stalled-warned", `${taskId}.iso`);
+}
+
+function isStalledFireSuppressed(repoRoot: string, taskId: string): boolean {
+  const path = stalledFireMarkerPath(repoRoot, taskId);
+  if (!existsSync(path)) return false;
+  try {
+    const ms = statSync(path).mtimeMs;
+    return Date.now() - ms < STALLED_FIRE_WINDOW_MS;
+  } catch {
+    return false;
+  }
+}
+
+function stampStalledFire(repoRoot: string, taskId: string): void {
+  const path = stalledFireMarkerPath(repoRoot, taskId);
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, new Date().toISOString(), "utf8");
+  } catch {
+    // best-effort
+  }
+}
+
 interface StalledTask {
   task_id: string;
   title: string;
@@ -588,7 +671,20 @@ function scanStalledRunningTasks(
       continue;
     }
 
-    const idleMs = nowMs - statusMtime;
+    // Journal mtime is also a liveness signal — Bug 2 fix bumps
+    // status.yaml on every appendTaskJournal, but a session running
+    // an older client may write journal.jsonl only. Take the max so
+    // either path counts.
+    const journalPath = join(taskDir, "journal.jsonl");
+    let journalMtime = 0;
+    try {
+      journalMtime = statSync(journalPath).mtimeMs;
+    } catch {
+      // missing journal is fine — fall through with statusMtime only
+    }
+    const liveMtime = Math.max(statusMtime, journalMtime);
+
+    const idleMs = nowMs - liveMtime;
     if (idleMs < idleThresholdMs) continue;
     if (idleMs > upperBoundMs) continue;
 

@@ -251,7 +251,7 @@ The MCP server detects the project root at startup by walking up from `process.c
 
 Tools (18 current, see `MCP_SURFACE.md` for full schema):
 
-- **Read**: `cairn_decision_get`, `cairn_decisions_in_scope`, `cairn_decisions_for_symbol`, `cairn_invariant_get`, `cairn_invariants_in_scope`, `cairn_canonical_for_topic`, `cairn_ground_get`, `cairn_supersedes_chain`, `cairn_search`, `cairn_timeline`, `cairn_get_full`, `cairn_query_history`
+- **Read**: `cairn_decision_get`, `cairn_in_scope` (unified DEC+INV path-glob lookup; filter via `types: ["decision"|"invariant"]`), `cairn_decisions_for_symbol`, `cairn_invariant_get`, `cairn_canonical_for_topic`, `cairn_ground_get`, `cairn_supersedes_chain`, `cairn_search`, `cairn_timeline`, `cairn_get_full`, `cairn_query_history`
 - **Write** (locked): `cairn_record_decision`, `cairn_record_run_event`, `cairn_drop_task`, `cairn_archive`, `cairn_append`, `cairn_ask_operator`
 - **NEW (plugin-era)**: `cairn_resolve_attention(item_id, choice)` — the inline-A/B/C resolution endpoint. Skill calls this after operator picks a/b/c.
 
