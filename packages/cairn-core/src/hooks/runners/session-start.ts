@@ -383,9 +383,11 @@ function renderBootstrapBanner(repoRoot: string): string | null {
 /**
  * Render a resume banner when SessionStart detects an active task
  * whose journal has entries from a different session. The fresh
- * session is picking up cold after a `/clear` — surface the most
- * recent journal entry + next-step + a `/cairn-resume <id>` hint so
- * main Claude rebuilds context immediately.
+ * session is picking up cold after a `/clear` — the banner is a
+ * directive primer that tells the model to (a) treat this task as
+ * the focus instead of presenting a "next task" picker, and (b)
+ * auto-invoke `cairn_resume` + Read the recently-touched files so
+ * the first Edit doesn't trip Claude Code's per-session Read tracker.
  *
  * Returns null when no resume condition is met (no active task, no
  * journal, all entries from the current session, or the journal is
@@ -412,11 +414,26 @@ function renderResumeBanner(
   if (lastEntry === undefined) return null;
   const recent = journal.slice(-5);
 
+  // Dedup files_touched across recent entries, most-recent first.
+  const seenFiles = new Set<string>();
+  const filesTouched: string[] = [];
+  for (let i = recent.length - 1; i >= 0; i -= 1) {
+    const entry = recent[i];
+    const ft = entry?.files_touched;
+    if (!Array.isArray(ft)) continue;
+    for (const f of ft) {
+      if (typeof f !== "string" || f.length === 0) continue;
+      if (seenFiles.has(f)) continue;
+      seenFiles.add(f);
+      filesTouched.push(f);
+    }
+  }
+
   const lines: string[] = [];
-  lines.push(`## Cairn — resuming \`${taskId}\` cold`);
+  lines.push(`## Cairn — resuming \`${taskId}\` cold (active task — DO NOT show next-task picker)`);
   lines.push("");
   lines.push(
-    `An active task has journal entries from a prior session. Picking up where the last session left off.`,
+    `An active task has journal entries from a prior session. **${taskId}** is the focus of this session.`,
   );
   lines.push("");
   lines.push("**Recent journal:**");
@@ -428,8 +445,33 @@ function renderResumeBanner(
     lines.push(`**Next step:** ${lastEntry.next_step}`);
     lines.push("");
   }
+  lines.push("**Auto-resume primer — on your first turn this session, run BEFORE answering the operator:**");
+  lines.push("");
   lines.push(
-    `Call \`cairn_resume({ task_id: "${taskId}" })\` for the full payload (in-scope DECs/INVs, all journal entries).`,
+    "1. `ToolSearch(select:mcp__plugin_cairn_cairn__cairn_resume,mcp__plugin_cairn_cairn__cairn_in_scope,mcp__plugin_cairn_cairn__cairn_task_journal_append,mcp__plugin_cairn_cairn__cairn_task_complete)`",
+  );
+  lines.push(
+    `2. \`cairn_resume({ task_id: "${taskId}" })\` — pulls the spec, goal, in-scope DECs/INVs, full journal tail, and the \`files_touched\` union.`,
+  );
+  if (filesTouched.length > 0) {
+    const cap = filesTouched.slice(0, 8);
+    const moreNote =
+      filesTouched.length > cap.length
+        ? ` …(${filesTouched.length - cap.length} more in \`cairn_resume.files_touched\`)`
+        : "";
+    lines.push(
+      `3. \`Read\` each recently-touched file so the first Edit doesn't trip the per-session Read tracker:`,
+    );
+    for (const f of cap) lines.push(`   - \`${f}\``);
+    if (moreNote.length > 0) lines.push(`   -${moreNote}`);
+  } else {
+    lines.push(
+      "3. `Read` `.cairn/tasks/active/<task_id>/spec.tightened.md` for the constraint set.",
+    );
+  }
+  lines.push("");
+  lines.push(
+    "If the operator's first message is a continuation (`continue`, `go`, `next`, `keep going`), do NOT ask which task — pick up directly from the **Next step** above. If their message is a different ask, run the Step 0.5 pivot detection in `cairn-direction`.",
   );
   return lines.join("\n");
 }

@@ -21,32 +21,27 @@ export const SESSION_START_HEADER = "# Cairn ground state — authoritative for 
 /**
  * The code-change contract — system-level rule injected on every
  * SessionStart so it sits above any skill body in the agent's context
- * window. This is the operator-facing equivalent of the cairn-direction
- * skill's "Hard contract" section, restated as a plain instruction
- * Claude reads BEFORE the user prompt. Bypass detection in
- * write-guardian remains the deterministic enforcement; this section
- * is the up-front guidance.
+ * window. The contract is a one-line gate: invoke the cairn-direction
+ * skill on any code-change prompt. The skill owns the workflow
+ * (ToolSearch preload, in-scope lookup, tightening, dispatch) and is
+ * the single source of truth — duplicating the steps here drifts and
+ * caused phantom tool refs (`cairn_decisions_in_scope` /
+ * `cairn_invariants_in_scope` no longer exist; unified into
+ * `cairn_in_scope`).
  */
 export const CODE_CHANGE_CONTRACT =
   "## Cairn — code-change contract (BLOCKING)\n\n" +
   "Source mutations (`Edit`/`Write` on tracked files) require a tightened " +
-  "spec first. Bypass → `PostToolUse` hook returns `decision: \"block\"`.\n\n" +
-  "Workflow on any code-change prompt:\n\n" +
-  "1. `ToolSearch(select:mcp__plugin_cairn_cairn__cairn_task_create," +
-  "mcp__plugin_cairn_cairn__cairn_decisions_in_scope," +
-  "mcp__plugin_cairn_cairn__cairn_invariants_in_scope,AskUserQuestion)` — " +
-  "load deferred schemas. Required first call; without it `AskUserQuestion` " +
-  "is unavailable and clarifications fall back to inline prose.\n" +
-  "2. `cairn_decisions_in_scope({path_globs})` + `cairn_invariants_in_scope({path_globs})`.\n" +
-  "3. Forks unresolved → `AskUserQuestion` (≤3 options/round, A/B/C, cite " +
-  "DEC/§INV per option). Loop until deterministic.\n" +
-  "4. `cairn_task_create({slug, title, goal, target_path_globs, " +
-  "in_scope_decisions, in_scope_invariants, constraints, out_of_scope, " +
-  "acceptance, module})` — server allocates `task_id` + atomically writes " +
-  "`spec.tightened.md` + `status.yaml`. Format-locked. **`title`** ≤50 " +
-  "chars renders in the statusline + lens (e.g. \"Fix token expiry\"). " +
-  "**`goal`** is the full 1–2 sentence description for the spec body.\n" +
-  "5. Edit/Write. Hook passes (active tightened task on disk).\n\n" +
-  "`/cairn-direction` is the long-form variant (multi-chunk dispatch, " +
-  "rich tightening). Above 5 steps = entire flow for straight bug fixes. " +
-  "NEVER skip Step 1 or Step 4.";
+  "spec on disk at `.cairn/tasks/active/<task_id>/status.yaml`. Bypass → " +
+  "`PostToolUse` hook returns `decision: \"block\"`.\n\n" +
+  "**On any code-change prompt, invoke `Skill(cairn:cairn-direction)` " +
+  "before reading or mutating source.** The skill drives the full flow: " +
+  "preloads MCP tools + `AskUserQuestion`, gathers in-scope context via " +
+  "`cairn_in_scope({path_globs, types?})`, tightens forks, allocates the " +
+  "task via `cairn_task_create`, and dispatches implementation.\n\n" +
+  "Code-change triggers: task verbs (build/add/fix/refactor/wire/remove), " +
+  "bug reports, broken-behavior observations, modal verbs (should/must), " +
+  "mission continuation (`continue`/`go`/`next` on an active mission).\n\n" +
+  "Skip the skill ONLY for: pure info questions with no implied change, " +
+  "operator opt-outs (`skip cairn`, `just do it`), or trivial pinpointed " +
+  "edits (`rename foo to bar at f.ts:42`). When in doubt, invoke.";

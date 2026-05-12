@@ -26,6 +26,7 @@ import {
   readdirSync,
   renameSync,
   statSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -328,6 +329,20 @@ export function appendTaskJournal(args: AppendJournalArgs): boolean {
   }
   const path = join(taskDir, "journal.jsonl");
   appendFileSync(path, `${JSON.stringify(entry)}\n`, "utf8");
+
+  // Bump status.yaml mtime so the stalled-task detector (which reads
+  // mtime on status.yaml) sees a journal-only turn as live activity.
+  // Without this, journaling without a status edit causes the 30-min
+  // idle clock to fire mid-active-work (bug-mine report #2).
+  const statusPath = join(taskDir, "status.yaml");
+  if (existsSync(statusPath)) {
+    const now = new Date();
+    try {
+      utimesSync(statusPath, now, now);
+    } catch {
+      // Best-effort — mtime bump is a hint, not a contract.
+    }
+  }
   return true;
 }
 

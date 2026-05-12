@@ -384,17 +384,38 @@ function renderActiveMissionSection(repoRoot: string, warnings: string[]): strin
     // operator gets the prompt back after `/clear` (the Stop-hook
     // pending file is session-scoped + consume-once).
     const gate = effectivePhaseExitGate(roadmap.frontmatter, cursorPhase.id);
-    const phaseReady =
-      gate === "prompt" &&
+    const tasksDone =
       taskIds.length > 0 &&
       allPhaseTasksDone(state, cursorPhase.id, (id) =>
         existsSync(join(repoRoot, ".cairn", "tasks", "done", id)),
-      ) &&
+      );
+    // PR-slug cross-check: if exit_criteria enumerates PR refs, every
+    // ref must have a graduated task before phase-ready fires (bug-mine
+    // report #13). Falls through cleanly when exit_criteria is free-form
+    // prose with no PR-shaped tokens.
+    const prCoverage = computePhasePrCoverage(
+      cursorPhase.exit_criteria ?? "",
+      taskIds,
+    );
+    const phaseReady =
+      gate === "prompt" &&
+      tasksDone &&
+      prCoverage.missing.length === 0 &&
       !isMissionPhaseDeferActive(repoRoot, missionId, cursorPhase.id);
     if (phaseReady) {
       lines.push("");
       lines.push(
         `**Phase ready to exit** — all ${taskIds.length} linked task(s) graduated. Use \`AskUserQuestion\` to confirm, then call \`cairn_mission_advance({phase_id: "${cursorPhase.id}", choice: "exit"})\` to graduate, or \`choice: "not_yet"\` / \`"defer"\` to keep the cursor.`,
+      );
+    } else if (
+      gate === "prompt" &&
+      tasksDone &&
+      prCoverage.missing.length > 0 &&
+      !isMissionPhaseDeferActive(repoRoot, missionId, cursorPhase.id)
+    ) {
+      lines.push("");
+      lines.push(
+        `**Phase tasks graduated but exit_criteria PR refs missing**: ${prCoverage.missing.map((s) => `\`${s}\``).join(", ")}. Phase-exit prompt held; ship the named PRs first.`,
       );
     }
   } else {
@@ -412,6 +433,59 @@ function renderActiveMissionSection(repoRoot: string, warnings: string[]): strin
     "Tasks under this cursor inherit `mission_id` + `phase_id` automatically. Side-tasks (regression fixes, refactors unrelated to the phase exit_criteria) must pass `mission_id: \"\"` to `cairn_task_create` so they don't pollute `phase_progress.task_ids`.",
   );
   return lines.join("\n");
+}
+
+/**
+ * Returns the PR slugs named in `exitCriteria` (e.g. `3.5-MK2`,
+ * `3.5-MK3`) along with the subset that is NOT covered by any
+ * graduated task id. Matching is case-insensitive — the bare PR token
+ * (`mk2`) must appear as a kebab-delimited segment OR the full
+ * dot-replaced slug (`3-5-mk2`) must appear as a substring of the
+ * task id. The cairn-direction Step 2.6b auto-pick embeds the PR
+ * token into the task slug directly.
+ *
+ * Free-form `exitCriteria` with no PR-shaped tokens returns
+ * `{ slugs: [], missing: [] }` — caller treats this as "no PR
+ * accounting needed" and falls back to plain task-count logic.
+ */
+const PHASE_PR_SLUG_RE = /\b\d+\.\d+-[A-Z]+\d+\b/g;
+
+function computePhasePrCoverage(
+  exitCriteria: string,
+  taskIds: string[],
+): { slugs: string[]; missing: string[] } {
+  const matches = exitCriteria.match(PHASE_PR_SLUG_RE);
+  if (matches === null || matches.length === 0) {
+    return { slugs: [], missing: [] };
+  }
+  const seen = new Set<string>();
+  const slugs: string[] = [];
+  for (const m of matches) {
+    if (seen.has(m)) continue;
+    seen.add(m);
+    slugs.push(m);
+  }
+  const missing: string[] = [];
+  for (const slug of slugs) {
+    if (!taskIdsCoverPrSlug(taskIds, slug)) missing.push(slug);
+  }
+  return { slugs, missing };
+}
+
+function taskIdsCoverPrSlug(taskIds: string[], prSlug: string): boolean {
+  const fullKebab = prSlug.replace(/\./g, "-").toLowerCase();
+  const bareToken = prSlug.split("-").slice(1).join("-").toLowerCase();
+  for (const id of taskIds) {
+    const lower = id.toLowerCase();
+    if (lower.includes(fullKebab)) return true;
+    if (
+      bareToken.length > 0 &&
+      new RegExp(`(^|-)${bareToken}(-|$)`).test(lower)
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function isMissionPhaseDeferActive(
@@ -578,8 +652,10 @@ function renderGroundStateSummary(
     "Bare `§DEC-NNNN` and `§INV-NNNN` citations in source files resolve " +
       "automatically when you Read them — the PostToolUse(Read) hook " +
       "prepends a legend with each citation's title + status. Use " +
-      "`cairn_decisions_in_scope(globs[])` or `cairn_invariants_in_scope(globs[])` " +
-      "for path-targeted lookups, `cairn_search(query)` for free-text.",
+      "`cairn_in_scope({path_globs, types?})` for path-targeted lookups " +
+      "(omit `types` for both DECs + INVs, or filter by " +
+      "`types: [\"decision\"]` / `[\"invariant\"]`), `cairn_search(query)` " +
+      "for free-text.",
   );
   return lines.join("\n");
 }
@@ -598,7 +674,7 @@ function renderDecisionsSection(decisions: DecisionEntry[]): string | null {
   }
   if (decisions.length > DECISIONS_CAP) {
     lines.push(
-      `…${decisions.length - DECISIONS_CAP} additional decision${decisions.length - DECISIONS_CAP === 1 ? "" : "s"} — call \`cairn_decisions_in_scope(globs[])\` for the rest.`,
+      `…${decisions.length - DECISIONS_CAP} additional decision${decisions.length - DECISIONS_CAP === 1 ? "" : "s"} — call \`cairn_in_scope({path_globs, types: ["decision"]})\` for the rest.`,
     );
   }
   return lines.join("\n");
@@ -617,7 +693,7 @@ function renderInvariantsSection(invariants: InvariantEntry[]): string | null {
   }
   if (invariants.length > INVARIANTS_CAP) {
     lines.push(
-      `…${invariants.length - INVARIANTS_CAP} additional — call \`cairn_invariants_in_scope(globs[])\`.`,
+      `…${invariants.length - INVARIANTS_CAP} additional — call \`cairn_in_scope({path_globs, types: ["invariant"]})\`.`,
     );
   }
   return lines.join("\n");

@@ -3,8 +3,8 @@
  * been promoted to a DEC yet (`dec_id IS NULL`).
  *
  * Spec:  Mirrors the response shape of
- * `cairn_decisions_in_scope` so AI agents can use the two
- * interchangeably during the daily read-enrich-driven curator flow.
+ * `cairn_in_scope` so AI agents can use the two interchangeably
+ * during the daily read-enrich-driven curator flow.
  *
  * The slugs returned by this tool are exactly the slugs accepted by
  * `cairn_propose_decision` and `cairn_reject_candidate`.

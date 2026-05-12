@@ -222,6 +222,25 @@ H1) and `status.yaml` (`phase` field). Pick the first task whose
 `phase` is `running` (the auto-graduator transitions completed work
 out of `running` so anything left here is genuinely in flight).
 
+**Continuation auto-pickup (cold session, no resume primer yet).**
+If the operator's message matches a continuation token (`continue`,
+`go`, `next`, `keep going`, `more`, `proceed`) AND the journal has
+entries from a different session_id than the current one (cold
+resume after `/clear`), do NOT engage the pivot prompt and do NOT
+restart from Step 1. Instead, run the same auto-resume primer the
+SessionStart banner describes:
+
+1. `cairn_resume({ task_id: <active task id> })` — pulls spec,
+   in-scope DECs/INVs, journal tail, `files_touched` union.
+2. Read every path in `cairn_resume.files_touched` (cap 8,
+   most-recent first) in parallel so the per-session Read tracker
+   is primed before any Edit.
+3. Read `.cairn/tasks/active/<task_id>/spec.tightened.md`.
+4. Pick up from `cairn_resume.next_step` and continue work.
+
+Skip the pivot AskUserQuestion entirely for continuation messages —
+the operator typed `continue` to keep going, not to be re-asked.
+
 Compare the operator's new prompt to the active task's title +
 goal:
 

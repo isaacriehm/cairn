@@ -128,7 +128,7 @@ Three paths, in order of how often you'll see each:
 ### Scope: what `scope_globs` means
 
 `scope_globs` is the file glob that binds the decision to code. The
-agent's `cairn_decisions_in_scope` query takes a list of paths (the
+agent's `cairn_in_scope` query takes a list of paths (the
 files about to be touched in this task) and returns only the
 decisions whose `scope_globs` overlap.
 
@@ -382,11 +382,12 @@ scope_globs:
 ```
 
 When the agent (or you, via the CLI) calls
-`cairn_decisions_in_scope`:
+`cairn_in_scope`:
 
 ```
-cairn_decisions_in_scope({
-  path_globs: ["src/auth/jwt.ts", "src/auth/refresh.ts"]
+cairn_in_scope({
+  path_globs: ["src/auth/jwt.ts", "src/auth/refresh.ts"],
+  types: ["decision"]
 })
 ```
 
@@ -674,14 +675,12 @@ the refunds endpoint."*
 1. **Scope resolved.** The agent estimates target files
    (`packages/api/src/routes/refunds.ts` plus the middleware in
    `packages/api/src/middleware/rate-limit.ts`).
-2. **In-scope decisions loaded.** `cairn_decisions_in_scope` returns
+2. **In-scope decisions + invariants loaded.** `cairn_in_scope` returns
    `DEC-0019` (Stripe is the only payment processor — relevant
    because refunds touch Stripe), `DEC-0067` (per-user rate limits
-   use the Redis token-bucket pattern), and `DEC-0091` (refunds are
-   idempotent).
-3. **Invariants loaded.** `cairn_invariants_in_scope` returns
-   `INV-0042` (`x-request-id` on every response) and `INV-0091`
-   (refund operations idempotent).
+   use the Redis token-bucket pattern), `DEC-0091` (refunds are
+   idempotent), plus the §INVs `INV-0042` (`x-request-id` on every
+   response) and `INV-0091` (refund operations idempotent).
 4. **Canonical map consulted.** `cairn_canonical_for_topic("rate
    limiting")` returns the middleware path, so the agent reads the
    right file rather than grepping.

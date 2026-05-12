@@ -56,7 +56,8 @@ The tool returns:
     { ts, session_id, summary, next_step?, files_touched?, decisions_loaded? }
   ],
   next_step: "<last entry's next_step or null>",
-  total_entries: <number>
+  total_entries: <number>,
+  files_touched: ["<repo-rel path>", …]   // deduplicated union across recent_entries (most-recent first)
 }
 ```
 
@@ -108,6 +109,18 @@ Continuing now.
 After the block, **immediately read the spec** at
 `.cairn/tasks/active/<task_id>/spec.tightened.md` so the rest of the
 session has the full constraint set in working memory.
+
+## Step 3.5 — pre-Read recently-touched files
+
+Read every path in `cairn_resume.files_touched` (most-recent first,
+cap at 8) **in parallel** so the per-session Read tracker has them
+cached. Without this step, the first `Edit` after `/clear` will trip
+`File has not been read yet` for every file the prior session edited,
+forcing a wall of recovery Reads (bug-mine report #10).
+
+Skip the pre-Read only when the file no longer exists (e.g. the prior
+session deleted it before `/clear`). Best-effort — silent failures
+are fine; the goal is to prime the cache, not to validate state.
 
 ## Step 4 — fetch in-scope DECs / INVs (parallel)
 

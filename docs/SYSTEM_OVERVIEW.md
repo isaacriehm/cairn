@@ -28,7 +28,7 @@ runtime** — the plugin uses Claude Code's built-in subagent dispatch.
 | Surface | Package | Purpose |
 |---------|---------|---------|
 | **Plugin** | `cairn-frontend-claudecode` | Claude Code manifest + hook bins + skills + commands + the reviewer subagent. The everyday surface. |
-| **MCP server** | `cairn-core/src/mcp/` | 20 tools — graph reads (`cairn_decisions_in_scope`, `cairn_invariant_get`, …), writes (`cairn_record_decision`, `cairn_resolve_attention`, `cairn_archive`), init phase tools (`cairn_init_phase_*`). |
+| **MCP server** | `cairn-core/src/mcp/` | 20 tools — graph reads (`cairn_in_scope`, `cairn_invariant_get`, …), writes (`cairn_record_decision`, `cairn_resolve_attention`, `cairn_archive`), init phase tools (`cairn_init_phase_*`). |
 | **CLI** | `cairn` (umbrella) | `cairn init`, `cairn join`, `cairn doctor`, `cairn scope rebuild`, `cairn trace`, `cairn hook <name>`. Bootstrap + debug. |
 | **Lens** | `cairn-lens` | VS Code / Cursor extension. Resolves `§INV-NNNN` / `§DEC-NNNN` / `TODO(TSK-…)` tokens inline. Hover + decoration + CodeLens. |
 | **Hook bins** | `cairn-core/src/hooks/` | Thin entrypoints called by Claude Code at hook events; delegate to runners in `hooks/runners/`. |
@@ -149,8 +149,7 @@ sequenceDiagram
 
   Op->>CC: 'login endpoint isn't enforcing 24h expiry…'
   CC->>CD: skill auto-invokes (verb-led OR bug-report OR observation)
-  CD->>MCP: cairn_decisions_in_scope({path_globs})
-  CD->>MCP: cairn_invariants_in_scope({path_globs})
+  CD->>MCP: cairn_in_scope({path_globs})
   CD->>MCP: cairn_search({query})
   CD->>Op: AskUserQuestion (clarifying, ≤3)
   Op-->>CD: answers

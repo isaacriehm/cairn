@@ -129,10 +129,10 @@ export const taskJournalAppendInput = {
   summary: z
     .string()
     .min(1)
-    .max(160, "summary must be ≤160 chars (one-liner)"),
+    .max(320, "summary must be ≤320 chars (terse one/two-liner)"),
   next_step: z
     .string()
-    .max(160, "next_step must be ≤160 chars (one-liner)")
+    .max(320, "next_step must be ≤320 chars")
     .optional(),
   files_touched: z.array(z.string().min(1)).max(20).optional(),
   decisions_loaded: z
@@ -157,6 +157,9 @@ export const resumeInput = {
 /**
  * `cairn_task_complete` — graduate an active task to a terminal phase
  * (succeeded / failed / aborted). Format: `TSK-<slug>-<7-hex>`.
+ * `task_id` is optional — defaults to the most-recently-touched
+ * active task (same auto-pick as `cairn_task_journal_append` /
+ * `cairn_resume`).
  */
 export const taskCompleteInput = {
   task_id: z
@@ -164,11 +167,12 @@ export const taskCompleteInput = {
     .regex(
       /^TSK-[a-z0-9-]+-[0-9a-f]{7}$/,
       "task id must match TSK-<slug>-<7-hex>",
-    ),
+    )
+    .optional(),
   outcome: z.enum(["succeeded", "failed", "aborted"]),
   summary: z
     .string()
-    .max(500, "summary must be ≤500 chars (one sentence is plenty)")
+    .max(2000, "summary must be ≤2000 chars")
     .optional(),
 };
 
@@ -275,7 +279,7 @@ export const alignDrainInput = {
 /**
  * `cairn_search_candidates` — query topic-index entries that have not
  * yet been promoted to a DEC (`dec_id IS NULL`). Mirrors the shape of
- * `cairn_decisions_in_scope` so AI agents can use them interchangeably.
+ * `cairn_in_scope` so AI agents can use them interchangeably.
  *
  * - `query`  — case-insensitive substring match against title + body preview.
  * - `scope`  — repo-relative glob filter on `sot_source` (e.g. `"docs/**"`).

@@ -426,15 +426,17 @@ walks both branches.
 
 Three primary read tools, picked by what you have.
 
-### You have a list of files → `cairn_decisions_in_scope`
+### You have a list of files → `cairn_in_scope`
 
 The most common query. Used by the agent's tightening step and by
-the SessionStart context builder.
+the SessionStart context builder. Returns both DECs and §INVs by
+default; pass `types: ["decision"]` or `["invariant"]` to filter.
 
 ```
-cairn_decisions_in_scope({
+cairn_in_scope({
   path_globs: ["src/auth/jwt.ts", "src/auth/refresh.ts"],
-  status: ["accepted"]    // optional; default ["accepted"]
+  types: ["decision"],       // optional; default is both
+  status: ["accepted"]        // optional; default ["accepted"] for DECs, ["active"] for §INVs
 })
 ```
 
@@ -493,15 +495,15 @@ candidate.
 
 ### When to use which
 
-- **Tightening a prompt** → `cairn_decisions_in_scope` (the agent
-  does this automatically; you rarely call it directly).
+- **Tightening a prompt** → `cairn_in_scope` (the agent does this
+  automatically; you rarely call it directly).
 - **Writing a superseder** → `cairn_decision_get` to read the
   current text first, so the new DEC quotes the exact prior
   language it's replacing.
 - **Onboarding a new contributor** → `cairn_search` for the
   domain they're starting in.
 - **Auditing what's recorded for a subsystem** →
-  `cairn_decisions_in_scope` with the subsystem's globs.
+  `cairn_in_scope` with the subsystem's globs.
 
 ---
 

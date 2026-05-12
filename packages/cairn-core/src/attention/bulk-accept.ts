@@ -243,7 +243,7 @@ export async function bulkAcceptObvious(
           }
         }
         // Rebuild the ledger once at the end so accepted DECs surface
-        // in `cairn_decisions_in_scope` immediately.
+        // in `cairn_in_scope` immediately.
         if (!dry && decsAccepted > 0) {
           try {
             writeDecisionsLedger({ repoRoot: args.repoRoot });
