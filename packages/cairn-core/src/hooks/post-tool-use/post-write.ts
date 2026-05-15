@@ -7,6 +7,7 @@
  */
 
 import { z } from "zod";
+import { relative, resolve } from "node:path";
 import { resolveRepoRoot } from "../../session-start/index.js";
 import { readHookStdin } from "../runners/payload.js";
 import { executeSotAlign } from "./sot-align.js";
@@ -112,9 +113,13 @@ export async function runPostWriteHook(): Promise<void> {
     // 1. Run Guardian (can block)
     // Needs content — extract from tool_response
     const content = payload.tool_response?.content ?? payload.tool_response?.text ?? payload.tool_response?.output ?? "";
+    // filePath from the Claude Code payload is absolute. Guardian's
+    // gitignore / glob / scope-index lookups all expect a repo-relative
+    // path, so normalize here before handing it over.
+    const relPath = relative(repoRoot, resolve(cwd, filePath));
     const guard = executeWriteGuardian({
       repoRoot,
-      relPath: filePath,
+      relPath,
       content,
       payload,
     });

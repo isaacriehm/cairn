@@ -114,9 +114,9 @@ function normalizeStatusJson(partial: Partial<StatusJson>): StatusJson {
  *   - "deferred" → most recent record is `decline-temp` (re-prompt later)
  *   - "fresh"    → no record, no `.cairn/` → operator hasn't decided
  */
-type AdoptionState = "adopted" | "declined" | "deferred" | "fresh";
+export type AdoptionState = "adopted" | "declined" | "deferred" | "fresh";
 
-function readAdoptionState(repoRoot: string): AdoptionState {
+export function readAdoptionState(repoRoot: string): AdoptionState {
   if (existsSync(join(repoRoot, ".cairn"))) return "adopted";
 
   const dataRoot = join(homedir(), ".claude", "plugins", "data");

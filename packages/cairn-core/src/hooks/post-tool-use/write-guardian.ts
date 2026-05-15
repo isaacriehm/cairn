@@ -172,17 +172,23 @@ export function executeWriteGuardian(args: {
 
   const sessionId = payload.session_id ?? null;
 
-  // Bypass detection
+  const sections: string[] = [];
+
+  // Bypass detection — emit a once-per-session hint instead of blocking.
+  // Blocking interrupts the agent's flow and the "retry the write"
+  // recovery path is fragile (LLM often interprets the stop as abort
+  // and drops the work). The reminder still surfaces via Shape-B
+  // additionalContext so the operator sees it and can choose to wrap
+  // future writes in a cairn-direction task; the write itself proceeds.
   if (
     isProjectTrackedFile(repoRoot, relPath) &&
     !hasTightenedActiveTask(repoRoot) &&
     !bypassAlreadyWarned(repoRoot, sessionId)
   ) {
     markBypassWarned(repoRoot, sessionId);
-    return { kind: "block", message: renderBypassBlockReason(relPath) };
+    sections.push(renderBypassHintSection(relPath));
   }
 
-  const sections: string[] = [];
   if (issues.length > 0) {
     sections.push(renderCopySafetySection(basename(filePath), issues));
   }
@@ -243,16 +249,13 @@ function renderScopeSection(hint: ScopeIndexHint): string {
   return lines.join("\n");
 }
 
-function renderBypassBlockReason(relPath: string): string {
+function renderBypassHintSection(relPath: string): string {
   return (
-    `## STOP — BYPASS DETECTED\n\n` +
-    `You are attempting to write to a tracked source file (\`${relPath}\`) ` +
-    `without an active task. This bypasses the cairn-direction skill and ` +
-    `breaks ground-state continuity.\n\n` +
-    `1. Call cairn_task_create first to define your intent.\n` +
-    `2. Then proceed with your changes.\n\n` +
-    `If this is a trivial edit or you are explicitly bypassing, retry the write. ` +
-    `This warning is only shown once per session.`
+    `## Cairn — write without active task\n\n` +
+    `\`${relPath}\` is a tracked source file but no cairn-direction task ` +
+    `is active. For non-trivial changes, call \`cairn_task_create\` first ` +
+    `so the spec is captured before edits land. Trivial edits + explicit ` +
+    `bypasses are fine — this reminder only fires once per session.`
   );
 }
 

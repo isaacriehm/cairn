@@ -103,7 +103,11 @@ export {
   statusJsonPath,
   writeStatusJson,
 } from "./writer.js";
-export { readStatusForCLI } from "./reader.js";
+export {
+  readStatusForCLI,
+  readAdoptionState,
+  type AdoptionState,
+} from "./reader.js";
 export {
   formatStatus,
   renderCtxMeter,

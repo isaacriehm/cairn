@@ -4,6 +4,77 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.1] — 2026-05-14
+
+Hot-fix patch addressing two friction surfaces caught in live use:
+the PostToolUse Write/Edit hook was blocking writes on every session
+boundary, and the SessionStart hook was injecting the adoption banner
+even on repos the operator had explicitly opted out of with
+`decline-never`.
+
+### Fixed
+
+- **PostToolUse Write/Edit hook no longer blocks writes on bypass
+  detection.** The `write-guardian` was emitting Shape-B
+  `decision: "block"` (`STOP — BYPASS DETECTED`) the first time it
+  saw a Write/Edit against a tracked source file in a session with
+  no active cairn-direction task. The intent — "warn once per
+  session, then never again" — was sound, but Claude Code agents
+  routinely interpreted the hard stop as "abort the entire turn"
+  rather than "retry the write", silently dropping the operator's
+  work. Worse, the per-session suppression marker
+  (`bypass-warned-<session>`) failed to persist in worktree contexts
+  where `resolveRepoRoot` resolved to a different `.cairn/` than
+  the marker was written under, so the block fired on every write
+  instead of once.
+
+  The reminder still surfaces — it now lands as a Shape-B
+  `additionalContext` hint folded into the same section list the
+  scope-index and copy-safety hints use, with the once-per-session
+  suppression intact. The write itself proceeds. Operators who
+  want the stricter behaviour back can layer a project-level
+  PreToolUse hook on top.
+
+- **PostToolUse hook now normalises `file_path` to a repo-relative
+  path before handing it to the guardian.** Claude Code's
+  PostToolUse payload delivers `tool_input.file_path` as an
+  absolute path (`<operator-home>/repo/src/foo.ts`). The combined
+  `post-write` runner was forwarding that absolute path straight
+  to `executeWriteGuardian` as `relPath`, which broke the
+  `.cairn/`-prefix gitignore short-circuit
+  (`relPath.startsWith(".cairn/")` is false when `relPath` is
+  absolute) and forced the downstream `git check-ignore`,
+  glob-match, and scope-index lookups to handle paths they weren't
+  designed for. Now normalised via
+  `relative(repoRoot, resolve(cwd, filePath))` at the entry point,
+  matching the standalone `runWriteGuardian` wrapper.
+
+- **SessionStart banner respects `decline-never`.** When the
+  operator picked "never for this project" in the cairn-adopt
+  consent gate, the decline state was recorded in
+  `~/.claude/plugins/data/cairn-*-cairn/projects.json` and the
+  statusline correctly rendered `⬡ cairn  ⊘ off`. But the
+  SessionStart hook's adoption banner — `Cairn adoption suggested
+  for this project root. **On the operator's first reply ...
+  immediately invoke Skill(cairn:cairn-adopt) ...**` — was still
+  injected on every session start, because the banner gate only
+  checked whether `.cairn/` existed on disk and never consulted
+  `projects.json`. The skill itself aborted on the decline-never
+  record in its Step 1 trigger gate, but only after the agent had
+  already invoked it per the banner instruction, burning a turn.
+  The banner gate now reuses the same `readAdoptionState` helper
+  the statusline uses; declined repos see empty `additionalContext`
+  and the agent never invokes the skill.
+
+### Internal
+
+- `readAdoptionState` + the `AdoptionState` type are now exported
+  from `@isaacriehm/cairn-core` via the `status-line/` module
+  surface, so other call sites (the SessionStart banner gate
+  above, future hooks that need to check decline state without
+  going through the statusline) can share the projects.json
+  glob-merge logic instead of duplicating it.
+
 ## [0.13.0] — 2026-05-12
 
 Second bug-mine pass over real autonomous-execution sessions

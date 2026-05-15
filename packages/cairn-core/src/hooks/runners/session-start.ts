@@ -29,7 +29,11 @@ import {
   seedEventsMarker,
   gcStaleSessions,
 } from "../../session/index.js";
-import { writeStatusJson, defaultStatusJson } from "../../status-line/index.js";
+import {
+  writeStatusJson,
+  defaultStatusJson,
+  readAdoptionState,
+} from "../../status-line/index.js";
 import { gcStaleEvents } from "../../events/reader.js";
 import { rescanScopeIndex } from "@isaacriehm/cairn-state";
 import { readActiveTaskSummary } from "../../context/task-summary.js";
@@ -164,10 +168,18 @@ export async function runSessionStartHook(): Promise<void> {
     // looks like a project root, else stay silent. Surface any shim
     // failures so the operator can diagnose statusline-install issues
     // without having to be in an adopted project to see them.
-    const banner = renderAdoptionBanner(cwdInput);
+    //
+    // decline-never recorded for this cwd → suppress the banner
+    // entirely. The cairn-adopt skill's Step 1 already aborts on
+    // decline-never, but the banner instructs the agent to invoke the
+    // skill before checking, burning a turn. Gate at the banner layer
+    // so declined repos see no surface at all.
+    const declineState = readAdoptionState(cwdInput);
+    const banner =
+      declineState === "declined" ? "" : renderAdoptionBanner(cwdInput);
     const shimNote = renderShimWarningsBanner(shimWarnings);
     const additionalContext =
-      shimNote === null ? banner : `${banner}\n\n${shimNote}`;
+      shimNote === null ? banner : banner.length === 0 ? shimNote : `${banner}\n\n${shimNote}`;
     emitShapeB(additionalContext, "SessionStart");
     return;
   }
