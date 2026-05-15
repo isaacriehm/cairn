@@ -13,6 +13,7 @@
  * When nothing: emits `{ continue: true }` and Claude stops normally.
  */
 
+import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -118,6 +119,51 @@ function clampReason(body: string): string {
   if (withPreamble.length <= MAX_REASON_CHARS) return withPreamble;
   const head = withPreamble.slice(0, MAX_REASON_CHARS - 80);
   return `${head}\n\n…(truncated; resolve via cairn-attention)`;
+}
+
+/**
+ * Time window (ms) after which an identical Stop-cue payload may re-fire.
+ * Suppresses cue spam — caught in bug-mine: same "5 commits not attested"
+ * payload re-fired 3× across a 10-minute span while the operator was
+ * mid-resolution, because `bypass_accept` silently no-op'd from a worktree
+ * (Bug A / fixed via `resolveRepoRoot` worktree-collapse). Re-emit after
+ * the window or whenever the payload hash changes.
+ */
+const CUE_DEBOUNCE_WINDOW_MS = 60 * 60 * 1000;
+
+interface PriorCueState {
+  hash: string;
+  emitted_at: string;
+}
+
+function priorCuePath(repoRoot: string, sessionId: string): string {
+  return join(repoRoot, ".cairn", "sessions", sessionId, "last-stop-cue.json");
+}
+
+function readPriorCue(repoRoot: string, sessionId: string): PriorCueState | null {
+  const path = priorCuePath(repoRoot, sessionId);
+  if (!existsSync(path)) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as Partial<PriorCueState>;
+    if (typeof parsed.hash !== "string" || typeof parsed.emitted_at !== "string") return null;
+    return { hash: parsed.hash, emitted_at: parsed.emitted_at };
+  } catch {
+    return null;
+  }
+}
+
+function writePriorCue(repoRoot: string, sessionId: string, state: PriorCueState): void {
+  const path = priorCuePath(repoRoot, sessionId);
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, JSON.stringify(state, null, 2), "utf8");
+  } catch {
+    // best-effort: a missed write only means the next identical cue will fire
+  }
+}
+
+function hashCuePayload(body: string): string {
+  return createHash("sha256").update(body, "utf8").digest("hex").slice(0, 16);
 }
 
 /**
@@ -428,11 +474,38 @@ export async function runStopHook(): Promise<void> {
   // Stop does NOT support `hookSpecificOutput.additionalContext` —
   // that field is silently ignored by Claude Code for Stop events,
   // so we cannot reach the model context without `decision: "block"`.
+
+  // Payload-hash debounce — suppress identical `reason` payloads within
+  // CUE_DEBOUNCE_WINDOW_MS. Prevents the 3×-cue-spam pattern bug-mine
+  // found: when the underlying scan keeps returning the same flagged
+  // set (operator didn't act, OR resolve_attention silently no-op'd
+  // pre-Bug-A-fix), the cue re-fired on every Stop. The hash includes
+  // every surface (ctx-threshold, reviewer, bypass) so any change in
+  // surfaced state breaks the suppression.
+  let emitReason = reason;
+  if (reason.length > 0 && repoRoot !== null && sessionId !== null && sessionId.length > 0) {
+    const hash = hashCuePayload(reason);
+    const prior = readPriorCue(repoRoot, sessionId);
+    if (prior !== null && prior.hash === hash) {
+      const ageMs = Date.now() - Date.parse(prior.emitted_at);
+      if (Number.isFinite(ageMs) && ageMs >= 0 && ageMs < CUE_DEBOUNCE_WINDOW_MS) {
+        emitReason = "";
+        warnings.push(`cue_debounced:${hash}:${Math.floor(ageMs / 1000)}s`);
+      }
+    }
+    if (emitReason.length > 0) {
+      writePriorCue(repoRoot, sessionId, {
+        hash,
+        emitted_at: new Date().toISOString(),
+      });
+    }
+  }
+
   const out: StopBlockOutput | StopPassOutput =
-    reason.length > 0
+    emitReason.length > 0
       ? {
           decision: "block",
-          reason: clampReason(reason),
+          reason: clampReason(emitReason),
           ...(systemMessage.length > 0 ? { systemMessage } : {}),
         }
       : {

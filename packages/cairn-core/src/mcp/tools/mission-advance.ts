@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
   appendMissionJournal,
@@ -13,6 +13,27 @@ import { mcpError } from "../errors.js";
 import { missionAdvanceInput } from "../schemas.js";
 import { advanceMissionPhase as advancePhase } from "../../missions/index.js";
 import type { ToolDef } from "./types.js";
+
+/**
+ * Read a graduated task's outcome from `.cairn/tasks/done/<id>/status.yaml`.
+ * The `phase` field is overloaded — `task-create` writes `phase: running`,
+ * `task-complete` rewrites it to the outcome string (`succeeded` / `failed`
+ * / `aborted`). Returns "unknown" when the file is missing or unreadable.
+ */
+function readGraduatedOutcome(repoRoot: string, taskId: string): string {
+  const statusPath = join(repoRoot, ".cairn", "tasks", "done", taskId, "status.yaml");
+  if (!existsSync(statusPath)) return "unknown";
+  try {
+    const raw = readFileSync(statusPath, "utf8");
+    for (const line of raw.split(/\r?\n/)) {
+      const m = line.match(/^phase:\s*(\S+)/);
+      if (m && m[1] !== undefined) return m[1].replace(/['"]/g, "");
+    }
+    return "unknown";
+  } catch {
+    return "unknown";
+  }
+}
 
 function writeMissionPhaseDefer(
   repoRoot: string,
@@ -150,11 +171,44 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
 
   // choice === "exit" || "force"
   if (input.choice === "exit") {
+    // Cursor validation — `exit` is the cursor-honouring advance. Reject
+    // out-of-order phase exits so a caller can't skip an incomplete phase
+    // by submitting a later phase_id (caught in bug-mine: mission-2
+    // advanced phase-2 while phase-1 was still active, orphaning phase-1
+    // and corrupting progress accounting). Operator must use `force` to
+    // skip ahead intentionally.
+    const cursorPhase = state.cursor.active_phase;
+    if (cursorPhase !== null && cursorPhase !== input.phase_id) {
+      return mcpError(
+        "VALIDATION_FAILED",
+        `phase_id ${input.phase_id} is not the active cursor (cursor on ${cursorPhase}). ` +
+          `Use choice="force" to intentionally skip ahead, or call cairn_mission_advance against ${cursorPhase} first.`,
+      );
+    }
+
     const progress = state.phase_progress[input.phase_id];
     if (progress === undefined || progress.task_ids.length === 0) {
       return mcpError(
         "VALIDATION_FAILED",
         `phase ${input.phase_id} has no linked tasks. Pass choice="force" to advance an empty phase.`,
+      );
+    }
+
+    // Failed-task gate — refuse to mark a phase as graduated if every
+    // linked task ended in failure. Caught in bug-mine: mission-2
+    // advanced past `phase-1-auth` after three consecutive failed auth
+    // task_completes, leaving the mission journal claiming "phase done"
+    // while no work succeeded. Force can still skip, but it requires
+    // explicit operator intent.
+    const outcomes = progress.task_ids.map((id) => readGraduatedOutcome(ctx.repoRoot, id));
+    const hasUngraduated = outcomes.some((o) => o === "unknown");
+    const hasSucceeded = outcomes.some((o) => o === "succeeded");
+    if (!hasUngraduated && !hasSucceeded) {
+      return mcpError(
+        "VALIDATION_FAILED",
+        `phase ${input.phase_id} has linked tasks but none with outcome=succeeded ` +
+          `(outcomes: ${outcomes.join(", ")}). Use choice="force" to intentionally skip ` +
+          `a phase that did not succeed, or choice="defer" to suppress the prompt without advancing.`,
       );
     }
   }
@@ -188,8 +242,8 @@ export const missionAdvanceTool: ToolDef<Input> = {
   description:
     "Resolve a phase-exit prompt (or manually advance the mission). " +
     "**Pick `choice` based on intent**: " +
-    "`exit` — phase work is done, advance the cursor. Refused only when the phase has zero linked tasks (rare in v0.12.x because `cairn_task_create` auto-links on creation). If you hit the refusal, the phase truly is empty — pass `force`. " +
-    "`force` — advance even when zero tasks are linked (skip a phase that wasn't worked on at all). " +
+    "`exit` — phase work is done, advance the cursor. Refused when (a) `phase_id` is not the active cursor (use `force` to skip ahead), (b) the phase has zero linked tasks, or (c) every linked task ended `failed`/`aborted`. If you hit (b) the phase truly is empty — pass `force`. If you hit (c) the phase didn't succeed — pass `force` to skip explicitly or `defer` to suppress the prompt. " +
+    "`force` — advance regardless of cursor / task linkage / outcomes (skip a phase that wasn't worked on, or one that failed). " +
     "`not_yet` — keep cursor on this phase; next `cairn_task_create` auto-attaches here. Use when more work is pending. " +
     "`defer` — suppress the phase-exit prompt for `defer_hours` (default 24) without changing cursor. " +
     "`drop` — remove a drifted phase id from `phase_progress` (id was deleted from `roadmap.md` mid-mission); refused if still in `roadmap.md`. " +

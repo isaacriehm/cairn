@@ -4,6 +4,7 @@
  * filesystem reads.
  */
 
+import { execFileSync } from "node:child_process";
 import { type Dirent, existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
@@ -87,32 +88,81 @@ const QUALITY_TAIL_CAP = 3;
 const TASK_BODY_CAP = 800;
 
 /**
- * Walk up from `cwd` looking for an *adopted* cairn project. Adoption
- * is identified by `.cairn/config.yaml` — the file Phase 3b-seed
+ * Resolve to the canonical adopted-cairn checkout for the given `cwd`.
+ *
+ * Adoption is identified by `.cairn/config.yaml` — the file Phase 3b-seed
  * writes. A bare `.cairn/` directory without `config.yaml` is template
  * content (e.g. `cairn-core/templates/.cairn/`), NOT a real adopted
- * project; we must skip it so hooks running against the cairn source
- * tree don't false-positive on the template.
+ * project; skip it so hooks running against the cairn source tree don't
+ * false-positive on the template.
+ *
+ * **Worktree handling.** When `cwd` is a git worktree (`git worktree add`
+ * checkout), the worktree has its own `.cairn/` checkout from the tracked
+ * tree — but `.cairn/.attested-commits`, `.cairn/sessions/`,
+ * `.cairn/missions/<id>/state.json`, and other per-clone state files are
+ * gitignored and live ONLY on the main checkout. Treating the worktree
+ * as a separate `repoRoot` splits per-clone state between two locations:
+ * the MCP server (cwd-pinned at startup → main) writes to one `.cairn/`
+ * while the Stop hook (payload.cwd → worktree) reads from another. The
+ * resulting "5 commits not attested" cue re-fires forever because each
+ * side only sees half the picture.
+ *
+ * Fix: prefer `git rev-parse --git-common-dir` and take its parent. Git's
+ * common-dir is the same `.git` for main + every worktree, so its parent
+ * is the canonical main checkout. From the main checkout `git-common-dir`
+ * returns `.git` (relative); from a worktree it returns `<main>/.git`
+ * (absolute). Both resolve to `<main>`. Worktrees share main's `.cairn/`.
+ *
+ * Falls back to the legacy ancestor-walk when git lookup fails (init
+ * runs before `git init`, non-git contexts, missing git binary).
  *
  * Returns the dir containing the adopted `.cairn/` or null if none
  * found within 12 ancestors.
  */
 export function resolveRepoRoot(cwd: string): string | null {
+  const gitMain = resolveMainViaGitCommonDir(cwd);
+  if (gitMain !== null && isAdoptedCairnDir(gitMain)) {
+    return gitMain;
+  }
   let dir = resolve(cwd);
   for (let i = 0; i < 12; i++) {
-    const cairnDir = join(dir, ".cairn");
-    if (
-      existsSync(cairnDir) &&
-      statSync(cairnDir).isDirectory() &&
-      existsSync(join(cairnDir, "config.yaml"))
-    ) {
-      return dir;
-    }
+    if (isAdoptedCairnDir(dir)) return dir;
     const parent = dirname(dir);
     if (parent === dir) return null;
     dir = parent;
   }
   return null;
+}
+
+function isAdoptedCairnDir(dir: string): boolean {
+  const cairnDir = join(dir, ".cairn");
+  return (
+    existsSync(cairnDir) &&
+    statSync(cairnDir).isDirectory() &&
+    existsSync(join(cairnDir, "config.yaml"))
+  );
+}
+
+/**
+ * Walk to the main checkout via `git rev-parse --git-common-dir`. Same
+ * `.git` for every worktree, so its parent is the canonical main repo.
+ * Returns null when the cwd is not inside a git working tree, the git
+ * binary is unavailable, or the lookup otherwise fails.
+ */
+function resolveMainViaGitCommonDir(cwd: string): string | null {
+  try {
+    const out = execFileSync(
+      "git",
+      ["rev-parse", "--git-common-dir"],
+      { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+    ).trim();
+    if (out.length === 0) return null;
+    const isAbsolute = out.startsWith("/") || /^[A-Za-z]:[\\/]/.test(out);
+    const commonDir = isAbsolute ? out : resolve(cwd, out);
+    return dirname(commonDir);
+  } catch {
+    return null;
+  }
 }
 
 export async function buildSessionStartContext(

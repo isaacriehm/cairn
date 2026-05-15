@@ -63,7 +63,17 @@ export function renderBypassHint(bypassed: BypassedCommit[]): string {
   );
   lines.push("");
   lines.push(
-    "Likely a `--no-verify` commit or a missing per-clone bootstrap.",
+    "Reached HEAD without a matching entry in `.cairn/.attested-commits`. Likely cause is one of:",
+  );
+  lines.push("");
+  lines.push(
+    "- `git commit --no-verify` (post-commit hook skipped)",
+  );
+  lines.push(
+    "- per-clone bootstrap not yet run on this checkout (`.attested-commits` missing or stale)",
+  );
+  lines.push(
+    "- commits pre-date current adoption (operator can `bypass-accept` to seed)",
   );
   lines.push("");
   for (const c of bypassed) {

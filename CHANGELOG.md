@@ -4,6 +4,73 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.2] — 2026-05-15
+
+Hot-fix patch addressing four Cairn surfaces caught in cross-repo
+data-mining (`tools/mine`) over the 0.13.1 day-after window. The
+session transcripts surfaced two structural bugs (worktree state
+split, mission cursor accepting out-of-order phase exits) and two
+UX wear surfaces (stop-cue payload spam, misleading hint copy).
+
+### Fixed
+
+- **Worktree `.cairn/` state split — `resolveRepoRoot` now collapses
+  every git working tree to the main checkout.** When the operator
+  opened a session inside a `git worktree add` checkout, the Stop
+  hook resolved its `.cairn/` against the worktree path while the
+  MCP server's `repoRoot` was pinned to the main checkout's cwd at
+  startup. The two sides wrote to and read from different
+  `.cairn/.attested-commits` files, so `cairn_resolve_attention`
+  with `choice=bypass` returned `ok: true, attested_count: 0` while
+  the Stop scanner kept re-flagging the same commits. Same split
+  affected `.cairn/sessions/`, `.cairn/missions/<id>/state.json`,
+  and any other per-clone state.
+
+  `resolveRepoRoot` now prefers `git rev-parse --git-common-dir` and
+  takes its parent — the canonical main checkout that owns every
+  worktree's shared `.git`. The legacy ancestor-walk remains as a
+  fallback for non-git contexts and mid-adoption runs that complete
+  before `git init`. Every hook (Stop, SessionStart, UPS, PostTool,
+  pre-commit) and the MCP server now agree on a single `.cairn/`
+  per repo.
+
+- **`cairn_mission_advance choice=exit` rejects out-of-order phase
+  ids.** A phase id that didn't match `state.cursor.active_phase`
+  was silently accepted, so a caller could advance phase-2 while
+  phase-1 was still in progress — orphaning phase-1 and reporting
+  `progress.done` from the wrong cursor. Now refuses with
+  `VALIDATION_FAILED` unless the operator passes `choice="force"`.
+  Force keeps the existing "skip an empty phase" escape hatch and
+  extends it to "skip ahead of the cursor intentionally".
+
+- **`cairn_mission_advance choice=exit` rejects phases whose linked
+  tasks all ended `failed`/`aborted`.** The previous gate only
+  refused when zero tasks were linked; a phase with three failed
+  task completions and zero successes was marked graduated. Now
+  requires at least one task with `outcome=succeeded` (or any task
+  still mid-flight) before exit. Force still skips, `defer`
+  suppresses the prompt without changing cursor.
+
+- **Stop-hook cue payload debounce.** The Stop hook re-rendered
+  the identical reason payload on every Stop until the underlying
+  scan changed — observed firing three times in ten minutes for the
+  same "5 commits not attested" list while `cairn_resolve_attention`
+  silently no-op'd (Bug A above). The runner now hashes the rendered
+  reason and suppresses re-emission of an identical hash within a
+  60-minute window per session. State lives at
+  `.cairn/sessions/<sessionId>/last-stop-cue.json`. Any payload
+  change (a flagged item resolved, a new threshold crossed) breaks
+  the suppression and re-emits immediately.
+
+- **Bypass-detection hint copy.** The "Likely a `--no-verify` commit
+  or a missing per-clone bootstrap." line in `renderBypassHint`
+  misled callers into bypass-resolution attempts that don't apply
+  (e.g. the worktree split above looked like a missing-bootstrap
+  case but couldn't be drained that way). The hint now names the
+  three real candidate causes — `--no-verify`, missing per-clone
+  bootstrap, and pre-adoption commits — so the operator picks the
+  right resolution path from the first read.
+
 ## [0.13.1] — 2026-05-14
 
 Hot-fix patch addressing two friction surfaces caught in live use:
