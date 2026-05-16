@@ -739,6 +739,27 @@ it on future Reads.
 - Spec file lives under `.cairn/tasks/active/`; never under
   `.cairn/ground/`.
 - Reviewer subagent is spawned LAST only when `needs_review: true` in the spec.
+- **Do not mirror Stop-hook surfaces.** Cairn's Stop hook owns the
+  surfaces for stalled tasks, unattested commits, context-threshold
+  warnings, and phase-exit prompts. If you can already see one of
+  those surfaces will fire on this turn (e.g. you graduated several
+  tasks and a stall warning is imminent, or context is climbing),
+  do NOT pre-render the same A/B/C question yourself — that double-asks
+  the operator. Trust the hook.
+- **Honor autonomy intent.** If the operator's prompt or recent
+  history contains an autonomy phrase ("advance autonomously",
+  "do not stop", "ignore stop hooks", "no questions") OR the active
+  mission has `exit_gate: "auto"`, suppress non-blocking
+  AskUserQuestion calls within this skill. Mid-flow clarifications
+  the operator already opted out of — like "stall triage?" or
+  "context at 65%?" — are explicitly waived. The only allowed pause
+  is a genuine spec ambiguity that would change the deliverable.
+- **`in_scope_decisions` + `in_scope_invariants` must be populated** from
+  the Step 1 `cairn_in_scope` response when that response named any
+  DECs / §INVs. Empty arrays on a task that touches an in-scope glob
+  are a bug — they yield "task spec carries no scope" downstream and
+  let subagents work blind. If Step 1 returned matches, pass them to
+  `cairn_task_create`; never pass `[]`.
 - When dispatching subagents OR implementing inline, instruct
   follow-up markers in source as `// TODO(TSK-<task_id>)` — never
   bare `TODO` (the citation scanner only resolves the cite form).

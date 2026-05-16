@@ -204,6 +204,133 @@ export function completeTask(
   };
 }
 
+export interface ReopenTaskArgs {
+  repoRoot: string;
+  taskId: string;
+  /**
+   * Optional reason for the reopen — recorded in the journal entry so
+   * the next session sees why the task came back from `tasks/done/`.
+   */
+  reason?: string;
+  /**
+   * What invoked the reopen — written into the invalidation event
+   * `source.tool` field. Defaults to `cairn_task_reopen`.
+   */
+  source?: string;
+}
+
+export interface ReopenTaskResult {
+  ok: true;
+  taskId: string;
+  reopenedAt: string;
+  movedTo: string;
+}
+
+export interface ReopenTaskError {
+  ok: false;
+  code: "TASK_NOT_FOUND" | "NOT_IN_DONE" | "ACTIVE_DIR_COLLISION";
+  message: string;
+}
+
+/**
+ * Move a graduated task from `tasks/done/<id>/` back to
+ * `tasks/active/<id>/` and reset its phase to `running`. Inverse of
+ * `completeTask`.
+ *
+ * Bug-mine: operator hit a case where `cairn_task_complete` without
+ * `task_id` graduated the wrong task (a parallel-session task picked
+ * via mtime-based active-task fallback). There was no recovery tool —
+ * operator was told to `mv` the directory manually.
+ *
+ * Side-effect: renames any pre-existing `attestation.yaml` to
+ * `attestation.<completedAt>.yaml` so the Stop-hook auto-graduator
+ * doesn't immediately re-close the task on the next tick. The history
+ * stays on disk for audit; the live state is clean.
+ */
+export function reopenTask(
+  args: ReopenTaskArgs,
+): ReopenTaskResult | ReopenTaskError {
+  const activeDir = join(args.repoRoot, ".cairn", "tasks", "active", args.taskId);
+  const doneDir = join(args.repoRoot, ".cairn", "tasks", "done", args.taskId);
+
+  if (!existsSync(doneDir)) {
+    if (existsSync(activeDir)) {
+      return {
+        ok: false,
+        code: "NOT_IN_DONE",
+        message: `Task ${args.taskId} is already active`,
+      };
+    }
+    return {
+      ok: false,
+      code: "TASK_NOT_FOUND",
+      message: `No completed task ${args.taskId}`,
+    };
+  }
+
+  if (existsSync(activeDir)) {
+    return {
+      ok: false,
+      code: "ACTIVE_DIR_COLLISION",
+      message: `tasks/active/${args.taskId} already exists; refusing to overwrite. Investigate stale state.`,
+    };
+  }
+
+  // Move the directory back. Renaming the attestation is best-effort —
+  // a missing attestation is fine (e.g. autonomous-flow graduation),
+  // a rename failure would just leave the auto-graduator to re-close
+  // the task, which is acceptable behaviour for an interrupted reopen.
+  renameSync(doneDir, activeDir);
+
+  const statusPath = join(activeDir, "status.yaml");
+  const status = readStatusYaml(statusPath);
+  const completedAt =
+    typeof status.completed_at === "string" ? status.completed_at : null;
+  status.phase = "running";
+  delete status.completed_at;
+  delete status.outcome_summary;
+  writeFileSync(statusPath, stringifyYaml(status), "utf8");
+
+  const attestationPath = join(activeDir, "attestation.yaml");
+  if (existsSync(attestationPath)) {
+    const stamp = (completedAt ?? new Date().toISOString()).replace(/[:.]/g, "-");
+    try {
+      renameSync(attestationPath, join(activeDir, `attestation.${stamp}.yaml`));
+    } catch {
+      /* best-effort */
+    }
+  }
+
+  const reopenedAt = new Date().toISOString();
+  try {
+    appendTaskJournal({
+      repoRoot: args.repoRoot,
+      taskId: args.taskId,
+      sessionId: null,
+      summary: `Reopened from tasks/done/${args.reason !== undefined ? ` — ${args.reason}` : ""}`,
+    });
+  } catch {
+    /* best-effort */
+  }
+
+  try {
+    writeInvalidationEvent(args.repoRoot, {
+      kind: "task-reopened",
+      refs: [{ kind: "task", id: args.taskId }],
+      source: { session_id: null, tool: args.source ?? "cairn_task_reopen" },
+    });
+  } catch {
+    /* best-effort */
+  }
+
+  return {
+    ok: true,
+    taskId: args.taskId,
+    reopenedAt,
+    movedTo: `.cairn/tasks/active/${args.taskId}/`,
+  };
+}
+
 export interface TransitionTaskPhaseArgs {
   repoRoot: string;
   taskId: string;
@@ -334,8 +461,29 @@ export function appendTaskJournal(args: AppendJournalArgs): boolean {
   // mtime on status.yaml) sees a journal-only turn as live activity.
   // Without this, journaling without a status edit causes the 30-min
   // idle clock to fire mid-active-work (bug-mine report #2).
+  //
+  // Also stamp `last_journal_session` so the stall scan can tell
+  // which session is currently working the task. Two concurrent CC
+  // sessions on the same checkout (bug-mine: an operator running
+  // both windows simultaneously sharing one `.cairn/`) previously
+  // saw each other's tasks as stalled because nothing distinguished
+  // "owned by another session" from "abandoned."
   const statusPath = join(taskDir, "status.yaml");
   if (existsSync(statusPath)) {
+    if (args.sessionId !== null && args.sessionId !== "") {
+      try {
+        const status = readStatusYaml(statusPath);
+        const prev = typeof status["last_journal_session"] === "string"
+          ? (status["last_journal_session"] as string)
+          : null;
+        if (prev !== args.sessionId) {
+          status["last_journal_session"] = args.sessionId;
+          writeFileSync(statusPath, stringifyYaml(status), "utf8");
+        }
+      } catch {
+        // Best-effort — mtime bump below still happens.
+      }
+    }
     const now = new Date();
     try {
       utimesSync(statusPath, now, now);
@@ -344,6 +492,37 @@ export function appendTaskJournal(args: AppendJournalArgs): boolean {
     }
   }
   return true;
+}
+
+/**
+ * Read the session-affinity stamps off a task's `status.yaml`. Returns
+ * nulls for tasks created before the affinity stamping was wired in
+ * (pre-0.13.x adoptions). Stall scan uses this to decide whether to
+ * surface a 30m-idle task to the current session.
+ */
+export function readTaskSessionAffinity(
+  repoRoot: string,
+  taskId: string,
+): { createdBySession: string | null; lastJournalSession: string | null } {
+  const statusPath = join(repoRoot, ".cairn", "tasks", "active", taskId, "status.yaml");
+  if (!existsSync(statusPath)) {
+    return { createdBySession: null, lastJournalSession: null };
+  }
+  try {
+    const status = readStatusYaml(statusPath);
+    return {
+      createdBySession:
+        typeof status["created_by_session"] === "string"
+          ? (status["created_by_session"] as string)
+          : null,
+      lastJournalSession:
+        typeof status["last_journal_session"] === "string"
+          ? (status["last_journal_session"] as string)
+          : null,
+    };
+  } catch {
+    return { createdBySession: null, lastJournalSession: null };
+  }
 }
 
 export function readTaskJournal(

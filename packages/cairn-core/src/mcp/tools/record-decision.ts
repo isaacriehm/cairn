@@ -15,6 +15,7 @@ import {
   readRejectedYaml,
   readTopicIndex,
   setTopic,
+  writeDecisionsLedger,
   writeFileCandidatesMap,
   writeTopicIndex,
   type TopicIndexEntry,
@@ -201,6 +202,20 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     writeFileSync(path, content, "utf8");
 
     const relPath = relativePath(id, target);
+
+    // Direct accept path: extend `decisions.ledger.yaml` immediately so
+    // `cairn_in_scope` sees the new DEC without waiting for the next
+    // SessionStart rebuild. The bulk-accept and resolve-attention
+    // accept paths already do this; the direct-accept path used to skip
+    // it, which produced ledger-drift over long-running adoptions.
+    if (target === "accepted") {
+      try {
+        writeDecisionsLedger({ repoRoot: ctx.repoRoot });
+      } catch {
+        /* best-effort */
+      }
+    }
+
     try {
       writeInvalidationEvent(ctx.repoRoot, {
         kind: target === "accepted" ? "decision_accepted" : "decision_drafted",

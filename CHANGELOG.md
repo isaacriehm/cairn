@@ -4,6 +4,118 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.3] — 2026-05-15
+
+Second-pass hot-fix from cross-repo data-mining over two long-running
+installations. The 0.13.2 sweep landed the worktree-path collapse +
+mission-gate fixes; this round picks off the remaining UX surfaces:
+no escape hatch from a wrong-task graduation, decision-ledger drift
+on direct-accept, bulk-accept events never emitted, defer markers
+that never clear, stall-scan cross-trip across concurrent sessions,
+and the cryptic `INV-` regex error on `cairn_decision_get`.
+
+### Added
+
+- **`cairn_task_reopen` MCP tool.** Pull a graduated task from
+  `tasks/done/<id>/` back to `tasks/active/<id>/`, reset `phase:
+  running`, archive any existing `attestation.yaml` to
+  `attestation.<completed_at>.yaml` (so the Stop-hook auto-graduator
+  doesn't immediately re-close the task), and emit a `task-reopened`
+  invalidation event. Bug-mine surfaced an operator stuck with no
+  reverse for `cairn_task_complete` after the implicit
+  active-task fallback graduated a parallel-session task by mistake.
+- **`WRONG_TOOL_FOR_KIND` MCP error code.** Returned by
+  `cairn_decision_get` when called with an `INV-` id and by
+  `cairn_invariant_get` when called with a `DEC-` id. The error
+  message names the correct tool inline so the caller's retry lands
+  on the right surface.
+- **`smoke:bug-mine-0.13.3`** — coverage for every surface this
+  release touches: reopen happy path + collision + missing id, the
+  two cross-prefix redirects, direct-accept ledger extension, bulk
+  decision-accept event emission, and the defer-marker unlink helper.
+
+### Changed
+
+- **`cairn_record_decision target:"accepted"` extends
+  `decisions.ledger.yaml` immediately.** The direct-accept path used
+  to write `<id>.md` and emit the invalidation event but skip the
+  ledger rebuild — `cairn_in_scope` queries against the new DEC
+  missed until the next SessionStart. The `resolve-attention` and
+  `bulk-accept` accept paths already did this; only the direct
+  path was leaking. Now matches.
+- **`bulkAcceptObvious` emits a `decision_accepted` event per
+  promoted draft.** The function's own header comment claimed
+  "side-effect-only: emits decision_accepted events," but no
+  `writeInvalidationEvent` call existed in the body. Mining showed
+  21 drafts moved from `_inbox/` to `ground/decisions/` in a single
+  bulk pass with zero corresponding events on disk, so cross-session
+  listeners (Stop hook, scope-index rebuild) never invalidated.
+  The event now fires inside the existing write-lock.
+- **`cairn_mission_advance choice=exit` and `cairn_mission_close`
+  unlink `.mission-phase-deferred-until` when the marker references
+  the advancing/closing mission.** Bug-mine: a phase-1 marker
+  survived its mission's auto-advance + manual close, acting as a
+  suppression token for unrelated phase-exit prompts until the 24h
+  timer expired. The unlink helper lives in
+  `mission-advance.ts` (`clearMissionPhaseDeferIfMatches`) and is
+  called from both write sites. Stop hook also lazy-cleans expired
+  / mismatched markers on the read path for projects with markers
+  stranded pre-fix.
+- **Stop-hook stall scan respects session affinity.** Tasks whose
+  `last_journal_session` differs from the current session AND were
+  journaled within the cross-session-takeover window (90 minutes)
+  are now skipped — they're being worked in another live session,
+  not abandoned. Same scan also honors `blocked_on: operator` in
+  `status.yaml` (named external dependency — not a stall). Tasks
+  idle past the 90-minute window still surface, so genuinely
+  abandoned work isn't hidden. Bug-mine: an operator running two
+  concurrent Claude Code sessions on the same checkout got the same
+  task flagged as "stalled" in both sessions because nothing
+  distinguished "another session owns this" from "abandoned."
+- **`cairn_task_create` stamps `created_by_session` +
+  `last_journal_session` on `status.yaml`.** Lets every downstream
+  scan tell which session a task belongs to without a registry
+  file. `cairn_task_journal_append` keeps `last_journal_session`
+  current.
+- **`cairn_task_complete` refuses implicit `task_id` when the
+  fallback active task belongs to a different session.** The
+  implicit pick previously walked all active tasks by mtime and
+  picked the most-recent — when two sessions shared `.cairn/`, one
+  could silently graduate the other's work. Now returns
+  `VALIDATION_FAILED` and names the owner session so the caller
+  passes `task_id` explicitly. Single-session installs (or tasks
+  created before session stamping landed) still fall through to
+  the legacy pick.
+- **`cairn_decision_get` + `cairn_invariant_get` schemas relaxed.**
+  The strict `^DEC-…$` / `^INV-…$` regexes at the SDK input layer
+  rejected cross-prefix calls with a stack-trace-shaped validator
+  error. Both schemas now accept any `^<PREFIX>-<hash7>$`; the
+  handler validates the prefix and returns the
+  `WRONG_TOOL_FOR_KIND` redirect when wrong.
+- **`stop.ts` GCs `.stalled-warned/<task-id>.iso` markers** for
+  tasks that have since graduated to `tasks/done/`. Bug-mine: a
+  long-running install carried four `.iso` markers for tasks
+  already in `tasks/done/` because GC never owned the cleanup.
+  Runs on every Stop tick; best-effort.
+- **`agents/reviewer.md`** picks `target: "accepted"` (vs the
+  prior always-`inbox`) when a DEC's body comes verbatim from the
+  operator's prompt or from a spec doc the operator cited in the
+  task brief. Inferred decisions still route through the inbox.
+  Bug-mine: four DECs extracted directly from a spec doc the
+  operator had explicitly pointed the task at sat in the queue 55
+  minutes before manual accept.
+- **`cairn-direction` + `cairn-attention` SKILL.md hard rules**
+  forbid mirroring Stop-hook surfaces (stalled-task triage,
+  bypass-commit triage, phase-exit prompts, context-threshold
+  warnings) and require honoring operator autonomy phrases
+  ("advance autonomously", "do not stop", "ignore stop hooks",
+  `exit_gate: "auto"`). `cairn-direction` Step 3 also explicitly
+  forbids passing empty `in_scope_decisions` / `in_scope_invariants`
+  when Step 1's `cairn_in_scope` response named matches — the
+  previous "skill spec says do it; model doesn't" gap produced 9
+  task specs in one install with empty scope arrays despite
+  governing DECs being available.
+
 ## [0.13.2] — 2026-05-15
 
 Hot-fix patch addressing four Cairn surfaces caught in cross-repo

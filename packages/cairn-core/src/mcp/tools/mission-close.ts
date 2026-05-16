@@ -9,6 +9,7 @@ import type { McpContext } from "../context.js";
 import { requireBootstrap } from "../bootstrap-guard.js";
 import { mcpError } from "../errors.js";
 import { missionCloseInput } from "../schemas.js";
+import { clearMissionPhaseDeferIfMatches } from "./mission-advance.js";
 import type { ToolDef } from "./types.js";
 
 interface Input {
@@ -54,6 +55,11 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
   });
 
   archiveMission(ctx.repoRoot, input.mission_id);
+
+  // Drop any `.mission-phase-deferred-until` marker that still points
+  // at this mission. Closed missions should never suppress prompts on
+  // other missions or sessions.
+  clearMissionPhaseDeferIfMatches(ctx.repoRoot, { missionId: input.mission_id });
 
   return {
     ok: true,

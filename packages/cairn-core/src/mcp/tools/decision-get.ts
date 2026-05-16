@@ -12,6 +12,21 @@ interface Input {
 }
 
 async function handler(ctx: McpContext, input: Input): Promise<unknown> {
+  // Friendly redirect when caller passes an INV- id by mistake. The
+  // schema accepts any <PREFIX>-<hash> shape; this handler is the place
+  // to validate DEC- and route mis-prefixed lookups.
+  if (input.id.startsWith("INV-")) {
+    return mcpError(
+      "WRONG_TOOL_FOR_KIND",
+      `${input.id} is an invariant id — call \`cairn_invariant_get({id: "${input.id}"})\` instead.`,
+    );
+  }
+  if (!input.id.startsWith("DEC-")) {
+    return mcpError(
+      "VALIDATION_FAILED",
+      `id ${input.id} is not a decision id — decisions look like DEC-<7-hex>.`,
+    );
+  }
   const dir = decisionsDir(ctx.repoRoot);
   if (!existsSync(dir)) {
     return mcpError("DECISION_NOT_FOUND", `No decisions directory at ${dir}`);

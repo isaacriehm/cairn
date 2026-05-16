@@ -7,7 +7,10 @@ import { z } from "zod";
 // ── Read tools — graph traversal ───────────────────────────────────────────
 
 export const decisionGetInput = {
-  id: z.string().regex(/^DEC-[0-9a-f]{7,}$/, "decision id must match DEC-<hash7>"),
+  // Relaxed: accept any ID-shape so the handler can return a friendly
+  // redirect when callers pass an INV- id by mistake. Strict DEC-
+  // validation moved into the handler.
+  id: z.string().regex(/^[A-Z]+-[0-9a-f]{7,}$/, "id must match <PREFIX>-<hash7>"),
 };
 
 export const decisionsForSymbolInput = {
@@ -36,7 +39,9 @@ export const supersedesChainInput = {
 };
 
 export const invariantGetInput = {
-  id: z.string().regex(/^INV-[0-9a-f]{7,}$/, "invariant id must match INV-<hash7>"),
+  // Relaxed: accept any ID-shape so the handler can return a friendly
+  // redirect when callers pass a DEC- id by mistake.
+  id: z.string().regex(/^[A-Z]+-[0-9a-f]{7,}$/, "id must match <PREFIX>-<hash7>"),
 };
 
 export const inScopeInput = {
@@ -192,6 +197,21 @@ export const taskCompleteInput = {
     .string()
     .max(8000, "summary must be ≤8000 chars (advisory: ~2000 chars; longer values auto-truncate)")
     .optional(),
+};
+
+/**
+ * `cairn_task_reopen` — pull a graduated task back to `tasks/active/`.
+ * Inverse of `cairn_task_complete`. Reasoning field is optional but
+ * recommended so the next operator/session sees why the task came back.
+ */
+export const taskReopenInput = {
+  task_id: z
+    .string()
+    .regex(
+      /^TSK-[a-z0-9-]+-[0-9a-f]{7}$/,
+      "task id must match TSK-<slug>-<7-hex>",
+    ),
+  reason: z.string().max(2000, "reason must be ≤2000 chars").optional(),
 };
 
 export const recordDecisionInput = {
