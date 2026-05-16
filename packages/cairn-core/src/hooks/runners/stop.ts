@@ -20,6 +20,7 @@ import {
   readdirSync,
   readFileSync,
   statSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
@@ -315,7 +316,10 @@ export async function runStopHook(): Promise<void> {
       // tick (bug-mine report #9 — same task flagged 3× in 90s).
       if (reason.length === 0 && !isFirstTurnWarmup) {
         try {
-          const stalled = scanStalledRunningTasks(repoRoot);
+          gcStalledWarnedMarkers(repoRoot);
+          const stalled = scanStalledRunningTasks(repoRoot, Date.now(), {
+            currentSessionId: sessionId,
+          });
           const surfaced = stalled.filter(
             (t) => !isStalledFireSuppressed(repoRoot, t.task_id),
           );
@@ -655,6 +659,35 @@ function stampStalledFire(repoRoot: string, taskId: string): void {
   }
 }
 
+/**
+ * Drop `.stalled-warned/<task-id>.iso` files for tasks that have since
+ * graduated (now under `tasks/done/`) or vanished entirely. Without
+ * this, GC residue accumulates and the marker count looks alarming
+ * even though every referenced task already shipped. Best-effort —
+ * called on every Stop tick.
+ */
+function gcStalledWarnedMarkers(repoRoot: string): void {
+  const dir = join(repoRoot, ".cairn", ".stalled-warned");
+  if (!existsSync(dir)) return;
+  const activeDir = join(repoRoot, ".cairn", "tasks", "active");
+  let entries: import("node:fs").Dirent[] = [];
+  try {
+    entries = readdirSync(dir, { withFileTypes: true, encoding: "utf8" });
+  } catch {
+    return;
+  }
+  for (const e of entries) {
+    if (!e.isFile() || !e.name.endsWith(".iso")) continue;
+    const taskId = e.name.replace(/\.iso$/, "");
+    if (existsSync(join(activeDir, taskId))) continue;
+    try {
+      unlinkSync(join(dir, e.name));
+    } catch {
+      /* best-effort */
+    }
+  }
+}
+
 interface StalledTask {
   task_id: string;
   title: string;
@@ -686,15 +719,27 @@ interface StalledTask {
  * triage stalled tasks — close, abort, or keep open while spawning
  * a reviewer.
  */
+interface ScanStalledOpts {
+  /** Active session id — tasks owned by other sessions get filtered out. */
+  currentSessionId: string | null;
+}
+
 function scanStalledRunningTasks(
   repoRoot: string,
   nowMs: number = Date.now(),
+  opts: ScanStalledOpts = { currentSessionId: null },
 ): StalledTask[] {
   const activeDir = join(repoRoot, ".cairn", "tasks", "active");
   if (!existsSync(activeDir)) return [];
   const out: StalledTask[] = [];
   const idleThresholdMs = 30 * 60 * 1000;
   const upperBoundMs = 7 * 24 * 60 * 60 * 1000;
+  // When a task's last journal write came from a DIFFERENT live session
+  // within this window, treat it as "owned by that session" and don't
+  // surface the stall in the current session. Matches the case where
+  // an operator runs two concurrent Claude Code windows on a single
+  // checkout, each with its own active task.
+  const crossSessionTakeoverMs = 90 * 60 * 1000;
 
   let entries;
   try {
@@ -763,6 +808,8 @@ function scanStalledRunningTasks(
 
     let title = taskId;
     let module: string | null = null;
+    let lastJournalSession: string | null = null;
+    let blockedOnOperator = false;
     try {
       const raw = readFileSync(statusPath, "utf8");
       for (const line of raw.split(/\r?\n/)) {
@@ -770,10 +817,37 @@ function scanStalledRunningTasks(
         if (t && t[1] !== undefined) title = t[1].trim().replace(/^['"]|['"]$/g, "");
         const m = line.match(/^module:\s*(.+)$/);
         if (m && m[1] !== undefined) module = m[1].trim().replace(/^['"]|['"]$/g, "");
+        const ljs = line.match(/^last_journal_session:\s*(.+)$/);
+        if (ljs && ljs[1] !== undefined) {
+          lastJournalSession = ljs[1].trim().replace(/^['"]|['"]$/g, "");
+        }
+        const bo = line.match(/^blocked_on:\s*(.+)$/);
+        if (bo && bo[1] !== undefined) {
+          const v = bo[1].trim().replace(/^['"]|['"]$/g, "").toLowerCase();
+          if (v === "operator") blockedOnOperator = true;
+        }
       }
     } catch {
       // fall through with id-as-title
     }
+
+    // Session-affinity filter: another session journaled this task
+    // recently — they own it. Skip surfacing in the current session.
+    if (
+      opts.currentSessionId !== null &&
+      opts.currentSessionId.length > 0 &&
+      lastJournalSession !== null &&
+      lastJournalSession !== opts.currentSessionId &&
+      idleMs < crossSessionTakeoverMs
+    ) {
+      continue;
+    }
+
+    // Operator-blocked task: the work itself can't progress without an
+    // external action (e.g. browser repro, manual config). Surfacing
+    // "stalled" interrupts the operator with a triage prompt for a
+    // task they already know is paused.
+    if (blockedOnOperator) continue;
 
     out.push({
       task_id: taskId,
@@ -954,9 +1028,25 @@ function isMissionPhaseDeferActive(
   }
   if (typeof parsed !== "object" || parsed === null) return false;
   const o = parsed as Record<string, unknown>;
-  if (o["mission_id"] !== missionId || o["phase_id"] !== phaseId) return false;
+  // Lazy clean: if the marker is for a different mission/phase or its
+  // until-timestamp already passed, unlink it on the read path so we
+  // don't keep evaluating a stale file every Stop tick. Write-side
+  // unlink happens on phase-advance + mission-close; this is the
+  // belt-and-suspenders fallback for projects with markers stranded
+  // pre-fix.
   const until = typeof o["deferred_until"] === "string" ? Date.parse(o["deferred_until"]) : NaN;
-  if (Number.isNaN(until)) return false;
+  const expired = Number.isFinite(until) && Date.now() >= until;
+  const mismatch = o["mission_id"] !== missionId || o["phase_id"] !== phaseId;
+  if (expired || (mismatch && Number.isFinite(until) && Date.now() >= until)) {
+    try {
+      unlinkSync(path);
+    } catch {
+      /* best-effort */
+    }
+    return false;
+  }
+  if (mismatch) return false;
+  if (!Number.isFinite(until)) return false;
   return Date.now() < until;
 }
 

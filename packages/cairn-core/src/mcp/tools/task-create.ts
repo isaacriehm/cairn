@@ -189,6 +189,16 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     title: input.title,
     started_at: generatedAt,
   };
+  // Session affinity — stamp the creating session id so the stall scan
+  // can tell whether a 30m-idle task is being worked in a parallel
+  // session vs. genuinely abandoned. Bug-mine: an operator running
+  // two concurrent Claude Code sessions on the same checkout saw each
+  // session flag the other's tasks as "stalled" and got asked to
+  // triage, breaking flow in both windows.
+  if (ctx.sessionId !== null && ctx.sessionId !== undefined) {
+    statusFrame["created_by_session"] = ctx.sessionId;
+    statusFrame["last_journal_session"] = ctx.sessionId;
+  }
   if (missionId !== null && phaseId !== null) {
     statusFrame["mission_id"] = missionId;
     statusFrame["phase_id"] = phaseId;

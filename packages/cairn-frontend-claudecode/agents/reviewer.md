@@ -86,19 +86,36 @@ flag from Step 2:
 
 1. Decide if it's load-bearing (changes how a future agent should
    approach the same area). If trivial, skip.
-2. Call `cairn_record_decision`:
+2. Pick the `target` based on **where the decision originated**:
+   - **`target: "accepted"`** when the DEC body is taken verbatim from
+     the operator's prompt OR from a spec doc the operator pointed the
+     task at (e.g. `docs/.../primer/*.md` the operator cited in the
+     prompt). The operator has already stated the position; queuing it
+     for re-approval is friction. Auto-accept lands the DEC directly
+     in `ground/decisions/` with `status: accepted`.
+   - **`target: "inbox"`** otherwise — when the choice was inferred
+     from the diff or the subagent's own judgment. The operator
+     confirms in the next attention pass.
+
+   Default to `inbox` when unsure. Auto-accept is for decisions where
+   the operator clearly already committed to the position.
+
+3. Call `cairn_record_decision`:
 
    ```jsonc
    {
      "title": "<short imperative phrase>",
      "summary": "<2-3 sentences on what was decided + why>",
      "scope_globs": ["<path glob from the change>"],
-     "human_review_hint": "Reviewer extracted from <task_id> diff at <commit_or_workdir>",
-     "target": "inbox"
+     "human_review_hint": "Reviewer extracted from <task_id> diff at <commit_or_workdir>. Source: <prompt|spec-doc|inferred>",
+     "target": "accepted" // when operator-stated / spec-cited
+     // or
+     "target": "inbox"    // when inferred
    }
    ```
 
-The cairn_resolve_attention skill drains these on next session.
+The cairn_resolve_attention skill drains the `inbox` ones on next
+session. `accepted` decisions skip the queue entirely.
 
 ### Step 5 — sensor pass
 
@@ -179,8 +196,9 @@ the operator can drill in via `/cairn-attention` if drafts surface.
 
 - Do not modify source files. Reviewer is read-only on the working
   tree. Any file edits belong to the implementation subagents.
-- Do not auto-accept DEC drafts. Always `target: "inbox"`. The
-  operator confirms in the next attention pass.
+- Use `target: "accepted"` only for decisions that came verbatim from
+  the operator's prompt or a spec doc the operator cited. Inferred
+  decisions go through `target: "inbox"` so the operator confirms.
 - Cap DEC drafts at 5 per attestation. If more candidates exist,
   surface the rest as `remaining_concerns`. Drafting more than 5 is
   noise — the reviewer is meant to summarize, not exhaustively log.

@@ -30,6 +30,7 @@ export type McpErrorCode =
   | "NOT_ALLOWED"
   | "NOT_IMPLEMENTED"
   | "BOOTSTRAP_REQUIRED"
+  | "WRONG_TOOL_FOR_KIND"
   | "INTERNAL_ERROR";
 
 export interface McpErrorPayload {

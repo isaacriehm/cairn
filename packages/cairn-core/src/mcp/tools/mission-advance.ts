@@ -1,4 +1,10 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import {
   appendMissionJournal,
@@ -53,6 +59,38 @@ function writeMissionPhaseDefer(
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, JSON.stringify(payload, null, 2), "utf8");
   return until.toISOString();
+}
+
+/**
+ * Unlink `.mission-phase-deferred-until` if it references the given
+ * mission+phase pair. Called when the phase actually advances (exit /
+ * force) or when the parent mission closes — keeping a stale marker
+ * around suppresses the prompt for a phase that no longer needs it.
+ *
+ * Caught in bug-mine: a deferred phase that auto-advanced 53 min after
+ * the operator picked `not_yet` left the marker on disk, suppressing
+ * future phase-ready prompts on entirely different missions until the
+ * 24h expiry rolled past.
+ */
+export function clearMissionPhaseDeferIfMatches(
+  repoRoot: string,
+  match: { missionId: string; phaseId?: string },
+): boolean {
+  const path = join(repoRoot, ".cairn", ".mission-phase-deferred-until");
+  if (!existsSync(path)) return false;
+  try {
+    const raw = readFileSync(path, "utf8");
+    const parsed = JSON.parse(raw) as {
+      mission_id?: string;
+      phase_id?: string;
+    };
+    if (parsed.mission_id !== match.missionId) return false;
+    if (match.phaseId !== undefined && parsed.phase_id !== match.phaseId) return false;
+    unlinkSync(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 interface Input {
@@ -224,6 +262,13 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
       result.message,
     );
   }
+
+  // Phase actually advanced — clear any prior `not_yet` / `defer`
+  // marker that was suppressing this phase's prompt.
+  clearMissionPhaseDeferIfMatches(ctx.repoRoot, {
+    missionId,
+    phaseId: input.phase_id,
+  });
 
   return {
     ok: true,

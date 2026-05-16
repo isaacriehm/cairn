@@ -42,6 +42,7 @@ import { decisionsDir, invariantsDir } from "@isaacriehm/cairn-state";
 import { writeDecisionsLedger } from "@isaacriehm/cairn-state";
 import { parseFrontmatterRecord } from "@isaacriehm/cairn-state";
 import { withWriteLock } from "../lock.js";
+import { writeInvalidationEvent } from "../events/index.js";
 import type { ProjectGlobs } from "../sensors/types.js";
 import {
   scoreDecDraft,
@@ -227,6 +228,23 @@ export async function bulkAcceptObvious(
                     reason: stripOutcome.reason,
                   });
                 }
+              }
+            }
+            // Emit `decision_accepted` event per promoted draft so
+            // cross-session listeners (Stop hook, scope-index rebuild)
+            // see the new accepted DEC. Without this, bulk-accept's
+            // 21-DEC batches were invisible to the event ledger and
+            // downstream invalidation never fired.
+            if (!dry) {
+              try {
+                writeInvalidationEvent(args.repoRoot, {
+                  kind: "decision_accepted",
+                  refs: [{ kind: "decision", id }],
+                  path: `.cairn/ground/decisions/${id}.md`,
+                  source: { session_id: null, tool: "cairn_bulk_accept_attention" },
+                });
+              } catch {
+                /* best-effort */
               }
             }
             decsAccepted += 1;

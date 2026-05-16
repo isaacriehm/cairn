@@ -22,7 +22,11 @@ import { requireBootstrap } from "../bootstrap-guard.js";
 import { mcpError } from "../errors.js";
 import { taskCompleteInput } from "../schemas.js";
 import type { ToolDef } from "./types.js";
-import { completeTask, findCurrentActiveTask } from "../../tasks/index.js";
+import {
+  completeTask,
+  findCurrentActiveTask,
+  readTaskSessionAffinity,
+} from "../../tasks/index.js";
 import {
   findActiveMission,
   readMissionState,
@@ -225,12 +229,36 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
   const block = requireBootstrap(ctx.repoRoot);
   if (block !== null) return block;
 
-  const taskId = input.task_id ?? findCurrentActiveTask(ctx.repoRoot);
+  let taskId = input.task_id ?? null;
+
   if (taskId === null) {
-    return mcpError(
-      "TASK_NOT_FOUND",
-      "no active task — pass task_id explicitly or call cairn_task_create first",
-    );
+    // No explicit task_id — pick the current active task, but ONLY if
+    // it belongs to this session. Bug-mine: a parallel session with no
+    // active task of its own picked up another session's active task
+    // by mtime and graduated it silently. With session-affinity stamps,
+    // we can now require explicit task_id when the implicit pick would
+    // cross a session boundary.
+    const implicit = findCurrentActiveTask(ctx.repoRoot);
+    if (implicit === null) {
+      return mcpError(
+        "TASK_NOT_FOUND",
+        "no active task — pass task_id explicitly or call cairn_task_create first",
+      );
+    }
+    const affinity = readTaskSessionAffinity(ctx.repoRoot, implicit);
+    const sid = ctx.sessionId ?? null;
+    const owner = affinity.lastJournalSession ?? affinity.createdBySession ?? null;
+    if (
+      sid !== null &&
+      owner !== null &&
+      owner !== sid
+    ) {
+      return mcpError(
+        "VALIDATION_FAILED",
+        `Implicit active task ${implicit} was last touched by a different session (${owner}). Pass task_id explicitly so you don't accidentally graduate another session's work.`,
+      );
+    }
+    taskId = implicit;
   }
 
   const summaryResult = input.summary !== undefined ? softTruncate(input.summary, SUMMARY_ADVISORY) : null;

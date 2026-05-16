@@ -39,6 +39,7 @@ import { resumeTool } from "./resume.js";
 import { taskCompleteTool } from "./task-complete.js";
 import { taskCreateTool } from "./task-create.js";
 import { taskJournalAppendTool } from "./task-journal-append.js";
+import { taskReopenTool } from "./task-reopen.js";
 import { timelineTool } from "./timeline.js";
 
 export const allTools: ToolDef<never>[] = [
@@ -62,6 +63,7 @@ export const allTools: ToolDef<never>[] = [
   recordDecisionTool,
   taskCreateTool,
   taskCompleteTool,
+  taskReopenTool,
   taskJournalAppendTool,
   archiveTool,
   // Read — resume layer

@@ -556,6 +556,15 @@ redundant.
   invocation until resolved — make that visible in the surface text.
 - Never render an inline `[a]/[b]/[c]` blockquote for a question that
   also goes through `AskUserQuestion`. Pick one render path.
+- Do not mirror Stop-hook surfaces. The Stop hook owns stalled-task
+  triage, bypass-commit triage, and phase-exit prompts; do not
+  pre-render those questions yourself — the hook will fire the
+  surface at end-of-turn. Double-asking the operator is friction.
+- Honor operator autonomy intent. If the operator has signalled
+  hands-off in this session (`advance autonomously`, `do not stop`,
+  `ignore stop hooks`, or any phrase that says "keep going"),
+  suppress non-blocking AskUserQuestion calls. The only allowed
+  pause is a kind=conflict surface (hard inconsistency).
 - Match the project's chat-reply voice from
   `.cairn/ground/brand/voice.md` when present (Cairn's spec-delta
   scan injects it into SessionStart context). Default to plain

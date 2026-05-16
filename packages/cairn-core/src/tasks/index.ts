@@ -4,6 +4,8 @@ export {
   findCurrentActiveTask,
   readTaskAttestationState,
   readTaskJournal,
+  readTaskSessionAffinity,
+  reopenTask,
   transitionTaskPhase,
 } from "./lifecycle.js";
 export type {
@@ -12,6 +14,9 @@ export type {
   CompleteTaskError,
   CompleteTaskResult,
   JournalEntry,
+  ReopenTaskArgs,
+  ReopenTaskError,
+  ReopenTaskResult,
   TaskAttestationState,
   TaskOutcome,
   TaskTransitionPhase,

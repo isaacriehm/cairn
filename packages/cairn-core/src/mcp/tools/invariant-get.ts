@@ -12,6 +12,20 @@ interface Input {
 }
 
 async function handler(ctx: McpContext, input: Input): Promise<unknown> {
+  // Friendly redirect when caller passes a DEC- id by mistake. The schema
+  // accepts any <PREFIX>-<hash> shape; this handler validates INV-.
+  if (input.id.startsWith("DEC-")) {
+    return mcpError(
+      "WRONG_TOOL_FOR_KIND",
+      `${input.id} is a decision id — call \`cairn_decision_get({id: "${input.id}"})\` instead.`,
+    );
+  }
+  if (!input.id.startsWith("INV-")) {
+    return mcpError(
+      "VALIDATION_FAILED",
+      `id ${input.id} is not an invariant id — invariants look like INV-<7-hex>.`,
+    );
+  }
   const dir = invariantsDir(ctx.repoRoot);
   if (!existsSync(dir)) {
     return mcpError("INVARIANT_NOT_FOUND", `No invariants directory`);
