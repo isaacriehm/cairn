@@ -311,7 +311,7 @@ Write tools wrap their work in the per-write flock helper from `cairn-core/src/l
 | Skill | `skills/cairn-adopt/SKILL.md` | SessionStart sees no `.cairn/` | Walks operator through adoption inline; orchestrates init pipeline subprocess |
 | Skill | `skills/cairn-direction/SKILL.md` | Auto-invoked when operator's user message looks like a task ("build…", "add…", "fix…", "refactor…") and there's no active task | Runs tier0 → tightener → dispatch chunks via Task tool |
 | Skill | `skills/cairn-attention/SKILL.md` | SessionStart context flagged `attention_count > 0` | Surfaces pending DEC drafts + drift + baseline findings as inline A/B/C; calls `cairn_resolve_attention` after each pick |
-| Subagent | `agents/reviewer.md` | Spawned by main Claude as the LAST step of any non-trivial task | Reads diff + sensor outputs + attestation files; extracts non-obvious DECs; returns attestation summary |
+| Subagent | `agents/reviewer.md` | **Opt-in.** Spawned only when the operator explicitly asks for a diff review or DEC-drafting sweep | Reads diff + sensor outputs + attestation files; extracts non-obvious DECs; returns attestation summary |
 | Slash command | `commands/cairn-init.md` | Operator types `/cairn-init` | Same as auto-adopt skill but explicitly invoked |
 | Slash command | `commands/cairn-direction.md` | Operator types `/cairn-direction <prompt>` | Manual invocation of the direction skill — escape hatch when auto-invoke misses (conversational message wrongly classified, or operator wants to force the question-asker on a borderline prompt) |
 
@@ -329,31 +329,136 @@ description: |
 
 ### Subagent dispatch protocol
 
-The `cairn-direction` skill produces a structured **dispatch block** that main Claude reads and turns into Task-tool calls. Skill output ends with:
+The `cairn-direction` skill (steps 4-5) produces a structured **dispatch block** that main Claude reads and turns into Task-tool calls.
+
+**Chunking decision.** The skill chooses chunks by file/module boundary — each chunk should touch a single top-level dir or service.
+
+- **1 chunk** → skill omits the `dispatch` block and instructs main Claude with "Tightened spec at `.cairn/tasks/active/<task_id>/spec.tightened.md`. Implementing directly." No plan review.
+- **≥2 chunks** → skill renders a 1-line plan review for the operator before dispatching:
+
+  > Plan: 3 subagents — `[auth]` `[billing]` `[tests]`. `[a]` dispatch  `[b]` modify  `[c]` cancel
+  > Tightened spec: `.cairn/tasks/active/<task_id>/spec.tightened.md`
+
+  `[a]` → emit the dispatch block. `[b]` → loop chunking with operator feedback. `[c]` → archive the task, end the turn.
+
+**Dispatch block format** (skill output ends with this exact shape):
 
 ````markdown
 ## Dispatch plan
 
 Tightened spec: `.cairn/tasks/active/<task-id>/spec.tightened.md`
-Reviewer: spawn LAST after all dispatched subagents complete.
 
 ```dispatch
 - subagent: general-purpose
   brief: |
     Read .cairn/tasks/active/<task-id>/spec.tightened.md.
     Implement the auth middleware portion (files: services/auth/*.ts).
-    Cite §INV-0042, §INV-0043 in any new code. Write attestation.yaml on completion.
+    Cite §INV-0042, §INV-0043 in any new code. If you leave any
+    explicit follow-up in source (deferred edge case, missing piece
+    that belongs to this task but is out of scope for this chunk),
+    drop a `// TODO(TSK-<task_id>)` cite on that line.
+    Return a 1-paragraph summary of what landed.
 - subagent: general-purpose
   brief: |
     Read the same spec.
     Implement the billing portion (files: services/billing/*.ts).
-    Cite §INV-0012. Write attestation.yaml.
+    Cite §INV-0012. Same TODO(TSK-) rule. Return summary.
 ```
 ````
 
-Skill description instructs main Claude: "After receiving this skill's output, parse the `dispatch` block. Spawn one Task call per entry, in parallel where possible. Then spawn the reviewer subagent." This is reliable enough in practice; if drift becomes a problem, escalate to a deterministic post-skill hook that issues the Task calls directly.
+Main Claude parses the `dispatch` block, spawns one Task call per entry (in parallel where possible), aggregates returned summaries, then calls `cairn_task_complete({outcome, summary})` with a consolidated 1-2 paragraph attestation summary — that summary IS the attestation (Phase 2 self-attest contract; no `attestation.yaml` on disk on the default path). The reviewer subagent is opt-in and runs only when the operator explicitly asks for a diff review or DEC-drafting sweep.
 
-For 1-chunk dispatches, the skill omits the `dispatch` block and just hands the spec to main Claude with "implement this directly".
+For 1-chunk tasks where main Claude implements inline, the same `// TODO(TSK-<task_id>)` rule applies: bare `TODO` doesn't resolve via the citation legend, only the cite form does.
+
+### Operator-rejection capture
+
+When the operator's prompt rejects prior work, the `cairn-direction` skill captures the pattern as a draft DEC BEFORE the local fix so the rule materializes into ground state (sensors + reviewer + SessionStart context all read DECs). Trigger gate — ALL must hold:
+
+1. Rejection signal in the current prompt (substring, case-insensitive): `bad,` / `bad.` / `is bad` / `was bad` (as a verdict — not embedded in `badge` etc.); `don't like` / `dislike` / `i hate`; `stop using` / `don't use` / `never use`; `avoid` (as a directive); `remove that` / `kill that` / `kill the`; `that's wrong` / `wrong approach`; sentence-leading `no, ` rejecting prior work.
+2. The prior assistant turn produced visible code or a concrete pattern (file edit, diff, code snippet, MCP tool output). Skip when the rejection targets a question or proposal rather than shipped code.
+3. The rejection points at an extractable pattern — a specific identifier, token sequence, or code shape that can be encoded as a regex. Skip vague "this whole thing is bad" rejections.
+
+When all three hit:
+
+1. Extract a concrete regex (e.g. `\bas\s+unknown\s+as\b`, `@ts-ignore`, `console\.log`), the scope globs the rule applies to (language-wide default like `**/*.ts` / `**/*.tsx`; narrow when the operator scoped it), and a one-line rationale (operator's reason or best inference).
+2. Dedupe via `cairn_search({query: "<regex/token>", kind: "decision"})`. When an accepted DEC already targets the same pattern, surface `Pattern already in DEC-<id>; not re-drafting.` and continue.
+3. Call `cairn_record_decision` with the inbox-targeted shape (`target: "inbox"` is the default):
+
+   ```jsonc
+   cairn_record_decision({
+     title: "Reject `<rejected pattern>`",
+     summary: "<one-line rationale>",
+     scope_globs: [<extracted globs>],
+     body_markdown: "<markdown body — Decision / Why / Enforcement>",
+     assertions: [{
+       id: "a1",
+       kind: "text_must_not_match",
+       pattern: "<extracted regex>",
+       in_globs: [<extracted globs>],
+     }],
+   })
+   ```
+
+4. Surface ONE line: ``Captured rejection → draft `DEC-<id>` queued for review (`/cairn-attention`).``
+5. Continue normal direction flow (pivot detection, mission scope, Step 1 onward). The operator's current-turn fix still needs handling — the capture is additive, not a replacement.
+
+When the rejection is too vague to encode within ~30 seconds of reasoning, skip the draft and apply the local fix directly. A hand-wavy assertion is worse than no DEC.
+
+### Pivot detection (active-task path)
+
+When `.cairn/tasks/active/<id>/` exists and the operator's new prompt arrives, the skill compares the prompt to the active task's title + goal:
+
+- **Cold-resume continuation.** Prompt matches a continuation token (`continue`, `go`, `next`, `keep going`, `more`, `proceed`) AND the journal carries entries from a different `session_id` → skip the pivot prompt and run the auto-resume primer (`cairn_resume`, read `files_touched` cap-8 most-recent-first parallel, read `spec.tightened.md`, pick up from `next_step`).
+- **Same subject** (follow-up on the same files / noun set / explicit reference like "now also handle the X case in that fix") → no pivot, no `cairn_task_create`. Continue work directly.
+- **Diverging subject** (different feature area, different file globs, different noun set) → `AskUserQuestion`:
+
+  > Active task `TSK-<id>` is `<title>` (`<phase>`). Your new ask looks unrelated. Pick:
+  >
+  > - `[a]` complete TSK-<id> first
+  > - `[b]` pivot — abort TSK-<id>, start fresh on the new ask
+  > - `[c]` keep TSK-<id> active, fold the new ask as a sub-task
+
+  `[a]` → end turn with one-line note. `[b]` → `cairn_task_complete({task_id, outcome: "aborted", summary: "pivoted to: <new ask>"})`, then Step 1. `[c]` → `Edit` the spec's `## Goal` section to add a bullet, end turn.
+
+### Mission scope detection (no active mission)
+
+When `cairn_mission_get({})` returns `active: false`, the skill scans the prompt for **mission-shape signals**. Trigger when 2+ hit: 3+ distinct task verbs; enumerated phases (`1. … 2. …` or `first … then …`); 3+ feature nouns from different areas; scope phrasing (`build the whole X`, `redesign Y end-to-end`); >300 words AND 2+ H2/H3 sections.
+
+Trigger → `AskUserQuestion`: `[a]` mission, `[b]` single task.
+
+On `[a]`: pick a slug (first 3-4 words of the prompt's first sentence, kebab, ≤30 chars). `mkdir -p .cairn/missions/_drafts/` then `Write` the prompt verbatim to `.cairn/missions/_drafts/<slug>.md` with an H1 ≤60 chars prepended. Call `cairn_mission_start({spec_path, exit_gate: "prompt"})`. The response carries a draft envelope (proposed_title, spec_path, exit_gate, phases, truncated, llm_used). Surface the phases via a second `AskUserQuestion` so the operator confirms before commit (`[a]` accept, `[b]` edit first, `[c]` cancel). On accept: `cairn_mission_accept_draft({title, spec_path, exit_gate, phases})` with the values from the start response. Mission goes live with the cursor on phase-1.
+
+On `[b]`: skip the mission, proceed as a single task. On accept-edit `[b]`: end the turn pointing at the draft path; the operator edits inline and re-asks.
+
+### Mission anchoring (active mission)
+
+When `cairn_mission_get` returns `active: true`, `cairn_task_create` auto-stamps `mission_id` + `phase_id` from the cursor when both fields are omitted. The default is to omit — let cursor pickup win.
+
+**Off-mission detection.** Read the cursor phase's `title` + `exit_criteria` from the `cairn_mission_get` response. If the operator's prompt clearly diverges (different file globs, different feature area, no overlap with exit_criteria), surface `AskUserQuestion`: `[a]` side-task (`mission_id: ""`, no phase anchor), `[b]` fold into current phase (omit mission fields), `[c]` advance to a different phase first (list pending phases via a follow-up question, operator picks one, then `cairn_mission_advance({phase_id: <current>, choice: "force"})` and re-run anchoring).
+
+### Autonomous mission continuation
+
+Operators often "vibe-code" — they type `continue` or `go` and expect the next chunk of work to just happen. The autonomy-config friction (questions about `exit_gate`, questions about which PR) defeats the point. Trigger gate — ALL must hold:
+
+1. `cairn_mission_get` returned `active: true`.
+2. No active task in `.cairn/tasks/active/`.
+3. Operator's prompt matches a continuation intent: bare token (case-insensitive, ≤30 chars) — `continue`, `go`, `next`, `more`, `do it`, `run it`, `keep going`, `ship it`, `proceed`, `execute`, `start`, `begin`; OR an autonomy phrase (substring, any length) — `execute autonomously`, `run autonomously`, `just keep going`, `don't pause`, `don't stop`, `no questions`, `don't ask`, `ship the whole`, `until context`, `until ctx`, `autonomously`. Do NOT trigger on bare `yes` / `ok` / `sure` — those typically answer prior `AskUserQuestion` prompts.
+
+When all three hit, the skill acts silently:
+
+1. **Flip `exit_gate` if needed.** If `cairn_mission_get` returned `exit_gate: "prompt"` AND `.cairn/missions/<mission_id>/.autonomy-prompted` doesn't exist: `cairn_mission_set_exit_gate({exit_gate: "auto"})`, write the marker with the current ISO timestamp, surface ONE line: `Mission set to auto-advance — phase boundaries won't pause.` The marker prevents re-prompting; operators who change their mind can `rm` it.
+2. **Auto-pick the next pending PR.** Extract PR slugs from `cursor.active_phase_exit_criteria` via regex `\d+\.\d+-[A-Z]+\d+` (e.g. `3.5-BH1`). Preserve operator order. A PR is considered graduated when any task in `phase_progress[<active_phase>].task_ids` has a `done/<task_id>/` directory whose `status.yaml` `title` / `id` references the PR's bare token (case-insensitive). Pick the first slug not yet graduated. Free-form prose with no PR shape → infer the next deliverable from the first sentence-clause naming a concrete output.
+3. **Render one-line status and jump to Step 3.** Surface: `Continuing mission <mission_id> → starting <pr-or-deliverable>.` Skip Steps 1, 2, 2.5. Use the picked slug as `slug`, the PR's role from `exit_criteria` as `title`, the phase goal as `goal`. `cairn_task_create` auto-stamps `mission_id` + `phase_id`.
+
+After dispatch + completion, `cairn_task_complete` returns a `next_action_hint` block — the model self-chains via that hint (continue with the next pending PR, start the auto-advanced next phase, or end on mission close) without re-entering the skill. A single `continue` covers the entire remaining mission modulo context limits.
+
+Yield to the operator ONLY when:
+
+- The phase's `exit_criteria` has no PR slugs AND the prose is too ambiguous to infer a concrete deliverable. Surface one `AskUserQuestion` asking the operator to name what's next.
+- A spawned subagent reports a failure that needs operator review.
+- Context approaches the configured threshold (the Stop hook's ctx-threshold surface owns this independently).
+
+Otherwise, keep going. The vibe coder asked for autonomy.
 
 ## §12 Authority matrix
 
