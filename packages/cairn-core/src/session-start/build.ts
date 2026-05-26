@@ -577,8 +577,8 @@ function readBrandAndPositioning(repoRoot: string, warnings: string[]): string |
   // ~150-300 tokens of SessionStart context per session. Render once
   // under a merged heading when bodies match (whitespace-collapsed); fall
   // back to separate sections only when operator has actually edited
-  // one of the files. Bug-mine: sample-project's SessionStart was emitting the
-  // brand paragraph twice (overview heading + positioning heading,
+  // one of the files. Bug-mine: a consumer's SessionStart was emitting
+  // the brand paragraph twice (overview heading + positioning heading,
   // identical body).
   interface Section {
     label: string;

@@ -577,9 +577,9 @@ should be patched before the next release.
 
 ## References
 
-- Original problem report: gcb-platform adoption produced 129 DECs +
-  169 INVs of mostly garbage (mid-sentence titles, raw JSDoc paste,
-  test-file comments promoted, etc.)
+- Original problem report: a platform-scale adoption run produced
+  hundreds of entries of mostly garbage (mid-sentence titles, raw
+  JSDoc paste, test-file comments promoted, etc.)
 - Original conversation: see commit `1e8cb4a` for the 0.8.3 cleanup
   that preceded this plan (pilot-prompt rip, ETA pre-flight, hook fixes)
 - Multi-model architecture review: 4 frontier models (ChatGPT 5.5,

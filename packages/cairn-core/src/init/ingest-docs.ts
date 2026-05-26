@@ -2,7 +2,7 @@
  * Phase 8 — staged docs ingestion.
  *
  * Replaces the v0.6 bulk-classifier path. Cuts wall from ~15 min →
- * ~75 s on gcb-platform-scale repos AND collapses the noisy ledger
+ * ~75 s on platform-scale repos AND collapses the noisy ledger
  * (7000 DECs) to a curated draft inbox (30-80 drafts).
  *
  * Pipeline:

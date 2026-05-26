@@ -29,6 +29,26 @@ interface Input {
   phase_id?: string;
 }
 
+const TITLE_ADVISORY = 80;
+
+/**
+ * Soft-truncate to `advisory` chars with a trailing marker. Returns
+ * the unchanged string when it fits. Splits at the last word boundary
+ * before the cap to avoid mid-token truncation. Mirrors the helper
+ * in task-complete / task-journal-append — same marker shape, same
+ * word-boundary rule, sized for an 80-char title cap.
+ */
+function softTruncate(s: string, advisory: number): { value: string; truncated: boolean } {
+  if (s.length <= advisory) return { value: s, truncated: false };
+  const removed = s.length - advisory;
+  const markerSuffix = `…[+${removed} chars truncated]`;
+  const keep = Math.max(0, advisory - markerSuffix.length);
+  let cut = s.slice(0, keep);
+  const lastSpace = cut.lastIndexOf(" ");
+  if (lastSpace > advisory - 20) cut = cut.slice(0, lastSpace);
+  return { value: cut + markerSuffix, truncated: true };
+}
+
 /**
  * Generate a `task_id` matching the regex `^TSK-[a-z0-9-]+-[0-9a-f]{7}$`.
  *
@@ -62,6 +82,9 @@ function renderBulletList(items: string[] | undefined, fallback: string): string
 async function handler(ctx: McpContext, input: Input): Promise<unknown> {
   const block = requireBootstrap(ctx.repoRoot);
   if (block !== null) return block;
+
+  const titleResult = softTruncate(input.title, TITLE_ADVISORY);
+  const title = titleResult.value;
 
   const taskId = generateTaskId(input.slug);
   const taskDir = join(ctx.repoRoot, ".cairn", "tasks", "active", taskId);
@@ -121,7 +144,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     const phaseDef = roadmap?.frontmatter.phases.find((p) => p.id === phaseId);
     if (phaseDef !== undefined) {
       const tokens = new Set<string>();
-      for (const s of [input.title, input.slug, input.module ?? ""]) {
+      for (const s of [title, input.slug, input.module ?? ""]) {
         for (const tok of s.toLowerCase().split(/[^a-z0-9]+/)) {
           if (tok.length >= 3) tokens.add(tok);
         }
@@ -147,7 +170,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
 
   const specFrontmatter = {
     id: taskId,
-    title: input.title,
+    title,
     type: "spec",
     status: "ready",
     audience: "dual",
@@ -158,7 +181,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
   };
 
   const specBody = [
-    `# ${input.title}`,
+    `# ${title}`,
     "",
     "## Goal",
     "",
@@ -175,7 +198,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     renderBulletList(input.acceptance, "(implementation passes the operator's spot check)"),
   ].join("\n");
 
-  const specContent = `---\n${stringifyYaml(specFrontmatter)}---\n\n${specBody}`;
+  const specContent = `---\n${stringifyYaml(specFrontmatter, { lineWidth: 0 })}---\n\n${specBody}`;
   const specPath = join(taskDir, "spec.tightened.md");
   writeFileSync(specPath, specContent, "utf8");
 
@@ -183,7 +206,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     id: taskId,
     phase: "running",
     module: input.module ?? input.target_path_globs?.[0]?.split("/")[0] ?? ".",
-    title: input.title,
+    title,
     started_at: generatedAt,
   };
   // Session affinity — stamp the creating session id so the stall scan
@@ -200,7 +223,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     statusFrame["mission_id"] = missionId;
     statusFrame["phase_id"] = phaseId;
   }
-  const statusContent = stringifyYaml(statusFrame);
+  const statusContent = stringifyYaml(statusFrame, { lineWidth: 0 });
   const statusPath = join(taskDir, "status.yaml");
   writeFileSync(statusPath, statusContent, "utf8");
 
@@ -223,6 +246,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     in_scope_invariants: (input.in_scope_invariants ?? []).map(renderInvariantId),
     mission_id: missionId,
     phase_id: phaseId,
+    ...(titleResult.truncated ? { truncated: ["title"] } : {}),
     ...(scopeWarning !== null ? { warning: scopeWarning } : {}),
   };
 }
@@ -231,7 +255,7 @@ export const taskCreateTool: ToolDef<Input> = {
   name: "cairn_task_create",
   description:
     "Allocate a task_id and atomically write spec.tightened.md + status.yaml under .cairn/tasks/active/<task_id>/. " +
-    "**Required fields**: `slug` (lowercase kebab, 3-80 chars), `title` (≤80 chars), `goal` (free-form). " +
+    "**Required fields**: `slug` (lowercase kebab, 3-80 chars), `title` (advisory ≤80 chars; longer titles soft-truncate at the word boundary with a `…[+N chars truncated]` marker and the response carries `truncated: [\"title\"]`), `goal` (free-form). " +
     "**Optional**: `target_path_globs` (defaults to []; pass paths to pin scope), `in_scope_decisions`, `in_scope_invariants`, `constraints`, `out_of_scope`, `acceptance`, `module`, `mission_id` (anchor to mission; defaults to active mission's cursor — pass `''` to opt out as side-task), `phase_id`. " +
     "Server controls task_id format (`TSK-<slug>-<7-hex>`); callers cannot misformat it. " +
     "Auto-links the new task to its phase's `task_ids` immediately so `cairn_mission_advance choice='exit'` sees the task without waiting for `cairn_task_complete`. " +

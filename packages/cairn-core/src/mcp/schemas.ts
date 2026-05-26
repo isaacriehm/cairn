@@ -61,12 +61,17 @@ export const taskCreateInput = {
       "slug must be lowercase kebab — letters, digits, hyphens; 3-80 chars",
     ),
   // Title renders in the statusline + lens. Statusline already truncates
-  // gracefully; raised from 50→80 to match the operator's natural
+  // gracefully; advisory 80 chars matches the operator's natural
   // PR-style titles ("F-01: route claim revalidation via status svc").
+  // Cap = 4000 chars; the handler soft-truncates anything beyond the
+  // 80-char advisory with a trailing marker and returns `truncated:
+  // ["title"]`. Hard reject only when title is empty or absurd. Avoids
+  // the "AI burns a turn re-shrinking a 120-char title" loop the
+  // datamine caught.
   title: z
     .string()
     .min(3)
-    .max(80, "title must be ≤80 chars"),
+    .max(4000, "title must be ≤4000 chars (advisory: ~80 chars; longer values auto-truncate)"),
   goal: z.string().min(1),
   // Optional in v0.12.x — historical AI sessions repeatedly omitted it
   // and burned a turn re-trying. When absent, the handler infers from
@@ -121,7 +126,15 @@ export const taskJournalAppendInput = {
     .string()
     .max(4000, "next_step must be ≤4000 chars (advisory: ~320 chars; longer values auto-truncate)")
     .optional(),
-  files_touched: z.array(z.string().min(1)).max(20).optional(),
+  // Cap = 200 paths; the handler keeps the first 20 (advisory) and
+  // returns `truncated: ["files_touched"]` plus the dropped tail in
+  // `dropped.files_touched`. Hard reject only on absurd input. Avoids
+  // the "AI re-tries the call with a shorter slice" loop the
+  // datamine caught.
+  files_touched: z
+    .array(z.string().min(1))
+    .max(200, "files_touched must be ≤200 paths (advisory: ≤20; longer arrays auto-truncate)")
+    .optional(),
   decisions_loaded: z
     .array(z.string().regex(/^DEC-[0-9a-f]{7,}$/))
     .max(20)

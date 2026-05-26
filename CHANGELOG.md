@@ -4,6 +4,274 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.10] — 2026-05-26
+
+Soft-truncates the three schema-reject hard stops the cross-repo
+session datamine surfaced so a long title or an over-cap
+`files_touched` array no longer burns a retry round — the handler
+trims, the response surfaces the slice, work continues.
+
+### Changed
+
+- **`cairn_task_create` title cap relaxed 80 → 4000 chars** with a
+  handler-side soft-truncate to the 80-char advisory + a trailing
+  truncation marker. The response carries `truncated: ["title"]`
+  when the input was sliced. Spec frontmatter, status.yaml, and the
+  spec body all reflect the truncated value so downstream readers
+  stay in sync.
+- **`cairn_task_journal_append` `files_touched` cap relaxed 20 →
+  200** paths. Handler keeps the first 20 entries (advisory size)
+  and routes the dropped tail back through `dropped.files_touched`;
+  response gains `truncated: ["files_touched"]`.
+- Both tool descriptions updated to call out the new advisory limits
+  + truncation surface so callers see the soft-cap behaviour from
+  the schema layer.
+
+### Added
+
+- New smoke covers the four soft-truncate paths: 200-char title
+  trims at the word boundary, under-cap title carries no
+  `truncated` key, `files_touched=35` keeps the first 20 with the
+  trailing 15 in `dropped.files_touched` (and the journal entry
+  holds exactly 20), under-cap `files_touched=12` stays whole.
+  Hooked into the `smokes` gate.
+
+## [0.13.9] — 2026-05-26
+
+Cross-repo source mining found hundreds of inline
+`// AI: §INV-NNNN — <restated title>` comments — the parenthetical
+body duplicates the invariant frontmatter and rots the moment the
+invariant title changes. Tightens the comment policy at the prompt
+layer so new code lands as the cite-only marker.
+
+### Changed
+
+- **`cairn-direction/SKILL.md` gains a "Comment policy when citing
+  DEC / INV" section** between Steps 4-5 and Hard rules. Default is
+  `// §INV-NNNN` alone; one short clause is allowed after the cite
+  only when the cite alone is ambiguous (which of two related
+  invariants applies). The anti-pattern — `// AI: §INV-NNNN —
+  <restated title>` — is called out explicitly with the `// AI:`
+  prefix dropped. `§DEC-NNNN` follows the same rule.
+- **`agents/reviewer.md`** Step 2 diff-walk bullet spells the
+  contract out: cite-only marker, one allowed clause, explicit
+  language that narrative restatements land in `remaining_concerns`
+  (the reviewer is read-only on the working tree; the operator
+  strips the prose).
+- Companion compression in `cairn-direction/SKILL.md` holds the
+  file under the prior shrink budget. Final size: 188 lines /
+  7975 bytes.
+
+`curator-map.md` / `curator-reduce.md` audited — their
+`evidence_files` / `evidence_comment_ids` fields are JSONL record
+keys, not inline source citations, and neither encourages narrative
+prose. No edits needed.
+
+## [0.13.8] — 2026-05-26
+
+The stalled-task Stop-hook cue was the operator's #1 UX complaint —
+30-minute threshold + per-task throttle only + no session-activity
+gate produced false-fires mid-flight in multiple long-running cases
+caught in cross-repo session datamining (one autonomous session
+flagged a task idle 347 min and again at 661 min while a research
+subagent was actively running; others fired at 33 / 39 min during
+active widget rebuilds and cluster work).
+
+### Changed
+
+- **Stalled-task idle threshold raised 30 min → 2 h.** Most
+  legitimate long-running work (Agent dispatches, batch tests,
+  builds, deploys) finishes inside 2 h. Hint text, scanner body, and
+  final A/B/C tail all updated to read "2h+" / "next 2h mark".
+- **Session-activity gate.** The Stop hook reads `transcript_path`
+  from the payload, scans the JSONL tail backwards for the most
+  recent `tool_use` entry, and skips the cue entirely when that
+  entry is younger than 5 min (the AI is mid-flow). Implemented in
+  `lastToolUseAgeMs`; falls through to the threshold check when the
+  transcript path is missing or unreadable.
+- **Per-session global rate-limit.** At most one stalled cue per
+  session per hour, total — not per task. Backed by
+  `.cairn/sessions/<id>/last-stalled-cue.iso`; stamped on every
+  fire, read on every Stop tick. The existing per-task
+  `.stalled-warned/<id>.iso` throttle stays as a floor so the same
+  task id can't fire twice across sessions either.
+- Stalled-suppression now layers four gates in order: (1)
+  per-session global, (2) session-activity, (3) per-task throttle,
+  (4) per-task review-defer. Each emits a distinct telemetry warning
+  (`stalled_session_rate_limited:…`, `stalled_session_active:…`,
+  `stalled_suppressed_until:…`, `stalled_window_suppressed:…`).
+
+### Added
+
+- **`src/hooks/post-tool-use/ask-user-blocked.ts`** — PostToolUse
+  runner scoped to `AskUserQuestion`. Looks up the current active
+  task via `findCurrentActiveTask`, parses `status.yaml`, and
+  (idempotently) appends `blocked_on: operator`. The stalled
+  scanner's existing skip rule now has a producer. Wired through
+  the `cairn` CLI `hook ask-user-blocked` subcommand, the plugin
+  manifest, `check-layout.mjs`, and the `smoke-plugin-layout`
+  allowlist.
+- New stall-cue smoke covers five end-to-end scenarios:
+  (1) 45 min idle + recent tool_use → no fire;
+  (2) 2.5 h idle + stale tool_use → fire;
+  (3) 2.5 h idle + recent tool_use → suppressed by activity gate;
+  (4) per-session rate-limit silences a second Stop tick inside 1 h;
+  (5) PostToolUse on AskUserQuestion stamps `blocked_on: operator`
+  and the next Stop tick skips the task.
+
+## [0.13.7] — 2026-05-26
+
+Deletes 12 MCP tools whose only callers were their own dedicated
+smoke fixtures (or no caller at all) — each was shipping a registered
+name, an input schema, and a deferred-tool listing entry in every
+session reminder. Context tax with no payoff.
+
+### Removed
+
+- 12 dead MCP tools: `cairn_align_drain`, `cairn_archive`,
+  `cairn_attention_restore`, `cairn_decisions_for_symbol`,
+  `cairn_get_full`, `cairn_ground_get`, `cairn_mission_close`,
+  `cairn_mission_reopen`, `cairn_reject_candidate`,
+  `cairn_search_candidates`, `cairn_supersedes_chain`,
+  `cairn_timeline`. Source files, schema exports, and `index.ts`
+  registrations all gone.
+- Smoke fixtures that exclusively covered the removed surfaces:
+  `smoke-reject-candidate.ts`, `smoke-search-candidates.ts` (neither
+  was in the `smokes` gate).
+- `docs/MCP_SURFACE.md`, `docs/ARCHITECTURE.md` §4, and
+  `docs/guide/reference.md` rows / tables / example invocations for
+  the removed tools. Section headers in `MCP_SURFACE.md` updated to
+  reflect new counts (graph traversal 7→4, search 4→1, write 3→2,
+  attention 6→5).
+
+### Kept (deviations from the original audit list)
+
+- `cairn_task_reopen` — wired by the 0.13.3 hot-fix after the
+  original deletion audit ran. Actively tested by
+  `smoke-bug-mine-0.13.3`.
+- `cairn_query_history` — referenced by the SessionStart reminder
+  template (`packages/cairn-core/src/session-start/templates.ts`).
+  Full implementation under `packages/cairn-core/src/mcp/history/`.
+
+Both deletions followed the same re-grep-before-delete rule: if a
+grep returns a hit added since the original audit, do not delete —
+investigate and route the call into a surviving tool first.
+
+The deferred-tool list in fresh session reminders drops by 12 names
+(was ~40, now ~28).
+
+## [0.13.6] — 2026-05-26
+
+`cairn-direction/SKILL.md` was 772 lines / 34 KB and auto-invokes on
+every code-change-implying prompt — ~5% of a fresh session's context
+budget on every such call. A skill is a prompt, not a manual.
+
+### Changed
+
+- **`cairn-direction/SKILL.md` shrunk to 183 lines / 7804 bytes**
+  (target ≤200 / ≤8000). Operator-rejection capture, pivot
+  detection, mission scope detection, autonomous mission
+  continuation, and the dispatch block format collapse to
+  entry-point summaries with one-line API call signatures. The
+  hard-rules block collapses to six bullets (redundant entries
+  covered by the schema or by Cairn itself).
+- **`docs/PLUGIN_ARCHITECTURE.md` §11 absorbs the long-form
+  playbooks** moved out of the skill: subagent dispatch protocol
+  (chunking decision, dispatch block format, `TODO(TSK-…)` cite
+  rule, returned summary brief), operator-rejection capture (trigger
+  gate, regex + globs + rationale extraction, dedupe, call signature,
+  surface, skip rule), pivot detection (cold-resume + same vs
+  diverging branches with full AskUserQuestion options), mission
+  scope detection (signals + slug + H1 + draft + accept), mission
+  anchoring (cursor default + off-mission three-option flow),
+  autonomous mission continuation (trigger gate, `exit_gate` flip,
+  `.autonomy-prompted` marker, PR slug regex, fallback inference,
+  yield conditions).
+- **`docs/PLUGIN_ARCHITECTURE.md` §11 surface table** reviewer row
+  updated — no longer "Spawned by main Claude as the LAST step of
+  any non-trivial task"; now "Opt-in. Spawned only when the operator
+  explicitly asks for a diff review or DEC-drafting sweep."
+
+`cairn-attention` and `cairn-adopt` skills untouched — same treatment
+in a follow-up if needed.
+
+## [0.13.5] — 2026-05-26
+
+Demotes the Cairn reviewer subagent to opt-in. The AI's terminal
+action on every task is now `cairn_task_complete({outcome, summary})`
+— the summary IS the attestation. No subagent spawn, no
+`attestation.yaml` write on the default path. The reviewer agent
+stays in the plugin and can still be invoked when the operator
+explicitly asks. Cross-repo datamining caught two dozen reviewer
+subagent dispatches in a single 7-day window, each ~10-30k tokens.
+
+### Removed
+
+- **`needs_review` field** from the `cairn_task_create` input
+  schema, handler, tool description, and spec frontmatter template.
+  Legacy callers that still pass the field succeed (Zod strips
+  unknown keys).
+- **`readNeedsReview` helper** and the `needsReview` field on
+  `TaskAttestationState` in `tasks/lifecycle.ts`.
+- **`smoke-task-lifecycle.ts`** — its Step 5 asserted on the
+  now-removed `subagent + needs_review=true → ready_for_review`
+  transition and the script was no longer wired into any gate.
+
+### Changed
+
+- **Stop-hook auto-graduator** collapses the three-rule transition
+  matrix into one: any attestation (root OR subagent) graduates the
+  task to `succeeded` and moves it to `tasks/done/`. The previous
+  `ready_for_review` transition disappears; `transitionTaskPhase`
+  no longer imported.
+- **Stop-hook `scanPendingReviews`** drops the `needs_review`-driven
+  filter. Surface only fires when an explicit reviewer subagent set
+  `phase=ready_for_review` and ended its turn before attestation —
+  effectively dormant in normal flow.
+- **`cairn-direction/SKILL.md`** replaces the "Reviewer spawned LAST
+  only when needs_review: true" hard rule with a "Self-attest by
+  default" rule pointing at the `cairn_task_complete({summary})`
+  close path; the dispatch block template loses its reviewer line.
+- **`agents/reviewer.md`** rewritten as opt-in with a preamble line
+  clarifying the default path is direct `cairn_task_complete`.
+
+### Added
+
+- New self-attest smoke drives the happy path end to end:
+  `cairn_task_create` (no `needs_review` on disk) →
+  `cairn_task_complete({summary})` → task lands at
+  `.cairn/tasks/done/<id>/` with no `attestation.yaml` and
+  `phase: succeeded` + `outcome_summary` in `status.yaml`. Also
+  asserts the schema silently strips a legacy `needs_review` input.
+
+## [0.13.4] — 2026-05-26
+
+Cross-repo session datamining found five hook surfaces shipping
+literal "render via AskUserQuestion — do not skip" / "BEFORE ending
+your turn" imperatives — the AI obeys, interrupting in-flight work.
+One autonomous session fired seven `AskUserQuestion` calls in a
+single run, four of them in response to stalled-task /
+context-threshold cues while background workers were committing.
+
+### Changed
+
+- **`runners/stop.ts` REASON_PREAMBLE** rewritten to a generic
+  "surface at a natural stopping point; don't interrupt productive
+  work" instead of the previous "render any choice via
+  AskUserQuestion."
+- **`runners/stop.ts` `renderStalledTasksHint`** rephrased as a
+  passive hint plus an explicit "ignore and keep going if actively
+  working" line.
+- **`runners/context-threshold.ts`** (both task-active and
+  no-active-task branches) carry the same passive phrasing.
+- **`mcp/tools/task-complete.ts` `phase_ready_to_exit`** response
+  drops the literal `render_instruction` string. It now carries
+  structured metadata only (`mission_id`, `mission_title`,
+  `phase_id`, `phase_title`, `exit_criteria`); the caller decides
+  whether to AskUserQuestion. Tool description rewritten to match.
+- **`cairn-attention/SKILL.md` §0.2a** updated to describe the new
+  structured payload.
+
 ## [0.13.3] — 2026-05-15
 
 Second-pass hot-fix from cross-repo data-mining over two long-running

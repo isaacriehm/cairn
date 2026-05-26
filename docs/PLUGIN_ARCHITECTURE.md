@@ -249,11 +249,17 @@ Per-session stdio MCP server. `.mcp.json` registration:
 
 The MCP server detects the project root at startup by walking up from `process.cwd()` until it finds either `.cairn/` or `.git/`. No env var dependency. Works in any project Claude Code opens.
 
-Tools (18 current, see `MCP_SURFACE.md` for full schema):
+Tools (28 current, see `MCP_SURFACE.md` for full schema):
 
-- **Read**: `cairn_decision_get`, `cairn_in_scope` (unified DEC+INV path-glob lookup; filter via `types: ["decision"|"invariant"]`), `cairn_decisions_for_symbol`, `cairn_invariant_get`, `cairn_canonical_for_topic`, `cairn_ground_get`, `cairn_supersedes_chain`, `cairn_search`, `cairn_timeline`, `cairn_get_full`, `cairn_query_history`
-- **Write** (locked): `cairn_record_decision`, `cairn_record_run_event`, `cairn_drop_task`, `cairn_archive`, `cairn_append`, `cairn_ask_operator`
-- **NEW (plugin-era)**: `cairn_resolve_attention(item_id, choice)` — the inline-A/B/C resolution endpoint. Skill calls this after operator picks a/b/c.
+- **Read — graph traversal**: `cairn_decision_get`, `cairn_canonical_for_topic`, `cairn_invariant_get`, `cairn_in_scope` (unified DEC+INV path-glob lookup; filter via `types: ["decision"|"invariant"]`).
+- **Read — search + retrieval**: `cairn_search`.
+- **Read — historical (gated)**: `cairn_query_history`.
+- **Read — resume layer**: `cairn_resume` (cold-resume payload for an active task after `/clear`).
+- **Write — ground + tasks**: `cairn_record_decision`, `cairn_task_create`, `cairn_task_complete`, `cairn_task_reopen`, `cairn_task_journal_append`.
+- **Write — attention queue**: `cairn_resolve_attention(item_id, choice)` (inline-A/B/C resolution endpoint — skill calls this after operator picks), `cairn_bulk_accept_attention`, `cairn_attention_dedup`, `cairn_attention_serve`, `cairn_attention_wait`.
+- **Write — bootstrap recovery**: `cairn_bootstrap_retry`.
+- **Write — init pipeline**: `cairn_init_resume`, `cairn_init_run`.
+- **Mission system — supra-task layer**: `cairn_mission_start`, `cairn_mission_accept_draft`, `cairn_mission_get`, `cairn_mission_advance`, `cairn_mission_resume`, `cairn_mission_resync`, `cairn_mission_resync_accept`, `cairn_mission_set_exit_gate`.
 
 Write tools wrap their work in the per-write flock helper from `cairn-core/src/lock.ts` (new module).
 

@@ -6,7 +6,6 @@ export {
   readTaskJournal,
   readTaskSessionAffinity,
   reopenTask,
-  transitionTaskPhase,
 } from "./lifecycle.js";
 export type {
   AppendJournalArgs,
@@ -19,6 +18,4 @@ export type {
   ReopenTaskResult,
   TaskAttestationState,
   TaskOutcome,
-  TaskTransitionPhase,
-  TransitionTaskPhaseArgs,
 } from "./lifecycle.js";

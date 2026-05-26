@@ -3,12 +3,8 @@
  * phase transitions and the only path that moves a task directory from
  * `tasks/active/` to `tasks/done/`.
  *
- * Two surfaces:
- *   - `completeTask`        — terminal phase + dir move; emits invalidation.
- *   - `transitionTaskPhase` — in-place phase write (e.g. running →
- *                              ready_for_review); no dir move.
- *
- * Plus a read helper `readTaskAttestationState` used by the Stop hook
+ * `completeTask` is the terminal phase + dir move + invalidation emit.
+ * `readTaskAttestationState` is a read helper used by the Stop hook
  * auto-graduator to decide whether to close a task whose attestation
  * landed without an explicit close call.
  *
@@ -37,15 +33,6 @@ import { writeInvalidationEvent } from "../events/index.js";
 import { onTaskCompleted } from "../missions/task-link.js";
 
 export type TaskOutcome = "succeeded" | "failed" | "aborted";
-export type TaskTransitionPhase =
-  | "queued"
-  | "tightening"
-  | "running"
-  | "sensor_check"
-  | "ready_for_review"
-  | "awaiting_attestation"
-  | "reviewing"
-  | "backprop";
 
 interface StatusYaml {
   id?: string;
@@ -331,23 +318,6 @@ export function reopenTask(
     reopenedAt,
     movedTo: `.cairn/tasks/active/${args.taskId}/`,
   };
-}
-
-export interface TransitionTaskPhaseArgs {
-  repoRoot: string;
-  taskId: string;
-  newPhase: TaskTransitionPhase;
-}
-
-export function transitionTaskPhase(args: TransitionTaskPhaseArgs): boolean {
-  const activeDir = join(args.repoRoot, ".cairn", "tasks", "active", args.taskId);
-  if (!existsSync(activeDir)) return false;
-  const statusPath = join(activeDir, "status.yaml");
-  if (!existsSync(statusPath)) return false;
-  const status = readStatusYaml(statusPath);
-  status.phase = args.newPhase;
-  writeFileSync(statusPath, stringifyYaml(status), "utf8");
-  return true;
 }
 
 export interface TaskAttestationState {
