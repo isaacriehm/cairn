@@ -112,7 +112,7 @@ const MAX_REASON_CHARS = 4_000;
  * CC convention, not a failure signal. One short line keeps the chat
  * tidy without dropping the cue entirely.
  */
-const REASON_PREAMBLE = "↳ Cairn cue — render any choice via `AskUserQuestion`.\n\n";
+const REASON_PREAMBLE = "↳ Cairn hint — surface to operator at a natural stopping point. Don't interrupt productive work; quote / `AskUserQuestion` only when there's no obvious continuation.\n\n";
 
 function clampReason(body: string): string {
   if (body.length === 0) return body;
@@ -868,7 +868,7 @@ function renderStalledTasksHint(stalled: StalledTask[]): string {
     ``,
     `${stalled.length} active ${noun} idle 30min+ with no attestation. ` +
       `Either the autonomous flow skipped the reviewer-spawn step, or the ` +
-      `session was interrupted mid-task. Triage before continuing:`,
+      `session was interrupted mid-task.`,
     ``,
   ];
   for (const t of stalled) {
@@ -876,7 +876,7 @@ function renderStalledTasksHint(stalled: StalledTask[]): string {
     lines.push(`- \`${t.task_id}\` — ${t.title}${mod} (idle ${t.idle_minutes}m)`);
   }
   lines.push("");
-  lines.push("Render this question via `AskUserQuestion` — do not skip:");
+  lines.push("If you reach a stopping point with no obvious continuation, surface to operator (e.g. via `AskUserQuestion`):");
   lines.push("");
   lines.push(`> ${stalled.length} stalled ${noun}. Pick once for all (or address one at a time after):`);
   lines.push(`>`);
@@ -887,6 +887,8 @@ function renderStalledTasksHint(stalled: StalledTask[]): string {
   lines.push("On [a], call `cairn_task_complete({task_id, outcome: \"succeeded\", summary: \"closing stalled task — work landed via prior session\"})` for each id above.");
   lines.push("On [b], dispatch the `reviewer` subagent for each task in turn (one task brief per Task call).");
   lines.push("On [c], end the turn — the prompt re-fires only when status.yaml stays idle past the next 30min mark.");
+  lines.push("");
+  lines.push("If you're actively working (Agent dispatch in flight, edits queued), ignore this hint and keep going — it will re-evaluate on the next Stop tick.");
   return lines.join("\n");
 }
 

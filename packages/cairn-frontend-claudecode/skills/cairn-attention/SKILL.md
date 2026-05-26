@@ -57,10 +57,11 @@ Cairn surfaces a phase-exit decision via one of two channels — both
 arrive as plain context, no red "Stop hook error" frame:
 
 1. **MCP response (primary).** When the model itself calls
-   `cairn_task_complete`, the response carries a
-   `phase_ready_to_exit` block with a literal `render_instruction`.
-   The model surfaces the AskUserQuestion in the SAME turn — no
-   hook handoff, no waiting for the next prompt.
+   `cairn_task_complete`, the response carries a structured
+   `phase_ready_to_exit` block (mission_id, mission_title, phase_id,
+   phase_title, exit_criteria). The model decides whether to surface
+   an `AskUserQuestion` in the same turn — do so at a natural
+   stopping point unless the operator is running autonomously.
 2. **UPS additionalContext (auto-graduator fallback).** When the
    Stop-hook auto-graduator completes a task (attestation written
    without an explicit MCP call), it writes the pending hint to
