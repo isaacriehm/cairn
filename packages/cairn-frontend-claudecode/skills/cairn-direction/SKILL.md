@@ -646,7 +646,6 @@ cairn_task_create({
   out_of_scope: [<explicit non-goals>],
   acceptance: [<what done looks like>],
   module: <top-level dir or package slug touched>,
-  needs_review: <true if complex or load-bearing; false for trivial fixes>,
 })
 ```
 
@@ -701,7 +700,6 @@ runtime above this skill) parses it and issues `Task` calls:
 ## Dispatch plan
 
 Tightened spec: `.cairn/tasks/active/<task_id>/spec.tightened.md`
-Reviewer: spawn LAST after all dispatched subagents complete (only if `needs_review: true`).
 
 ```dispatch
 - subagent: general-purpose
@@ -738,7 +736,11 @@ it on future Reads.
   context-free.
 - Spec file lives under `.cairn/tasks/active/`; never under
   `.cairn/ground/`.
-- Reviewer subagent is spawned LAST only when `needs_review: true` in the spec.
+- **Self-attest by default.** Close every task with
+  `cairn_task_complete({outcome, summary})`. The `summary` IS the
+  attestation — write 1-2 paragraphs of what landed. The reviewer
+  subagent is opt-in (operator-invoked when they explicitly ask
+  for a diff review or DEC-drafting sweep).
 - **Do not mirror Stop-hook surfaces.** Cairn's Stop hook owns the
   surfaces for stalled tasks, unattested commits, context-threshold
   warnings, and phase-exit prompts. If you can already see one of

@@ -116,7 +116,6 @@ export const taskCreateInput = {
   out_of_scope: z.array(z.string().min(1)).optional(),
   acceptance: z.array(z.string().min(1)).optional(),
   module: z.string().optional(),
-  needs_review: z.boolean().optional(),
   /**
    * Mission anchor — when set, the task is linked to the given phase
    * of the mission. Defaults to the active mission's cursor when both

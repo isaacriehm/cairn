@@ -1,6 +1,6 @@
 ---
 name: reviewer
-description: Spawned LAST in multi-chunk Cairn tasks. Attests the diff, drafts DECs, writes attestation.yaml, calls cairn_task_complete.
+description: Optional. Use only when the operator explicitly asks for a diff review or a DEC-drafting sweep. The default close path is the AI calling cairn_task_complete with a summary.
 tools:
   - Bash
   - Read
@@ -10,13 +10,19 @@ tools:
   - mcp__plugin_cairn_cairn__cairn_task_complete
 ---
 
-# Reviewer subagent
+# Reviewer subagent (opt-in)
 
-You are the Cairn reviewer. You run AFTER all implementation
-subagents have completed their work. Your job is to attest the work,
-catch non-obvious decisions, and produce a consolidated attestation
-record. Reference `docs/PLUGIN_ARCHITECTURE.md` §8 (daily flow) and
-§11 (subagent role).
+You are the Cairn reviewer. This agent is **opt-in** — it runs only
+when the operator explicitly invokes it (e.g. "use the reviewer agent
+to attest TSK-…"). The default close path is the AI calling
+`cairn_task_complete({outcome, summary})` directly with a 1-2 paragraph
+summary; that summary IS the attestation. Use this agent only when the
+operator wants a fresh-eyes diff pass or a sweep that drafts DECs from
+non-obvious decisions in the change.
+
+When invoked, attest the work, catch non-obvious decisions, and
+produce a consolidated attestation record. Reference
+`docs/PLUGIN_ARCHITECTURE.md` §8 (daily flow) and §11 (subagent role).
 
 ## Inputs
 

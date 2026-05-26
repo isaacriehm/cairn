@@ -1,6 +1,6 @@
 {
   "name": "@isaacriehm/cairn",
-  "version": "0.13.4",
+  "version": "0.13.5",
   "description": "Cairn — state + context-loading layer for AI coding agents.",
   "author": "Isaac Riehm",
   "license": "MIT",
@@ -86,7 +86,8 @@
     "smoke:curator-validate": "tsx scripts/smoke-curator-validate.ts",
     "smoke:essay-shape-detector": "tsx scripts/smoke-essay-shape-detector.ts",
     "smoke:bug-mine-0.13.3": "tsx scripts/smoke-bug-mine-0.13.3.ts",
-    "smokes": "pnpm smoke:plugin-layout && pnpm smoke:resolve-attention && pnpm smoke:stop-hook && pnpm smoke:events && pnpm smoke:session-state && pnpm smoke:status-line && pnpm smoke:session-start && pnpm smoke:handoff && pnpm smoke:scope-index && pnpm smoke:read-enrich && pnpm smoke:init && pnpm smoke:ingestion-baseline && pnpm smoke:gc && pnpm smoke:lock && pnpm smoke:source-comments && pnpm smoke:rules-merge && pnpm smoke:join && pnpm smoke:bypass-detection && pnpm smoke:bootstrap-guard && pnpm smoke:e2e-adoption && pnpm smoke:e2e-daily-flow && pnpm smoke:plugin-bundle && pnpm smoke:init-phases-state && pnpm smoke:init-phases-all && pnpm smoke:init-mcp-tools && pnpm smoke:init-progress-heartbeat && pnpm smoke:stop-debounce && pnpm smoke:phase-ready-surface && pnpm smoke:curator-validate && pnpm smoke:essay-shape-detector && pnpm smoke:bug-mine-0.13.3",
+    "smoke:bug-mine-0.13.5": "tsx scripts/smoke-bug-mine-0.13.5.ts",
+    "smokes": "pnpm smoke:plugin-layout && pnpm smoke:resolve-attention && pnpm smoke:stop-hook && pnpm smoke:events && pnpm smoke:session-state && pnpm smoke:status-line && pnpm smoke:session-start && pnpm smoke:handoff && pnpm smoke:scope-index && pnpm smoke:read-enrich && pnpm smoke:init && pnpm smoke:ingestion-baseline && pnpm smoke:gc && pnpm smoke:lock && pnpm smoke:source-comments && pnpm smoke:rules-merge && pnpm smoke:join && pnpm smoke:bypass-detection && pnpm smoke:bootstrap-guard && pnpm smoke:e2e-adoption && pnpm smoke:e2e-daily-flow && pnpm smoke:plugin-bundle && pnpm smoke:init-phases-state && pnpm smoke:init-phases-all && pnpm smoke:init-mcp-tools && pnpm smoke:init-progress-heartbeat && pnpm smoke:stop-debounce && pnpm smoke:phase-ready-surface && pnpm smoke:curator-validate && pnpm smoke:essay-shape-detector && pnpm smoke:bug-mine-0.13.3 && pnpm smoke:bug-mine-0.13.5",
     "smokes:all": "pnpm run \"/^smoke:/\""
   },
   "dependencies": {

@@ -9,13 +9,15 @@
  *                              ready_for_review); no dir move.
  *
  * Plus a read helper `readTaskAttestationState` used by the Stop hook
- * auto-graduator to decide which transition (if any) to apply.
+ * auto-graduator to decide whether to close a task whose attestation
+ * landed without an explicit close call.
  *
  * Tasks created by `cairn_task_create` start at `phase: running`.
- * The reviewer subagent calls `completeTask` after writing
- * `attestation.yaml`; the Stop hook auto-graduator handles the cases
- * where the reviewer is skipped (trivial tasks with
- * `needs_review: false`).
+ * The AI calls `completeTask` (via `cairn_task_complete`) with a
+ * summary — that summary is the attestation. The Stop hook
+ * auto-graduator is a fallback for the rare case where an opt-in
+ * reviewer subagent wrote `attestation.yaml` and ended its turn
+ * before the explicit close call.
  */
 
 import {
@@ -351,14 +353,15 @@ export function transitionTaskPhase(args: TransitionTaskPhaseArgs): boolean {
 export interface TaskAttestationState {
   rootAttestation: boolean;
   subagentAttestations: number;
-  needsReview: boolean;
   phase: string | null;
 }
 
 /**
- * Read the attestation + needs_review state for an active task. Used
- * by the Stop hook auto-graduator to decide which phase transition (if
- * any) to apply.
+ * Read the attestation state for an active task. Used by the Stop
+ * hook auto-graduator to decide whether to close a task whose work
+ * landed without an explicit `cairn_task_complete` call (rare —
+ * happens when an opt-in reviewer subagent wrote attestation.yaml
+ * but the surrounding session ended before the close call).
  */
 export function readTaskAttestationState(
   repoRoot: string,
@@ -386,13 +389,11 @@ export function readTaskAttestationState(
     }
   }
 
-  const needsReview = readNeedsReview(join(taskDir, "spec.tightened.md"));
   const phase = readPhase(join(taskDir, "status.yaml"));
 
   return {
     rootAttestation,
     subagentAttestations,
-    needsReview,
     phase,
   };
 }
@@ -621,22 +622,6 @@ function readStatusYaml(statusPath: string): StatusYaml {
     // fall through — caller will overwrite with a fresh frame
   }
   return {};
-}
-
-function readNeedsReview(specPath: string): boolean {
-  if (!existsSync(specPath)) return true;
-  let raw: string;
-  try {
-    raw = readFileSync(specPath, "utf8");
-  } catch {
-    return true;
-  }
-  const fmMatch = raw.match(/^---\r?\n([\s\S]*?)\n---/);
-  if (!fmMatch) return true;
-  const fm = fmMatch[1] ?? "";
-  const m = fm.match(/^needs_review:\s*(true|false)/m);
-  if (m && m[1] === "false") return false;
-  return true;
 }
 
 function readPhase(statusPath: string): string | null {

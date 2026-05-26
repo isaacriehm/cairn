@@ -25,7 +25,6 @@ interface Input {
   out_of_scope?: string[];
   acceptance?: string[];
   module?: string;
-  needs_review?: boolean;
   mission_id?: string;
   phase_id?: string;
 }
@@ -76,7 +75,6 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
   mkdirSync(taskDir, { recursive: true });
 
   const generatedAt = new Date().toISOString();
-  const needsReview = input.needs_review ?? true;
 
   // Mission anchor — explicit input wins; otherwise inherit from the
   // active mission's cursor. Empty string means opt-out (side-task).
@@ -157,7 +155,6 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     target_path_globs: input.target_path_globs ?? [],
     in_scope_decisions: input.in_scope_decisions ?? [],
     in_scope_invariants: input.in_scope_invariants ?? [],
-    needs_review: needsReview,
   };
 
   const specBody = [
@@ -235,7 +232,7 @@ export const taskCreateTool: ToolDef<Input> = {
   description:
     "Allocate a task_id and atomically write spec.tightened.md + status.yaml under .cairn/tasks/active/<task_id>/. " +
     "**Required fields**: `slug` (lowercase kebab, 3-80 chars), `title` (≤80 chars), `goal` (free-form). " +
-    "**Optional**: `target_path_globs` (defaults to []; pass paths to pin scope), `in_scope_decisions`, `in_scope_invariants`, `constraints`, `out_of_scope`, `acceptance`, `module`, `needs_review`, `mission_id` (anchor to mission; defaults to active mission's cursor — pass `''` to opt out as side-task), `phase_id`. " +
+    "**Optional**: `target_path_globs` (defaults to []; pass paths to pin scope), `in_scope_decisions`, `in_scope_invariants`, `constraints`, `out_of_scope`, `acceptance`, `module`, `mission_id` (anchor to mission; defaults to active mission's cursor — pass `''` to opt out as side-task), `phase_id`. " +
     "Server controls task_id format (`TSK-<slug>-<7-hex>`); callers cannot misformat it. " +
     "Auto-links the new task to its phase's `task_ids` immediately so `cairn_mission_advance choice='exit'` sees the task without waiting for `cairn_task_complete`. " +
     "Required by the cairn-direction skill before any source mutation.",

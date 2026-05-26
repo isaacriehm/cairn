@@ -45,7 +45,6 @@ import {
   completeTask,
   findCurrentActiveTask,
   readTaskAttestationState,
-  transitionTaskPhase,
 } from "../../tasks/index.js";
 import {
   effectivePhaseExitGate,
@@ -269,9 +268,6 @@ export async function runStopHook(): Promise<void> {
           const noun = grad.completed.length === 1 ? "task" : "tasks";
           const hint = `## Cairn — ${grad.completed.length} ${noun} graduated\n\n✓ ${ids} → done. Final attestation written.`;
           reason = reason.length > 0 ? `${reason}\n\n${hint}` : hint;
-        }
-        if (grad.transitioned.length > 0) {
-          warnings.push(`auto_graduated_review_ready:${grad.transitioned.length}`);
         }
       } catch (err) {
         warnings.push(
@@ -568,20 +564,6 @@ function readTaskPhase(taskDir: string): string | null {
   return null;
 }
 
-function checkNeedsReview(specPath: string): boolean {
-  try {
-    const raw = readFileSync(specPath, "utf8");
-    const fmMatch = raw.match(/^---\r?\n([\s\S]*?)\n---/);
-    if (!fmMatch) return true;
-    const fm = fmMatch[1] ?? "";
-    const m = fm.match(/^needs_review:\s*(true|false)/m);
-    if (m && m[1] === "false") return false;
-    return true;
-  } catch {
-    return true;
-  }
-}
-
 function scanPendingReviews(repoRoot: string): PendingReview[] {
   const activeDir = join(repoRoot, ".cairn", "tasks", "active");
   if (!existsSync(activeDir)) return [];
@@ -602,10 +584,10 @@ function scanPendingReviews(repoRoot: string): PendingReview[] {
     const attestation = join(taskDir, "attestation.yaml");
     if (existsSync(attestation)) continue;
 
-    // Finding 4: Opt-in reviewer. Default to true, skip if explicitly false.
-    if (!checkNeedsReview(tightenedSpec)) continue;
-
     // Phase gate — `running` / `tightening` / etc. are not review-ready.
+    // Reviewer is now opt-in (bug-mine 0.13.5); this surface only fires
+    // when an explicit reviewer subagent set phase=ready_for_review and
+    // ended its turn before writing attestation.yaml.
     const phase = readTaskPhase(taskDir);
     if (phase !== null && !REVIEW_READY_PHASES.has(phase)) continue;
     let mtime = 0;
@@ -895,22 +877,24 @@ function renderStalledTasksHint(stalled: StalledTask[]): string {
 /**
  * Auto-graduate active tasks based on attestation presence.
  *
+ * Self-attest is the default path (bug-mine 0.13.5): the AI calls
+ * `cairn_task_complete({outcome, summary})` and the tool moves the
+ * directory itself. This auto-graduator is the fallback for the rare
+ * case where an opt-in reviewer subagent wrote attestation.yaml but
+ * ended its turn before the explicit close call.
+ *
  * Rules (only acts on tasks with phase=running):
- *   1. Task-root `attestation.yaml` exists                     → succeeded → tasks/done/
- *      (reviewer subagent attested; nothing more to do)
- *   2. ≥1 subagents/<id>/attestation.yaml AND needs_review=false → succeeded → tasks/done/
- *      (trivial task, no reviewer scheduled)
- *   3. ≥1 subagents/<id>/attestation.yaml AND needs_review=true  → ready_for_review
- *      (reviewer hasn't run yet — `scanPendingReviews` will surface a hint)
+ *   1. Task-root `attestation.yaml` exists       → succeeded → tasks/done/
+ *   2. ≥1 subagents/<id>/attestation.yaml        → succeeded → tasks/done/
  *
  * Tasks with no attestation activity stay `running` — they're either
- * still in flight or stalled (Q4 surfaces stall detection separately).
+ * still in flight or stalled (stall detection runs separately).
  */
 function autoGraduateTasks(
   repoRoot: string,
-): { completed: string[]; transitioned: string[] } {
+): { completed: string[] } {
   const activeDir = join(repoRoot, ".cairn", "tasks", "active");
-  const result = { completed: [] as string[], transitioned: [] as string[] };
+  const result = { completed: [] as string[] };
   if (!existsSync(activeDir)) return result;
 
   let entries;
@@ -927,7 +911,7 @@ function autoGraduateTasks(
     if (state === null) continue;
     if (state.phase !== "running") continue;
 
-    if (state.rootAttestation) {
+    if (state.rootAttestation || state.subagentAttestations > 0) {
       const r = completeTask({
         repoRoot,
         taskId,
@@ -935,26 +919,6 @@ function autoGraduateTasks(
         source: "cairn_stop_auto_graduate",
       });
       if (r.ok) result.completed.push(taskId);
-      continue;
-    }
-
-    if (state.subagentAttestations > 0) {
-      if (!state.needsReview) {
-        const r = completeTask({
-          repoRoot,
-          taskId,
-          outcome: "succeeded",
-          source: "cairn_stop_auto_graduate",
-        });
-        if (r.ok) result.completed.push(taskId);
-        continue;
-      }
-      const ok = transitionTaskPhase({
-        repoRoot,
-        taskId,
-        newPhase: "ready_for_review",
-      });
-      if (ok) result.transitioned.push(taskId);
     }
   }
 
