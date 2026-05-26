@@ -11,7 +11,6 @@
  *   - bulkAcceptObvious emits decision_accepted events
  *   - cairn_mission_advance choice=exit unlinks
  *     .mission-phase-deferred-until when phase ids match
- *   - cairn_mission_close unlinks marker for the closed mission
  *   - Stop hook stall scan filters tasks owned by another session
  *     within the cross-session-takeover window
  *   - Stop hook GC of .stalled-warned/ markers for tasks no longer

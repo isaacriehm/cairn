@@ -2,7 +2,7 @@
   "name": "cairn-lens",
   "displayName": "Cairn Lens",
   "description": "Inline citation context for §INV invariants and TODO(TSK-) tokens. Hovers, gutter icons, code lens — resolved from .cairn/ground/ ledgers.",
-  "version": "0.13.6",
+  "version": "0.13.7",
   "publisher": "isaacriehm",
   "type": "module",
   "engines": {

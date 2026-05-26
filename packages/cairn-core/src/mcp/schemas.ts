@@ -13,29 +13,8 @@ export const decisionGetInput = {
   id: z.string().regex(/^[A-Z]+-[0-9a-f]{7,}$/, "id must match <PREFIX>-<hash7>"),
 };
 
-export const decisionsForSymbolInput = {
-  file: z.string().min(1),
-  symbol: z.string().min(1),
-};
-
 export const canonicalForTopicInput = {
   topic: z.string().min(1),
-};
-
-export const groundGetInput = {
-  category: z.enum([
-    "schema",
-    "routes",
-    "events",
-    "quality_grades",
-    "glossary",
-    "manifest",
-  ]),
-  key: z.string().optional(),
-};
-
-export const supersedesChainInput = {
-  decision_id: z.string().min(1),
 };
 
 export const invariantGetInput = {
@@ -57,18 +36,6 @@ export const searchInput = {
   scope: z.array(z.string()).optional(),
   kinds: z.array(z.enum(["decision", "invariant", "task", "run", "doc", "manifest"])).optional(),
   limit: z.number().int().positive().max(50).optional(),
-};
-
-export const timelineInput = {
-  scope: z.array(z.string()).optional(),
-  since: z.string().optional(),
-  until: z.string().optional(),
-  kinds: z.array(z.string()).optional(),
-};
-
-export const getFullInput = {
-  id: z.string().min(1),
-  kind: z.enum(["decision", "invariant", "task", "run"]),
 };
 
 // ── Read tools — historical zone (gated) ───────────────────────────────────
@@ -226,12 +193,6 @@ export const recordDecisionInput = {
   target: z.enum(["inbox", "accepted"]).optional(),
 };
 
-export const archiveInput = {
-  path: z.string().min(1),
-  reason: z.string().min(1),
-  archive_dir: z.string().optional(),
-};
-
 export const resolveAttentionInput = {
   /**
    * Item id from the attention skill — DEC-NNNN for a draft, the
@@ -295,53 +256,6 @@ export const resolveAttentionInput = {
   defer_hours: z.number().int().min(1).max(24 * 30).optional(),
   /** Optional free-text — when choice=c the operator may type a rationale. */
   rationale: z.string().optional(),
-};
-
-export const alignDrainInput = {
-  /**
-   * Hard cap on Haiku judge calls. Excess entries stay in the deferred
-   * logs for a future drain. Default 30 (plan §4.3 budget).
-   */
-  max_haiku_calls: z.number().int().min(0).max(200).optional(),
-  /**
-   * Dry-run: classify every entry and report what would happen but do
-   * not strip-replace source files, write alignment-pending records,
-   * or truncate the deferred logs.
-   */
-  dry_run: z.boolean().optional(),
-};
-
-// ── Phase 6 redesign — topic-index candidate surface (PR 2) ────────────────
-
-/**
- * `cairn_search_candidates` — query topic-index entries that have not
- * yet been promoted to a DEC (`dec_id IS NULL`). Mirrors the shape of
- * `cairn_in_scope` so AI agents can use them interchangeably.
- *
- * - `query`  — case-insensitive substring match against title + body preview.
- * - `scope`  — repo-relative glob filter on `sot_source` (e.g. `"docs/**"`).
- * - `kind`   — restrict to candidates with the given `marker_kind`
- *              (`"decision"` or `"rule"`). Unmarked candidates are
- *              omitted when this is set.
- * - `limit`  — default 50, hard cap at 200 (the surface is meant for
- *              targeted queries, not full-table scans).
- */
-export const searchCandidatesInput = {
-  query: z.string().min(1).optional(),
-  scope: z.string().min(1).optional(),
-  kind: z.enum(["decision", "rule"]).optional(),
-  limit: z.number().int().min(1).max(200).optional(),
-};
-
-/**
- * `cairn_reject_candidate` — append the slug to `.cairn/ground/_rejected.yaml`
- * so phase 6 / `cairn ingest` skip it on the next pass and the
- * read-enrich hint stops resurfacing it. Dedupe by slug; first writer
- * wins the `reason` string.
- */
-export const rejectCandidateInput = {
-  slug: z.string().min(1),
-  reason: z.string().min(1),
 };
 
 // ── Mission system — supra-task layer ──────────────────────────────────────
@@ -408,16 +322,6 @@ export const missionAdvanceInput = {
 
 export const missionResumeInput = {
   mission_id: missionIdField.optional(),
-};
-
-export const missionCloseInput = {
-  mission_id: missionIdField,
-  outcome: z.enum(["done", "aborted"]),
-  reason: z.string().min(1).optional(),
-};
-
-export const missionReopenInput = {
-  mission_id: missionIdField,
 };
 
 export const missionResyncInput = {

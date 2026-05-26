@@ -88,20 +88,14 @@ The MCP server exposes 25 typed tools. Source of truth is
 | ----------------------------- | ---------------------------------------------------------------------- |
 | `cairn_decision_get`          | Full DEC by id (frontmatter + assertions + body).                      |
 | `cairn_in_scope`              | DEC + §INV summaries whose `scope_globs` overlap supplied path-globs; filter via `types: ["decision"|"invariant"]`. |
-| `cairn_decisions_for_symbol`  | Like in-scope, narrowed to DECs whose body mentions a specific symbol. |
 | `cairn_invariant_get`         | Full §INV by id.                                                       |
 | `cairn_canonical_for_topic`   | `topic → { canonical_path, sha256, verified_at }`.                     |
-| `cairn_ground_get`            | Bulk extract by category (schema / routes / events / glossary).        |
-| `cairn_supersedes_chain`      | Full chain forward to current binding decision.                        |
 
 ### Read — search and retrieval
 
 | Tool                       | Returns                                                                  |
 | -------------------------- | ------------------------------------------------------------------------ |
 | `cairn_search`             | FTS over canonical-zone artifacts. Compact records (~50 tokens each).    |
-| `cairn_timeline`           | Events for a scope window, chronologically ordered.                      |
-| `cairn_get_full`           | Full body of a named artifact (after `cairn_search` narrows candidates). |
-| `cairn_search_candidates`  | Phase 8 candidate surface — search across DEC drafts in `_inbox/`.       |
 
 ### Read — historical (gated)
 
@@ -114,27 +108,17 @@ The MCP server exposes 25 typed tools. Source of truth is
 | Tool                    | What                                                                   |
 | ----------------------- | ---------------------------------------------------------------------- |
 | `cairn_record_decision` | Drop new DEC draft to `_inbox/`. Server allocates `DEC-NNNN`.          |
-| `cairn_propose_decision`| Submit DEC candidate from a Phase 8 / source-comment ingest.           |
-| `cairn_reject_candidate`| Mark a candidate rejected with reason.                                 |
 | `cairn_task_create`     | Create `.cairn/tasks/active/<id>/` with spec.tightened.md + status.yaml. |
-| `cairn_archive`         | Move file from canonical to `.archive/<today>/`. Idempotent.            |
 
 ### Attention queue
 
-| Tool                            | What                                                                |
-| ------------------------------- | ------------------------------------------------------------------- |
-| `cairn_resolve_attention`       | Resolve a single item (DEC / finding / drift / conflict / bypass).  |
-| `cairn_bulk_accept_attention`   | Auto-promote high-confidence drafts before triage.                  |
-| `cairn_attention_dedup`         | Cluster near-duplicate drafts by Jaccard ≥ 0.4.                     |
-| `cairn_attention_restore`       | Undo the last batch of attention resolutions (within session).      |
-| `cairn_attention_serve`         | Spawn local browser triage GUI when queue > 15.                     |
-| `cairn_attention_wait`          | Block until browser GUI emits resolutions or operator cancels.      |
-
-### Layer C SessionStart drain
-
-| Tool                | What                                                                     |
-| ------------------- | ------------------------------------------------------------------------ |
-| `cairn_align_drain` | Drain SoT-alignment cases queued by PostToolUse Write/Edit hooks.        |
+| Tool                          | What                                                                |
+| ----------------------------- | ------------------------------------------------------------------- |
+| `cairn_resolve_attention`     | Resolve a single item (DEC / finding / drift / conflict / bypass).  |
+| `cairn_bulk_accept_attention` | Auto-promote high-confidence drafts before triage.                  |
+| `cairn_attention_dedup`       | Cluster near-duplicate drafts by Jaccard ≥ 0.4.                     |
+| `cairn_attention_serve`       | Spawn local browser triage GUI when queue > 15.                     |
+| `cairn_attention_wait`        | Block until browser GUI emits resolutions or operator cancels.      |
 
 ### Init pipeline
 
@@ -426,12 +410,6 @@ cairn mcp call cairn_search '{"query":"retry","kinds":["decision","invariant"]}'
 
 ```bash
 cairn scope rebuild
-```
-
-### Check the supersedes chain for a DEC
-
-```bash
-cairn mcp call cairn_supersedes_chain '{"decision_id":"DEC-0017"}'
 ```
 
 ---

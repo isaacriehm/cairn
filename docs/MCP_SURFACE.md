@@ -60,26 +60,20 @@ Conventions:
 
 Source of truth: `packages/cairn-core/src/mcp/tools/index.ts` (`allTools`).
 
-**Read — graph traversal (7)**
+**Read — graph traversal (4)**
 
-| Tool                          | What                                                                          |
-| ----------------------------- | ----------------------------------------------------------------------------- |
-| `cairn_decision_get`          | Full DEC by id (frontmatter + assertions + body markdown).                    |
-| `cairn_in_scope`              | DEC + §INV summaries whose scope_globs overlap supplied path-globs. Pass `types: ["decision"]` or `["invariant"]` to filter. |
-| `cairn_decisions_for_symbol`  | Like in-scope, narrowed to decisions whose body mentions a specific symbol.   |
-| `cairn_invariant_get`         | Full §INV by id.                                                              |
-| `cairn_canonical_for_topic`   | `topic → canonical_path + sha256 + verified_at`. Curated topic registry.      |
-| `cairn_ground_get`            | Bulk extract by category (schema / routes / events / quality_grades / glossary). |
-| `cairn_supersedes_chain`      | Full chain forward to current binding decision.                               |
+| Tool                        | What                                                                          |
+| --------------------------- | ----------------------------------------------------------------------------- |
+| `cairn_decision_get`        | Full DEC by id (frontmatter + assertions + body markdown).                    |
+| `cairn_in_scope`            | DEC + §INV summaries whose scope_globs overlap supplied path-globs. Pass `types: ["decision"]` or `["invariant"]` to filter. |
+| `cairn_invariant_get`       | Full §INV by id.                                                              |
+| `cairn_canonical_for_topic` | `topic → canonical_path + sha256 + verified_at`. Curated topic registry.      |
 
-**Read — search + retrieval (4)**
+**Read — search + retrieval (1)**
 
-| Tool                       | What                                                                       |
-| -------------------------- | -------------------------------------------------------------------------- |
-| `cairn_search`             | FTS over canonical-zone artifacts; compact index records (~50 tokens each). |
-| `cairn_timeline`           | Chronologically ordered events for a scope window.                         |
-| `cairn_get_full`           | Full body of a named artifact after `cairn_search` narrows candidates.     |
-| `cairn_search_candidates`  | Phase 8 candidate surface — search across DEC drafts in `_inbox/`.         |
+| Tool           | What                                                                       |
+| -------------- | -------------------------------------------------------------------------- |
+| `cairn_search` | FTS over canonical-zone artifacts; compact index records (~50 tokens each). |
 
 **Read — historical zone (gated, 1)**
 
@@ -87,37 +81,22 @@ Source of truth: `packages/cairn-core/src/mcp/tools/index.ts` (`allTools`).
 | --------------------- | ----------------------------------------------------------------------------- |
 | `cairn_query_history` | Only path to `.archive/`. Server walks + LLM-summarizes; raw stale never enters context. |
 
-**Write — append-only (3)**
+**Write — append-only (2)**
 
 | Tool                    | What                                                                     |
 | ----------------------- | ------------------------------------------------------------------------ |
 | `cairn_record_decision` | Drop new DEC draft into `_inbox/`. Server allocates `DEC-NNNN`.          |
 | `cairn_task_create`     | Create `.cairn/tasks/active/<id>/` with `spec.tightened.md` + `status.yaml`. |
-| `cairn_archive`         | Move file from canonical zone to `.archive/<today>/`. Idempotent.        |
 
-**Write — phase 8 candidate surface (2)**
+**Write — plugin-era attention queue (5)**
 
-| Tool                      | What                                                                  |
-| ------------------------- | --------------------------------------------------------------------- |
-| `cairn_propose_decision`  | Submit a new DEC candidate from a Phase 8 / source-comment ingest.    |
-| `cairn_reject_candidate`  | Mark a candidate rejected with reason; persists in audit log.         |
-
-**Write — plugin-era attention queue (6)**
-
-| Tool                            | What                                                                      |
-| ------------------------------- | ------------------------------------------------------------------------- |
-| `cairn_resolve_attention`       | Resolve a single attention item (DEC draft / baseline finding / drift).   |
-| `cairn_bulk_accept_attention`   | Auto-promote high-confidence drafts before interactive triage.            |
-| `cairn_attention_dedup`         | Cluster near-duplicate drafts by Jaccard ≥ 0.4.                            |
-| `cairn_attention_restore`       | Undo the last batch of attention resolutions (within session).            |
-| `cairn_attention_serve`         | Spawn a local browser triage GUI when queue > 15.                         |
-| `cairn_attention_wait`          | Block until the browser GUI emits resolutions or the operator cancels.    |
-
-**Write — Layer C SessionStart drain (1)**
-
-| Tool                | What                                                                       |
-| ------------------- | -------------------------------------------------------------------------- |
-| `cairn_align_drain` | Drain queued SoT-alignment cases written by PostToolUse Write/Edit hooks.  |
+| Tool                          | What                                                                      |
+| ----------------------------- | ------------------------------------------------------------------------- |
+| `cairn_resolve_attention`     | Resolve a single attention item (DEC draft / baseline finding / drift).   |
+| `cairn_bulk_accept_attention` | Auto-promote high-confidence drafts before interactive triage.            |
+| `cairn_attention_dedup`       | Cluster near-duplicate drafts by Jaccard ≥ 0.4.                            |
+| `cairn_attention_serve`       | Spawn a local browser triage GUI when queue > 15.                         |
+| `cairn_attention_wait`        | Block until the browser GUI emits resolutions or the operator cancels.    |
 
 **Init pipeline (2)**
 
@@ -178,15 +157,6 @@ Errors: `DECISION_NOT_FOUND`.
 
 Returns array of DEC + §INV summary records (no body) whose scope overlaps the supplied path-globs. Each record carries `kind: "decision" | "invariant"` so callers can split. Sorted by id.
 
-#### `cairn_decisions_for_symbol`
-
-| Field | Type | Notes |
-|-------|------|-------|
-| `file` | string | Repo-relative path |
-| `symbol` | string | e.g., `"DashboardService.list"` |
-
-Returns decisions whose `scope_globs` overlap the file path AND whose body explicitly mentions the symbol. Smaller result than path-glob alone.
-
 #### `cairn_canonical_for_topic`
 
 | Field | Type | Notes |
@@ -206,31 +176,6 @@ Returns:
 ```
 
 Errors: `TOPIC_NOT_REGISTERED` — agent should not invent topics; topic registry is curated.
-
-#### `cairn_ground_get`
-
-| Field | Type | Notes |
-|-------|------|-------|
-| `category` | string | One of: `schema`, `routes`, `events`, `quality_grades`, `glossary` |
-| `key` | string | Optional. Category-specific filter (e.g. table name for `schema`, controller name for `routes`) |
-
-Returns the generated extract for the category. Use this for bulk category reads (e.g. "give me the full schema"). For a specific named artifact by ID, use `cairn_get_full`. For the path to the canonical doc on a topic, use `cairn_canonical_for_topic`.
-
-#### `cairn_supersedes_chain`
-
-| Field | Type | Notes |
-|-------|------|-------|
-| `decision_id` | string | Required |
-
-Returns the chain forward to current binding decision:
-
-```json
-[
-  { "id": "DB-2-original", "status": "superseded", "supersedes": null },
-  { "id": "DB-2-revised", "status": "superseded", "supersedes": "DB-2-original" },
-  { "id": "DEC-0042", "status": "accepted", "supersedes": "DB-2-revised" }
-]
-```
 
 #### `cairn_invariant_get`
 
@@ -257,26 +202,6 @@ Returns compact index records (~50 tokens each):
 ```
 
 Backed by FTS over the ground/. No LLM.
-
-#### `cairn_timeline`
-
-| Field | Type | Notes |
-|-------|------|-------|
-| `scope` | string[] | Optional path-globs |
-| `since` | string | ISO 8601 |
-| `until` | string | ISO 8601; default now |
-| `kinds` | string[] | Optional |
-
-Returns chronologically ordered events relevant to the scope window. Useful for "what happened to integrations/ this week" without burning tokens on file reads.
-
-#### `cairn_get_full`
-
-| Field | Type | Notes |
-|-------|------|-------|
-| `id` | string | Required |
-| `kind` | string | One of: `decision`, `invariant`, `task`, `run` |
-
-Returns the full content of the named artifact. Used after `cairn_search` / `cairn_timeline` narrows the candidates. Reads the canonical zone only.
 
 ### Read tools — historical zone (gated)
 
@@ -339,18 +264,6 @@ The walker caps total bytes (default 200 KB) and file count (default 40) to keep
 Drops to `.cairn/ground/decisions/_inbox/<DEC-id>.draft.md`. The cairn-attention skill surfaces the draft inline at the next assistant turn for accept / reject / edit; on accept the file moves to the canonical zone and `decisions.ledger.yaml` updates atomically under the per-write `flock`.
 
 Errors: `DECISION_ID_TAKEN`, `INVALID_ASSERTION_KIND`, `SUPERSEDES_NOT_FOUND`.
-
-#### `cairn_archive`
-
-| Field | Type | Notes |
-|-------|------|-------|
-| `path` | string | Required. Must exist in canonical zone |
-| `reason` | string | Required. Saved to archive metadata |
-| `archive_dir` | string | Optional override; default `.archive/<today>/` |
-
-Moves a file from canonical zone to `.archive/<archive_dir>/<original_path>`. Idempotent. Records a `staleness/log.jsonl` event.
-
-Errors: `PATH_NOT_FOUND`, `PATH_OUTSIDE_REPO`, `NOT_ALLOWED` (AGENTS.md, `.claude/`, locked paths).
 
 ---
 

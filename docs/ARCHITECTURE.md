@@ -159,20 +159,16 @@ into:
 
 - **Read — graph traversal** — `cairn_decision_get`,
   `cairn_in_scope` (unified path-glob lookup for DECs + INVs;
-  filter via `types`), `cairn_decisions_for_symbol`,
-  `cairn_invariant_get`, `cairn_canonical_for_topic`,
-  `cairn_ground_get`, `cairn_supersedes_chain`.
-- **Read — search + retrieval** — `cairn_search`, `cairn_timeline`,
-  `cairn_get_full`, `cairn_search_candidates`.
+  filter via `types`), `cairn_invariant_get`,
+  `cairn_canonical_for_topic`.
+- **Read — search + retrieval** — `cairn_search`.
 - **Read — historical (gated)** — `cairn_query_history` (only path to
   `.archive/`; LLM-summarized, never raw).
 - **Write — append-only, per-write `flock`** — `cairn_record_decision`,
-  `cairn_propose_decision`, `cairn_reject_candidate`, `cairn_archive`,
   `cairn_task_create`.
 - **Attention queue** — `cairn_resolve_attention`,
   `cairn_bulk_accept_attention`, `cairn_attention_dedup`,
-  `cairn_attention_restore`, `cairn_attention_serve`,
-  `cairn_attention_wait`, `cairn_align_drain`.
+  `cairn_attention_serve`, `cairn_attention_wait`.
 - **Init pipeline** — `cairn_init_phase_*` (13 phases) +
   `cairn_init_resume`, `cairn_init_phases_8_9_10_parallel`.
 

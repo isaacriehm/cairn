@@ -36,9 +36,7 @@
  *     the existing `cairn-attention` skill.
  *
  * Skipped entries (everything else) stay in the topic-index as
- * unpromoted candidates. The PR 2 `cairn_search_candidates` /
- * `cairn_propose_decision` MCP tools surface them to AI agents as
- * the project lives.
+ * unpromoted candidates for future curator passes.
  */
 
 import {
