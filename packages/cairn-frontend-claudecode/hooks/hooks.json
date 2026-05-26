@@ -58,6 +58,15 @@
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook post-write"
           }
         ]
+      },
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook ask-user-blocked"
+          }
+        ]
       }
     ]
   }

@@ -131,6 +131,89 @@ function clampReason(body: string): string {
  */
 const CUE_DEBOUNCE_WINDOW_MS = 60 * 60 * 1000;
 
+/**
+ * Bug-mine 0.13.8 — Phase 5 stall-cue tuning.
+ *
+ * `SESSION_ACTIVITY_WINDOW_MS` — when the transcript records any
+ * `tool_use` within this window, the AI is actively working; suppress
+ * the stalled-task surface so the cue doesn't interrupt productive
+ * flow. Mining showed stall cues firing while an Agent subagent was
+ * mid-dispatch and a research run was committing.
+ *
+ * `SESSION_STALLED_CUE_WINDOW_MS` — at most one stalled cue per
+ * session per hour, total (not per-task). Per-task throttle
+ * (`STALLED_FIRE_WINDOW_MS`) remains as a floor on top.
+ */
+const SESSION_ACTIVITY_WINDOW_MS = 5 * 60 * 1000;
+const SESSION_STALLED_CUE_WINDOW_MS = 60 * 60 * 1000;
+
+/**
+ * Walk the transcript tail and return the millisecond age of the most
+ * recent `tool_use` entry whose timestamp parses, or `null` when no
+ * such entry is found. Best-effort — any read / parse failure returns
+ * `null` and the caller falls through to the threshold check.
+ *
+ * Claude Code transcript entries are JSONL; assistant messages with
+ * tool calls carry `type: "tool_use"` on a content block. We scan
+ * backwards from the tail and stop at the first matching line.
+ */
+function lastToolUseAgeMs(transcriptPath: string | null, nowMs: number): number | null {
+  if (transcriptPath === null || transcriptPath.length === 0) return null;
+  if (!existsSync(transcriptPath)) return null;
+  let raw: string;
+  try {
+    raw = readFileSync(transcriptPath, "utf8");
+  } catch {
+    return null;
+  }
+  const lines = raw.split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (line === undefined || line.length === 0) continue;
+    if (!line.includes('"tool_use"')) continue;
+    let entry: unknown;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (entry === null || typeof entry !== "object") continue;
+    const ts = (entry as Record<string, unknown>)["timestamp"]
+      ?? (entry as Record<string, unknown>)["ts"];
+    if (typeof ts !== "string") continue;
+    const parsed = Date.parse(ts);
+    if (Number.isNaN(parsed)) continue;
+    return nowMs - parsed;
+  }
+  return null;
+}
+
+function lastSessionStalledCuePath(repoRoot: string, sessionId: string): string {
+  return join(repoRoot, ".cairn", "sessions", sessionId, "last-stalled-cue.iso");
+}
+
+function lastSessionStalledCueMs(repoRoot: string, sessionId: string): number | null {
+  const path = lastSessionStalledCuePath(repoRoot, sessionId);
+  if (!existsSync(path)) return null;
+  try {
+    const raw = readFileSync(path, "utf8").trim();
+    const ms = Date.parse(raw);
+    return Number.isNaN(ms) ? null : ms;
+  } catch {
+    return null;
+  }
+}
+
+function stampSessionStalledCue(repoRoot: string, sessionId: string): void {
+  const path = lastSessionStalledCuePath(repoRoot, sessionId);
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, new Date().toISOString(), "utf8");
+  } catch {
+    // best-effort
+  }
+}
+
 interface PriorCueState {
   hash: string;
   emitted_at: string;
@@ -209,6 +292,7 @@ export async function runStopHook(): Promise<void> {
   const payload = parseHookPayload(raw);
   const sessionId = typeof payload.session_id === "string" ? payload.session_id : null;
   const cwdInput = typeof payload.cwd === "string" ? payload.cwd : process.cwd();
+  const transcriptPath = typeof payload.transcript_path === "string" ? payload.transcript_path : null;
   const repoRoot = resolveRepoRoot(cwdInput);
   const warnings: string[] = [];
 
@@ -298,44 +382,74 @@ export async function runStopHook(): Promise<void> {
       }
 
       // Stalled-task scanner — surfaces tasks stuck in phase=running
-      // with no attestation for 30min+. Catches the failure mode where
-      // the autonomous flow finished the work but skipped spawning the
-      // reviewer subagent (no attestation → auto-graduator never fires
-      // → task accumulates as orphaned). Only fires when no other
-      // higher-priority surface (reviewer hint, ctx threshold) already
-      // owns the reason channel — stalled-task triage is informational
-      // catch-up, not blocking.
+      // with no attestation for 2h+ (raised from 30 min in bug-mine
+      // 0.13.8 / Phase 5 — see CONTEXT.md §2.4 for false-fire mining).
+      // Catches the failure mode where the autonomous flow finished
+      // the work but skipped spawning the reviewer subagent (no
+      // attestation → auto-graduator never fires → task accumulates
+      // as orphaned). Only fires when no other higher-priority surface
+      // (reviewer hint, ctx threshold) already owns the reason channel
+      // — stalled-task triage is informational catch-up, not blocking.
       //
-      // Per-task suppression window: once a stalled hint fires for a
-      // given task id, suppress re-fires on the same id for 60 min so
-      // the operator isn't asked the same triage question every Stop
-      // tick (bug-mine report #9 — same task flagged 3× in 90s).
+      // Three additional gates layered on top of the per-task window:
+      //
+      //   1. Session-activity gate — when the transcript carries a
+      //      `tool_use` event within the last 5 minutes, the AI is
+      //      actively working; suppress entirely.
+      //   2. Per-session rate limit — at most one stalled cue per
+      //      session per hour, total (not per-task). Bug-mine showed
+      //      three active tasks idle = three prompts per hour without
+      //      a global cap.
+      //   3. Per-task throttle — 60 minute suppression window per
+      //      task id so the operator isn't asked the same triage
+      //      question every Stop tick (bug-mine report #9 — same
+      //      task flagged 3× in 90s).
       if (reason.length === 0 && !isFirstTurnWarmup) {
         try {
           gcStalledWarnedMarkers(repoRoot);
-          const stalled = scanStalledRunningTasks(repoRoot, Date.now(), {
-            currentSessionId: sessionId,
-          });
-          const surfaced = stalled.filter(
-            (t) => !isStalledFireSuppressed(repoRoot, t.task_id),
-          );
-          if (surfaced.length > 0) {
-            const reviewDefer = readDeferState(repoRoot, "review");
-            const suppressed =
-              reviewDefer !== null &&
-              isDeferActive(reviewDefer, new Date(), {
-                kind: "task_ids",
-                values: surfaced.map((t) => t.task_id),
-              });
-            if (suppressed) {
-              warnings.push(`stalled_suppressed_until:${reviewDefer.deferred_at}`);
+          const lastSessionCue = sessionId !== null
+            ? lastSessionStalledCueMs(repoRoot, sessionId)
+            : null;
+          if (
+            lastSessionCue !== null &&
+            Date.now() - lastSessionCue < SESSION_STALLED_CUE_WINDOW_MS
+          ) {
+            warnings.push(
+              `stalled_session_rate_limited:${new Date(lastSessionCue).toISOString()}`,
+            );
+          } else {
+            const recentToolUseAge = lastToolUseAgeMs(transcriptPath, Date.now());
+            const sessionActive =
+              recentToolUseAge !== null && recentToolUseAge < SESSION_ACTIVITY_WINDOW_MS;
+            if (sessionActive) {
+              warnings.push(`stalled_session_active:${recentToolUseAge}`);
             } else {
-              reason = renderStalledTasksHint(surfaced);
-              for (const t of surfaced) stampStalledFire(repoRoot, t.task_id);
-              warnings.push(`stalled_running_tasks:${surfaced.length}`);
+              const stalled = scanStalledRunningTasks(repoRoot, Date.now(), {
+                currentSessionId: sessionId,
+              });
+              const surfaced = stalled.filter(
+                (t) => !isStalledFireSuppressed(repoRoot, t.task_id),
+              );
+              if (surfaced.length > 0) {
+                const reviewDefer = readDeferState(repoRoot, "review");
+                const suppressed =
+                  reviewDefer !== null &&
+                  isDeferActive(reviewDefer, new Date(), {
+                    kind: "task_ids",
+                    values: surfaced.map((t) => t.task_id),
+                  });
+                if (suppressed) {
+                  warnings.push(`stalled_suppressed_until:${reviewDefer.deferred_at}`);
+                } else {
+                  reason = renderStalledTasksHint(surfaced);
+                  for (const t of surfaced) stampStalledFire(repoRoot, t.task_id);
+                  if (sessionId !== null) stampSessionStalledCue(repoRoot, sessionId);
+                  warnings.push(`stalled_running_tasks:${surfaced.length}`);
+                }
+              } else if (stalled.length > 0) {
+                warnings.push(`stalled_window_suppressed:${stalled.length}`);
+              }
             }
-          } else if (stalled.length > 0) {
-            warnings.push(`stalled_window_suppressed:${stalled.length}`);
           }
         } catch (err) {
           warnings.push(
@@ -692,8 +806,9 @@ interface StalledTask {
  *   - no `attestation.yaml`
  *   - no `subagents/<id>/attestation.yaml` either (else the regular
  *     auto-graduator path will transition it)
- *   - `status.yaml` mtime > 30min ago (recent enough activity stays
- *     under the radar to avoid spamming during in-flight work)
+ *   - `status.yaml` mtime > 2h ago (raised from 30 min in 0.13.8 —
+ *     most legit long-running work, including Agent dispatches,
+ *     batch tests, builds, deploys, finishes inside 2h)
  *   - upper bound 7d so we don't surface long-archived noise that
  *     the operator already mentally retired
  *
@@ -714,7 +829,7 @@ function scanStalledRunningTasks(
   const activeDir = join(repoRoot, ".cairn", "tasks", "active");
   if (!existsSync(activeDir)) return [];
   const out: StalledTask[] = [];
-  const idleThresholdMs = 30 * 60 * 1000;
+  const idleThresholdMs = 2 * 60 * 60 * 1000;
   const upperBoundMs = 7 * 24 * 60 * 60 * 1000;
   // When a task's last journal write came from a DIFFERENT live session
   // within this window, treat it as "owned by that session" and don't
@@ -848,7 +963,7 @@ function renderStalledTasksHint(stalled: StalledTask[]): string {
   const lines: string[] = [
     `## Cairn — ${stalled.length} stalled ${noun}`,
     ``,
-    `${stalled.length} active ${noun} idle 30min+ with no attestation. ` +
+    `${stalled.length} active ${noun} idle 2h+ with no attestation. ` +
       `Either the autonomous flow skipped the reviewer-spawn step, or the ` +
       `session was interrupted mid-task.`,
     ``,
@@ -868,7 +983,7 @@ function renderStalledTasksHint(stalled: StalledTask[]): string {
   lines.push(``);
   lines.push("On [a], call `cairn_task_complete({task_id, outcome: \"succeeded\", summary: \"closing stalled task — work landed via prior session\"})` for each id above.");
   lines.push("On [b], dispatch the `reviewer` subagent for each task in turn (one task brief per Task call).");
-  lines.push("On [c], end the turn — the prompt re-fires only when status.yaml stays idle past the next 30min mark.");
+  lines.push("On [c], end the turn — the prompt re-fires only when status.yaml stays idle past the next 2h mark.");
   lines.push("");
   lines.push("If you're actively working (Agent dispatch in flight, edits queued), ignore this hint and keep going — it will re-evaluate on the next Stop tick.");
   return lines.join("\n");

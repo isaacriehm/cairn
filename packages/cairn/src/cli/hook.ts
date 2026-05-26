@@ -22,6 +22,7 @@
  */
 
 import {
+  runAskUserBlockedHook,
   runPostWriteHook,
   runPreCommitAlign,
   runReadEnricher,
@@ -44,6 +45,7 @@ function usage(): never {
       "  write-guard           PostToolUse on Write/Edit — copy-safety + scope reminder\n" +
       "  sot-align             PostToolUse on Write/Edit — Layer A alignment + DEC creation\n" +
       "  post-write            Combined Write/Edit hook (Write Guardian + Layer A)\n" +
+      "  ask-user-blocked      PostToolUse on AskUserQuestion — auto-stamp blocked_on: operator\n" +
       "  pre-commit-align      git pre-commit — Layer B detection-only drift log\n" +
       "\n" +
       "Claude Code hooks read a JSON payload on stdin and emit the\n" +
@@ -82,6 +84,9 @@ export async function hookCli(argv: string[]): Promise<void> {
       return;
     case "post-write":
       await runPostWriteHook();
+      return;
+    case "ask-user-blocked":
+      await runAskUserBlockedHook();
       return;
     case "pre-commit-align":
       await runPreCommitAlign();

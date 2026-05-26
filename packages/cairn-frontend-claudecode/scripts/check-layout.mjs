@@ -108,6 +108,7 @@ if (hooksFile) {
       'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook write-guard',
       'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook sot-align',
       'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook post-write',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook ask-user-blocked',
     ]);
     const visit = (event, entries) => {
       for (const entry of entries) {
