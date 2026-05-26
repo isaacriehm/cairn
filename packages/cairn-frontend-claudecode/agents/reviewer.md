@@ -57,7 +57,14 @@ Combine both. Walk the diff per-file. For each file:
 
 - Confirm it's within `target_path_globs`.
 - Confirm any new code that touches an in-scope decision or invariant
-  cites it via `// §INV-NNNN` (per spec §15 comment policy).
+  cites it via the cite-only marker `// §INV-NNNN` (or
+  `// §DEC-NNNN`). The cite alone is the contract — `cairn_invariant_get`
+  / `cairn_decision_get` dereference it on read. Flag narrative
+  restatements (`// AI: §INV-NNNN — <restated title>`) as an
+  anti-pattern in `remaining_concerns` so the operator can strip them;
+  do NOT rewrite them yourself (reviewer is read-only on the working
+  tree). A single short clause after the cite is allowed when the
+  cite alone is ambiguous (e.g. `// §INV-NNNN (SSR cache path)`).
 - Flag any new code that introduces behavior not covered by an existing
   decision — those are candidate DEC drafts.
 

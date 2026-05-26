@@ -37,59 +37,53 @@ inline prose and break the structured-answer contract.
 
 ## Step 0.4 — operator-rejection capture
 
-When the operator rejects prior work ("bad", "don't like", "stop
-using", "wrong"), capture the pattern as a draft DEC BEFORE the
-local fix. Extract regex + globs + rationale → dedupe via
-`cairn_search` → `cairn_record_decision({..., assertions: [{kind:
-"text_must_not_match", pattern, in_globs}]})` (defaults `target:
-"inbox"`) → surface one line ``Captured rejection → draft
-`DEC-<id>` queued.`` Full playbook:
-`docs/PLUGIN_ARCHITECTURE.md` §11.
+Operator rejects prior work ("bad", "don't like", "stop using",
+"wrong") → capture as draft DEC BEFORE the local fix. Extract regex
++ globs + rationale → dedupe via `cairn_search` →
+`cairn_record_decision({..., assertions: [{kind:
+"text_must_not_match", pattern, in_globs}]})` (default `target:
+"inbox"`) → surface ``Captured rejection → draft `DEC-<id>`
+queued.`` Full playbook: `docs/PLUGIN_ARCHITECTURE.md` §11.
 
 ## Step 0.5 — pivot detection (active-task path)
 
 `ls .cairn/tasks/active/` empty → Step 0.7.
 
-**Cold-resume.** Prompt is a continuation token AND
-`journal.jsonl` has entries from a different `session_id` → run
-`cairn_resume({task_id})`, read `files_touched` (cap 8,
-most-recent-first, parallel), read `spec.tightened.md`, resume
-from `next_step`.
+**Cold-resume.** Continuation token AND `journal.jsonl` has entries
+from a different `session_id` → `cairn_resume({task_id})`, read
+`files_touched` (cap 8, most-recent-first, parallel), read
+`spec.tightened.md`, resume from `next_step`.
 
-Otherwise compare prompt to active task's title + goal:
+Otherwise compare prompt to active title + goal:
 
 - **Same subject** → continue inline, no `cairn_task_create`.
 - **Diverging** → `AskUserQuestion`: `[a]` complete first,
-  `[b]` abort + pivot, `[c]` fold as sub-task. Detail:
-  `docs/PLUGIN_ARCHITECTURE.md` §11.
+  `[b]` abort + pivot, `[c]` fold as sub-task.
+  Detail: `docs/PLUGIN_ARCHITECTURE.md` §11.
 
 ## Step 0.7 — mission scope detection (no active mission)
 
 `cairn_mission_get({})`. `active: true` → skip (Step 2.5 anchors).
 
-`active: false` → scan for mission-shape signals (2+ must hit):
-3+ task verbs; enumerated phases; 3+ feature nouns from different
-areas; scope phrasing ("build the whole X"); >300 words AND 2+
-H2/H3 sections.
+`active: false` → mission-shape signals (2+ must hit): 3+ task
+verbs; enumerated phases; 3+ feature nouns from different areas;
+scope phrasing ("build the whole X"); >300 words AND 2+ H2/H3.
 
 Trigger → `AskUserQuestion`: `[a]` mission, `[b]` single task. On
-`[a]`, write prompt to `.cairn/missions/_drafts/<slug>.md` →
+`[a]`: write prompt to `.cairn/missions/_drafts/<slug>.md` →
 `cairn_mission_start({spec_path, exit_gate: "prompt"})` → surface
-phases via second `AskUserQuestion` → accept via
-`cairn_mission_accept_draft`. Full flow:
-`docs/PLUGIN_ARCHITECTURE.md` §11.
+phases via second `AskUserQuestion` → `cairn_mission_accept_draft`.
+Full flow: `docs/PLUGIN_ARCHITECTURE.md` §11.
 
 ## Hard contract — spec MUST exist before mutation
 
 **`.cairn/tasks/active/<task_id>/status.yaml` on disk → tightened,
 proceed. Otherwise no `Edit` / `Write` / `NotebookEdit` and no
-mutating `Bash`.**
+mutating `Bash`.** Permitted pre-spec: `Read`, `Glob`, `Grep`,
+read-only `Bash`, `cairn_*` MCP tools.
 
-Permitted pre-spec: `Read`, `Glob`, `Grep`, read-only `Bash`, all
-`cairn_*` MCP tools.
-
-A "no questions needed" outcome from Step 2 means write the spec
-NOW with empty questions; it does NOT skip Step 3.
+"No questions needed" from Step 2 → write the spec NOW with empty
+questions; it does NOT skip Step 3.
 
 ## Step 1 — gather in-scope context (parallel)
 
@@ -98,37 +92,33 @@ NOW with empty questions; it does NOT skip Step 3.
 
 ## Step 2 — decide ready vs questions
 
-Ready when every fork is resolved by an in-scope decision or is a
-genuine no-op. Not ready when a load-bearing fork remains.
+Ready: every fork resolved by an in-scope decision or no-op. Not
+ready: load-bearing fork remains.
 
-Always use `AskUserQuestion` — never inline prose. Per-call cap
-≤3 questions; total across rounds unbounded. Cite a DEC / §INV /
-RUN id in every option. Loop Step 1+2 after each round.
-Question-quality bar: `docs/PLUGIN_ARCHITECTURE.md` §14.
+`AskUserQuestion` only (never inline prose). ≤3 questions per
+call; total rounds unbounded. Cite DEC / §INV / RUN in every
+option. Loop Step 1+2 each round. Bar:
+`docs/PLUGIN_ARCHITECTURE.md` §14.
 
 ## Step 2.5 — mission anchoring (active mission)
 
 `cairn_task_create` auto-stamps `mission_id` + `phase_id` from the
-cursor when both fields are omitted. Default: omit, let cursor
-pickup win.
+cursor when both omitted. Default: omit.
 
 **Off-mission detection.** Read cursor `phase.title` +
-`phase.exit_criteria`. If the prompt clearly diverges, surface
-`AskUserQuestion` with `[a]` side-task (`mission_id: ""`), `[b]`
-fold into current phase, `[c]` advance to a different phase first.
-Full flow: `docs/PLUGIN_ARCHITECTURE.md` §11.
+`phase.exit_criteria`. Prompt diverges → `AskUserQuestion`:
+`[a]` side-task (`mission_id: ""`), `[b]` fold into phase, `[c]`
+advance phase first. Full flow: `docs/PLUGIN_ARCHITECTURE.md` §11.
 
 ## Step 2.6 — autonomous mission continuation (vibe-coder mode)
 
-When operator typed `continue` / `go` / autonomy phrase AND a
-mission is active AND no current task, act silently — no
-`AskUserQuestion`. Auto-flip `exit_gate: "auto"` on first hit,
-auto-pick the next PR from `cursor.active_phase_exit_criteria`
-(regex `\d+\.\d+-[A-Z]+\d+`), jump straight to Step 3. Full
-playbook (marker file, graduated-detection, fallback inference):
-`docs/PLUGIN_ARCHITECTURE.md` §11 "Autonomous mission continuation."
+Operator typed `continue` / `go` / autonomy phrase AND mission
+active AND no current task → act silently, no `AskUserQuestion`.
+Auto-flip `exit_gate: "auto"` on first hit, auto-pick next PR from
+`cursor.active_phase_exit_criteria` (regex `\d+\.\d+-[A-Z]+\d+`),
+jump to Step 3. Full playbook: `docs/PLUGIN_ARCHITECTURE.md` §11.
 
-Do NOT trigger on bare `yes` / `ok` / `sure`. Yield only on
+Don't trigger on bare `yes` / `ok` / `sure`. Yield only on
 ambiguous exit_criteria, subagent failure, or context threshold.
 
 ## Step 3 — `cairn_task_create` (ALWAYS, server-enforced)
@@ -165,19 +155,34 @@ block format documented in `docs/PLUGIN_ARCHITECTURE.md` §11:
 If you leave any follow-up in source for this task, drop
 `// TODO(TSK-<task_id>)` on the line — bare `TODO` doesn't resolve.
 
+## Comment policy when citing DEC / INV
+
+Cite alone. `cairn_invariant_get` / `cairn_decision_get` dereference
+the cite; frontmatter `title:` is the canonical phrase.
+
+```ts
+// §INV-7086201                            // default — terse marker
+// §INV-7086201 (SSR cache, params block)  // allowed: one short clause
+                                           // only when the cite alone
+                                           // is ambiguous
+```
+
+Never restate the body or prepend `// AI:`. Restating the title
+(`// AI: §INV-7086201 — Query key must match …`) is the anti-pattern
+— the prose duplicates the frontmatter and rots when it's edited.
+
 ## Hard rules
 
-- `AskUserQuestion` capped at 3 questions per call; cite a DEC /
-  §INV / RUN id in every option. Never inline prose.
-- **Self-attest by default.** Close every task with
+- `AskUserQuestion` ≤3 questions per call; cite DEC / §INV / RUN
+  in every option. Never inline prose.
+- **Self-attest.** Close tasks with
   `cairn_task_complete({outcome, summary})` — summary IS the
   attestation (1-2 paragraphs). Reviewer subagent is opt-in.
-- **Don't mirror Stop-hook surfaces.** Stop hook owns stalled
-  tasks, unattested commits, ctx-threshold, phase-exit prompts.
+- **Don't mirror Stop-hook surfaces** (stalled tasks, unattested
+  commits, ctx-threshold, phase-exit).
 - **Honor autonomy intent.** Autonomy phrase OR mission
   `exit_gate: "auto"` → suppress non-blocking `AskUserQuestion`.
-  Only allowed pause is a genuine spec ambiguity.
-- Populate `in_scope_decisions` + `in_scope_invariants` from
-  Step 1 whenever `cairn_in_scope` named matches.
-- Match `.cairn/ground/brand/voice.md` for chat replies. Spec
-  file content is always full English.
+- Populate `in_scope_decisions` + `in_scope_invariants` whenever
+  Step 1 named matches.
+- Chat voice from `.cairn/ground/brand/voice.md` when present;
+  spec file content is full English.
