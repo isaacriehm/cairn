@@ -4,6 +4,25 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.1] — 2026-06-03
+
+Fixes repo-root resolution for subdir / worktree launches. Launching
+Claude from a package subdir of an adopted repo (e.g. `<repo>/core`)
+could anchor `.cairn/` writes — notably `cairn_task_create` tasks — at
+the launch subdir instead of the single repo-root `.cairn/`.
+
+### Fixed
+
+- **`resolveAnchorRoot(cwd)`** (cairn-core) — new shared resolver for
+  entrypoints that must produce a concrete state dir: adopted root
+  (`resolveRepoRoot`) → **git repo root** → cwd. The middle step is the
+  fix: a subdir launch whose adoption marker isn't detected now anchors
+  at the one git-root `.cairn/` rather than the launch subdir.
+- Routed the MCP server (`mcp/serve.ts`), the statusline resolver, and
+  the `cairn gc` / `cairn mission` CLI subcommands through
+  `resolveAnchorRoot`. Hooks keep `resolveRepoRoot`'s null-skip
+  semantics (they already walk up to the root from a subdir).
+
 ## [0.14.0] — 2026-06-03
 
 Adds the retirement subsystem — the missing OUT path for the ground

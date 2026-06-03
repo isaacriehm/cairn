@@ -17,7 +17,7 @@ import { resolve } from "node:path";
 import { createContext } from "./context.js";
 import { startMcpServer } from "./server.js";
 import { logger } from "../logger.js";
-import { resolveRepoRoot } from "../session-start/index.js";
+import { resolveAnchorRoot } from "../session-start/index.js";
 
 const log = logger("mcp.serve");
 
@@ -44,12 +44,13 @@ function parseArgs(argv: string[]): ParsedArgs {
       i += 1;
     }
   }
-  // When `--repo-root` is omitted, infer via the same canonical-resolution
-  // path the Stop / SessionStart hooks use. Critical for worktree-cwd
-  // launches: `resolveRepoRoot` collapses to the main checkout's `.cairn/`
-  // so MCP writes and hook reads agree on a single state directory.
-  const fallback =
-    resolveRepoRoot(process.cwd()) ?? resolve(process.cwd());
+  // When `--repo-root` is omitted, infer the anchor root. Critical for
+  // subdir / worktree-cwd launches: `resolveAnchorRoot` collapses to the
+  // adopted `.cairn/` (or, failing that, the git repo root) so MCP writes
+  // and hook reads agree on a single state directory — never the launch
+  // subdir. `resolve` is retained as the in-tree-less last resort inside
+  // `resolveAnchorRoot`.
+  const fallback = resolveAnchorRoot(process.cwd());
   return {
     repoRoot: repoRoot ?? fallback,
     sessionId,

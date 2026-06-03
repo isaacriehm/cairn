@@ -16,6 +16,8 @@
 
 export {
   buildSessionStartContext,
+  gitRepoRoot,
+  resolveAnchorRoot,
   resolveRepoRoot,
 } from "./build.js";
 export type {

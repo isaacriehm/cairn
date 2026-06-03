@@ -4,6 +4,7 @@ import {
   listMissions,
   loadDraftFromFile,
   previewRoadmap,
+  resolveAnchorRoot,
   runMissionAccept,
   runMissionAdvance,
   runMissionClose,
@@ -60,9 +61,11 @@ function usage(): never {
   process.exit(1);
 }
 
-function resolveRepoRoot(flags: Record<string, string | boolean>): string {
+function resolveRepoRootFromFlags(flags: Record<string, string | boolean>): string {
   const flag = flags["repo"];
-  return typeof flag === "string" ? resolve(flag) : process.cwd();
+  // Explicit --repo wins; otherwise anchor at the adopted/git root, not
+  // the launch subdir.
+  return typeof flag === "string" ? resolve(flag) : resolveAnchorRoot(process.cwd());
 }
 
 export async function missionCli(argv: string[]): Promise<void> {
@@ -71,7 +74,7 @@ export async function missionCli(argv: string[]): Promise<void> {
 
   const rest = argv.slice(1);
   const parsed = parseArgs(rest);
-  const repoRoot = resolveRepoRoot(parsed.flags);
+  const repoRoot = resolveRepoRootFromFlags(parsed.flags);
 
   switch (subcommand) {
     case "start":

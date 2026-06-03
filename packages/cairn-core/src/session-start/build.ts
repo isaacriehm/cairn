@@ -165,6 +165,38 @@ function resolveMainViaGitCommonDir(cwd: string): string | null {
   }
 }
 
+/**
+ * The git repository root for `cwd` — the main checkout dir even when
+ * `cwd` is inside a worktree or a package subdir. Null when `cwd` is not
+ * inside a git working tree or the git binary is unavailable. Unlike
+ * `resolveRepoRoot`, this does NOT require the directory to be
+ * cairn-adopted.
+ */
+export function gitRepoRoot(cwd: string): string | null {
+  return resolveMainViaGitCommonDir(cwd);
+}
+
+/**
+ * Resolve the directory every Cairn writer should anchor `.cairn/` at,
+ * for entrypoints that MUST produce a concrete path (the MCP server,
+ * CLI subcommands) rather than null-skip like the hooks do.
+ *
+ * Precedence:
+ *   1. the cairn-adopted root (`resolveRepoRoot`) — the normal case;
+ *   2. the git repository root — so a subdir/worktree launch of a repo
+ *      whose adoption marker isn't (yet) detectable still anchors at the
+ *      ONE repo root, never the launch subdir;
+ *   3. `cwd` — last resort when not in a git tree at all.
+ *
+ * Step 2 is the fix for "tasks land in `<repo>/core/.cairn/` when Claude
+ * is launched from a subdir": the old `resolveRepoRoot(cwd) ?? resolve(cwd)`
+ * fallback anchored at the launch subdir whenever resolution returned
+ * null. Anchoring at the git root keeps all state in a single `.cairn/`.
+ */
+export function resolveAnchorRoot(cwd: string): string {
+  return resolveRepoRoot(cwd) ?? gitRepoRoot(cwd) ?? resolve(cwd);
+}
+
 export async function buildSessionStartContext(
   args: BuildSessionStartContextArgs,
 ): Promise<BuildSessionStartContextResult> {

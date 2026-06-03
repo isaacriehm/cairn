@@ -21,6 +21,7 @@
 import { resolve } from "node:path";
 import {
   archiveEntity,
+  resolveAnchorRoot,
   runEntityRetire,
   runGcBatch,
   runGcSweep,
@@ -72,7 +73,10 @@ function usage(): never {
 
 function resolveRepoRoot(flags: ParsedFlags["flags"]): string {
   const explicit = typeof flags["repo-root"] === "string" ? flags["repo-root"] : "";
-  return resolve(explicit.length > 0 ? explicit : process.cwd());
+  // Explicit --repo-root wins; otherwise anchor at the adopted/git root,
+  // never the launch subdir (so `cairn gc …` from a package dir still
+  // targets the one repo-root `.cairn/`).
+  return explicit.length > 0 ? resolve(explicit) : resolveAnchorRoot(process.cwd());
 }
 
 function parseApplyClasses(value: unknown): readonly GcAutoMergeClass[] {

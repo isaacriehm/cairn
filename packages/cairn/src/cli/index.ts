@@ -4,7 +4,7 @@ import { join } from "node:path";
 import {
   type CtxMeterInput,
   readStatusForCLI,
-  resolveRepoRoot,
+  resolveAnchorRoot,
   VERSION,
 } from "../index.js";
 import { alignCli } from "./align.js";
@@ -282,10 +282,9 @@ switch (subcommand) {
       // operator opened the session. Sessions opened in a subdirectory
       // of an adopted repo would default to that subdir, miss the
       // `.cairn/` lookup, and render an empty status — the "statusline
-      // disappears intermittently" symptom. Walk up the same way the
-      // SessionStart / Stop / UserPromptSubmit hooks do.
-      const cwd = process.cwd();
-      projectRoot = resolveRepoRoot(cwd) ?? cwd;
+      // disappears intermittently" symptom. Anchor at the adopted root
+      // (or the git repo root), the same single `.cairn/` the hooks use.
+      projectRoot = resolveAnchorRoot(process.cwd());
     }
     const sessionIdIdx = rest.indexOf("--session-id");
     let sessionId: string | null = null;
