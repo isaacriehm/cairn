@@ -22,6 +22,7 @@ import { missionSetExitGateTool } from "./mission-set-exit-gate.js";
 import { invariantGetTool } from "./invariant-get.js";
 import { queryHistoryTool } from "./query-history.js";
 import { recordDecisionTool } from "./record-decision.js";
+import { retireDecisionTool, retireInvariantTool } from "./retire-entity.js";
 import { resolveAttentionTool } from "./resolve-attention.js";
 import { searchTool } from "./search.js";
 import { resumeTool } from "./resume.js";
@@ -42,6 +43,9 @@ export const allTools: ToolDef<never>[] = [
   queryHistoryTool,
   // Write
   recordDecisionTool,
+  // Write — entity retirement (the OUT path)
+  retireDecisionTool,
+  retireInvariantTool,
   taskCreateTool,
   taskCompleteTool,
   taskReopenTool,

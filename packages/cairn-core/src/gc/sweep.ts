@@ -26,6 +26,7 @@ import { runCompletionIntegrity } from "./completion-integrity.js";
 import { runDocClaimsVsRuntime } from "./doc-claims.js";
 import { runDocGardening } from "./doc-gardening.js";
 import { runDocSourceDrift } from "./doc-source-drift.js";
+import { runEntityOrphan } from "./entity-orphan.js";
 import { runFrontmatterFreshness } from "./frontmatter.js";
 import { runGeneratorDrift } from "./generator-drift.js";
 import { runQualityUpdate } from "./quality-update.js";
@@ -87,6 +88,7 @@ export async function runGcSweep(opts: RunGcSweepOptions): Promise<GcSweepResult
     "attested-commits-pruning": 0,
     "doc-claims-vs-runtime": 0,
     "doc-source-drift": 0,
+    "entity-orphan": 0,
   };
 
   // 1. Frontmatter freshness.
@@ -193,6 +195,16 @@ export async function runGcSweep(opts: RunGcSweepOptions): Promise<GcSweepResult
     const r = runDocSourceDrift({ repoRoot: opts.repoRoot });
     findings.push(...r.findings);
     passDurations["doc-source-drift"] = Date.now() - t0;
+  }
+
+  // 12. Entity-orphan — ledger → code; surface DEC/INV that no longer have
+  // a live home. Findings only; the safe subset is retired by the
+  // `cairn gc retire` apply path, not auto-merged as a Gc proposal.
+  {
+    const t0 = Date.now();
+    const r = runEntityOrphan({ repoRoot: opts.repoRoot });
+    findings.push(...r.findings);
+    passDurations["entity-orphan"] = Date.now() - t0;
   }
 
   // Re-classify proposals against project globs (passes set defaults; this

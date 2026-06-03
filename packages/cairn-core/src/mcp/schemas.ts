@@ -206,6 +206,16 @@ export const recordDecisionInput = {
   target: z.enum(["inbox", "accepted"]).optional(),
 };
 
+export const retireDecisionInput = {
+  id: z.string().regex(/^DEC-[0-9a-f]{7,}$/, "id must match DEC-<hash7>"),
+  reason: z.string().min(1).optional(),
+};
+
+export const retireInvariantInput = {
+  id: z.string().regex(/^INV-[0-9a-f]{7,}$/, "id must match INV-<hash7>"),
+  reason: z.string().min(1).optional(),
+};
+
 export const resolveAttentionInput = {
   /**
    * Item id from the attention skill — DEC-NNNN for a draft, the

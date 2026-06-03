@@ -91,9 +91,14 @@ What lives here:
   (`cairn hook <event>`) and the bin entrypoints under `dist/hooks/`.
   SessionStart, SessionEnd, Stop, PostToolUse[Read|Grep|Glob|Write|Edit].
   Bypass-detection module.
-- `gc/` — GC sweep with five passes (drift / completion-integrity /
-  scope-coverage / quality-grades / staleness). `apply.ts` commits via
-  `simple-git`; `canary.ts` post-batch integrity check.
+- `gc/` — GC sweep (drift / completion-integrity / scope-coverage /
+  quality-grades / citation-integrity / doc-source-drift / … /
+  `entity-orphan`). `apply.ts` commits via `simple-git`; `canary.ts`
+  post-batch integrity check. `entity-orphan` + `retire.ts` are the
+  retirement OUT path: they walk ledger → code, archive provably-orphaned
+  DEC/INV to `.cairn/ground/.archive/` (`archiveEntity`), and surface the
+  ambiguous ones to cairn-attention. The autonomous daily tick auto-applies
+  only the SAFE subset, canary-gated.
 - `decision-capture/` — DEC id allocator + scanner. The `cairn_record_decision`
   MCP tool composes a draft on top of these.
 - `sensors/` — Layer A (stub catalog), Layer B (attestation), Layer C
@@ -166,6 +171,8 @@ into:
   `.archive/`; LLM-summarized, never raw).
 - **Write — append-only, per-write `flock`** — `cairn_record_decision`,
   `cairn_task_create`.
+- **Write — retirement** — `cairn_retire_decision`,
+  `cairn_retire_invariant` (archive to `.archive/`; not a hard delete).
 - **Attention queue** — `cairn_resolve_attention`,
   `cairn_bulk_accept_attention`, `cairn_attention_dedup`,
   `cairn_attention_serve`, `cairn_attention_wait`.

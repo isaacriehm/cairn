@@ -332,6 +332,7 @@ export const DriftEvent = z.object({
     "generator_drift",
     "broken_link",
     "orphan_path",
+    "orphan_entity",
     "manifest_hash_changed",
     "doc-drift",
     "paragraph-deleted",

@@ -34,7 +34,8 @@ export type GcPassId =
   | "citation-integrity"
   | "attested-commits-pruning"
   | "doc-claims-vs-runtime"
-  | "doc-source-drift";
+  | "doc-source-drift"
+  | "entity-orphan";
 
 export type GcFindingKind =
   | "frontmatter_stale"
@@ -54,7 +55,8 @@ export type GcFindingKind =
   | "doc_claim_drift"
   | "doc_source_drift"
   | "sot_missing"
-  | "sot_anchor_missing";
+  | "sot_anchor_missing"
+  | "orphan_entity";
 
 export type GcAutoMergeClass = "safe" | "code" | "high-stakes";
 

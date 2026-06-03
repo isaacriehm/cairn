@@ -8,10 +8,13 @@
  * wait for the spawned process — it stamps the marker, fires the spawn,
  * unrefs, and returns.
  *
- * `cairn gc sweep` is sweep-only (no commit). The findings flow through
- * `cairn-attention` for operator triage. `cairn gc run --apply-classes`
- * stays operator-driven until the autotrigger is proven safe in the
- * field.
+ * The spawned `cairn gc sweep` surfaces all detection passes through
+ * `cairn-attention` for operator triage (no commit). Because the spawn
+ * carries `CAIRN_GC_AUTOTRIGGERED=1`, that same process additionally
+ * auto-retires the SAFE entity-orphan subset (`runEntityRetire({ apply })`,
+ * canary-gated, rolled back on failure) — the one autonomous mutation in
+ * the daily tick. Every other pass's proposals stay operator-driven via
+ * `cairn gc run --apply-classes` until proven safe in the field.
  */
 
 import { spawn, type ChildProcess } from "node:child_process";

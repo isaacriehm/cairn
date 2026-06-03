@@ -1,6 +1,7 @@
 export * from "./schemas.js";
 export * from "./paths.js";
 export * from "./ledgers.js";
+export * from "./archive.js";
 export * from "./anchor-map.js";
 export * from "./sot-bindings.js";
 export * from "./scope-index.js";

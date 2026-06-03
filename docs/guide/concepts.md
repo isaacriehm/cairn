@@ -245,7 +245,7 @@ health check at `/healthz` and the static asset server.
 | Failure mode      | Drift = future code disagrees with rationale.       | Drift = production bug.                                |
 | Enforcement       | Loaded into agent context so it's honored.          | Loaded into context **and** enforced by sensors.       |
 | Citation in code  | Rare. The DEC is the rationale, not the rule.       | Common: `// §INV-0042` next to the relevant line.      |
-| Supersedes chain  | Yes — replaced via new DEC.                          | No — invariants are typically eternal; replaced rarely. |
+| Supersedes chain  | Yes — replaced via new DEC.                          | Rarely replaced, but not eternal — an INV whose source is refactored away is auto-retired (archived) by the `entity-orphan` GC pass. |
 
 In source code, only invariants get inline citations:
 

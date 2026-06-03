@@ -88,6 +88,13 @@ Source of truth: `packages/cairn-core/src/mcp/tools/index.ts` (`allTools`).
 | `cairn_record_decision` | Drop new DEC draft into `_inbox/`. Server allocates `DEC-NNNN`.          |
 | `cairn_task_create`     | Create `.cairn/tasks/active/<id>/` with `spec.tightened.md` + `status.yaml`. |
 
+**Write — retirement (2)**
+
+| Tool                      | What                                                                                   |
+| ------------------------- | -------------------------------------------------------------------------------------- |
+| `cairn_retire_decision`   | Archive an accepted DEC that has rotted. Moves it to `.cairn/ground/.archive/`; not a hard delete. |
+| `cairn_retire_invariant`  | Archive an active INV that no longer holds. Same archive semantics.                    |
+
 **Write — plugin-era attention queue (5)**
 
 | Tool                          | What                                                                      |
@@ -265,6 +272,19 @@ Drops to `.cairn/ground/decisions/_inbox/<DEC-id>.draft.md`. The cairn-attention
 
 Errors: `DECISION_ID_TAKEN`, `INVALID_ASSERTION_KIND`, `SUPERSEDES_NOT_FOUND`.
 
+#### `cairn_retire_decision` / `cairn_retire_invariant`
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `id` | string | Required. `DEC-<hash>` / `INV-<hash>` of an entity in the active ledger |
+| `reason` | string | Optional. Stamped into the archived frontmatter |
+
+The OUT path for the ground ledger. Retirement = **archive, never hard-delete**: the entity moves to `.cairn/ground/.archive/{decisions,invariants}/`, its `status` flips to `archived` (with `archived_at` + `archived_reason`), and the active ledger + SoT cache are rebuilt so it drops from `cairn_in_scope` and Layer A matching. The body stays reachable via `cairn_query_history`; a lingering `§DEC-/§INV-` cite degrades to an `orphaned_citation` GC finding rather than a dangling reference.
+
+This is the shared apply primitive the autonomous `entity-orphan` GC pass and the cairn-attention "retire" action both invoke.
+
+Errors: `DECISION_NOT_FOUND`, `INVARIANT_NOT_FOUND`, `RETIRE_FAILED`.
+
 ---
 
 ## Validation rules
@@ -310,8 +330,8 @@ Deliberate omissions, with reasons:
 | Omitted | Reason |
 |---------|--------|
 | `cairn_grep(query)` | Agents use Claude Code's native Grep + Cairn's canonical-zone walkers (which exclude `.archive` and other historical roots from SKIP_DIRS). An MCP grep would duplicate the agent's existing tool surface without adding access. |
-| `cairn_decision_update` | Decisions are append-only via supersedes chain. No in-place updates. |
-| `cairn_invariant_disable` | Invariants are superseded with new entries, not disabled. |
+| `cairn_decision_update` | Decisions are append-only via supersedes chain. No in-place edits — to remove one, `cairn_retire_decision` archives it. |
+| `cairn_invariant_disable` | Invariants are superseded with new entries, not disabled in place. To remove a rotted one, `cairn_retire_invariant` archives it. |
 | `cairn_run_create` / `cairn_record_run_event` / `cairn_drop_task` | Runtime concerns — run lifecycle and task queuing are owned by `cairn-runtime`, not the core MCP surface. |
 | `cairn_ask_operator` | Runtime concern — blocking on operator input mid-run is an orchestrator responsibility, not a state-layer primitive. |
 | `cairn_append` | Direct-append to run artifact paths was removed; runtime writes to runs/ directly via fs, no MCP round-trip needed. |

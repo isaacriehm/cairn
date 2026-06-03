@@ -64,6 +64,9 @@ The layout below is **stack-agnostic**. Subdirectories under `.cairn/ground/{sch
 │   │   ├── invariants/
 │   │   │   ├── INV-0001.md         ← §INV invariant (monotonic, never reused)
 │   │   │   └── invariants.ledger.yaml
+│   │   ├── .archive/               ← retired DEC/INV graveyard            NON-CANONICAL (committed)
+│   │   │   ├── decisions/          ← archived DECs (status: archived) — reachable only via cairn_query_history
+│   │   │   └── invariants/         ← archived INVs (status: archived)
 │   │   ├── canonical-map/
 │   │   │   └── topics.yaml         ← topic → canonical-doc-path
 │   │   ├── scope-index.yaml        ← file path → {decisions[], invariants[]} (mapper-generated, refreshed by GC sweep)

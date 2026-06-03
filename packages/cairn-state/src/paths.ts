@@ -32,6 +32,10 @@ export const CANONICAL_EXCLUDES = [
   ".cairn/ground/decisions/decisions.ledger.yaml",
   ".cairn/ground/invariants/invariants.ledger.yaml",
   ".cairn/ground/quality-grades.yaml",
+  // Retired DEC/INV bodies — historical only, reachable via cairn_query_history.
+  // Excluded from the canonical zone so archived entities stop loading into
+  // agent context, search, and the drift sensors.
+  ".cairn/ground/.archive/**",
 ];
 
 export function groundDir(repoRoot: string): string {
@@ -48,6 +52,24 @@ export function decisionsDir(repoRoot: string): string {
 
 export function invariantsDir(repoRoot: string): string {
   return join(groundDir(repoRoot), "invariants");
+}
+
+/**
+ * `.cairn/ground/.archive/` — the retirement graveyard. DEC/INV entities
+ * that orphaned (source gone / zero live cites) or were manually retired
+ * are moved here. Outside the active ledger and the canonical zone; only
+ * `cairn_query_history` reads it.
+ */
+export function archiveDir(repoRoot: string): string {
+  return join(groundDir(repoRoot), ".archive");
+}
+
+export function archiveDecisionsDir(repoRoot: string): string {
+  return join(archiveDir(repoRoot), "decisions");
+}
+
+export function archiveInvariantsDir(repoRoot: string): string {
+  return join(archiveDir(repoRoot), "invariants");
 }
 
 export function decisionsLedgerPath(repoRoot: string): string {

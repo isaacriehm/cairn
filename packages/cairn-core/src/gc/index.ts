@@ -61,6 +61,18 @@ export type {
   DocSourceDriftOptions,
   DocSourceDriftResult,
 } from "./doc-source-drift.js";
+export { runEntityOrphan } from "./entity-orphan.js";
+export type {
+  EntityOrphanOptions,
+  EntityOrphanResult,
+  OrphanCandidate,
+  OrphanClassification,
+} from "./entity-orphan.js";
+export { runEntityRetire } from "./retire.js";
+export type {
+  EntityRetireOptions,
+  EntityRetireResult,
+} from "./retire.js";
 export {
   runFrontmatterFreshness,
 } from "./frontmatter.js";

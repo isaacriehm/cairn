@@ -4,6 +4,37 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] — 2026-06-03
+
+Adds the retirement subsystem — the missing OUT path for the ground
+ledger. Cairn could create DEC/INV through seven paths but retire them
+through none, so adopted projects accumulated active entities
+unboundedly (a real repo sat at 326 active INV / 0 retired). Entities
+that rot — source refactored away, zero live `§cites`, an "eternal"
+invariant gone stale — are now detected and archived.
+
+### Added
+
+- **`entity-orphan` GC pass** (`gc/entity-orphan.ts`) — walks ledger →
+  code (the inverse of `citation-integrity`). Predicate splits by
+  `sot_kind`: `ledger` entities orphan when zero live `§cites` remain
+  (SAFE when `source_file` is also gone, else ambiguous); `path`
+  entities orphan when their `sot_path` doc is gone. A 7-day grace
+  window skips freshly-emitted entities.
+- **`archiveEntity` primitive** (`cairn-state`) — retirement = archive,
+  never hard-delete. Moves the entity to `.cairn/ground/.archive/`, flips
+  `status` to `archived` (+ `archived_at`, `archived_reason`), rebuilds
+  the active ledger, and prunes the SoT cache. The body stays reachable
+  via `cairn_query_history`.
+- **`cairn gc retire [<id>] [--apply]`** CLI + **`runEntityRetire`** —
+  archives the SAFE orphan subset inside the GC canary/rollback envelope.
+- **`cairn_retire_decision` / `cairn_retire_invariant`** MCP tools — the
+  manual + attention-accept apply primitive.
+- **Autonomous retirement** — the Stop-hook daily tick (`gc sweep` under
+  `CAIRN_GC_AUTOTRIGGERED=1`) now auto-retires the SAFE subset only;
+  ambiguous orphans surface as `orphan_entity` drift events for
+  cairn-attention triage. Every other GC pass stays surface-only.
+
 ## [0.13.10] — 2026-05-26
 
 Soft-truncates the three schema-reject hard stops the cross-repo

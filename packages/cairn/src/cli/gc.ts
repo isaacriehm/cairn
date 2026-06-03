@@ -11,16 +11,26 @@
  *     "safe"). Canary on by default. Push is NEVER done by this command —
  *     the operator pushes via `cairn mirror push` after auditing the local
  *     commits.
+ *
+ *   retire [--repo-root <path>] [--apply] [--no-canary] [--json]
+ *     Run the entity-orphan pass and archive the SAFE subset (provably
+ *     orphaned DEC/INV). Surface-only without --apply. Ambiguous orphans
+ *     always surface for triage; they are never auto-retired.
  */
 
 import { resolve } from "node:path";
 import {
+  archiveEntity,
+  runEntityRetire,
   runGcBatch,
   runGcSweep,
+  type EntityRetireResult,
   type GcAutoMergeClass,
   type GcBatchResult,
   type GcSweepResult,
 } from "@isaacriehm/cairn-core";
+
+const ENTITY_ID_RE = /^(DEC|INV)-[0-9a-f]{7,}$/;
 
 interface ParsedFlags {
   positional: string[];
@@ -54,7 +64,8 @@ function usage(): never {
     "Usage: cairn gc <subcommand> [options]\n" +
       "  sweep  [--repo-root <path>] [--json]\n" +
       "  run    [--repo-root <path>] [--apply-classes safe[,code[,high-stakes]]]\n" +
-      "         [--no-canary] [--force-frontmatter-refresh] [--json]\n",
+      "         [--no-canary] [--force-frontmatter-refresh] [--json]\n" +
+      "  retire [--repo-root <path>] [--apply] [--no-canary] [--json]\n",
   );
   process.exit(1);
 }
@@ -88,11 +99,22 @@ export async function gcCli(argv: string[]): Promise<void> {
           ? { frontmatter: { forceRefresh: true } }
           : {}),
       });
+      // The autonomous daily tick (Stop-hook autotrigger spawns this with
+      // CAIRN_GC_AUTOTRIGGERED=1) also retires the SAFE orphan subset —
+      // the one autonomous mutation in the tick. A manual `cairn gc sweep`
+      // stays strictly read-only.
+      let retire: EntityRetireResult | null = null;
+      if (process.env["CAIRN_GC_AUTOTRIGGERED"] === "1") {
+        retire = await runEntityRetire({ repoRoot, apply: true });
+      }
       if (json) {
-        console.log(JSON.stringify(result, null, 2));
+        console.log(
+          JSON.stringify(retire !== null ? { sweep: result, retire } : result, null, 2),
+        );
         return;
       }
       printSweep(result);
+      if (retire !== null) printRetire(retire, true);
       return;
     }
     case "run": {
@@ -112,6 +134,47 @@ export async function gcCli(argv: string[]): Promise<void> {
         return;
       }
       printBatch(result);
+      return;
+    }
+    case "retire": {
+      const repoRoot = resolveRepoRoot(flags);
+      const apply = flags["apply"] === true;
+
+      // Single-id mode: `cairn gc retire DEC-abc1234 [--apply]` archives one
+      // explicit entity (terminal/debug path), bypassing the orphan pass.
+      const explicitId = positional[1];
+      if (typeof explicitId === "string" && ENTITY_ID_RE.test(explicitId)) {
+        if (!apply) {
+          console.log(`would retire ${explicitId} (pass --apply to archive it)`);
+          return;
+        }
+        const res = archiveEntity({
+          repoRoot,
+          id: explicitId,
+          reason: "manual retire via cairn gc retire",
+        });
+        if (json) {
+          console.log(JSON.stringify(res, null, 2));
+          return;
+        }
+        console.log(
+          res.ok
+            ? `retired ${res.id} (${res.kind}) → ${res.archivedPath}`
+            : `retire failed for ${explicitId}: ${res.error ?? "unknown error"}`,
+        );
+        return;
+      }
+
+      const result = await runEntityRetire({
+        repoRoot,
+        apply,
+        canary: flags["no-canary"] !== true,
+      });
+      if (json) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      printRetire(result, apply);
       return;
     }
     default:
@@ -156,6 +219,29 @@ function printBatch(result: GcBatchResult): void {
   }
   if (!result.canary_ok) {
     console.log("\nCanary failures:");
+    for (const f of result.canary_failures) console.log(`  - ${f}`);
+  }
+}
+
+function printRetire(result: EntityRetireResult, applied: boolean): void {
+  const safeCount = result.retired.length + result.surfaced.length;
+  console.log(
+    `gc retire — ${result.retired.length} retired, ${result.surfaced.length} safe-surfaced, ${result.ambiguous.length} ambiguous` +
+      (applied ? ` · canary ${result.canary_ok ? "ok" : "FAIL"}${result.rolled_back ? " (rolled back)" : ""}` : " (surface-only; pass --apply to retire)"),
+  );
+  for (const r of result.retired) {
+    console.log(`  retired ${r.id} (${r.kind}) → ${r.archivedPath}`);
+  }
+  if (!applied && safeCount > 0) {
+    console.log("\nSafe orphans (would retire with --apply):");
+    for (const s of result.surfaced) console.log(`  ${s.id} (${s.kind}) — ${s.reason}`);
+  }
+  if (result.ambiguous.length > 0) {
+    console.log("\nAmbiguous (manual review — never auto-retired):");
+    for (const a of result.ambiguous) console.log(`  ${a.id} (${a.kind}) — ${a.reason}`);
+  }
+  if (result.rolled_back) {
+    console.log("\nCanary failures (batch rolled back):");
     for (const f of result.canary_failures) console.log(`  - ${f}`);
   }
 }
