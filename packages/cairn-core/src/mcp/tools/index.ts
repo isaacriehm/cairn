@@ -20,7 +20,6 @@ import { missionResyncTool } from "./mission-resync.js";
 import { missionResyncAcceptTool } from "./mission-resync-accept.js";
 import { missionSetExitGateTool } from "./mission-set-exit-gate.js";
 import { invariantGetTool } from "./invariant-get.js";
-import { queryHistoryTool } from "./query-history.js";
 import { recordDecisionTool } from "./record-decision.js";
 import { retireDecisionTool, retireInvariantTool } from "./retire-entity.js";
 import { resolveAttentionTool } from "./resolve-attention.js";
@@ -39,8 +38,6 @@ export const allTools: ToolDef<never>[] = [
   inScopeTool,
   // Read — search + retrieval
   searchTool,
-  // Read — historical (gated)
-  queryHistoryTool,
   // Write
   recordDecisionTool,
   // Write — entity retirement (the OUT path)

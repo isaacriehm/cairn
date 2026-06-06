@@ -80,7 +80,6 @@ const SKIP_DIRS = new Set<string>([
   ".idea",
   ".vscode",
   ".cairn",
-  ".archive",
 ]);
 
 const TOPLEVEL_MODULE_MIN_FILES = 20;

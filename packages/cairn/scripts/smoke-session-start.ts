@@ -313,7 +313,6 @@ async function runSmoke(): Promise<void> {
     assert(ctx.includes("TSK-2026-05-04-feature-1"), "Step 3: task id missing from context");
     assert(ctx.includes("DEC-1234567"), "Step 3: pending draft id missing from context");
     assert(ctx.includes("core/src/integrations"), "Step 3: weakest module missing from context");
-    assert(ctx.includes("cairn_query_history"), "Step 3: two-zone reminder missing query_history reference");
     assert(result.warnings.length === 0, `Step 3: unexpected warnings ${JSON.stringify(result.warnings)}`);
     console.log("  ✓ Step 3 — compact ground-state summary (no scope)");
   }
@@ -346,8 +345,8 @@ async function runSmoke(): Promise<void> {
   {
     const repoRoot = mkFixture();
     seedFullFixture(repoRoot);
-    const result = await buildSessionStartContext({ repoRoot, maxChars: 2_500 });
-    assert(result.totalChars <= 2_500, `Step 4: totalChars ${result.totalChars} exceeds cap 2500`);
+    const result = await buildSessionStartContext({ repoRoot, maxChars: 1_800 });
+    assert(result.totalChars <= 1_800, `Step 4: totalChars ${result.totalChars} exceeds cap 1800`);
     assert(result.sectionsRendered.includes("header"), "Step 4: header should survive truncation");
     assert(
       result.sectionsRendered.includes("code_change_contract"),

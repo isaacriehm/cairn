@@ -13,8 +13,7 @@ export const TWO_ZONE_REMINDER_BASE =
   "## Two-zone reminder\n\n" +
   "Reads/grep/glob default to the canonical zone (AGENTS.md, CLAUDE.md, " +
   "docs/**, .cairn/ground/**, .cairn/tasks/active/**). Historical content " +
-  "(.archive/, .cairn/tasks/done/) is excluded by cairn's walkers — call " +
-  "`cairn_query_history(scope, question)` when you need a summarized read.";
+  "(.cairn/tasks/done/) is excluded by cairn's walkers.";
 
 export const SESSION_START_HEADER = "# Cairn ground state — authoritative for this session";
 

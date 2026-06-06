@@ -4,7 +4,7 @@
  * Stages:
  *   1. Detect → print summary
  *   2. Proceed dialog (cancel exits cleanly, no writes)
- *   3. Seed `.cairn/` + `.archive/` from templates with `<project_name>`
+ *   3. Seed `.cairn/` from templates with `<project_name>`
  *      substituted; write `.cairn/config.yaml` (including `cairn_version`).
  *   4. Mapper (Tier-2 chunked Sonnet) → seed `<slug>:` workflow.md block +
  *      `.cairn/config.yaml` project_globs.
@@ -415,7 +415,7 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     mapperRunResult === null ? [] : mapperRunResult.fallbackSlugs;
 
   // ── Step 2: seed templates ─────────────────────────────────────────
-  header("Seeding .cairn/ + .archive/");
+  header("Seeding .cairn/");
   const seed = seedCairnLayout({
     repoRoot,
     projectSlug: decidedSlug,

@@ -4,6 +4,36 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.2] — 2026-06-05
+
+Remove root `.archive/` source-doc graveyard and `cairn_query_history` MCP
+tool. The feature was never operational — doc-gardening surfaced orphan
+findings but never auto-archived, leaving `.archive/` permanently empty
+and forcing operators to manage doc cleanup manually.
+
+### Removed
+
+- **Root `.archive/` directory** — no longer seeded at `cairn init`. Existing
+  adopted repos keep the dir if present; Cairn no longer writes to it.
+- **`cairn_query_history` MCP tool** — walked `.archive/` via Tier-1 LLM
+  summarizer. Removed along with `src/mcp/history/` (walker, summarizer,
+  prompt, schema).
+- **Orphan-path detection** from the `doc-gardening` GC pass — surfaced
+  "candidate for `.archive/` move" findings with no actionable target.
+  Broken-link detection is kept.
+- **`docOrphanExcludes`** option removed from `RunGcSweepOptions`.
+
+### Changed
+
+- All walker SKIP_DIRS entries for `.archive` removed — no dir to skip.
+- `HISTORICAL_ZONE` path-allowlist drops `.archive/**`.
+- Two-zone session-start reminder updated to drop archive/query_history
+  mention.
+- `cairn_retire_decision` / `cairn_retire_invariant` descriptions updated
+  (entities still archive to `.cairn/ground/.archive/` — that path is
+  separate and unchanged).
+- `docs/FILESYSTEM_LAYOUT.md` and `docs/MCP_SURFACE.md` updated.
+
 ## [0.14.1] — 2026-06-03
 
 Fixes repo-root resolution for subdir / worktree launches. Launching

@@ -4,14 +4,6 @@
  * Walks every markdown in the canonical zone and surfaces:
  *   - broken-link findings: `[text](relative/path.md)` whose target doesn't exist
  *     under repoRoot. Absolute URLs (https://...) are skipped.
- *   - orphan-path findings: markdown files that are not referenced by any other
- *     markdown in the canonical zone. Orientation files (AGENTS.md, CLAUDE.md,
- *     README.md, RESUME_PROMPT.md) and explicitly-allowed roots are excluded.
- *
- * Phase 12 v1 surfaces only — moving orphans to `.archive/` per the original
- * spec needs operator confirmation (it's a non-trivial canonical-zone change).
- * The proposal type is set up so a future revision can attach an archive-move
- * commit when the operator opts in.
  */
 
 import { existsSync, readFileSync, statSync } from "node:fs";
@@ -21,25 +13,8 @@ import type { GcFinding } from "./types.js";
 
 const PASS_ID = "doc-gardening" as const;
 
-const ORPHAN_ROOT_EXCLUDES = [
-  "AGENTS.md",
-  "CLAUDE.md",
-  "README.md",
-  "RESUME_PROMPT.md",
-  ".cairn/config/workflow.md",
-  ".cairn/config/sensors.yaml",
-  ".cairn/config/stub-patterns.yaml",
-  ".cairn/config/trust-policy.yaml",
-];
-
 export interface DocGardeningOptions {
   repoRoot: string;
-  /**
-   * Additional repo-relative paths to treat as orphan-allowed roots. Useful
-   * for project-specific entry-point docs that nothing links to (e.g. wiki
-   * landing pages).
-   */
-  orphanExcludes?: readonly string[];
 }
 
 export interface DocGardeningResult {
@@ -50,7 +25,6 @@ export function runDocGardening(opts: DocGardeningOptions): DocGardeningResult {
   const findings: GcFinding[] = [];
   const allFiles = walkCanonical(opts.repoRoot);
   const mdFiles = allFiles.filter((p) => p.endsWith(".md"));
-  const referenced = new Set<string>();
 
   for (const rel of mdFiles) {
     const abs = resolve(opts.repoRoot, rel);
@@ -77,27 +51,7 @@ export function runDocGardening(opts: DocGardeningOptions): DocGardeningResult {
           line: link.line,
           matched_text: link.url,
         });
-      } else if (target.endsWith(".md")) {
-        referenced.add(target);
       }
-    }
-  }
-
-  // Orphan detection — markdowns not referenced by any other markdown.
-  const allowOrphan = new Set([
-    ...ORPHAN_ROOT_EXCLUDES,
-    ...(opts.orphanExcludes ?? []),
-  ]);
-  for (const rel of mdFiles) {
-    if (allowOrphan.has(rel)) continue;
-    if (!referenced.has(rel)) {
-      findings.push({
-        pass: PASS_ID,
-        kind: "orphan_path",
-        path: rel,
-        detail: `${rel} is not referenced by any other markdown in the canonical zone — candidate for .archive/ move`,
-        severity: "warn",
-      });
     }
   }
 

@@ -72,7 +72,6 @@ const requiredTemplateDirs: string[] = [
   `${templateRoot}/.cairn`,
   `${templateRoot}/.cairn/config`,
   `${templateRoot}/.cairn/ground`,
-  `${templateRoot}/.archive`,
 ];
 for (const d of requiredTemplateDirs) checkDir(d);
 
@@ -84,7 +83,6 @@ checkFile(`${templateRoot}/.cairn/config/sensors.yaml`, { requireYaml: true });
 checkFile(`${templateRoot}/.cairn/config/stub-patterns.yaml`, { requireYaml: true });
 checkFile(`${templateRoot}/.cairn/config/trust-policy.yaml`, { requireYaml: true });
 checkFile(`${templateRoot}/.cairn/ground/manifest.yaml`, { requireYaml: true });
-checkFile(`${templateRoot}/.archive/README.md`, { requireFrontmatter: true });
 
 // ── Required project root files ────────────────────────────────────────────
 checkFile("package.json");
@@ -157,9 +155,6 @@ for (const tool of [
   "ground-get",
   "get-full",
   "search",
-  "timeline",
-  "query-history",
-  "archive",
   "record-decision",
   "resolve-attention",
   "init-phases",

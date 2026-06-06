@@ -279,8 +279,8 @@ function discoverDocsForCurator(repoRoot: string): string[] {
       },
       onFile: (rel: string, abs: string, ent: Dirent) => {
         if (!ent.name.endsWith(".md")) return;
-        // Drop .archive/ or .planning/archive/ paths.
-        if (/(?:^|\/)(?:\.archive|\.planning\/archive)\//.test(rel)) return;
+        // Drop .planning/archive/ paths.
+        if (/(?:^|\/)\.planning\/archive\//.test(rel)) return;
         try {
           statSync(abs);
         } catch {

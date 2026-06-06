@@ -21,7 +21,6 @@ const SAFE_PATH_PREFIXES = [
   ".cairn/ground/",
   ".cairn/staleness/",
   ".cairn/runs/terminal/",
-  ".archive/",
 ];
 
 /** Doc / config / generated extensions. Not safe by themselves; combined with

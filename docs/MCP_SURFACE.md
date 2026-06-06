@@ -24,7 +24,7 @@ The MCP server exposes structured retrieval, append-only writes, and history-exp
 |---------|---------|
 | Freeform "search the docs" → LLM-as-search-engine, brittle | Structured graph traversal: agent traverses by id and path-glob, no fuzzy match |
 | Edit tool requires Read first → wasted tokens for append-only | Append-only writes: no read required |
-| Agent grep hits stale historical content | Hook + MCP gate; historical only via explicit `cairn_query_history` |
+| Agent grep hits stale historical content | Canonical-zone walkers exclude historical paths from SKIP_DIRS |
 | Agent invents file paths | Canonical-map lookup: `cairn_canonical_for_topic("event-naming") → path + sha + verified-at` |
 | Decisions get ignored across runs | Compact ledger always-loaded at session start; full content via id |
 
@@ -74,12 +74,6 @@ Source of truth: `packages/cairn-core/src/mcp/tools/index.ts` (`allTools`).
 | Tool           | What                                                                       |
 | -------------- | -------------------------------------------------------------------------- |
 | `cairn_search` | FTS over canonical-zone artifacts; compact index records (~50 tokens each). |
-
-**Read — historical zone (gated, 1)**
-
-| Tool                  | What                                                                          |
-| --------------------- | ----------------------------------------------------------------------------- |
-| `cairn_query_history` | Only path to `.archive/`. Server walks + LLM-summarizes; raw stale never enters context. |
 
 **Write — append-only (2)**
 
@@ -210,49 +204,6 @@ Returns compact index records (~50 tokens each):
 
 Backed by FTS over the ground/. No LLM.
 
-### Read tools — historical zone (gated)
-
-#### `cairn_query_history`
-
-| Field | Type | Notes |
-|-------|------|-------|
-| `scope` | string | Free-text description (e.g., "early decision about JSONB index that was reverted") |
-| `path_hint` | string | Optional path or glob inside `.archive/` |
-| `since` | string | Optional ISO 8601 |
-| `until` | string | Optional ISO 8601 |
-
-The ONLY way agents see `.archive/`. The MCP server reads matching historical files itself, runs an LLM summarization (Tier 1), and returns structured **historical-only** claims with mandatory canonical cross-check pointers (per Codex audit Finding #4):
-
-```json
-{
-  "historical_only": true,
-  "claims": [
-    {
-      "claim": "Project considered using a JSONB expression index on commandPayload->>'userId' for dashboard CandidateAction queries.",
-      "as_of": "2026-04-23",
-      "source_path": ".archive/2026-05-pre-cairn/REVIEW_DECISIONS.md",
-      "source_lines": "320-410",
-      "superseded_by": "DEC-0042",
-      "currently_canonical_pointer": ".cairn/ground/decisions/DEC-0042.md",
-      "warning": "This claim is HISTORICAL. Verify against the canonical pointer before acting."
-    }
-  ],
-  "summary_caveat": "All claims are dated and superseded-tagged. Do not treat any line above as current truth. Cross-reference DEC-0042 for current binding decision.",
-  "summarizer_model": "claude-haiku-4-5-20251001",
-  "summarizer_prompt_id": "cairn.history_summarize.v1"
-}
-```
-
-Raw stale content NEVER enters the agent's context. Each summarized claim carries its own provenance, supersedes-tag, and a forward pointer to the currently-canonical artifact. This:
-
-- Eliminates the "agent reads both stale and live, hallucinates the truth" failure mode (raw stale never enters context)
-- Prevents the secondary failure mode (the summary itself becomes a vector for stale claims) by mandating per-claim datestamps + supersedes pointers
-- Forces the agent to cross-check via `cairn_decision_get(superseded_by)` or `cairn_canonical_for_topic(...)` before acting on any historical claim
-
-The summarizer's system prompt + JSON Schema live in `packages/cairn-core/src/mcp/history/{prompt,schema}.ts` and the prompt id is version-locked at `cairn.history_summarize.v1`. The `currently_canonical_pointer` field is **post-resolved by Cairn, not the LLM**: the LLM emits a proposed `superseded_by` DEC-id, the server validates it against the on-disk decisions ledger, and only sets the pointer when a matching `.cairn/ground/decisions/<id>.md` exists. Malformed or invented ids resolve to `null`. If the agent receives a `cairn_query_history` response without `historical_only: true`, the response is treated as malformed and ignored.
-
-The walker caps total bytes (default 200 KB) and file count (default 40) to keep summarizer prompts bounded; when the cap is hit, `truncated_walk: true` is returned and the `summary_caveat` includes guidance to refine `path_hint` / `since` / `until` and re-query. The default tier is `haiku` (per workflow.md `garbage_collector: 1` cousin); operators can override via the `--tier` flag if they enable it on their MCP server.
-
 ### Write tools — append-only, no read required
 
 #### `cairn_record_decision`
@@ -279,7 +230,7 @@ Errors: `DECISION_ID_TAKEN`, `INVALID_ASSERTION_KIND`, `SUPERSEDES_NOT_FOUND`.
 | `id` | string | Required. `DEC-<hash>` / `INV-<hash>` of an entity in the active ledger |
 | `reason` | string | Optional. Stamped into the archived frontmatter |
 
-The OUT path for the ground ledger. Retirement = **archive, never hard-delete**: the entity moves to `.cairn/ground/.archive/{decisions,invariants}/`, its `status` flips to `archived` (with `archived_at` + `archived_reason`), and the active ledger + SoT cache are rebuilt so it drops from `cairn_in_scope` and Layer A matching. The body stays reachable via `cairn_query_history`; a lingering `§DEC-/§INV-` cite degrades to an `orphaned_citation` GC finding rather than a dangling reference.
+The OUT path for the ground ledger. Retirement = **archive, never hard-delete**: the entity moves to `.cairn/ground/.archive/{decisions,invariants}/`, its `status` flips to `archived` (with `archived_at` + `archived_reason`), and the active ledger + SoT cache are rebuilt so it drops from `cairn_in_scope` and Layer A matching. A lingering `§DEC-/§INV-` cite degrades to an `orphaned_citation` GC finding rather than a dangling reference.
 
 This is the shared apply primitive the autonomous `entity-orphan` GC pass and the cairn-attention "retire" action both invoke.
 
@@ -329,7 +280,7 @@ Deliberate omissions, with reasons:
 
 | Omitted | Reason |
 |---------|--------|
-| `cairn_grep(query)` | Agents use Claude Code's native Grep + Cairn's canonical-zone walkers (which exclude `.archive` and other historical roots from SKIP_DIRS). An MCP grep would duplicate the agent's existing tool surface without adding access. |
+| `cairn_grep(query)` | Agents use Claude Code's native Grep + Cairn's canonical-zone walkers. An MCP grep would duplicate the agent's existing tool surface without adding access. |
 | `cairn_decision_update` | Decisions are append-only via supersedes chain. No in-place edits — to remove one, `cairn_retire_decision` archives it. |
 | `cairn_invariant_disable` | Invariants are superseded with new entries, not disabled in place. To remove a rotted one, `cairn_retire_invariant` archives it. |
 | `cairn_run_create` / `cairn_record_run_event` / `cairn_drop_task` | Runtime concerns — run lifecycle and task queuing are owned by `cairn-runtime`, not the core MCP surface. |
@@ -380,16 +331,6 @@ Deliberate omissions, with reasons:
 8. Server moves draft to canonical, emits invalidation event; future sessions see DEC-0099
 ```
 
-### Flow 4 — agent investigating a historical pattern
-
-```
-1. Agent's query: "did we ever consider using JSONB indexes for this?"
-2. Agent calls: cairn_query_history({ scope: "JSONB index for user-scoped CandidateAction queries" })
-3. Server reads matching .archive/ files, summarizes via Tier-1 LLM
-4. Returns: { summary, sources: [...] }
-5. Agent's context contains ONLY the summary, never raw stale content
-```
-
 ---
 
 ## Implementation outline
@@ -402,12 +343,6 @@ packages/cairn-core/src/mcp/
 ├── result.ts               ← wraps payloads as MCP CallToolResult
 ├── path-allowlist.ts       ← APPEND_ALLOWLIST, ARCHIVE_DENY, HISTORICAL_ZONE
 ├── telemetry.ts            ← per-call mcp-calls.jsonl writer
-├── history/
-│   ├── walker.ts           ← .archive/ walker with path_hint + date window
-│   ├── prompt.ts           ← Tier-1 summarizer system + user prompts
-│   ├── schema.ts           ← JSON Schema for summarizer output
-│   ├── summarizer.ts       ← end-to-end runQueryHistory; post-resolves canonical pointer
-│   └── index.ts            ← barrel
 └── tools/
     ├── index.ts                  ← `allTools` array (single source of truth)
     ├── types.ts                  ← `ToolDef` shape
@@ -420,14 +355,8 @@ packages/cairn-core/src/mcp/
     ├── invariant-get.ts
     ├── invariants-in-scope.ts
     ├── search.ts
-    ├── timeline.ts
-    ├── get-full.ts
-    ├── query-history.ts
-    ├── search-candidates.ts
     ├── record-decision.ts
     ├── task-create.ts
-    ├── archive.ts
-    ├── propose-decision.ts
     ├── reject-candidate.ts
     ├── resolve-attention.ts
     ├── bulk-accept-attention.ts

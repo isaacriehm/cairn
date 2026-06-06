@@ -144,7 +144,6 @@ async function main(): Promise<void> {
     ".cairn/ground/manifest.yaml",
     ".cairn/ground/canonical-map/topics.yaml",
     ".cairn/config.yaml",
-    ".archive/README.md",
   ]) {
     assert(existsSync(join(root1, p)), `expected file ${p}`);
   }

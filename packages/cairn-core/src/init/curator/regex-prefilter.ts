@@ -5,7 +5,7 @@
  * as noise:
  *   - test files / fixtures / snapshots
  *   - generated / build / vendor / migrations
- *   - .archive/ + .planning/archive/
+ *   - .planning/archive/
  *   - JSX block comments (lots of UI annotation noise)
  *   - license / SPDX headers
  *   - JSDoc with only @param/@returns/@see/@throws and < 30 words prose
@@ -28,7 +28,7 @@ const TEST_FILE_RE =
   /(?:^|\/)(?:[^/]+\.(?:spec|test)\.(?:[tj]sx?|mjs|cjs)|__tests__\/|e2e\/|fixtures\/|snapshots?\/|__snapshots__\/)/;
 const GENERATED_DIR_RE =
   /(?:^|\/)(?:migrations|dist|build|generated|vendor|node_modules)\//;
-const ARCHIVE_DIR_RE = /(?:^|\/)\.(?:archive|planning\/archive)\//;
+const ARCHIVE_DIR_RE = /(?:^|\/)\.planning\/archive\//;
 const TODO_BANNER_RE = /^\s*(?:TODO|FIXME|XXX|HACK|NOTE)\b/;
 const PURE_BANNER_RE = /^[\s\W_]+$/;
 const SPDX_LICENSE_RE = /\b(?:SPDX-License-Identifier|All rights reserved|Licensed under)\b/i;

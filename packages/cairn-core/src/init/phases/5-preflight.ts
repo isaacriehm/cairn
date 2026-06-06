@@ -43,7 +43,6 @@ const DOC_SKIP_DIRS = new Set<string>([
   ".next",
   ".turbo",
   ".cairn",
-  ".archive",
 ]);
 
 export interface PreflightUnits {

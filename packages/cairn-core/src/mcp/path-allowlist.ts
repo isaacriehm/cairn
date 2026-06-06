@@ -28,9 +28,8 @@ export const ARCHIVE_DENY: readonly string[] = [
   "docs/design/brand/**",
 ];
 
-/** Historical-zone globs — read tools refuse these; query_history is the ONE escape. */
+/** Historical-zone globs — read tools refuse these. */
 export const HISTORICAL_ZONE: readonly string[] = [
-  ".archive/**",
   ".cairn/runs/terminal/**",
   ".cairn/tasks/done/**",
   ".cairn/tasks/archived/**",

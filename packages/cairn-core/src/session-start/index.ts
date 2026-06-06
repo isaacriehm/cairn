@@ -9,9 +9,9 @@
  * payload.
  *
  * Two-zone enforcement is soft: this module emits the reminder text +
- * the canonical-only ledgers; canonical-only walkers + the
- * cairn_query_history MCP tool do the rest. There is no PreToolUse
- * hook (PreToolUse is forbidden — see PLUGIN_ARCHITECTURE hard rules).
+ * the canonical-only ledgers; canonical-only walkers do the rest. There
+ * is no PreToolUse hook (PreToolUse is forbidden — see PLUGIN_ARCHITECTURE
+ * hard rules).
  */
 
 export {

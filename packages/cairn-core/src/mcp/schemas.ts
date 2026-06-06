@@ -38,15 +38,6 @@ export const searchInput = {
   limit: z.number().int().positive().max(50).optional(),
 };
 
-// ── Read tools — historical zone (gated) ───────────────────────────────────
-
-export const queryHistoryInput = {
-  scope: z.string().min(1),
-  path_hint: z.string().optional(),
-  since: z.string().optional(),
-  until: z.string().optional(),
-};
-
 // ── Write tools ────────────────────────────────────────────────────────────
 
 export const taskCreateInput = {

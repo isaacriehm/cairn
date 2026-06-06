@@ -27,7 +27,7 @@ Replaces the prior Postgres design. Everything lives on disk. Two-zone canonical
 | Frontend adapter | Claude Code plugin is the primary operator surface; CLI is bootstrap + debug; VS Code / Cursor extension is a parallel read-only consumer |
 | Concurrency model | Per-write `flock` on `.cairn/.write-lock`; per-session state partition under `.cairn/sessions/<id>/` |
 | Branching | None — direct commits to main, gated by sensors at pre-commit + CI |
-| Two zones | `canonical` (default agent visible) / `historical` (`.archive/` — only via explicit MCP) |
+| Two zones | `canonical` (default agent visible) / `historical` (`.cairn/runs/terminal/`, `.cairn/tasks/done/` — excluded from walkers) |
 | Provenance | YAML frontmatter required on every load-bearing markdown |
 | Append-only writes | Via Cairn MCP tools — no read-before-write penalty |
 
@@ -65,7 +65,7 @@ The layout below is **stack-agnostic**. Subdirectories under `.cairn/ground/{sch
 │   │   │   ├── INV-0001.md         ← §INV invariant (monotonic, never reused)
 │   │   │   └── invariants.ledger.yaml
 │   │   ├── .archive/               ← retired DEC/INV graveyard            NON-CANONICAL (committed)
-│   │   │   ├── decisions/          ← archived DECs (status: archived) — reachable only via cairn_query_history
+│   │   │   ├── decisions/          ← archived DECs (status: archived)
 │   │   │   └── invariants/         ← archived INVs (status: archived)
 │   │   ├── canonical-map/
 │   │   │   └── topics.yaml         ← topic → canonical-doc-path
@@ -109,10 +109,6 @@ The layout below is **stack-agnostic**. Subdirectories under `.cairn/ground/{sch
 │   └── staleness/
 │       ├── current.json            ← live drift snapshot                  GITIGNORED
 │       └── log.jsonl               ← drift events                         GITIGNORED
-└── .archive/                                                              CANONICAL (committed)
-    ├── README.md                   ← explains the quarantine
-    └── <YYYY-MM-DD>/               ← daily quarantine drops
-        └── ... (mirrors prior path of archived file)
 ```
 
 Mirror checkout (separate, not in repo):
@@ -140,7 +136,6 @@ Paths agents may grep/glob/find without restriction:
 
 ### 2.2 Historical zone (excluded from default reads)
 
-- `<repo>/.archive/**`
 - `<repo>/.cairn/runs/terminal/**`
 - `<repo>/.cairn/tasks/done/**`
 - `<repo>/.cairn/tasks/archived/**`
@@ -152,18 +147,9 @@ Paths agents may grep/glob/find without restriction:
 PreToolUse-style tool-call interception is **rejected** (operator decision 2026-05-04 — see PRIMER §11). Two-zone separation is enforced softly through three composing layers:
 
 1. **SessionStart instruction.** `.claude/settings.json` registers `cairn hook session-start`. The hook reads the SessionStart payload from stdin and emits an `additionalContext` block that names the historical paths and tells the agent default reads/grep/glob do not hit them. Spec at `docs/SESSIONSTART_SPEC.md`; implementation in `packages/cairn-core/src/session-start/`.
-2. **Walker exclusion.** Every Cairn-internal walker (`ground/walk.ts` `walkCanonical`, `gc/stub-hits.ts` `walkSourceTree`) hardcodes `.archive` and other historical roots into SKIP_DIRS. The Cairn-mediated reads (manifest build, GC, sensor sweeps) never see archive content. The agent's own `Read`/`Grep`/`Glob` tools are not interposed.
-3. **`cairn_query_history` MCP tool.** The only sanctioned path to consult archive content. Walks `.archive/` matched by `path_hint` + `since`/`until`, runs a Tier-1 (Haiku) summarizer over the matched files, returns structured per-claim records with source citations and supersedes-pointers (resolved against the decisions ledger). Raw stale content never enters the agent's context — only the summary does. Implementation in `packages/cairn-core/src/mcp/history/`.
+2. **Walker exclusion.** Every Cairn-internal walker (`ground/walk.ts` `walkCanonical`, `gc/stub-hits.ts` `walkSourceTree`) hardcodes historical roots into SKIP_DIRS. The Cairn-mediated reads (manifest build, GC, sensor sweeps) never see historical content. The agent's own `Read`/`Grep`/`Glob` tools are not interposed.
 
-Why no PreToolUse: the hook runs on every tool call; a buggy hook bricks the session, false positives block legit work, and the failure mode is hard to debug. Soft enforcement is sufficient because (a) agents naturally land in the canonical zone via Cairn's curated walkers, and (b) `cairn_query_history` covers the legitimate "I need to consult history" path without an interception layer.
-
-### 2.4 What agents CAN do in historical zone
-
-| Operation | Allowed? | Mechanism |
-|-----------|----------|-----------|
-| Direct `Read`/`Grep`/`Glob` of `.archive/` | Tool-permitted, but Cairn walkers don't surface these paths and the SessionStart instruction tells the agent not to. Soft enforcement — convention plus tooling, not interception. |
-| `cairn_query_history(scope, question)` | Yes — Tier-1 summarizer, returns structured claims with supersedes-pointers; raw stale content never enters context |
-| `cairn_archive(path, reason)` | Yes — moves canonical → archive (one-way) |
+Why no PreToolUse: the hook runs on every tool call; a buggy hook bricks the session, false positives block legit work, and the failure mode is hard to debug. Soft enforcement is sufficient — agents naturally land in the canonical zone via Cairn's curated walkers.
 
 ---
 
@@ -581,13 +567,11 @@ files:
 .cairn/ground/decisions/_inbox/
 ```
 
-`.archive/` is NOT gitignored — it's committed history.
-
 ---
 
 ## 9a. Cairn directory protection
 
-`.cairn/` and `.archive/` are owned exclusively by the Cairn system. AI sessions not running through Cairn must not write to them directly. This is enforced at three layers:
+`.cairn/` is owned exclusively by the Cairn system. AI sessions not running through Cairn must not write to it directly. This is enforced at three layers:
 
 ### Layer 1 — Instruction (`.claude/rules/cairn-protection.md`)
 
@@ -596,18 +580,16 @@ Written by `cairn init`. Auto-loaded by Claude Code in every session in this pro
 ```markdown
 # Cairn directory protection
 
-.cairn/ and .archive/ are managed exclusively by the Cairn system.
+.cairn/ is managed exclusively by the Cairn system.
 
-NEVER write files directly to .cairn/ or .archive/ — not to any subdirectory,
+NEVER write files directly to .cairn/ — not to any subdirectory,
 not for any reason. This includes:
 - Creating files in .cairn/ground/, .cairn/tasks/, .cairn/config/
-- Creating files in .archive/ or any subdirectory
-- Moving files into either directory
-- Editing any file inside either directory directly
+- Moving files into this directory
+- Editing any file inside this directory directly
 
 To record a decision: use the cairn_record_decision MCP tool.
-To archive a file: use the cairn_archive MCP tool or `cairn archive <path>` CLI.
-To create a task: use the cairn_drop_task runtime tool or `cairn task` CLI.
+To create a task: use the cairn_task_create MCP tool or `cairn task` CLI.
 
 If you are unsure where to put something, ask. Do not create ad-hoc folders
 or files outside of the project's source tree.
@@ -617,18 +599,18 @@ This catches the common case: an AI session without Cairn sees `.cairn/` and sta
 
 ### Layer 2 — Pre-commit hook (`.git/hooks/pre-commit`)
 
-Written by `cairn init`. Rejects any direct write to `.cairn/ground/` or `.archive/` that doesn't come from the Cairn CLI:
+Written by `cairn init`. Rejects any direct write to `.cairn/ground/` that doesn't come from the Cairn CLI:
 
 ```bash
 #!/bin/sh
 # Cairn directory protection — do not remove or modify
 
-PROTECTED="^\.(cairn/ground|cairn/config|cairn/tasks|archive)/"
+PROTECTED="^\.(cairn/ground|cairn/config|cairn/tasks)/"
 
 if git diff --cached --name-only | grep -qE "$PROTECTED"; then
   if [ -z "$CAIRN_COMMIT" ]; then
     echo ""
-    echo "  ✗ Cairn protection: direct writes to .cairn/ or .archive/ are not allowed."
+    echo "  ✗ Cairn protection: direct writes to .cairn/ are not allowed."
     echo "    Use the Cairn CLI or MCP tools to modify these directories."
     echo "    If you are the Cairn system, set CAIRN_COMMIT=1."
     echo ""
@@ -645,7 +627,7 @@ fi
 
 GC's orphan pass scans for state-tracking files created outside `.cairn/`:
 - Patterns: `REMEDIATION*.md`, `TODO*.md`, `PROGRESS*.md`, `FIXES*.md`, `PLANNING*.md`, `*.planning`, `.planning/`
-- If found outside `.cairn/`: moves to `.archive/<today>/rogue-artifacts/`, commits, logs to attention queue
+- If found outside `.cairn/`: logs to attention queue for operator review
 
 This is the cleanup net. Layers 1 and 2 prevent; Layer 3 cleans up what slips through.
 
@@ -709,7 +691,7 @@ Locked direction (operator decision 2026-05-04): **no PreToolUse hooks.** Soft e
 | `SessionStart` | always | Inject curated state context per `docs/SESSIONSTART_SPEC.md`: two-zone reminder, decisions in scope, §INV invariants, current task, weakest modules from quality grades, pending decision drafts, MCP tool quick-reference. Implementation: `cairn hook session-start`. |
 | `UserPromptSubmit` (planned, Phase 2) | always | Route operator's `/direction <text>` and free-text directives into `cairn-core`'s decision-capture pipeline. Not yet implemented. |
 | `Stop` (planned, Phase 3) | always | Backprop trigger candidate on session end; defer until SessionStart + UserPromptSubmit are stable. |
-| `PreToolUse` | — | **Rejected.** Two-zone separation is enforced via SessionStart instruction + walker exclusion + `cairn_query_history` MCP escape. See PRIMER §11 anti-pattern entry. |
+| `PreToolUse` | — | **Rejected.** Two-zone separation is enforced via SessionStart instruction + walker exclusion. See PRIMER §11 anti-pattern entry. |
 | `PostToolUse` | — | Not currently used. Frontmatter `verified-at` bumps happen via the GC sweep, not on every write. |
 
 ---
@@ -718,7 +700,7 @@ Locked direction (operator decision 2026-05-04): **no PreToolUse hooks.** Soft e
 
 Implementation lives in `packages/cairn-core/src/init/`. Key outputs:
 
-- Creates the directory tree above (templates/.cairn/, templates/.archive/, templates/.claude/, templates/.mcp.json copied via `seedCairnLayout`)
+- Creates the directory tree above (templates/.cairn/, templates/.claude/, templates/.mcp.json copied via `seedCairnLayout`)
 - Mechanical stack-signature detection (`detect.ts`) proposes initial sensor list, awaits operator confirm per sensor
 - Init mapper (Tier 2) reads the repo summary and proposes `pilot_module` + `route_handler_globs` + `dto_globs` + `generator_source_globs` + `high_stakes_globs` + `off_limits_globs` + per-project sensor candidates; output applied to the `<slug>:` extension block in `workflow.md` and to `.cairn/config.yaml`
 - Mechanical pass populates `.cairn/ground/manifest.yaml` and category extracts where generators apply

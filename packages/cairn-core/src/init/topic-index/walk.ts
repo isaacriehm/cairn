@@ -105,7 +105,6 @@ const SKIP_DIRS = new Set([
   ".turbo",
   ".cache",
   "coverage",
-  ".archive",
   ".pnpm-store",
   ".yarn",
   "vendor",

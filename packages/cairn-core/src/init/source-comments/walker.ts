@@ -87,7 +87,6 @@ const SKIP_DIRS = new Set<string>([
   ".idea",
   ".vscode",
   ".cairn",
-  ".archive",
 ]);
 
 /** Lower bound: only consider blocks above one of these. */

@@ -19,7 +19,6 @@ export const SOURCE_TREE_SKIP_DIRS = new Set([
   ".next",
   ".turbo",
   ".cache",
-  ".archive",
   "coverage",
 ]);
 

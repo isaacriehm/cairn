@@ -67,7 +67,6 @@ const DEFAULT_OFF_LIMITS_DIRS = new Set<string>([
   ".idea",
   ".vscode",
   ".cairn",
-  ".archive",
 ]);
 
 /**

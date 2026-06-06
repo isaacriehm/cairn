@@ -3,8 +3,8 @@
  * verb for the ground ledger.
  *
  * Retirement = archive, never hard-delete: the entity moves to
- * `.cairn/ground/.archive/`, drops from the active ledger + SoT cache,
- * and its body stays reachable via `cairn_query_history`. A lingering
+ * `.cairn/ground/.archive/`, drops from the active ledger + SoT cache.
+ * A lingering
  * `§DEC-/§INV-` cite degrades to an `orphaned_citation` GC finding
  * rather than a dangling reference.
  *
@@ -70,7 +70,7 @@ function makeHandler(kind: "DEC" | "INV") {
 export const retireDecisionTool: ToolDef<Input> = {
   name: "cairn_retire_decision",
   description:
-    "Retire (archive) an accepted DEC that has rotted — superseded in spirit, or its backing source is gone. Moves it to .cairn/ground/.archive/, drops it from the active ledger, and preserves the body for cairn_query_history. NOT a hard delete.",
+    "Retire (archive) an accepted DEC that has rotted — superseded in spirit, or its backing source is gone. Moves it to .cairn/ground/.archive/, drops it from the active ledger. NOT a hard delete.",
   inputSchema: retireDecisionInput,
   handler: makeHandler("DEC"),
 };
@@ -78,7 +78,7 @@ export const retireDecisionTool: ToolDef<Input> = {
 export const retireInvariantTool: ToolDef<Input> = {
   name: "cairn_retire_invariant",
   description:
-    "Retire (archive) an active INV that no longer holds — refactored away, or its backing source is gone. Moves it to .cairn/ground/.archive/, drops it from the active ledger, and preserves the body for cairn_query_history. NOT a hard delete.",
+    "Retire (archive) an active INV that no longer holds — refactored away, or its backing source is gone. Moves it to .cairn/ground/.archive/, drops it from the active ledger. NOT a hard delete.",
   inputSchema: retireInvariantInput,
   handler: makeHandler("INV"),
 };

@@ -67,8 +67,6 @@ export interface RunGcSweepOptions {
   };
   /** Quality-grades pass options. */
   qualityRecentRunCount?: number;
-  /** Doc-gardening orphan exception list. */
-  docOrphanExcludes?: readonly string[];
 }
 
 export async function runGcSweep(opts: RunGcSweepOptions): Promise<GcSweepResult> {
@@ -129,10 +127,7 @@ export async function runGcSweep(opts: RunGcSweepOptions): Promise<GcSweepResult
   // 4. Doc gardening.
   {
     const t0 = Date.now();
-    const r = runDocGardening({
-      repoRoot: opts.repoRoot,
-      ...(opts.docOrphanExcludes !== undefined ? { orphanExcludes: opts.docOrphanExcludes } : {}),
-    });
+    const r = runDocGardening({ repoRoot: opts.repoRoot });
     findings.push(...r.findings);
     passDurations["doc-gardening"] = Date.now() - t0;
   }

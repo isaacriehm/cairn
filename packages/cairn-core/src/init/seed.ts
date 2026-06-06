@@ -1,5 +1,5 @@
 /**
- * Seed an adopted project's .cairn/ + .archive/ from cairn/templates/.
+ * Seed an adopted project's .cairn/ from cairn/templates/.
  *
  * Walks the templates dir, copies every file to the target preserving
  * directory layout. Files where the `<project_name>` YAML key needs
@@ -61,7 +61,6 @@ export interface SeedResult {
  */
 const SEED_TOP_LEVEL_ALLOWLIST: ReadonlySet<string> = new Set([
   ".cairn",
-  ".archive",
   ".claude",
   ".github",
 ]);

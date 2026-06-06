@@ -81,7 +81,7 @@ function assert(cond: unknown, msg: string): void {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PKG_TEMPLATES = resolve(HERE, "..", "..", "cairn-core", "templates");
 
-/** Copy templates/.cairn/config/* + .archive/README.md into repoRoot. */
+/** Copy templates/.cairn/config/* into repoRoot. */
 function seedCairnConfig(repoRoot: string): void {
   mkdirSync(join(repoRoot, ".cairn", "config"), { recursive: true });
   for (const file of ["workflow.md", "sensors.yaml", "stub-patterns.yaml", "trust-policy.yaml"]) {
@@ -96,8 +96,6 @@ function seedCairnConfig(repoRoot: string): void {
     "version: 1\ngenerated: 2026-05-02T00:00:00.000Z\nfiles: []\n",
     "utf8",
   );
-  mkdirSync(join(repoRoot, ".archive"), { recursive: true });
-  writeFileSync(join(repoRoot, ".archive", "README.md"), "# .archive\nQuarantine zone.\n", "utf8");
   // Make AGENTS.md so canonical zone has at least one orientation file.
   writeFileSync(
     join(repoRoot, "AGENTS.md"),
@@ -241,8 +239,8 @@ async function main(): Promise<void> {
   console.log(`  stub_hits=${stubHits.length} pattern=${throwHit!.pattern_id} path=${throwHit!.path}`);
   void stubRel; // unused but kept for context
 
-  // ── Step 6: doc-gardening surfaces broken link + orphan.
-  header("Step 6: doc-gardening — broken link + orphan");
+  // ── Step 6: doc-gardening surfaces broken link.
+  header("Step 6: doc-gardening — broken link");
   // Seed a doc that links to a missing target.
   const brokenRel = "docs/with-broken-link.md";
   writeFileSync(
@@ -252,28 +250,15 @@ async function main(): Promise<void> {
       "\n---\n# Broken-link doc\n\nSee [missing](does-not-exist.md).\n",
     "utf8",
   );
-  // Seed an orphan doc nothing links to.
-  const orphanRel = "docs/orphan-doc.md";
-  writeFileSync(
-    join(root, orphanRel),
-    "---\ntype: doc\nstatus: draft\naudience: dual\nverified-at: " +
-      new Date().toISOString() +
-      "\n---\n# Orphan\n\nNo other doc references this file.\n",
-    "utf8",
-  );
-  await git.add([brokenRel, orphanRel]);
+  await git.add([brokenRel]);
   await git.commit("chore: seed gardening fixtures");
   const sweepGarden = await runGcSweep({ repoRoot: root });
   const gardenFindings = sweepGarden.findings.filter((f) => f.pass === "doc-gardening");
   const broken = gardenFindings.find(
     (f) => f.kind === "broken_link" && f.path === brokenRel,
   );
-  const orphan = gardenFindings.find(
-    (f) => f.kind === "orphan_path" && f.path === orphanRel,
-  );
   assert(broken !== undefined, "expected broken_link finding");
-  assert(orphan !== undefined, "expected orphan_path finding");
-  console.log(`  broken_link=${broken!.path} orphan=${orphan!.path}`);
+  console.log(`  broken_link=${broken!.path}`);
 
   // ── Step 7: quality-grades pass writes a fresh yaml.
   header("Step 7: quality-grades writes fresh yaml + safe-class proposal");
