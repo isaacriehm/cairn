@@ -101,13 +101,18 @@ export function archiveEntity(opts: ArchiveEntityOptions): ArchiveEntityResult {
     };
   }
 
-  const now = (opts.now ?? new Date()).toISOString();
+  // Date-precision stamps (not millisecond ISO) so two clones that retire
+  // the same orphan on the same day produce byte-identical archive
+  // frontmatter — kills the multi-dev merge conflict on `.archive/` files.
+  // Orphan detection is deterministic across clones, so the only divergence
+  // was the timestamp. Audit-grade timing lives in the git commit anyway.
+  const archivedOn = (opts.now ?? new Date()).toISOString().slice(0, 10);
   const { fm, body } = parseFrontmatterRecord(readFileSync(srcAbs, "utf8"));
 
   fm["status"] = "archived";
-  fm["archived_at"] = now;
+  fm["archived_at"] = archivedOn;
   fm["archived_reason"] = opts.reason;
-  fm["verified-at"] = now;
+  fm["verified-at"] = archivedOn;
   if (opts.supersededBy !== undefined) fm["superseded_by"] = opts.supersededBy;
 
   const content = `---\n${stringifyYaml(fm).trimEnd()}\n---\n${

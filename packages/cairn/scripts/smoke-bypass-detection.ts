@@ -132,6 +132,26 @@ async function main(): Promise<void> {
   assert(hint.includes("feat: thing"), "renders subject");
   console.log("  ✓ Step 6 — render delegates to cairn-attention skill");
 
+  step("Step 7 — commits on a remote are excluded (multi-dev false-positive guard)");
+  // `.attested-commits` is per-clone. A teammate's commit pulled into
+  // this clone lives on origin but is NOT in our local attested set —
+  // it must NOT be flagged. Only local, unpushed work is a bypass
+  // candidate (`git log HEAD --not --remotes`).
+  const teamRepo = mkRepo();
+  const bare = mkdtempSync(join(tmpdir(), "cairn-smoke-bypass-remote-"));
+  cleanups.push(bare);
+  execFileSync("git", ["init", "-q", "--bare", bare]);
+  const shared = commit(teamRepo, "shared (on remote, not attested)");
+  execFileSync("git", ["remote", "add", "origin", bare], { cwd: teamRepo });
+  execFileSync("git", ["push", "-q", "origin", "main"], { cwd: teamRepo });
+  // A local, unpushed commit that skipped attestation (the real bypass).
+  const localBypass = commit(teamRepo, "local bypass (unpushed)");
+  const r7 = scanBypassedCommits(teamRepo);
+  const flagged7 = r7.bypassed.map((b) => b.sha);
+  assert(!flagged7.includes(shared), "remote/pushed commit excluded from bypass scan");
+  assert(flagged7.includes(localBypass), "local unpushed bypass still flagged");
+  console.log("  ✓ Step 7 — remote commits excluded, local bypass flagged");
+
   step("Cleanup");
   cleanup();
   console.log("\nsmoke-bypass-detection — pass");

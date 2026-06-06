@@ -33,6 +33,7 @@ import { parse as parseYaml } from "yaml";
 import { seedAttestedCommits } from "../hooks/seed-attested.js";
 import { VERSION } from "../index.js";
 import { logger } from "../logger.js";
+import { rebuildDerived } from "../state/rebuild-derived.js";
 
 const log = logger("join");
 
@@ -182,6 +183,26 @@ export function runJoin(args: RunJoinArgs = {}): JoinResult {
   // cairn`.
   const cliPathStep = writeCliPathFile(repoRoot);
   steps.push(cliPathStep);
+
+  // Derived ground state (ledgers, scope-index, manifest, sot-bindings,
+  // sot-cache, file-candidates) is gitignored + per-clone as of v0.15.0
+  // — a fresh clone ships none of it. Rebuild from the committed DEC/INV
+  // sources so the contributor's first session has working scope / lens
+  // / sensor lookups.
+  try {
+    const rebuilt = rebuildDerived(repoRoot);
+    steps.push({
+      step: "rebuild-derived",
+      status: "ok",
+      detail: `rebuilt ${rebuilt.decisions} DEC + ${rebuilt.invariants} INV → ${rebuilt.bindings} bindings, ${rebuilt.cacheEntries} cache entries`,
+    });
+  } catch (err) {
+    steps.push({
+      step: "rebuild-derived",
+      status: "warn",
+      detail: `derived rebuild failed (regenerates next SessionStart): ${err instanceof Error ? err.message : String(err)}`,
+    });
+  }
 
   const bootstrapped = steps.every((s) => s.status !== "error");
   return {

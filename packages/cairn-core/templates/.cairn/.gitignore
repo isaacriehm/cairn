@@ -2,6 +2,12 @@
 # Created at SessionStart, removed at SessionEnd, GC'd if stale.
 sessions/
 
+# Per-clone run logs — agent event streams, rendered prompts, diffs,
+# sensor results, UAT artifacts under runs/active|terminal/<run-id>/.
+# Local execution record, not shared state; heavy + per-clone. Marked
+# GITIGNORED in docs/FILESYSTEM_LAYOUT.md.
+runs/
+
 # Invalidation event log — inter-session signal, 7-day retention,
 # regenerable. Spec: PLUGIN_ARCHITECTURE §7.
 events/
@@ -63,9 +69,38 @@ missions/
 # queue. Already excluded from canonical-zone reads in spec §2.2.
 ground/decisions/_inbox/
 
+# Derived ground-state indexes + caches. Regenerated from the committed
+# DEC/INV `.md` sources (which carry sot_kind / sot_path /
+# sot_content_hash frontmatter) by `cairn join` + SessionStart via
+# `rebuildDerived`. Committing them caused multi-dev merge conflicts —
+# every clone rewrote them locally (timestamps, content hashes, token
+# caches) and pushed divergent copies. Now per-clone. Untrack on repos
+# adopted before v0.15.0 via `cairn fix gitignore`.
+ground/manifest.yaml
+ground/scope-index.yaml
+ground/quality-grades.yaml
+ground/topic-index.yaml
+ground/anchor-map.yaml
+ground/sot-cache.yaml
+ground/sot-bindings.yaml
+ground/file-candidates-map.yaml
+ground/decisions/decisions.ledger.yaml
+ground/invariants/invariants.ledger.yaml
+
+# Per-clone alignment-pending queue — operator-pending SoT-drift review
+# items (idempotent content-slug filenames), resolved via
+# cairn_resolve_attention. Same class as ground/decisions/_inbox/: drafts
+# don't graduate to shared ground until accepted.
+ground/alignment-pending/
+
 # Per-clone GC marker — last-run timestamp for the Stop-hook GC
 # auto-trigger. Written locally by the hook, never shared.
 .gc-last-run
+
+# Per-clone stall-warning dedup markers — `.stalled-warned/<task-id>.iso`
+# records that the Stop hook already surfaced a stall cue for a task this
+# session, so it isn't re-fired. Tied to per-clone tasks/; never shared.
+.stalled-warned/
 
 # Per-clone phase-defer marker — sets a 24h suppression on the
 # mission phase-exit prompt. Local to whoever picked "Defer 24h"
@@ -75,6 +110,16 @@ ground/decisions/_inbox/
 # Per-clone hook telemetry — `state/telemetry/hooks.jsonl` records
 # every plugin hook invocation locally for debug; not shareable.
 state/telemetry/
+
+# Per-clone align/undo log — `cairn attention undo` reads it to reverse
+# this clone's Layer A auto-resolutions. Append-only JSONL, meaningful
+# only on the clone that performed the aligns; committing it conflicts on
+# concurrent appends across devs and can't undo a teammate's work.
+state/align-undo-log.jsonl
+
+# Per-clone fix-align dry-run preview — transient state written by
+# `cairn fix align --dry-run`, regenerated on demand. Never shareable.
+state/fix-align-dryrun.json
 
 # Per-clone sensor baseline snapshots — `cairn init` phase 11 +
 # `cairn baseline` rerun write `sensor-audit-<ISO>.yaml` here.

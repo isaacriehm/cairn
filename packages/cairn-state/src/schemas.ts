@@ -24,7 +24,6 @@ export const ManifestEntry = z.object({
   verified_at: z.string().optional(),
   generator: z.string().optional(),
   source: z.string().optional(),
-  related_invariants: z.array(z.string()).optional(),
 });
 export type ManifestEntry = z.infer<typeof ManifestEntry>;
 

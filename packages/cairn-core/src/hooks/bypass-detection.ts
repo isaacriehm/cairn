@@ -8,6 +8,14 @@
  * we read that file + the last 5 SHAs from `git log` and surface any HEAD
  * commit that isn't in the attested set.
  *
+ * Multi-dev correctness: `.attested-commits` is per-clone, so a teammate's
+ * commit pulled into this clone is never in our local attested set. To
+ * avoid flagging every pulled commit as a bypass, we only inspect commits
+ * NOT yet reachable from any remote (`git log HEAD --not --remotes`) —
+ * i.e. local, unpushed work. Anything already on a remote was gated by CI
+ * (and attested on whatever clone authored it), so it's not a local
+ * bypass. Solo repos with no remote degrade to "inspect recent HEAD".
+ *
  * Pure functions on top of git + filesystem reads. No mutation. The Stop
  * hook calls `scanBypassedCommits(repoRoot)` and renders the inline A/B/C
  * via `renderBypassHint`.
@@ -96,9 +104,15 @@ function readRecentHead(repoRoot: string): BypassedCommit[] {
     // printable byte can legitimately appear inside a commit subject;
     // NUL cannot. Records are newline-separated; the subject (`%s`) is
     // a single line by definition, so split("\n") is safe.
+    //
+    // `HEAD --not --remotes` restricts to commits not yet on any remote —
+    // local, unpushed work. Pulled teammate commits live on origin and are
+    // excluded, so the per-clone `.attested-commits` never false-flags
+    // them. With no remote configured, `--remotes` expands to nothing and
+    // this is equivalent to plain `git log -n5` (solo behavior preserved).
     const out = execFileSync(
       "git",
-      ["log", `-n${HEAD_LOOKBACK}`, "--format=%H%x00%s"],
+      ["log", `-n${HEAD_LOOKBACK}`, "--format=%H%x00%s", "HEAD", "--not", "--remotes"],
       { cwd: repoRoot, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
     );
     const result: BypassedCommit[] = [];

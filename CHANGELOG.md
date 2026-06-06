@@ -4,6 +4,54 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] — 2026-06-06
+
+Stop committing derived ground state. Multi-dev clones each regenerated
+the `.cairn/ground/` indexes, ledgers, and caches locally — with
+`generated:` timestamps, content hashes, and token caches — then pushed
+divergent copies, so `git push` / `pull` collided on machine-generated
+YAML that operators are told never to hand-merge. The durable source of
+truth (DEC/INV `.md` frontmatter: `sot_kind` / `sot_path` /
+`sot_content_hash`) already lives in committed files; the derived files
+are now gitignored and rebuilt on demand by `rebuildDerived` (on `cairn
+join` and SessionStart).
+
+### Changed
+
+- **Derived ground state is gitignored + per-clone.** `manifest.yaml`,
+  `scope-index.yaml`, `quality-grades.yaml`, both `*.ledger.yaml`,
+  `topic-index.yaml`, `anchor-map.yaml`, `sot-cache.yaml`,
+  `sot-bindings.yaml`, `file-candidates-map.yaml`, and
+  `alignment-pending/` no longer commit. Also untracked: the per-clone
+  runtime files `.cairn/state/align-undo-log.jsonl` (local `cairn
+  attention undo` log) and `.cairn/state/fix-align-dryrun.json`, the
+  `.cairn/runs/` execution logs (heavy, per-clone — marked gitignored in
+  the layout spec but previously absent from the template), and the
+  `.cairn/.stalled-warned/` stall-warning dedup markers.
+- **New `rebuildDerived(repoRoot)`** reconstructs ledgers, scope-index,
+  manifest, sot-bindings, and sot-cache from the committed DEC/INV
+  sources. Wired into `cairn join` (previously a no-op for state) and
+  SessionStart (before context build). `topic-index` / `anchor-map`
+  re-warm lazily via the align hook; both read paths degrade gracefully
+  when empty.
+- **Archive stamps are date-precision.** `archiveEntity` writes
+  `archived_at` / `verified-at` as `YYYY-MM-DD` instead of millisecond
+  ISO, so two clones retiring the same orphan on the same day produce
+  byte-identical `.archive/` frontmatter.
+- **Bypass detection no longer false-flags teammate commits.**
+  `.attested-commits` is per-clone, so a pulled teammate commit was
+  never in the local attested set and surfaced as a spurious
+  `--no-verify` bypass on every pull. The Stop-hook scan now inspects
+  only local, unpushed commits (`git log HEAD --not --remotes`) —
+  anything already on a remote was gated by CI. Solo/no-remote repos
+  are unchanged.
+
+### Migration
+
+Projects adopted before v0.15.0: run `cairn fix gitignore` once (one
+developer), commit the `.cairn/.gitignore` + index changes, and push.
+Teammates' next `cairn join` / SessionStart rebuilds the files locally.
+
 ## [0.14.2] — 2026-06-05
 
 Remove root `.archive/` source-doc graveyard and `cairn_query_history` MCP

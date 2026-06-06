@@ -28,6 +28,7 @@ Replaces the prior Postgres design. Everything lives on disk. Two-zone canonical
 | Concurrency model | Per-write `flock` on `.cairn/.write-lock`; per-session state partition under `.cairn/sessions/<id>/` |
 | Branching | None — direct commits to main, gated by sensors at pre-commit + CI |
 | Two zones | `canonical` (default agent visible) / `historical` (`.cairn/runs/terminal/`, `.cairn/tasks/done/` — excluded from walkers) |
+| Sources vs. derivations | Commit sources (DEC/INV `.md`, config, canonical-map, brand, product), gitignore everything regenerable (ledgers, scope-index, manifest, topic-index, anchor-map, sot-cache, sot-bindings, file-candidates-map, quality-grades). Derived files rebuilt by `rebuildDerived` on `cairn join` / SessionStart. Committing derivations caused multi-dev merge conflicts (every clone rewrote + committed divergent copies). |
 | Provenance | YAML frontmatter required on every load-bearing markdown |
 | Append-only writes | Via Cairn MCP tools — no read-before-write penalty |
 
@@ -55,28 +56,34 @@ The layout below is **stack-agnostic**. Subdirectories under `.cairn/ground/{sch
 │   │   ├── sensors.yaml            ← sensor registry                      CANONICAL
 │   │   ├── stub-patterns.yaml      ← Layer A catalog (grows via /oops)    CANONICAL
 │   │   └── trust-policy.yaml       ← per-command trust posture            CANONICAL
-│   ├── ground/                     ← THE single source of truth           CANONICAL (committed)
-│   │   ├── manifest.yaml           ← {path, sha256, verified_at, classification, audience} per file
+│   ├── ground/                     ← source of truth + derived indexes     MIXED
+│   │   ├── manifest.yaml           ← {path, sha256, ...} per file (derived) GITIGNORED
 │   │   ├── decisions/
 │   │   │   ├── _inbox/             ← draft decisions awaiting confirm     GITIGNORED
-│   │   │   ├── DEC-0001.md         ← committed accepted decisions
-│   │   │   └── decisions.ledger.yaml ← compact, always-loaded summary
+│   │   │   ├── DEC-<hash7>.md      ← committed accepted decisions          CANONICAL (committed)
+│   │   │   └── decisions.ledger.yaml ← compact summary (derived)          GITIGNORED
 │   │   ├── invariants/
-│   │   │   ├── INV-0001.md         ← §INV invariant (monotonic, never reused)
-│   │   │   └── invariants.ledger.yaml
+│   │   │   ├── INV-<hash7>.md      ← §INV invariant (monotonic)            CANONICAL (committed)
+│   │   │   └── invariants.ledger.yaml ← (derived)                          GITIGNORED
 │   │   ├── .archive/               ← retired DEC/INV graveyard            NON-CANONICAL (committed)
-│   │   │   ├── decisions/          ← archived DECs (status: archived)
+│   │   │   ├── decisions/          ← archived DECs (status: archived; date-precision stamps)
 │   │   │   └── invariants/         ← archived INVs (status: archived)
 │   │   ├── canonical-map/
-│   │   │   └── topics.yaml         ← topic → canonical-doc-path
-│   │   ├── scope-index.yaml        ← file path → {decisions[], invariants[]} (mapper-generated, refreshed by GC sweep)
-│   │   ├── brand/                  ← brand ground state (overview.md always injected at SessionStart)
-│   │   ├── product/                ← product positioning + personas
+│   │   │   └── topics.yaml         ← topic → canonical-doc-path            CANONICAL (committed)
+│   │   ├── scope-index.yaml        ← file path → {decisions[], invariants[]} (derived) GITIGNORED
+│   │   ├── topic-index.yaml        ← content-slug → DEC dedup memory (derived) GITIGNORED
+│   │   ├── anchor-map.yaml         ← slug → current source location (derived) GITIGNORED
+│   │   ├── sot-cache.yaml          ← tokenized DEC bodies, Layer A Jaccard (derived) GITIGNORED
+│   │   ├── sot-bindings.yaml       ← DEC ↔ sot_path bidirectional map (derived) GITIGNORED
+│   │   ├── file-candidates-map.yaml ← per-file unpromoted-candidate count (derived) GITIGNORED
+│   │   ├── alignment-pending/      ← per-clone SoT-drift review queue      GITIGNORED
+│   │   ├── brand/                  ← brand ground state                    CANONICAL (committed)
+│   │   ├── product/                ← product positioning + personas        CANONICAL (committed)
 │   │   ├── schema/                 ← stack-detected: ORM schema dump (Drizzle / Prisma / SQLAlchemy / etc.) — empty if no ORM
 │   │   ├── routes/                 ← stack-detected: API route table (OpenAPI / NestJS / FastAPI / etc.) — empty if no routes
 │   │   ├── events/                 ← stack-detected: event emitter+listener registry — empty if no event system
-│   │   ├── quality-grades.yaml     ← per-module score from GC
-│   │   └── glossary.md             ← terms (manual + GC-augmented)
+│   │   ├── quality-grades.yaml     ← per-module score from GC (derived)    GITIGNORED
+│   │   └── glossary.md             ← terms (manual + GC-augmented)         CANONICAL (committed)
 │   ├── tasks/
 │   │   ├── active/<task-id>/
 │   │   │   ├── spec.md             ← original task spec (frontend-adapter ingested)
@@ -519,10 +526,14 @@ lines_removed: 0
 
 ## 8. Manifest (`.cairn/ground/manifest.yaml`)
 
-The continuously-updated index of canonical files. Refreshed by the GC sweep and post-commit hook.
+The continuously-updated index of canonical files. **Gitignored +
+per-clone** (v0.15.0) — a pure derivation over the committed ground
+files. Rebuilt by `rebuildDerived` on `cairn join`, SessionStart, and
+the GC sweep; never committed (the `generated:` timestamp + per-file
+`sha256` made it a guaranteed multi-dev conflict).
 
 ```yaml
-# regenerated by GC sweep + post-commit hook
+# regenerated by rebuildDerived (join / SessionStart / GC sweep)
 # READ-ONLY for agents — they query MCP, not this file directly
 generated: 2026-05-02T03:14:00Z
 files:

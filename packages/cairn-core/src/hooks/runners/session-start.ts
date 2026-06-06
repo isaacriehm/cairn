@@ -14,13 +14,10 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import {
-  writeDecisionsLedger,
-  writeInvariantsLedger,
-} from "@isaacriehm/cairn-state";
-import {
   resolveRepoRoot,
   buildSessionStartContext,
 } from "../../session-start/index.js";
+import { rebuildDerived } from "../../state/rebuild-derived.js";
 import { inspectJoinState, runJoin } from "../../join/index.js";
 import { findCurrentActiveTask, readTaskJournal } from "../../tasks/index.js";
 import {
@@ -35,7 +32,6 @@ import {
   readAdoptionState,
 } from "../../status-line/index.js";
 import { gcStaleEvents } from "../../events/reader.js";
-import { rescanScopeIndex } from "@isaacriehm/cairn-state";
 import { readActiveTaskSummary } from "../../context/task-summary.js";
 
 import { readDeferState } from "../defer.js";
@@ -216,33 +212,19 @@ export async function runSessionStartHook(): Promise<void> {
       `events_gc_failed: ${message}`,
     );
   }
+  // Rebuild the gitignored derived ground state (ledgers, scope-index,
+  // manifest, sot-bindings, sot-cache, file-candidates) from the
+  // committed DEC/INV sources. Must run BEFORE buildSessionStartContext
+  // reads the ledgers.
   try {
-    const rescan = rescanScopeIndex(repoRoot);
-    if (rescan.dirty) {
-      sessionWarnings.push(
-        `scope_rescan_dirty:added=${rescan.entriesAdded},updated=${rescan.entriesUpdated}`,
-      );
-    }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const rebuilt = rebuildDerived(repoRoot);
     sessionWarnings.push(
-      `scope_rescan_failed: ${message}`,
+      `derived_rebuilt:dec=${rebuilt.decisions},inv=${rebuilt.invariants},bindings=${rebuilt.bindings}`,
     );
-  }
-  try {
-    writeDecisionsLedger({ repoRoot });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     sessionWarnings.push(
-      `decisions_ledger_rebuild_failed: ${message}`,
-    );
-  }
-  try {
-    writeInvariantsLedger({ repoRoot });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    sessionWarnings.push(
-      `invariants_ledger_rebuild_failed: ${message}`,
+      `derived_rebuild_failed: ${message}`,
     );
   }
 

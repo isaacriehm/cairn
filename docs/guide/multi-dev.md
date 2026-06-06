@@ -276,10 +276,17 @@ Two hooks coordinate:
    ```
    This file is gitignored — per-clone, not shared.
 2. **Stop hook** — at the end of every Claude Code assistant turn,
-   the hook diffs HEAD's last 5 commit SHAs against
-   `.cairn/.attested-commits`. Any commit not in the file is a
-   bypass candidate (either the pre-commit was skipped, or the
-   commit happened on a different clone before this clone synced).
+   the hook diffs your recent **local, unpushed** commits against
+   `.cairn/.attested-commits`. Any such commit not in the file is a
+   bypass candidate (the pre-commit hook was skipped, e.g.
+   `--no-verify`).
+
+   Only unpushed commits are inspected (`git log HEAD --not
+   --remotes`). `.attested-commits` is per-clone, so a teammate's
+   commit pulled into your clone would otherwise look unattested —
+   but it already lives on the remote and was gated by CI, so it is
+   excluded. You are only ever asked about your own ungated local
+   work. (Solo repos with no remote inspect recent HEAD as before.)
 
 ### What surfaces
 
@@ -340,52 +347,71 @@ the next pull.
 
 ### What gets committed
 
+The rule is **commit sources, gitignore derivations.** The committed
+side is the source of truth contributors share; everything Cairn can
+regenerate from it is per-clone.
+
 | Path                                          | Status         |
 | --------------------------------------------- | -------------- |
-| `.cairn/config.yaml`                          | committed      |
-| `.cairn/config/`                              | committed      |
-| `.cairn/ground/decisions/DEC-*.md`            | committed      |
-| `.cairn/ground/decisions/decisions.ledger.yaml` | committed     |
-| `.cairn/ground/invariants/INV-*.md`           | committed      |
-| `.cairn/ground/invariants/invariants.ledger.yaml` | committed   |
-| `.cairn/ground/canonical-map/`                | committed      |
-| `.cairn/ground/scope-index.yaml`              | committed      |
+| `.cairn/config.yaml`, `.cairn/config/`        | committed (source) |
+| `.cairn/ground/decisions/DEC-*.md`            | committed (source) |
+| `.cairn/ground/invariants/INV-*.md`           | committed (source) |
+| `.cairn/ground/.archive/`                     | committed (retired-entity history) |
+| `.cairn/ground/canonical-map/`                | committed (curated) |
+| `.cairn/ground/brand/`, `.cairn/ground/product/` | committed (curated) |
 | `.cairn/git-hooks/`                           | committed      |
-| `.cairn/baseline/sensor-audit-*.yaml`         | committed      |
 | `.cairn/JOIN.md`                              | committed      |
+| `.cairn/ground/manifest.yaml`                 | **gitignored** (derived) |
+| `.cairn/ground/scope-index.yaml`              | **gitignored** (derived) |
+| `.cairn/ground/quality-grades.yaml`           | **gitignored** (derived) |
+| `.cairn/ground/decisions/decisions.ledger.yaml` | **gitignored** (derived) |
+| `.cairn/ground/invariants/invariants.ledger.yaml` | **gitignored** (derived) |
+| `.cairn/ground/topic-index.yaml`              | **gitignored** (derived) |
+| `.cairn/ground/anchor-map.yaml`               | **gitignored** (derived) |
+| `.cairn/ground/sot-cache.yaml`                | **gitignored** (derived) |
+| `.cairn/ground/sot-bindings.yaml`             | **gitignored** (derived) |
+| `.cairn/ground/file-candidates-map.yaml`      | **gitignored** (derived) |
+| `.cairn/ground/alignment-pending/`            | **gitignored** (per-clone queue) |
 | `.cairn/ground/decisions/_inbox/`             | **gitignored** |
-| `.cairn/sessions/`                            | **gitignored** |
-| `.cairn/runs/`                                | **gitignored** |
-| `.cairn/staleness/`                           | **gitignored** |
+| `.cairn/sessions/`, `.cairn/runs/`            | **gitignored** |
+| `.cairn/staleness/`, `.cairn/baseline/`       | **gitignored** |
+| `.cairn/state/align-undo-log.jsonl`, `.cairn/state/fix-align-dryrun.json` | **gitignored** (per-clone) |
 | `.cairn/.attested-commits`                    | **gitignored** |
 
-The split: shared knowledge (ground state, hooks, baseline)
-commits; per-clone runtime (drafts in inbox, session state, run
-logs, attested SHAs) doesn't.
+The derived files (indexes, ledgers, caches) are rebuilt from the
+committed DEC/INV `.md` sources — which carry the load-bearing
+`sot_kind` / `sot_path` / `sot_content_hash` frontmatter — by
+`rebuildDerived`, run on `cairn join` and on every SessionStart.
 
-### Merge conflicts on decision files
+### Merge conflicts
 
-Rare — DEC ids are content-addressed (the server allocates the next
-free `DEC-NNNN` under the `flock`), so two developers running
-`cairn_record_decision` simultaneously get distinct ids. The
-ledger file is rebuilt deterministically on SessionStart, so it's
-not a real conflict source.
+Effectively none on Cairn state, by design. The two sides:
 
-The realistic conflict is two developers editing the same DEC's
-body simultaneously (both before accepting). Resolution is
-standard git — merge the markdown, accept once, the ledger rebuilds
-on next SessionStart.
+- **Sources** (`DEC-*.md`, `INV-*.md`) are content-addressed —
+  the server allocates each id from a hash under the `flock`, so two
+  developers recording decisions concurrently get distinct files, not
+  a collision. The realistic case is two people editing the same DEC
+  body before accepting; that is standard markdown git merge.
+- **Derived files** used to be committed and were the real conflict
+  source — every clone rewrote them locally (timestamps, content
+  hashes, token caches) and pushed divergent copies, so `push` /
+  `pull` collided on machine-generated YAML. As of v0.15.0 they are
+  gitignored and never committed, so the conflict surface is gone.
 
-If you do see a conflict in `decisions.ledger.yaml`, don't try to
-hand-merge it. Resolve the conflict on the underlying `DEC-*.md`
-files, then delete the ledger:
+If you adopted Cairn before v0.15.0, the derived files are still
+tracked in your repo. Untrack them once (one developer, one commit):
 
 ```bash
-rm .cairn/ground/decisions/decisions.ledger.yaml
-# Open Claude Code in the project; SessionStart rebuilds it.
+cairn fix gitignore
+git add .cairn/.gitignore
+git commit -m "cairn: untrack derived ground state (v0.15.0)"
 ```
 
-The ledger is a derived artifact — never edit it by hand.
+This rewrites `.cairn/.gitignore` from the bundled template and
+`git rm --cached` the now-ignored paths. Teammates pick it up on the
+next pull; their next `cairn join` / SessionStart rebuilds the files
+locally. Never hand-edit a derived file — it is regenerated on every
+session.
 
 ### Pulling new decisions
 

@@ -34,6 +34,7 @@
 import { execSync } from "node:child_process";
 import {
   copyFileSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -260,8 +261,11 @@ async function main(): Promise<void> {
   assert(broken !== undefined, "expected broken_link finding");
   console.log(`  broken_link=${broken!.path}`);
 
-  // ── Step 7: quality-grades pass writes a fresh yaml.
-  header("Step 7: quality-grades writes fresh yaml + safe-class proposal");
+  // ── Step 7: quality-grades pass writes a fresh yaml LOCALLY (no commit).
+  // v0.15.0: quality-grades.yaml is gitignored + per-clone (derived from
+  // per-clone runs/terminal/), so the GC pass writes it directly and emits
+  // NO commit proposal.
+  header("Step 7: quality-grades writes fresh yaml locally (no commit proposal)");
   const terminalRunDir = join(root, ".cairn", "runs", "terminal", "run-smoke-1");
   mkdirSync(terminalRunDir, { recursive: true });
   writeFileSync(
@@ -295,13 +299,17 @@ async function main(): Promise<void> {
     .catch(() => undefined);
   const sweepQuality = await runGcSweep({ repoRoot: root });
   const qualityProposal = sweepQuality.proposals.find((p) => p.pass === "quality-grades");
-  assert(qualityProposal !== undefined, "expected a quality-grades proposal");
-  assert(qualityProposal!.class === "safe", "quality-grades proposals must be safe-class");
   assert(
-    qualityProposal!.paths.includes(".cairn/ground/quality-grades.yaml"),
-    "expected proposal to target quality-grades.yaml",
+    qualityProposal === undefined,
+    "quality-grades must NOT emit a commit proposal (gitignored + per-clone, v0.15.0)",
   );
-  console.log(`  proposal paths=${qualityProposal!.paths.join(", ")}`);
+  const qualityFinding = sweepQuality.findings.find((f) => f.pass === "quality-grades");
+  assert(qualityFinding !== undefined, "expected a quality-grades finding");
+  assert(
+    existsSync(join(root, ".cairn", "ground", "quality-grades.yaml")),
+    "quality-grades.yaml must be written to disk locally",
+  );
+  console.log(`  quality-grades written locally, no commit proposal`);
 
   // ── Step 8: classifier escalates high-stakes hits.
   header("Step 8: classifier — high-stakes glob escalates to high-stakes");
@@ -332,8 +340,10 @@ async function main(): Promise<void> {
       "---\n# Stale\n\nBody. [link](../AGENTS.md)\n",
     "utf8",
   );
-  // Seed a terminal run so quality-grades pass produces a SECOND proposal —
-  // the batch then has >= 2 commits and the canary check fires.
+  // Seed a terminal run for the quality-grades pass (now a local write, no
+  // proposal). The frontmatter pass aggregates stale docs into a single
+  // proposal, so this batch typically applies one commit — Step 9's hard
+  // assertion is the direct canary check below, not the batch size.
   const rbTerminalRunDir = join(
     rollbackRoot,
     ".cairn",

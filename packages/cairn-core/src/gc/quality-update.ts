@@ -10,7 +10,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import { buildQualityGrades, qualityGradesPath } from "@isaacriehm/cairn-state";
+import { buildQualityGrades, qualityGradesPath, writeFileSafe } from "@isaacriehm/cairn-state";
 import type { GcCommitProposal, GcFinding } from "./types.js";
 
 const PASS_ID = "quality-grades" as const;
@@ -53,17 +53,12 @@ export async function runQualityUpdate(
   };
   findings.push(finding);
 
-  proposals.push({
-    pass: PASS_ID,
-    class: "safe",
-    paths: [relPath],
-    patch: { [relPath]: newContent },
-    commit_message:
-      `chore(gc): refresh quality-grades.yaml (${grades.modules.length} modules)\n\n` +
-      `GC quality-grades pass — recomputed from .cairn/runs/terminal/.\n` +
-      `Auto-applied as safe-class (GC auto-merge policy).\n`,
-    findings: [finding],
-  });
+  // quality-grades.yaml is gitignored + per-clone (v0.15.0) — it derives
+  // from .cairn/runs/terminal/, which is itself per-clone. Write it
+  // locally; never emit a commit proposal. Committing it caused multi-dev
+  // merge conflicts, and post-cutover a proposal would `git add` an
+  // ignored path (no-op → empty/failed commit).
+  writeFileSafe(filePath, newContent);
 
   return { findings, proposals };
 }
