@@ -15,6 +15,12 @@ export {
   withSpinner,
 } from "./visual.js";
 export { applyBrandAnswers, runBrandSetup } from "./brand-setup.js";
+export {
+  ensureCairnRuleImport,
+  installCairnRuleAndImport,
+  CAIRN_RULE_IMPORT,
+} from "./claude-rule.js";
+export type { EnsureImportResult, InstallRuleResult } from "./claude-rule.js";
 export type {
   BrandAnswers,
   RunBrandSetupOptions,

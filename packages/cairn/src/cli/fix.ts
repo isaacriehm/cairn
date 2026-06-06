@@ -46,6 +46,7 @@ import {
   applyBrandAnswers,
   deriveBrandFromProject,
   derivedToBrandAnswers,
+  ensureCairnRuleImport,
   gitDirtyPathsInScope,
   parseDraftMeta,
   readMapperOutputFile,
@@ -292,37 +293,45 @@ async function fixClaudeRules(repoRoot: string, dryRun: boolean): Promise<void> 
     `  ⬡ cairn fix claude-rules${dryRun ? " --dry-run" : ""} — ${repoRoot}\n` +
       `    template: ${templatePath}\n    target:   ${targetRel}\n\n`,
   );
-  if (existsSync(targetAbs)) {
-    const current = readFileSync(targetAbs, "utf8");
-    if (current === templateContent) {
-      process.stdout.write("  · already matches template (no-op)\n");
-      process.exit(0);
-    }
-    process.stdout.write("  ! existing file differs from template\n");
-    if (dryRun) {
-      process.stdout.write(`  [dry-run] would overwrite ${targetRel}\n`);
-      process.exit(0);
-    }
+  // 1. Write / repair the rule file.
+  const exists = existsSync(targetAbs);
+  const current = exists ? readFileSync(targetAbs, "utf8") : null;
+  let ruleNote: string;
+  if (current === templateContent) {
+    ruleNote = `· ${targetRel} already matches template`;
+  } else if (dryRun) {
+    ruleNote = `[dry-run] would ${exists ? "overwrite" : "write"} ${targetRel}`;
+  } else {
+    const targetDir = dirname(targetAbs);
+    if (!existsSync(targetDir)) mkdirSync(targetDir, { recursive: true });
     writeFileSync(targetAbs, templateContent, "utf8");
-    process.stdout.write(`  ✓ ${targetRel} overwritten with current template\n`);
-    process.exit(0);
+    ruleNote = `✓ ${targetRel} ${exists ? "overwritten with current template" : "written"}`;
   }
+  process.stdout.write(`  ${ruleNote}\n`);
+
+  // 2. Wire the `@`-import into the auto-loaded memory file. WITHOUT this
+  //    the rule is orphaned — Claude Code doesn't auto-load
+  //    `.claude/rules/*`, so a teammate cloning the repo without the
+  //    plugin never sees the install notice (the failure this repairs).
+  //    Critically this runs even when the rule already matches.
   if (dryRun) {
-    process.stdout.write(`  [dry-run] would write ${targetRel}\n`);
+    process.stdout.write(
+      `  [dry-run] would ensure \`@.claude/rules/cairn.md\` import in CLAUDE.md / AGENTS.md\n`,
+    );
     process.exit(0);
   }
-  // mkdir -p .claude/rules/
-  const targetDir = dirname(targetAbs);
-  if (!existsSync(targetDir)) {
-    mkdirSync(targetDir, { recursive: true });
-  }
-  writeFileSync(targetAbs, templateContent, "utf8");
+  const imp = ensureCairnRuleImport(repoRoot);
   process.stdout.write(
-    `  ✓ ${targetRel} written\n` +
-      `\n  Teammates without the Cairn plugin will now see install\n` +
-      `  instructions on session start. Commit the file:\n` +
-      `    git add ${targetRel}\n` +
-      `    git commit -m "cairn: add .claude/rules/cairn.md for plugin-absent onboarding"\n`,
+    imp.changed
+      ? `  ✓ wired \`@.claude/rules/cairn.md\` import into ${imp.file}${imp.created ? " (created)" : ""}\n`
+      : `  · ${imp.file} already imports the rule\n`,
+  );
+
+  process.stdout.write(
+    `\n  Teammates without the Cairn plugin will now see install\n` +
+      `  instructions on session start. Commit:\n` +
+      `    git add ${targetRel} ${imp.file}\n` +
+      `    git commit -m "cairn: wire plugin-absent onboarding rule + import"\n`,
   );
   process.exit(0);
 }

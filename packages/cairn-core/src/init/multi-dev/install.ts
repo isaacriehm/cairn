@@ -16,6 +16,7 @@
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { installCairnRuleAndImport } from "../claude-rule.js";
 
 const PREPARE_SCRIPT_FRAGMENT = "cairn join || true";
 
@@ -104,6 +105,37 @@ export function installMultiDev(args: InstallMultiDevArgs): MultiDevInstallResul
     status: "ok",
     detail: `detected ${hostKinds.join(", ")}`,
   });
+
+  // Plugin-absent onboarding. Write `.claude/rules/cairn.md` and wire the
+  // `@`-import into the auto-loaded memory file (CLAUDE.md) so teammates
+  // who clone this repo WITHOUT the Cairn plugin still see the install
+  // notice on their first turn. Without the import the rule is orphaned —
+  // Claude Code does not auto-load `.claude/rules/*` on its own, so the
+  // fallback never fires (the failure that motivated this).
+  if (args.dryRun === true) {
+    steps.push({
+      step: "wire-cairn-rule-import",
+      status: "skipped",
+      detail: "dry-run",
+    });
+  } else {
+    try {
+      const res = installCairnRuleAndImport(repoRoot);
+      steps.push({
+        step: "wire-cairn-rule-import",
+        status: "ok",
+        detail: `rule ${res.ruleWritten ? "written" : "current"}; import ${
+          res.changed ? `added to ${res.file}` : "already present"
+        }`,
+      });
+    } catch (err) {
+      steps.push({
+        step: "wire-cairn-rule-import",
+        status: "error",
+        detail: `failed: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+  }
 
   return { hostKinds, preparePatched: false, manualHints, steps };
 }

@@ -4,6 +4,35 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.1] — 2026-06-06
+
+Fix plugin-absent onboarding. A teammate who cloned an adopted repo and
+ran Claude Code **without the Cairn plugin installed** saw nothing — no
+banner, no rules, no install prompt. The Cairn surface is plugin-
+delivered (per-machine), and the only repo-committed fallback,
+`.claude/rules/cairn.md`, was orphaned: nothing `@`-imported it, and
+Claude Code does not auto-load `.claude/rules/*` on its own. So the
+"install the plugin" notice could never fire — it required the plugin.
+
+### Fixed
+
+- **`.claude/rules/cairn.md` is now wired into the auto-loaded memory
+  file.** New `ensureCairnRuleImport` adds `@.claude/rules/cairn.md` to
+  `CLAUDE.md` (or `AGENTS.md` when `CLAUDE.md` is absent; creates
+  `CLAUDE.md` if neither exists), idempotently. Adoption (multi-dev
+  install) now writes the rule **and** wires the import; `cairn fix
+  claude-rules` does the same — including the previously-broken case
+  where the rule already matched the template but the import was
+  missing (the exact state that shipped to existing repos).
+- **Rule sharpened** to lead with a hard stop + the `/plugin install`
+  command when the Cairn MCP tools are absent.
+
+### Migration
+
+Existing adopted repos: run `cairn fix claude-rules`, commit the
+`CLAUDE.md` + `.claude/rules/cairn.md` changes, and push. Teammates then
+get the install prompt on their first session, plugin or not.
+
 ## [0.15.0] — 2026-06-06
 
 Stop committing derived ground state. Multi-dev clones each regenerated
