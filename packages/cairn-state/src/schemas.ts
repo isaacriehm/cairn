@@ -533,8 +533,55 @@ export const MissionPhaseProgressEntry = z.object({
    * past the phase or the phase is reopened.
    */
   ready_emitted: z.boolean().optional(),
+  /**
+   * Per-phase tightening state. Unset while the phase still needs a
+   * just-in-time brief; `drafted` once `cairn_mission_plan_phase` has
+   * written a brief the operator hasn't confirmed; `accepted` once the
+   * brief is locked and tasks may inherit it. The cursor landing on a
+   * phase with `brief_status` unset is the "brief-pending" signal the
+   * direction skill reads before creating phase-anchored tasks.
+   */
+  brief_status: z.enum(["drafted", "accepted"]).optional(),
 });
 export type MissionPhaseProgressEntry = z.infer<typeof MissionPhaseProgressEntry>;
+
+/**
+ * One resolved fork captured during per-phase tightening — the question
+ * the brief closed plus the operator's (or, in autonomous mode, the
+ * model's) choice. Mirrors a lightweight DEC without graduating to the
+ * decision graph; phase-scoped and archived with the mission.
+ */
+export const MissionPhaseBriefDecision = z.object({
+  question: z.string().min(1),
+  choice: z.string().min(1),
+  rationale: z.string().optional(),
+});
+export type MissionPhaseBriefDecision = z.infer<
+  typeof MissionPhaseBriefDecision
+>;
+
+/**
+ * Per-phase brief — `.cairn/ground/missions/<id>/briefs/<phase-id>.md`.
+ * The just-in-time tightening artifact for a single phase: the forks the
+ * operator resolved, the constraints tasks in this phase must honour,
+ * the phase acceptance bar, and the in-scope ground-state cites that
+ * pre-answered the rest. Committed alongside the roadmap (multi-dev
+ * visible). Frontmatter is canonical; prose body is operator notes.
+ */
+export const MissionPhaseBrief = z
+  .object({
+    phase_id: z.string().min(1),
+    drafted_at: z.string(),
+    status: z.enum(["drafted", "accepted"]).default("drafted"),
+    autonomous: z.boolean().optional(),
+    decisions: z.array(MissionPhaseBriefDecision).default([]),
+    constraints: z.array(z.string()).default([]),
+    acceptance: z.array(z.string()).default([]),
+    cite_decisions: z.array(z.string()).default([]),
+    cite_invariants: z.array(z.string()).default([]),
+  })
+  .passthrough();
+export type MissionPhaseBrief = z.infer<typeof MissionPhaseBrief>;
 
 export const MissionCursor = z.object({
   active_phase: z.string().nullable(),
@@ -571,6 +618,7 @@ export const MissionJournalEntry = z.object({
     "started",
     "phase-advanced",
     "phase-deferred",
+    "phase-brief-set",
     "task-attached",
     "resync-pending",
     "resync-applied",

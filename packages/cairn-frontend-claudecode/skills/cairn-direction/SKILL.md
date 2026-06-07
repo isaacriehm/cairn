@@ -29,7 +29,7 @@ the entry-point summary.
 ## Step 0 — preload deferred tools (REQUIRED FIRST)
 
 ```
-ToolSearch(select:mcp__plugin_cairn_cairn__cairn_task_create,mcp__plugin_cairn_cairn__cairn_task_complete,mcp__plugin_cairn_cairn__cairn_in_scope,mcp__plugin_cairn_cairn__cairn_canonical_for_topic,mcp__plugin_cairn_cairn__cairn_search,mcp__plugin_cairn_cairn__cairn_mission_get,mcp__plugin_cairn_cairn__cairn_mission_start,mcp__plugin_cairn_cairn__cairn_mission_accept_draft,mcp__plugin_cairn_cairn__cairn_mission_set_exit_gate,mcp__plugin_cairn_cairn__cairn_record_decision,AskUserQuestion)
+ToolSearch(select:mcp__plugin_cairn_cairn__cairn_task_create,mcp__plugin_cairn_cairn__cairn_task_complete,mcp__plugin_cairn_cairn__cairn_in_scope,mcp__plugin_cairn_cairn__cairn_canonical_for_topic,mcp__plugin_cairn_cairn__cairn_search,mcp__plugin_cairn_cairn__cairn_mission_get,mcp__plugin_cairn_cairn__cairn_mission_start,mcp__plugin_cairn_cairn__cairn_mission_accept_draft,mcp__plugin_cairn_cairn__cairn_mission_plan_phase,mcp__plugin_cairn_cairn__cairn_mission_advance,mcp__plugin_cairn_cairn__cairn_mission_set_exit_gate,mcp__plugin_cairn_cairn__cairn_record_decision,AskUserQuestion)
 ```
 
 `AskUserQuestion` is deferred — without preload you fall back to
@@ -65,15 +65,35 @@ Otherwise compare prompt to active title + goal:
 
 `cairn_mission_get({})`. `active: true` → skip (Step 2.5 anchors).
 
-`active: false` → mission-shape signals (2+ must hit): 3+ task
-verbs; enumerated phases; 3+ feature nouns from different areas;
-scope phrasing ("build the whole X"); >300 words AND 2+ H2/H3.
+`active: false` → **always run the complexity check** — this is not
+opt-in. Cairn proposes a mission whenever the work is too big for one
+task; the operator never has to ask for it.
 
-Trigger → `AskUserQuestion`: `[a]` mission, `[b]` single task. On
-`[a]`: write prompt to `.cairn/missions/_drafts/<slug>.md` →
+**Strong triggers (ANY one fires the prompt):**
+
+- Enumerated phases / steps ("first … then …", a numbered list of
+  deliverables).
+- Scope phrasing — "build the whole / entire X", "redesign Y
+  end-to-end", "rewrite Z", "from scratch".
+- The prompt points at a spec/planning doc (a `.md` path, a pasted
+  PRD, >300 words with 2+ H2/H3 sections).
+
+**Weak signals (2+ together fire the prompt):** 3+ distinct task
+verbs; 3+ feature nouns from different areas/modules; cross-cutting
+work spanning 3+ modules; an estimate the work needs multiple
+sittings.
+
+When nothing fires, proceed as a single task — but if you are about
+to create a task whose `goal` spans 3+ modules or whose acceptance
+has 4+ independent bullets, stop and run this check first.
+
+Trigger → `AskUserQuestion`: `[a]` mission (recommended for the
+listed scope), `[b]` single task. On `[a]`: write prompt to
+`.cairn/missions/_drafts/<slug>.md` →
 `cairn_mission_start({spec_path, exit_gate: "prompt"})` → surface
 phases via second `AskUserQuestion` → `cairn_mission_accept_draft`.
-Full flow: `docs/PLUGIN_ARCHITECTURE.md` §11.
+The first phase lands brief-pending → Step 2.55 tightens it before
+any task. Full flow: `docs/PLUGIN_ARCHITECTURE.md` §11.
 
 ## Hard contract — spec MUST exist before mutation
 
@@ -110,13 +130,63 @@ cursor when both omitted. Default: omit.
 `[a]` side-task (`mission_id: ""`), `[b]` fold into phase, `[c]`
 advance phase first. Full flow: `docs/PLUGIN_ARCHITECTURE.md` §11.
 
+## Step 2.55 — per-phase brief gate (active mission, JIT tightening)
+
+Runs whenever a mission is active AND you are about to create a
+phase-anchored task. Read `cursor.active_phase_brief_status` from the
+`cairn_mission_get` response.
+
+- `accepted` → phase already tightened. Read `cursor.active_phase_brief`
+  and fold its `constraints` + `acceptance` + cites into the
+  `cairn_task_create` call (Step 3). Skip the rest of 2.55.
+- `drafted` → a brief exists but isn't locked. Surface it for
+  confirmation, then continue.
+- `null` (brief-pending) → tighten THIS phase now, before any task:
+
+**1. Gather phase-scoped context (parallel).** `cairn_canonical_for_topic`
++ `cairn_in_scope` for the phase's topic; read the phase
+`exit_criteria` + the spec slice for this phase (the resume tool's
+phase section, or the `spec.md` heading matching the phase title).
+
+**2. Find load-bearing forks NOT already resolved by ground state.**
+Same bar as Step 2 (§14): a fork is resolved when an in-scope DEC /
+§INV / prior-phase brief answers it. List only the unresolved ones.
+
+**3a. No unresolved forks → silent accept.** Call
+`cairn_mission_plan_phase({ status: "accepted", decisions: [],
+constraints: [<phase rules cited from ground state>], acceptance:
+[<exit_criteria refined>], cite_decisions, cite_invariants })`.
+Surface one line: `` Phase `<title>` — ground state covers it, no
+questions. `` Continue to Step 3.
+
+**3b. Unresolved forks → ask, then lock.** `AskUserQuestion` (≤3 per
+call, cite DEC / §INV in every option, loop rounds as needed). Then
+`cairn_mission_plan_phase({ decisions: [{question, choice,
+rationale}], constraints, acceptance, cite_decisions, cite_invariants
+})` (defaults `status: "accepted"`). Surface: `` Phase `<title>`
+tightened → brief locked. ``
+
+**Autonomy override.** Mission `exit_gate: "auto"` OR an autonomy
+phrase is in play → do NOT prompt. Resolve the forks yourself from
+ground state + best judgement and call `cairn_mission_plan_phase({...,
+autonomous: true, status: "accepted"})`. The brief records what you
+chose so the operator can audit it later.
+
+The brief's `constraints` + `acceptance` flow into every
+`cairn_task_create` in this phase — that is how per-phase tightening
+reaches the work. Re-read `active_phase_brief` on each new task in the
+phase; do not re-run the gate once `brief_status: accepted`.
+
 ## Step 2.6 — autonomous mission continuation (vibe-coder mode)
 
 Operator typed `continue` / `go` / autonomy phrase AND mission
 active AND no current task → act silently, no `AskUserQuestion`.
 Auto-flip `exit_gate: "auto"` on first hit, auto-pick next PR from
-`cursor.active_phase_exit_criteria` (regex `\d+\.\d+-[A-Z]+\d+`),
-jump to Step 3. Full playbook: `docs/PLUGIN_ARCHITECTURE.md` §11.
+`cursor.active_phase_exit_criteria` (regex `\d+\.\d+-[A-Z]+\d+`).
+If `active_phase_brief_status` is `null`, run Step 2.55's autonomy
+override (self-resolve the brief, `autonomous: true`) BEFORE the
+task — never skip phase tightening, only its prompting. Then jump to
+Step 3. Full playbook: `docs/PLUGIN_ARCHITECTURE.md` §11.
 
 Don't trigger on bare `yes` / `ok` / `sure`. Yield only on
 ambiguous exit_criteria, subagent failure, or context threshold.
@@ -139,6 +209,13 @@ cairn_task_create({
 `slug` 3-80 char kebab; `title` ≤80 chars; `goal` 1-2 sentences;
 each `constraints` bullet cites a DEC / §INV. On `TASK_DIR_EXISTS`
 retry once; any other error → surface and stop.
+
+**Inherit the phase brief.** On a mission-anchored task, merge the
+accepted brief (`cursor.active_phase_brief` from Step 2.55) into this
+call: its `constraints` join `constraints`, its `acceptance` joins
+`acceptance`, its `cite_decisions` / `cite_invariants` join
+`in_scope_decisions` / `in_scope_invariants`. The phase brief is the
+task's inherited spine — task-specific constraints layer on top.
 
 ## Steps 4-5 — chunk + dispatch
 

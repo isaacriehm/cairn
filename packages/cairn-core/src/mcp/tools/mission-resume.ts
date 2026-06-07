@@ -17,6 +17,7 @@ import {
   locateMission,
   readMissionSpec,
   readMissionState,
+  readPhaseBrief,
   readRoadmap,
   slicePhaseSection,
 } from "@isaacriehm/cairn-state";
@@ -89,13 +90,44 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
   lines.push(`- spec: \`${roadmap.frontmatter.spec_path}\``);
   lines.push(`- progress: ${donePhases}/${totalPhases} phases`);
   lines.push(`- exit_gate: ${roadmap.frontmatter.exit_gate}`);
+  const cursorBrief =
+    cursorPhaseId === null
+      ? null
+      : readPhaseBrief(ctx.repoRoot, missionId, cursorPhaseId);
+  // Committed brief file is canonical; per-clone flag is the fallback.
+  const cursorBriefStatus =
+    cursorBrief?.status ??
+    (cursorPhaseId === null
+      ? null
+      : state.phase_progress[cursorPhaseId]?.brief_status ?? null);
   if (cursorPhase !== null) {
     lines.push(`- cursor: \`${cursorPhase.id}\` — ${cursorPhase.title}`);
     lines.push(`  - exit_criteria: ${cursorPhase.exit_criteria}`);
+    lines.push(`  - brief: ${cursorBriefStatus ?? "pending (run Step 2.55 before tasks)"}`);
   } else {
     lines.push(`- cursor: (no active phase — mission may be near close)`);
   }
   lines.push("");
+
+  if (cursorBrief !== null) {
+    lines.push(`## Phase brief — ${cursorPhase?.title ?? cursorBrief.phase_id}`);
+    lines.push("");
+    if (cursorBrief.decisions.length > 0) {
+      lines.push("Decisions:");
+      for (const d of cursorBrief.decisions) {
+        lines.push(`- ${d.question} → ${d.choice}`);
+      }
+    }
+    if (cursorBrief.constraints.length > 0) {
+      lines.push("Constraints:");
+      for (const c of cursorBrief.constraints) lines.push(`- ${c}`);
+    }
+    if (cursorBrief.acceptance.length > 0) {
+      lines.push("Acceptance:");
+      for (const a of cursorBrief.acceptance) lines.push(`- ${a}`);
+    }
+    lines.push("");
+  }
 
   if (recentGraduated.length > 0) {
     lines.push("## Recent graduated tasks");

@@ -321,6 +321,37 @@ export const missionGetInput = {
 };
 
 /**
+ * `cairn_mission_plan_phase` — write the just-in-time tightening brief
+ * for one phase. `phase_id` defaults to the cursor's active phase.
+ * `decisions` captures the forks resolved during tightening;
+ * `constraints`/`acceptance` are inherited by every task created in the
+ * phase; `cite_decisions`/`cite_invariants` record the ground-state
+ * entries that pre-answered the rest. `status=accepted` (default) locks
+ * the brief so tasks may inherit it; `drafted` parks it for review.
+ * `autonomous: true` marks a brief the model self-resolved without an
+ * operator prompt (exit_gate=auto path).
+ */
+export const missionPlanPhaseInput = {
+  phase_id: missionPhaseIdField.optional(),
+  decisions: z
+    .array(
+      z.object({
+        question: z.string().min(1),
+        choice: z.string().min(1),
+        rationale: z.string().optional(),
+      }),
+    )
+    .optional(),
+  constraints: z.array(z.string()).optional(),
+  acceptance: z.array(z.string()).optional(),
+  cite_decisions: z.array(z.string()).optional(),
+  cite_invariants: z.array(z.string()).optional(),
+  status: z.enum(["drafted", "accepted"]).optional(),
+  autonomous: z.boolean().optional(),
+  notes: z.string().optional(),
+};
+
+/**
  * `cairn_mission_advance` — operator picked a phase-exit choice.
  * `phase_id` is the phase being exited. choice=exit advances cursor;
  * choice=not_yet keeps cursor; choice=defer suppresses the prompt for

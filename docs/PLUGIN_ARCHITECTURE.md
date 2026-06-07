@@ -259,7 +259,7 @@ Tools (28 current, see `MCP_SURFACE.md` for full schema):
 - **Write — attention queue**: `cairn_resolve_attention(item_id, choice)` (inline-A/B/C resolution endpoint — skill calls this after operator picks), `cairn_bulk_accept_attention`, `cairn_attention_dedup`, `cairn_attention_serve`, `cairn_attention_wait`.
 - **Write — bootstrap recovery**: `cairn_bootstrap_retry`.
 - **Write — init pipeline**: `cairn_init_resume`, `cairn_init_run`.
-- **Mission system — supra-task layer**: `cairn_mission_start`, `cairn_mission_accept_draft`, `cairn_mission_get`, `cairn_mission_advance`, `cairn_mission_resume`, `cairn_mission_resync`, `cairn_mission_resync_accept`, `cairn_mission_set_exit_gate`.
+- **Mission system — supra-task layer**: `cairn_mission_start`, `cairn_mission_accept_draft`, `cairn_mission_get`, `cairn_mission_plan_phase`, `cairn_mission_advance`, `cairn_mission_resume`, `cairn_mission_resync`, `cairn_mission_resync_accept`, `cairn_mission_set_exit_gate`.
 
 Write tools wrap their work in the per-write flock helper from `cairn-core/src/lock.ts` (new module).
 
@@ -428,9 +428,19 @@ When `.cairn/tasks/active/<id>/` exists and the operator's new prompt arrives, t
 
 ### Mission scope detection (no active mission)
 
-When `cairn_mission_get({})` returns `active: false`, the skill scans the prompt for **mission-shape signals**. Trigger when 2+ hit: 3+ distinct task verbs; enumerated phases (`1. … 2. …` or `first … then …`); 3+ feature nouns from different areas; scope phrasing (`build the whole X`, `redesign Y end-to-end`); >300 words AND 2+ H2/H3 sections.
+When `cairn_mission_get({})` returns `active: false`, the skill **always runs a complexity check** — proposing a mission is not opt-in, and the operator never has to ask for one. Cairn surfaces the mission/task choice the moment the work outgrows a single task.
 
-Trigger → `AskUserQuestion`: `[a]` mission, `[b]` single task.
+**Strong triggers — any ONE fires the prompt:**
+
+- Enumerated phases / steps (`1. … 2. …`, `first … then …`, a numbered deliverable list).
+- Scope phrasing — `build the whole / entire X`, `redesign Y end-to-end`, `rewrite Z`, `from scratch`.
+- The prompt points at a spec/planning artifact — a `.md` path, a pasted PRD, or >300 words with 2+ H2/H3 sections.
+
+**Weak signals — 2+ together fire the prompt:** 3+ distinct task verbs; 3+ feature nouns from different areas; cross-cutting work spanning 3+ modules; explicit multi-sitting framing.
+
+When nothing fires, the skill proceeds as a single task — but if it is about to create a task whose `goal` spans 3+ modules or whose acceptance has 4+ independent bullets, it re-runs this check first. The bar is deliberately low: a missed mission costs the operator a sprawling untracked task; a false-positive costs one `AskUserQuestion` they answer `[b]` to.
+
+Trigger → `AskUserQuestion`: `[a]` mission (recommended for the listed scope), `[b]` single task.
 
 On `[a]`: pick a slug (first 3-4 words of the prompt's first sentence, kebab, ≤30 chars). `mkdir -p .cairn/missions/_drafts/` then `Write` the prompt verbatim to `.cairn/missions/_drafts/<slug>.md` with an H1 ≤60 chars prepended. Call `cairn_mission_start({spec_path, exit_gate: "prompt"})`. The response carries a draft envelope (proposed_title, spec_path, exit_gate, phases, truncated, llm_used). Surface the phases via a second `AskUserQuestion` so the operator confirms before commit (`[a]` accept, `[b]` edit first, `[c]` cancel). On accept: `cairn_mission_accept_draft({title, spec_path, exit_gate, phases})` with the values from the start response. Mission goes live with the cursor on phase-1.
 
@@ -441,6 +451,24 @@ On `[b]`: skip the mission, proceed as a single task. On accept-edit `[b]`: end 
 When `cairn_mission_get` returns `active: true`, `cairn_task_create` auto-stamps `mission_id` + `phase_id` from the cursor when both fields are omitted. The default is to omit — let cursor pickup win.
 
 **Off-mission detection.** Read the cursor phase's `title` + `exit_criteria` from the `cairn_mission_get` response. If the operator's prompt clearly diverges (different file globs, different feature area, no overlap with exit_criteria), surface `AskUserQuestion`: `[a]` side-task (`mission_id: ""`, no phase anchor), `[b]` fold into current phase (omit mission fields), `[c]` advance to a different phase first (list pending phases via a follow-up question, operator picks one, then `cairn_mission_advance({phase_id: <current>, choice: "force"})` and re-run anchoring).
+
+### Per-phase brief — just-in-time phase tightening
+
+The roadmap draft is deliberately thin: each phase carries only a `title` + `exit_criteria`. The detail — the load-bearing decisions, the constraints tasks must honour, the phase's verifiable acceptance bar — is tightened **just-in-time when the cursor lands on the phase**, not upfront. This mirrors the GSD `discuss-phase → plan-phase` pattern: plan the phase you are about to execute, with current ground state in hand, rather than guessing the whole mission's detail at draft time.
+
+`cairn_mission_get` exposes `cursor.active_phase_brief_status` (`null` = brief-pending, `drafted`, `accepted`) and `cursor.active_phase_brief` (the committed brief, if written). The direction skill's **Step 2.55** gate reads this before creating any phase-anchored task:
+
+- **`accepted`** → fold the brief's `constraints` + `acceptance` + cites into the `cairn_task_create` call; skip tightening.
+- **`null` (brief-pending)** → tighten the phase now:
+  1. Gather phase-scoped ground state (`cairn_canonical_for_topic` + `cairn_in_scope` for the phase topic; read `exit_criteria` + the phase's `spec.md` slice).
+  2. Find load-bearing forks the ground state does **not** already resolve (same §14 bar as task tightening).
+  3. **Smart gate** — no unresolved forks → `cairn_mission_plan_phase({ status: "accepted", decisions: [] })` silently; the phase is briefed with zero operator friction. Unresolved forks → `AskUserQuestion` (cite DEC / §INV per option, loop rounds), then `cairn_mission_plan_phase({ decisions, constraints, acceptance, cite_decisions, cite_invariants })`.
+
+`cairn_mission_plan_phase` writes a committed `.cairn/ground/missions/<id>/briefs/<phase-id>.md` (multi-dev visible, the phase analog of `roadmap.md`) and stamps `phase_progress[phase].brief_status`. Tasks created in the phase inherit the brief as their spine — that is the channel through which per-phase tightening reaches the work.
+
+**Autonomy.** Under `exit_gate: "auto"` (or an active autonomy phrase), Step 2.55 never prompts: the model self-resolves the forks from ground state + best judgement and calls `cairn_mission_plan_phase({ …, autonomous: true })`. The brief records the chosen answers so the operator can audit them after the fact. Phase tightening is never skipped — only its prompting is suppressed.
+
+**Resume.** `cairn_mission_resume` primes the cursor phase's brief (decisions / constraints / acceptance) into the post-`/clear` frame, and flags `brief: pending` when the phase still needs Step 2.55. The brief survives `/clear` because it is committed state, not chat context.
 
 ### Autonomous mission continuation
 

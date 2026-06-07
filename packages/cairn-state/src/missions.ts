@@ -22,6 +22,7 @@ import { dirname } from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { parseFrontmatterRecord } from "./frontmatter.js";
 import {
+  missionBriefPath,
   missionGroundDir,
   missionRoadmapPath,
   missionRuntimeDir,
@@ -38,6 +39,7 @@ import {
   type MissionJournalEntry,
   type MissionPhase,
   type MissionPhaseProgressEntry,
+  MissionPhaseBrief,
   MissionRoadmapFrontmatter,
   MissionState,
 } from "./schemas.js";
@@ -97,6 +99,96 @@ export function writeRoadmap(
   const path = missionRoadmapPath(repoRoot, missionId);
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, serializeRoadmap(frontmatter, prose), "utf8");
+}
+
+/* -------------------------------------------------------------------------- */
+/* Per-phase brief (committed `.cairn/ground/missions/<id>/briefs/<id>.md`)    */
+/* -------------------------------------------------------------------------- */
+
+export interface ParsedPhaseBrief {
+  frontmatter: MissionPhaseBrief;
+  prose: string;
+}
+
+export function parsePhaseBrief(source: string): ParsedPhaseBrief {
+  const { fm, body } = parseFrontmatterRecord(source);
+  if (Object.keys(fm).length === 0) {
+    throw new Error("phase brief is missing frontmatter");
+  }
+  const result = MissionPhaseBrief.safeParse(fm);
+  if (!result.success) {
+    throw new Error(`phase brief frontmatter invalid: ${result.error.message}`);
+  }
+  return { frontmatter: result.data, prose: body };
+}
+
+/**
+ * Render a human-readable brief: YAML frontmatter (the canonical
+ * machine surface) plus a mirrored markdown body so the file reads
+ * cleanly in a diff or editor. The body is derived from the frontmatter
+ * on every write — it is never the source of truth.
+ */
+export function serializePhaseBrief(
+  brief: MissionPhaseBrief,
+  prose: string = "",
+): string {
+  const yaml = stringifyYaml(brief);
+  const sections: string[] = [`# Phase brief — ${brief.phase_id}`, ""];
+  if (brief.decisions.length > 0) {
+    sections.push("## Decisions", "");
+    for (const d of brief.decisions) {
+      sections.push(
+        `- **${d.question}** → ${d.choice}${d.rationale ? ` _(${d.rationale})_` : ""}`,
+      );
+    }
+    sections.push("");
+  }
+  if (brief.constraints.length > 0) {
+    sections.push("## Constraints", "");
+    for (const c of brief.constraints) sections.push(`- ${c}`);
+    sections.push("");
+  }
+  if (brief.acceptance.length > 0) {
+    sections.push("## Acceptance", "");
+    for (const a of brief.acceptance) sections.push(`- ${a}`);
+    sections.push("");
+  }
+  const cites = [...brief.cite_decisions, ...brief.cite_invariants];
+  if (cites.length > 0) {
+    sections.push("## In-scope ground state", "");
+    sections.push(cites.map((c) => `\`${c}\``).join(" · "));
+    sections.push("");
+  }
+  const extraProse = prose.replace(/^\n+/, "").trimEnd();
+  const body = extraProse.length > 0
+    ? `${sections.join("\n")}\n${extraProse}\n`
+    : `${sections.join("\n")}\n`;
+  return `---\n${yaml}---\n\n${body}`;
+}
+
+export function readPhaseBrief(
+  repoRoot: string,
+  missionId: string,
+  phaseId: string,
+): MissionPhaseBrief | null {
+  const path = missionBriefPath(repoRoot, missionId, phaseId);
+  if (!existsSync(path)) return null;
+  try {
+    return parsePhaseBrief(readFileSync(path, "utf8")).frontmatter;
+  } catch {
+    return null;
+  }
+}
+
+export function writePhaseBrief(
+  repoRoot: string,
+  missionId: string,
+  brief: MissionPhaseBrief,
+  prose: string = "",
+): void {
+  const path = missionBriefPath(repoRoot, missionId, brief.phase_id);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, serializePhaseBrief(brief, prose), "utf8");
 }
 
 /* -------------------------------------------------------------------------- */

@@ -186,6 +186,20 @@ export function missionRoadmapPath(repoRoot: string, missionId: string): string 
   return join(missionGroundDir(repoRoot, missionId), "roadmap.md");
 }
 
+/** `.cairn/ground/missions/<id>/briefs/` — committed per-phase briefs. */
+export function missionBriefsDir(repoRoot: string, missionId: string): string {
+  return join(missionGroundDir(repoRoot, missionId), "briefs");
+}
+
+/** `.cairn/ground/missions/<id>/briefs/<phaseId>.md`. */
+export function missionBriefPath(
+  repoRoot: string,
+  missionId: string,
+  phaseId: string,
+): string {
+  return join(missionBriefsDir(repoRoot, missionId), `${phaseId}.md`);
+}
+
 /** `.cairn/missions/` — per-clone runtime state root. */
 export function missionsRuntimeRoot(repoRoot: string): string {
   return join(repoRoot, ".cairn", "missions");

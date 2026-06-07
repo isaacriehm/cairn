@@ -14,6 +14,7 @@ import {
 import { missionStartTool } from "./mission-start.js";
 import { missionAcceptDraftTool } from "./mission-accept-draft.js";
 import { missionGetTool } from "./mission-get.js";
+import { missionPlanPhaseTool } from "./mission-plan-phase.js";
 import { missionAdvanceTool } from "./mission-advance.js";
 import { missionResumeTool } from "./mission-resume.js";
 import { missionResyncTool } from "./mission-resync.js";
@@ -64,6 +65,7 @@ export const allTools: ToolDef<never>[] = [
   missionStartTool,
   missionAcceptDraftTool,
   missionGetTool,
+  missionPlanPhaseTool,
   missionAdvanceTool,
   missionResumeTool,
   missionResyncTool,

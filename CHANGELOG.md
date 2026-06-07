@@ -4,6 +4,51 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] — 2026-06-06
+
+Per-phase mission tightening. Missions used to draft the whole roadmap
+upfront — each phase carried only a title + exit_criteria — then run to
+completion with no further questions. Now Cairn tightens each phase
+just-in-time when the cursor lands on it: it pulls in-scope ground
+state, asks only the load-bearing questions that ground state doesn't
+already answer, and locks a per-phase **brief** that every task in the
+phase inherits. Mission detection also stops feeling invoke-only — the
+direction skill now weighs complexity on every prompt and proposes a
+mission whenever the work outgrows a single task.
+
+### Added
+
+- **`cairn_mission_plan_phase` MCP tool + per-phase briefs.** Writes a
+  committed `.cairn/ground/missions/<id>/briefs/<phase>.md` capturing the
+  phase's resolved decisions, inherited constraints, acceptance bar, and
+  in-scope DEC/§INV cites. `phase_progress.brief_status` tracks
+  pending → accepted; the committed brief file is the canonical status
+  source, so a teammate who pulls the brief sees it accepted without
+  re-tightening.
+- **Just-in-time phase gate (direction skill Step 2.55).** When the
+  cursor enters a phase, the skill gathers phase-scoped ground state and
+  finds the forks ground state doesn't resolve. Smart gate: nothing
+  unresolved → the phase is marked briefed silently; otherwise the
+  operator answers the remaining questions before any task. Tasks
+  created in the phase inherit the brief's constraints + acceptance as
+  their spine.
+- **Brief survives `/clear`.** `cairn_mission_get` and
+  `cairn_mission_resume` surface the cursor phase's brief + status; a
+  resumed session re-tightens only when the phase is still pending.
+
+### Changed
+
+- **Mission detection is now always-on.** The direction skill weighs
+  complexity on every code-change prompt instead of waiting for
+  mission-shaped phrasing. Any single strong signal — enumerated phases,
+  "build the whole X", a referenced spec doc — proposes a mission; weak
+  signals still need two together. A single task about to span 3+
+  modules re-runs the check first.
+- **Autonomy-aware tightening.** Under `exit_gate: auto` (or an active
+  autonomy phrase), the phase brief is self-resolved from ground state
+  and stamped `autonomous: true` for later audit — phase tightening is
+  never skipped, only its prompting.
+
 ## [0.15.1] — 2026-06-06
 
 Fix plugin-absent onboarding. A teammate who cloned an adopted repo and
