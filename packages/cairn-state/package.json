@@ -1,6 +1,6 @@
 {
   "name": "@isaacriehm/cairn-state",
-  "version": "0.18.0",
+  "version": "0.18.1",
   "description": "Cairn state — lightweight schemas and read-only I/O.",
   "author": "Isaac Riehm",
   "license": "MIT",
@@ -25,11 +25,11 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "yaml": "^2.8.4",
+    "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/node": "^25.6.0",
+    "@types/node": "^25.9.2",
     "typescript": "^6.0.3"
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "@isaacriehm/cairn-core",
-  "version": "0.18.0",
+  "version": "0.18.1",
   "description": "Cairn core — state + context layer. Curated `.cairn/ground/` (decisions, §INV invariants, canonical-map, brand, quality-grades), MCP server, init wizard, hook runners, sensors, GC drift sweep.",
   "author": "Isaac Riehm",
   "license": "MIT",
@@ -35,20 +35,20 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
+    "@inquirer/prompts": "^8.5.2",
     "@isaacriehm/cairn-state": "workspace:*",
-    "@inquirer/prompts": "^8.4.2",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "chalk": "^5.6.2",
     "cli-progress": "^3.12.0",
     "ora": "^9.4.0",
     "pino": "^10.3.1",
     "simple-git": "^3.36.0",
-    "yaml": "^2.8.4",
+    "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/cli-progress": "^3.11.6",
-    "@types/node": "^25.6.0",
+    "@types/node": "^25.9.2",
     "typescript": "^6.0.3"
   }
 }

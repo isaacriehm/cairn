@@ -4,6 +4,20 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.1] — 2026-06-07
+
+### Security
+
+- **Patched 12 Dependabot advisories (2 high, 9 moderate, 1 low), all
+  transitive.** Added pnpm overrides pinning the flagged packages to
+  their patched versions, then refreshed the rest within their semver
+  ranges; `pnpm audit` reports no known vulnerabilities. Highs:
+  `fast-uri` ≥ 3.1.2 (host confusion) and `tmp` ≥ 0.2.6 (path traversal
+  via unsanitized prefix/postfix). Also `qs` ≥ 6.15.2, `ip-address`
+  ≥ 10.1.1, `hono` ≥ 4.12.21 (via `@hono/node-server`), and
+  `brace-expansion` ≥ 5.0.6 — the override is scoped to the v5 line so
+  the unaffected v1.x consumer is left untouched.
+
 ## [0.18.0] — 2026-06-07
 
 The component store — Cairn's fourth ground store. Cairn already stops
