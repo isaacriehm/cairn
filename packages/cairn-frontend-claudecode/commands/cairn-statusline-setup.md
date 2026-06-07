@@ -2,7 +2,7 @@
 description: Wire the Cairn `⬡` statusline badge into user-level Claude Code settings. One-time per machine.
 ---
 
-# /cairn-statusline-setup
+# /cairn:cairn-statusline-setup
 
 Wire this developer's `~/.claude/settings.json` statusline to the
 cairn bundle. Once configured, every Claude Code session shows a
@@ -30,7 +30,7 @@ Render via `AskUserQuestion`:
 > a one-line ground-state summary in every Claude Code session.
 
 - `[a]` set it up now
-- `[b]` skip — re-run `/cairn-statusline-setup` later
+- `[b]` skip — re-run `/cairn:cairn-statusline-setup` later
 
 ## Step 2 — locate the shim file
 

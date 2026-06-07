@@ -12,8 +12,9 @@
  * edit or the future annotate step).
  */
 
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { extname, join } from "node:path";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import {
   DEFAULT_CATEGORIES,
   DEFAULT_EXCLUDE,
@@ -21,6 +22,7 @@ import {
   walkFs,
   type ComponentsConfig,
 } from "@isaacriehm/cairn-state";
+import { detectAll } from "./detect.js";
 import type { DetectionResult } from "./types.js";
 
 /** Conventional component-dir suffixes, probed in order under a root or package. */
@@ -158,5 +160,67 @@ export function detectComponentsConfig(
     extensions: detectExtensions(repoRoot, dirs),
     categories: [...DEFAULT_CATEGORIES],
     exclude: [...DEFAULT_EXCLUDE],
+  };
+}
+
+export type EnsureComponentsStatus =
+  /** No `.cairn/config.yaml` — the repo isn't adopted; run `/cairn-adopt` first. */
+  | "not-adopted"
+  /** A `components:` block already exists — left untouched (idempotent). */
+  | "exists"
+  /** No recognizable component layout on disk — nothing written (non-UI repo). */
+  | "none"
+  /** A `components:` block was detected and merged into the config. */
+  | "written";
+
+export interface EnsureComponentsConfigResult {
+  status: EnsureComponentsStatus;
+  /** The detected block, present only on "written". */
+  config?: ComponentsConfig;
+  /** True when the written block uses the monorepo `workspaces` form. */
+  monorepo: boolean;
+}
+
+/**
+ * Backfill a `components:` block into an already-adopted repo's
+ * `.cairn/config.yaml`. The same deterministic FS probe adoption Phase
+ * 4-seed runs, but applied to a config that already exists — so it MERGES
+ * the key in (preserving every other key) rather than writing a fresh file.
+ *
+ * Idempotent: a repo that already carries a `components:` block is left
+ * untouched ("exists"). The standalone backfill path
+ * (`cairn components detect`, driven by the cairn-adopt-components skill)
+ * is the only caller; adoption keeps using `detectComponentsConfig`
+ * directly inside 4-seed.
+ *
+ * Isolation invariant (port invariant 3): monorepo workspaces are never
+ * guessed as `shared` — the operator opts in afterward (the skill asks).
+ */
+export function ensureComponentsConfig(
+  repoRoot: string,
+): EnsureComponentsConfigResult {
+  const configPath = join(repoRoot, ".cairn", "config.yaml");
+  if (!existsSync(configPath)) {
+    return { status: "not-adopted", monorepo: false };
+  }
+
+  const raw = readFileSync(configPath, "utf8");
+  const parsed = (parseYaml(raw) ?? {}) as Record<string, unknown>;
+  if (parsed["components"] !== undefined && parsed["components"] !== null) {
+    return { status: "exists", monorepo: false };
+  }
+
+  const detection: DetectionResult = detectAll({ repoRoot });
+  const components = detectComponentsConfig(repoRoot, detection);
+  if (components === null) {
+    return { status: "none", monorepo: false };
+  }
+
+  parsed["components"] = components;
+  writeFileSync(configPath, stringifyYaml(parsed), "utf8");
+  return {
+    status: "written",
+    config: components,
+    monorepo: components.workspaces !== undefined,
   };
 }

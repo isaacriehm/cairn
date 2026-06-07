@@ -3,7 +3,7 @@ description: Adopt this project with Cairn — runs the one-time init pipeline i
 argument-hint: "[--force]"
 ---
 
-# /cairn-init
+# /cairn:cairn-init
 
 Manually trigger the Cairn adoption flow. Equivalent to the
 `cairn-adopt` skill, but invoked explicitly by the operator.

@@ -6,7 +6,7 @@
  * Cairn-as-resume-layer: main Claude calls this at the end of every
  * assistant turn while a task is active. Stop hook surfaces a context-
  * threshold prompt when usage crosses the configured limit; the
- * `/cairn-resume <task_id>` slash command in the next session reads
+ * `/cairn:cairn-resume <task_id>` slash command in the next session reads
  * the journal back via `cairn_resume`.
  */
 
@@ -111,7 +111,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
 export const taskJournalAppendTool: ToolDef<Input> = {
   name: "cairn_task_journal_append",
   description:
-    "Append one journal entry to the active task's journal.jsonl. Call at the end of every assistant turn while a task is active so that `/cairn-resume <task_id>` after a `/clear` rebuilds the operator's mental state cold. " +
+    "Append one journal entry to the active task's journal.jsonl. Call at the end of every assistant turn while a task is active so that `/cairn:cairn-resume <task_id>` after a `/clear` rebuilds the operator's mental state cold. " +
     "`summary` is a terse one-liner (~320 chars; soft-truncated above that with a trailing marker — no validation reject). " +
     "`next_step` is what comes next, same length budget. " +
     "`files_touched` advisory cap = 20 paths; longer arrays keep the first 20 and the dropped tail comes back in `dropped.files_touched`. " +

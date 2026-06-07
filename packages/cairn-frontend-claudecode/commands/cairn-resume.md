@@ -3,7 +3,7 @@ description: Resume an active Cairn task after `/clear`. Reads the task journal 
 argument-hint: <task_id>
 ---
 
-# /cairn-resume
+# /cairn:cairn-resume
 
 You are resuming a Cairn task in a fresh-context session. The
 operator just `/clear`ed mid-task and pasted this command to rebuild
@@ -67,7 +67,7 @@ operator and ask whether they want to start a fresh task instead.
 ## Step 2.5 — handle a graduated task (scope: "done")
 
 If `scope === "done"`, the task graduated between the Stop-hook resume
-prompt and this `/cairn-resume` invocation (auto-graduator race).
+prompt and this `/cairn:cairn-resume` invocation (auto-graduator race).
 There is nothing in flight to resume. Render a "task already shipped"
 frame instead of the in-flight resume context, then **stop** — do not
 run Step 3, Step 4, or read `spec.tightened.md`. Format-locked:

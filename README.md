@@ -230,6 +230,11 @@ already loaded into the spec.
   side-by-side resolution prompt instead of silently picking one.
 - **Topic-index dedup** — content fingerprints prevent the same fact
   landing as three separate DEC drafts.
+- **Component-store backfill** — projects adopted before the component
+  store shipped add it in one pass: the `cairn-adopt-components` skill
+  detects the config, dispatches `component-annotator` subagents to write
+  `@cairn` headers, and builds the index + singleton §INVs. No manual
+  header-writing — just ask the agent to adopt the component store.
 
 ### Daily flow
 

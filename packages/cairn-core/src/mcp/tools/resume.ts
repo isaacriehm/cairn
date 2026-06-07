@@ -2,7 +2,7 @@
  * `cairn_resume` — read the active task's journal + spec and emit a
  * resume payload that primes a fresh-context session cold.
  *
- * Called by the `/cairn-resume <task_id>` slash command after the
+ * Called by the `/cairn:cairn-resume <task_id>` slash command after the
  * operator `/clear`s mid-task. SessionStart hook also calls this
  * automatically when it detects an active task whose journal has
  * entries from a prior session_id.
@@ -87,7 +87,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     taskDir = activeTaskDir;
   } else if (existsSync(doneTaskDir)) {
     // Race: task graduated between the Stop-hook resume prompt and the
-    // operator pasting `/cairn-resume`. Surface the final journal frame
+    // operator pasting `/cairn:cairn-resume`. Surface the final journal frame
     // + completion timestamp instead of the cryptic "not found" error
     // so the operator sees what shipped.
     scope = "done";

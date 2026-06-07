@@ -508,7 +508,7 @@ function renderMidAdoptionBanner(repoRoot: string): string | null {
 
 /**
  * Render a banner exposing shim-write failures so the operator sees
- * the real cause when `/cairn-statusline-setup` later complains the
+ * the real cause when `/cairn:cairn-statusline-setup` later complains the
  * shim is missing. Empty array → null (no surface).
  */
 function renderShimWarningsBanner(warnings: string[]): string | null {
@@ -524,7 +524,7 @@ function renderShimWarningsBanner(warnings: string[]): string | null {
   for (const w of lines) out.push(`- \`${w}\``);
   out.push("");
   out.push(
-    "If `/cairn-statusline-setup` later says the shim is missing, this is the cause. Common fixes: confirm the plugin is enabled (`/plugin status`), check `CLAUDE_PLUGIN_ROOT` resolves, or rebuild the plugin bundle.",
+    "If `/cairn:cairn-statusline-setup` later says the shim is missing, this is the cause. Common fixes: confirm the plugin is enabled (`/plugin status`), check `CLAUDE_PLUGIN_ROOT` resolves, or rebuild the plugin bundle.",
   );
   return out.join("\n");
 }

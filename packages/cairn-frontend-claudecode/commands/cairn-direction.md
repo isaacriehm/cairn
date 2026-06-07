@@ -3,7 +3,7 @@ description: Force cairn-direction tightening on the supplied prompt. Escape hat
 argument-hint: "<task description>"
 ---
 
-# /cairn-direction
+# /cairn:cairn-direction
 
 Manually trigger the `cairn-direction` skill on the argument prompt.
 Equivalent to the auto-invoked path but bypasses the trigger gate.
@@ -17,7 +17,7 @@ write tightened spec, dispatch chunks.
 
 If the argument is empty:
 
-> /cairn-direction needs a task description. Example: `/cairn-direction add a webhook for stripe disputes`
+> /cairn:cairn-direction needs a task description. Example: `/cairn:cairn-direction add a webhook for stripe disputes`
 
 ## When to use
 

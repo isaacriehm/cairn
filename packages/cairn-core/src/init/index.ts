@@ -15,7 +15,11 @@ export {
   withSpinner,
 } from "./visual.js";
 export { applyBrandAnswers, runBrandSetup } from "./brand-setup.js";
-export { detectComponentsConfig } from "./detect-components.js";
+export { detectComponentsConfig, ensureComponentsConfig } from "./detect-components.js";
+export type {
+  EnsureComponentsConfigResult,
+  EnsureComponentsStatus,
+} from "./detect-components.js";
 export {
   ensureCairnRuleImport,
   installCairnRuleAndImport,

@@ -8,3 +8,5 @@ export type {
   ComponentAuditKind,
   ComponentAuditResult,
 } from "./audit.js";
+export { emitComponentStore } from "./emit.js";
+export type { ComponentEmitResult } from "./emit.js";

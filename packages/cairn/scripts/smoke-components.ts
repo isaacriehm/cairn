@@ -23,6 +23,8 @@ import {
   buildComponentIndex,
   componentsInScope,
   detectComponentsConfig,
+  emitComponentStore,
+  ensureComponentsConfig,
   runComponentAudit,
   runComponentCheck,
   runPhase9dCompWalk,
@@ -342,11 +344,73 @@ async function adoption(): Promise<void> {
   console.log("  ✓ adoption trio: walk lists debt, annotate is tolerant, emit indexes + drafts singleton");
 }
 
+function backfill(): void {
+  step("Backfill — ensureComponentsConfig + emitComponentStore on an already-adopted repo");
+
+  // not-adopted: a bare dir with no .cairn/ refuses.
+  const bare = mkdtempSync(join(tmpdir(), "cairn-smoke-comp-bare-"));
+  cleanups.push(bare);
+  assert(
+    ensureComponentsConfig(bare).status === "not-adopted",
+    "no .cairn/config.yaml → not-adopted",
+  );
+
+  // none: adopted (config.yaml exists) but no component layout on disk.
+  const nonUi = mkdtempSync(join(tmpdir(), "cairn-smoke-comp-nonui-"));
+  cleanups.push(nonUi);
+  mkdirSync(join(nonUi, ".cairn"), { recursive: true });
+  writeFileSync(join(nonUi, ".cairn", "config.yaml"), "project:\n  slug: nonui\n", "utf8");
+  assert(
+    ensureComponentsConfig(nonUi).status === "none",
+    "adopted repo with no component dirs → none",
+  );
+
+  // backfill: adopted repo, no components: block, real component dirs.
+  const root = mkdtempSync(join(tmpdir(), "cairn-smoke-comp-backfill-"));
+  cleanups.push(root);
+  mkdirSync(join(root, ".cairn"), { recursive: true });
+  writeFileSync(join(root, ".cairn", "config.yaml"), "project:\n  slug: demo\n", "utf8");
+  write(root, "src/components/AppShell.tsx", header("AppShell", "layout", " * @singleton"));
+  write(root, "src/components/Card.tsx", "export function Card() { return null; }\n");
+
+  const detect = ensureComponentsConfig(root);
+  assert(detect.status === "written", `first run writes the block (got ${detect.status})`);
+  assert(detect.monorepo === false, "single-app layout is not flagged monorepo");
+  const cfgText = readFileSync(join(root, ".cairn", "config.yaml"), "utf8");
+  assert(/^project:/m.test(cfgText), "the pre-existing project: key is preserved");
+  assert(/^components:/m.test(cfgText), "a components: block was merged in");
+  assert(/src\/components/.test(cfgText), "the detected dir is written");
+
+  // Idempotent: a second run leaves the existing block untouched.
+  assert(
+    ensureComponentsConfig(root).status === "exists",
+    "second run is a no-op (exists)",
+  );
+
+  // emitComponentStore: same end state as adoption Phase 9f.
+  const emit = emitComponentStore(root);
+  assert(!emit.skipped, "emit runs (config present)");
+  assert(emit.indexed === 1, `indexed the headered AppShell (got ${emit.indexed})`);
+  assert(emit.missing === 1, "Card.tsx counted as missing-header debt");
+  assert(emit.singletonsDrafted === 1, "AppShell singleton drafted to §INV");
+  assert(emit.baselinePath !== null, "a baseline file was written for triage");
+
+  const ledger = readFileSync(
+    join(root, ".cairn/ground/invariants/invariants.ledger.yaml"),
+    "utf8",
+  );
+  assert(/AppShell exists exactly once/.test(ledger), "singleton §INV landed in the ledger");
+  const index = readFileSync(join(root, ".cairn/ground/components/INDEX.md"), "utf8");
+  assert(/AppShell/.test(index), "INDEX lists the indexed component");
+  console.log("  ✓ backfill: detect merges config, idempotent re-run, emit reaches the 9f end state");
+}
+
 async function main(): Promise<void> {
   singleApp();
   monorepo();
   preCommit();
   await adoption();
+  backfill();
   cleanup();
   console.log("\nsmoke-components — pass");
 }

@@ -181,7 +181,7 @@ export function checkContextThreshold(
  * Render the inline prompt that the Stop hook injects via
  * `decision: block`. When an active task is in flight, the prompt
  * surfaces three options (keep going / clear+resume / mark done) and
- * emits the literal `/cairn-resume <task_id>` token for the `[b]`
+ * emits the literal `/cairn:cairn-resume <task_id>` token for the `[b]`
  * branch. When no active task is in flight (e.g. the auto-graduator
  * just moved the only active task to `done/` this same Stop tick),
  * the resume + mark-done options are dropped to avoid offering a
@@ -226,7 +226,7 @@ export function renderContextThresholdHint(
     "> - `[b]` `/clear` and resume now (Cairn writes the resume prompt)",
     "> - `[c]` mark task done (graduate the active TSK and start fresh)",
     "",
-    `If the operator picks **\`b\`**, emit a code block containing exactly:\n\n\`\`\`\n/cairn-resume ${taskId}\n\`\`\`\n\nThe operator copies that, runs \`/clear\`, then pastes it into the fresh chat — Cairn rebuilds context from \`.cairn/tasks/active/${taskId}/journal.jsonl\`.`,
+    `If the operator picks **\`b\`**, emit a code block containing exactly:\n\n\`\`\`\n/cairn:cairn-resume ${taskId}\n\`\`\`\n\nThe operator copies that, runs \`/clear\`, then pastes it into the fresh chat — Cairn rebuilds context from \`.cairn/tasks/active/${taskId}/journal.jsonl\`.`,
     "",
     "On `[c]`, call `cairn_task_complete({task_id, outcome: \"succeeded\"})` for the active task before ending the turn. On `[a]`, just continue.",
   ].join("\n");

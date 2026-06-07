@@ -4,6 +4,44 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.2] — 2026-06-07
+
+The component store, for projects that predate it. v0.18.0 wired the
+component store into fresh adoption only — repos adopted earlier had no
+path to it short of editing `.cairn/config.yaml` and writing every
+`@cairn` header by hand. This release closes that gap with an AI-driven
+backfill: the operator asks the agent to adopt the component store and it
+runs the whole trio inline.
+
+### Added
+
+- **`cairn-adopt-components` skill — one-pass component-store backfill.**
+  For any repo with `.cairn/` but no `components:` config, the skill
+  detects the component layout, dispatches `component-annotator`
+  subagents (operator-gated batches) to write `@cairn` headers into
+  source, builds the index, drafts a §INV per `@singleton`, and hands the
+  audit + still-missing-header debt to the `cairn-attention` queue — the
+  same end state fresh adoption reaches, with no manual header-writing.
+  Idempotent: re-running on a repo that already has the store only
+  annotates newly-added un-headered files.
+- **`cairn components detect | emit` CLI.** `detect` runs the
+  deterministic FS probe and merges a `components:` block into an
+  existing `.cairn/config.yaml` (preserving every other key; monorepo
+  workspaces stay isolated until the operator opts into `shared`).
+  `emit` builds the index, promotes `@singleton` headers to §INVs, and
+  writes the audit baseline — the standalone equivalent of adoption Phase
+  9f, now reachable outside the init pipeline (shared `emitComponentStore`
+  core, so the adoption phase and the CLI never drift).
+
+### Fixed
+
+- **`cairn-lens` packaging — `@types/vscode` / `engines.vscode`
+  mismatch.** A Dependabot bump pushed `@types/vscode` to `^1.120.0`
+  while `engines.vscode` stayed `^1.96.0`; `vsce package` rejects type
+  defs newer than the declared minimum engine, breaking the Lens build.
+  Pinned `@types/vscode` to `~1.96.0` to match the engine (the extension
+  uses no API past 1.96, so the broad install floor is kept).
+
 ## [0.18.1] — 2026-06-07
 
 ### Security

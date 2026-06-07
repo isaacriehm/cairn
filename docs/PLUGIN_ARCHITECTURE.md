@@ -64,9 +64,10 @@ packages/cairn-frontend-claudecode/
 ├── hooks/
 │   └── hooks.json                    — SessionStart, Stop, PostToolUse[read-enrich]
 ├── skills/
-│   ├── cairn-adopt/SKILL.md          — first-time adoption flow
-│   ├── cairn-direction/SKILL.md      — prompt → tier0 → tightener → dispatch
-│   └── cairn-attention/SKILL.md      — surface pending DEC drafts + drift inline
+│   ├── cairn-adopt/SKILL.md             — first-time adoption flow
+│   ├── cairn-adopt-components/SKILL.md  — backfill the component store into an adopted repo
+│   ├── cairn-direction/SKILL.md         — prompt → tier0 → tightener → dispatch
+│   └── cairn-attention/SKILL.md         — surface pending DEC drafts + drift inline
 ├── commands/
 │   └── cairn-init.md                 — slash command equivalent of `cairn init`
 ├── agents/
@@ -320,6 +321,7 @@ Write tools wrap their work in the per-write flock helper from `cairn-core/src/l
 | Surface | Path | Trigger | Job |
 |---------|------|---------|-----|
 | Skill | `skills/cairn-adopt/SKILL.md` | SessionStart sees no `.cairn/` | Walks operator through adoption inline; orchestrates init pipeline subprocess |
+| Skill | `skills/cairn-adopt-components/SKILL.md` | Operator asks to adopt/backfill the component store on a repo that has `.cairn/` but no `components:` config (adopted before v0.18.0) | Runs the standalone component trio inline (detect config → batched `component-annotator` subagents → emit index + singleton §INVs + audit baseline); hands the baseline to `cairn-attention` |
 | Skill | `skills/cairn-direction/SKILL.md` | Auto-invoked when operator's user message looks like a task ("build…", "add…", "fix…", "refactor…") and there's no active task | Runs tier0 → tightener → dispatch chunks via Task tool |
 | Skill | `skills/cairn-attention/SKILL.md` | SessionStart context flagged `attention_count > 0` | Surfaces pending DEC drafts + drift + baseline findings as inline A/B/C; calls `cairn_resolve_attention` after each pick |
 | Subagent | `agents/reviewer.md` | **Opt-in.** Spawned only when the operator explicitly asks for a diff review or DEC-drafting sweep | Reads diff + sensor outputs + attestation files; extracts non-obvious DECs; returns attestation summary |

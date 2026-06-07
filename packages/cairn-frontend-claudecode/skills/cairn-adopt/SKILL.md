@@ -132,9 +132,9 @@ node -e '
   - **`b) wire and continue`** — patch settings now, this adoption runs
     without live progress (next session sees it)
   - **`c) skip`** — leave settings alone; operator can run
-    `/cairn-statusline-setup` later
+    `/cairn:cairn-statusline-setup` later
 
-On `a` or `b`, run the patch (same logic as `/cairn-statusline-setup`
+On `a` or `b`, run the patch (same logic as `/cairn:cairn-statusline-setup`
 Step 3 — re-implemented inline so the adopt loop doesn't depend on a
 sibling slash command):
 
