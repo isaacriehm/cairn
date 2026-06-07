@@ -11,6 +11,16 @@ export type { ClaudeTier, ClaudeUsage, RunClaudeOptions, RunClaudeResult } from 
 
 const log = logger("claude.runner");
 
+/**
+ * On Windows the npm-installed `claude` CLI is a `.cmd` shim. Node's
+ * spawn/spawnSync without `shell:true` calls CreateProcess directly and
+ * does not apply PATHEXT, so the bare name resolves to ENOENT. Name the
+ * shim explicitly per-platform instead of enabling a shell (the prompt is
+ * piped via stdin and --system-prompt/--json-schema carry JSON argv, so a
+ * cmd.exe shell would require manual quoting/escaping).
+ */
+const CLAUDE_BIN = process.platform === "win32" ? "claude.cmd" : "claude";
+
 const ClaudeEnvelopeSchema = z.object({
   result: z.string().optional(),
   structured_output: z.unknown().optional(),
@@ -66,7 +76,7 @@ function preview(s: string): string {
 /** Check if Claude Code is available on PATH. */
 export function claudeIsAvailable(): boolean {
   try {
-    const result = spawnSync("claude", ["--version"], { encoding: "utf8" });
+    const result = spawnSync(CLAUDE_BIN, ["--version"], { encoding: "utf8" });
     return result.status === 0;
   } catch {
     return false;
@@ -166,7 +176,7 @@ export async function runClaude(
         : opts.cwd ?? opts.repoRoot ?? process.cwd();
 
     return await new Promise<RunClaudeResult>((resolve, reject) => {
-      const child = spawn("claude", args, {
+      const child = spawn(CLAUDE_BIN, args, {
         cwd: subprocessCwd,
         stdio: ["pipe", "pipe", "pipe"],
       });

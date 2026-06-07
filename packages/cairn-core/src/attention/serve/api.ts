@@ -423,7 +423,7 @@ async function editDraft(
     if (newRationale !== null) {
       // Replace the whole body after the frontmatter with the new rationale
       // wrapped in the canonical heading. Preserves frontmatter.
-      const fmMatch = raw.match(/^---\n[\s\S]*?\n---\n?/);
+      const fmMatch = raw.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/);
       const fm = fmMatch?.[0] ?? "";
       raw = `${fm}\n# ${id}\n\n## Proposed rationale\n\n${newRationale}\n`;
     }
@@ -434,7 +434,7 @@ async function editDraft(
 
 
 function stripFrontmatter(doc: string): string {
-  return doc.replace(/^---\n[\s\S]*?\n---\n?/, "");
+  return doc.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
 }
 
 function stringField(

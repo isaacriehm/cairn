@@ -70,9 +70,9 @@ Combine both. Walk the diff per-file. For each file:
 
 ### Step 3 — collect subagent attestations
 
-```bash
-ls .cairn/tasks/active/<task_id>/subagents/*/attestation.yaml 2>/dev/null
-```
+Enumerate attestations with the `Glob` tool, pattern
+`.cairn/tasks/active/<task_id>/subagents/*/attestation.yaml`. If it
+returns nothing, there are no subagent attestations — skip this step.
 
 Read each. The schema each subagent emits:
 

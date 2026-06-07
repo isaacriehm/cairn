@@ -1,0 +1,12 @@
+#!/usr/bin/env sh
+# cairn — plugin-bundled CLI, exposed on the Bash tool's PATH while the
+# cairn plugin is enabled (Claude Code copies bin/ onto PATH; see the
+# plugins-reference "Executables" row). This means `cairn …` works in any
+# Bash tool call with no `npm install -g` and no global package.
+#
+# CLAUDE_PLUGIN_ROOT is NOT exported to Bash-tool processes (only to hook,
+# MCP, and LSP subprocesses), so we self-locate the bundled cli.mjs
+# relative to this script instead of relying on the env var. bin/ and
+# dist/ are siblings at the plugin root.
+DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+exec node "$DIR/../dist/cli.mjs" "$@"

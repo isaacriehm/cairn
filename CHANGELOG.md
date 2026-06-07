@@ -4,6 +4,65 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.0] — 2026-06-06
+
+Native Windows support. Cairn's runtime worked on Windows, but the
+operator-facing edges assumed a POSIX shell — the statusline launcher
+shipped a `bash -c` one-liner (no `bash`/`ls`/`head`/`~`-glob on
+PowerShell), the browser-open path `spawn`ed a bare `start` (ENOENT on
+Windows), `claude` was spawned without the `.cmd` shim, and frontmatter
+parsers were LF-only so CRLF-authored docs and DEC drafts silently
+failed to parse. There was also no way to run the `cairn` CLI without a
+global `npm` install. This release makes every shipped surface
+cross-platform.
+
+### Added
+
+- **`bin/` CLI shims expose `cairn` on the Bash tool's PATH.** The
+  plugin now ships `bin/cairn` (POSIX/Git-Bash) and `bin/cairn.cmd`
+  (native Windows). While the plugin is enabled, `cairn …` runs as a
+  bare command in any Bash tool call with no `npm install -g` and no
+  global package. Each shim self-locates the bundled `dist/cli.mjs`
+  relative to itself, since `${CLAUDE_PLUGIN_ROOT}` is not exported to
+  Bash-tool processes. `check-layout` gates both shims (shebang, target
+  path, and — on POSIX — the executable bit).
+
+### Changed
+
+- **Statusline launcher is now a single shell-free Node resolver.** The
+  per-platform `bash` / PowerShell forms in `/cairn-statusline-setup`
+  and the `cairn-adopt` skill collapse into one `node -e` command that
+  runs identically on macOS, Linux, and native Windows. It resolves the
+  freshest `.active-version-path` shim, validates the path still exists,
+  and falls back to globbing the newest `cache/<slug>/cairn/<version>/
+  dist/cli.mjs` when the shim dangles (e.g. a manually deleted version
+  dir) — so a stale pointer self-heals with no manual repair. Both
+  steps are scoped to cairn slugs, so the launcher never spawns another
+  plugin's bundle. `stdio: 'inherit'` forwards Claude Code's stdin
+  payload so the context meter renders. User-level `statusLine` cannot
+  read `${CLAUDE_PLUGIN_ROOT}` (plugin-only), so the launcher discovers
+  the bundle itself.
+
+### Fixed
+
+- **Browser-open on Windows.** `cairn attention serve` and the
+  attention-serve MCP tool routed through `spawn("start", …)`, which
+  threw `ENOENT` on Windows (`start` is a `cmd` builtin, not a PATH
+  executable) and opened nothing. Now branches to `cmd /c start "" <url>`
+  on win32; macOS/Linux keep `open` / `xdg-open`.
+- **`claude` subprocess on Windows.** `runClaude` / availability checks
+  spawned bare `claude`; Windows needs the `claude.cmd` shim. Routed
+  through a per-platform binary name.
+- **CRLF-authored documents now parse.** Frontmatter fences and body
+  splits across ingest, topic-index walk, rules-merge, attention dedup /
+  bulk-accept / source-strip / serve, the doctor, brand setup, the GC
+  canary, and the SoT-align common helper were LF-only (`---\n`,
+  `split("\n")`). They now tolerate `\r?\n`, so Windows-edited docs and
+  DEC drafts ingest and align correctly instead of silently skipping.
+- **POSIX-only shell in shipped skills/agents.** `cairn-adopt` and the
+  `reviewer` agent emitted `ls … 2>/dev/null` / `bash` snippets that
+  fail under PowerShell; replaced with Node globs / the `Glob` tool.
+
 ## [0.16.0] — 2026-06-06
 
 Per-phase mission tightening. Missions used to draft the whole roadmap

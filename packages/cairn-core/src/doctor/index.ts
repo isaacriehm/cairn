@@ -355,7 +355,7 @@ function detectProjectName(repoRoot: string): string {
 export function peekStatus(path: string): string | null {
   try {
     const text = readFileSync(path, "utf8");
-    const m = text.match(/^---\n([\s\S]*?)\n---/);
+    const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
     if (!m || m[1] === undefined) return null;
     const fm = m[1];
     const sm = fm.match(/^status:\s*(\S+)\s*$/m);

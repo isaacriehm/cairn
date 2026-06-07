@@ -102,7 +102,7 @@ function findCurrentRange(
 const log = logger("attention.source-strip");
 
 export function parseDraftMeta(body: string): DraftMeta | null {
-  const match = /^---\n([\s\S]*?)\n---/.exec(body);
+  const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(body);
   if (match === null) return null;
   try {
     const raw: unknown = parseYaml(match[1] ?? "");

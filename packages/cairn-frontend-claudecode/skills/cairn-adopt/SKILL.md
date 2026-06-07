@@ -141,10 +141,10 @@ sibling slash command):
 1. Verify the SessionStart shim exists at any plugin cache slug.
    The hook writes to `~/.claude/plugins/cache/<slug>/.active-version-path`
    where `<slug>` is whatever marketplace name Claude Code installed
-   the plugin under — locate via glob:
+   the plugin under — locate via a shell-free Node glob (works on
+   Windows cmd/PowerShell too, where `ls`/`head` are absent):
    ```bash
-   ls -1t ~/.claude/plugins/cache/*/.active-version-path 2>/dev/null \
-     | head -1
+   node -e "const f=require('node:fs'),{homedir}=require('node:os'),{join}=require('node:path');const C=join(homedir(),'.claude','plugins','cache');let s=null,t=-1;try{for(const x of f.readdirSync(C)){const p=join(C,x,'.active-version-path');try{const m=f.statSync(p).mtimeMs;if(m>t){t=m;s=p}}catch{}}}catch{}console.log(s||'')"
    ```
    On empty output, surface a one-line note ("statusline patch needs
    the plugin's SessionStart shim — re-run after the first session
@@ -152,13 +152,21 @@ sibling slash command):
 
 2. Read `~/.claude/settings.json` (create with `{}` if missing). Use
    the `Edit` tool with the current file as `old_string` so other
-   top-level fields stay intact. Set `statusLine` to the runtime-glob
-   command shape so plugin slug renames don't break it:
+   top-level fields stay intact. Set `statusLine` to the shell-free Node
+   launcher below — one command for every platform (macOS, Linux, native
+   Windows cmd/PowerShell), because Node performs the cache glob, mtime
+   sort, file read, and re-spawn with no shell. It resolves the freshest
+   `.active-version-path` shim, validates the path still exists, and
+   falls back to globbing the newest `dist/cli.mjs` across cache version
+   dirs if the shim dangles — so a slug rename or a deleted version dir
+   self-heals. User-level `statusLine` cannot use `${CLAUDE_PLUGIN_ROOT}`
+   (plugin-only var), so the launcher discovers the bundle itself; never
+   hardcode a slug or version path:
 
    ```json
    {
      "type": "command",
-     "command": "bash -c 'shim=$(ls -1t ~/.claude/plugins/cache/*/.active-version-path 2>/dev/null | head -1); [ -n \"$shim\" ] && node \"$(cat \"$shim\")\" status-line'",
+     "command": "node -e \"const f=require('node:fs'),{homedir}=require('node:os'),{join}=require('node:path'),{spawnSync}=require('node:child_process');const C=join(homedir(),'.claude','plugins','cache');const newest=a=>{let b=null,t=-1;for(const p of a){try{const m=f.statSync(p).mtimeMs;if(m>t){t=m;b=p}}catch{}}return b};const slugs=()=>{try{return f.readdirSync(C).filter(s=>f.existsSync(join(C,s,'.active-version-path')))}catch{return[]}};let cli=null;const sh=newest(slugs().map(s=>join(C,s,'.active-version-path')));if(sh){try{const c=f.readFileSync(sh,'utf8').trim();if(c&&f.existsSync(c))cli=c}catch{}}if(!cli){const z=[];for(const s of slugs()){const pd=join(C,s,'cairn');let vs;try{vs=f.readdirSync(pd)}catch{continue}for(const v of vs){const p=join(pd,v,'dist','cli.mjs');if(f.existsSync(p))z.push(p)}}cli=newest(z)}if(cli)process.exit(spawnSync(process.execPath,[cli,'status-line'],{stdio:'inherit'}).status??0)\"",
      "refreshInterval": 10
    }
    ```
@@ -470,16 +478,21 @@ do **not** clear it on terminal completion. Read the persisted state
 to source the summary fields:
 
 ```bash
-jq -c '{
-  curator_records: (.outputs["9a-walker"].records_total // 0),
-  curator_shards: (.outputs["9a-walker"].shards // 0),
-  curator_final: (.outputs["9b-curate"].final_entries // 0),
-  decs_emitted: (.outputs["9c-emit"].decsWritten // [] | length),
-  invs_emitted: (.outputs["9c-emit"].invsWritten // [] | length),
-  curator_dropped: (.outputs["9c-emit"].dropped // 0),
-  baseline_findings: (.outputs["11-baseline"].totalFindings // 0),
-  multidev_hosts: (.outputs["13-multidev"].hostKinds // [])
-}' .cairn/init-state.json
+node -e '
+  const fs=require("node:fs");
+  const s=JSON.parse(fs.readFileSync(".cairn/init-state.json","utf8"));
+  const o=s.outputs||{};
+  const g=(k)=>o[k]||{};
+  console.log(JSON.stringify({
+    curator_records:(g("9a-walker").records_total)||0,
+    curator_shards:(g("9a-walker").shards)||0,
+    curator_final:(g("9b-curate").final_entries)||0,
+    decs_emitted:(g("9c-emit").decsWritten||[]).length,
+    invs_emitted:(g("9c-emit").invsWritten||[]).length,
+    curator_dropped:(g("9c-emit").dropped)||0,
+    baseline_findings:(g("11-baseline").totalFindings)||0,
+    multidev_hosts:(g("13-multidev").hostKinds)||[]
+  }));'
 ```
 
 In the same assistant message, do both:

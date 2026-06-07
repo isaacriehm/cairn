@@ -210,6 +210,6 @@ export function readEntityBody(repoRoot: string, id: string): string | null {
   } catch {
     return null;
   }
-  const m = raw.match(/^---\n[\s\S]*?\n---\n?/);
+  const m = raw.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/);
   return m === null ? raw.trim() : raw.slice(m[0].length).trim();
 }

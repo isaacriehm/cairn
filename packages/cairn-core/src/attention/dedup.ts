@@ -42,7 +42,7 @@ function parseMinimalFrontmatter(raw: string): {
   fm: MinimalFrontmatter;
   body: string;
 } {
-  const m = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+  const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
   if (m === null) {
     return { fm: {}, body: raw };
   }
@@ -53,7 +53,7 @@ function parseMinimalFrontmatter(raw: string): {
   }
 
   const fm: MinimalFrontmatter = {};
-  for (const line of fmBlock.split("\n")) {
+  for (const line of fmBlock.split(/\r?\n/)) {
     const lm = line.match(/^(\w[\w-]*):\s*(.*)$/);
     if (lm === null) continue;
     const key = lm[1];

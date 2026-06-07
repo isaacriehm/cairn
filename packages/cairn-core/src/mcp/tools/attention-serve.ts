@@ -64,17 +64,21 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
   });
 
   if (input.no_open !== true) {
-    const opener =
-      process.platform === "darwin"
-        ? "open"
-        : process.platform === "win32"
-          ? "start"
-          : "xdg-open";
     try {
-      spawn(opener, [handle.url], {
-        stdio: "ignore",
-        detached: true,
-      }).unref();
+      if (process.platform === "win32") {
+        // `start` is a cmd.exe builtin, not an exe on PATH; the empty
+        // "" is the window-title arg so the URL is not consumed as a title.
+        spawn("cmd", ["/c", "start", "", handle.url], {
+          stdio: "ignore",
+          detached: true,
+        }).unref();
+      } else {
+        const opener = process.platform === "darwin" ? "open" : "xdg-open";
+        spawn(opener, [handle.url], {
+          stdio: "ignore",
+          detached: true,
+        }).unref();
+      }
     } catch {
       // operator clicks the printed URL manually
     }

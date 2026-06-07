@@ -312,7 +312,7 @@ function buildFileFilterInputs(
 }
 
 function splitFrontmatter(raw: string): { frontmatter: string | null; body: string } {
-  const m = raw.match(/^---\n([\s\S]*?)\n---\n?/);
+  const m = raw.match(/^---\s*\r?\n([\s\S]*?)\r?\n---\s*\r?\n?/);
   if (m === null) return { frontmatter: null, body: raw };
   const fm = m[1] ?? "";
   return { frontmatter: fm, body: raw.slice(m[0].length) };

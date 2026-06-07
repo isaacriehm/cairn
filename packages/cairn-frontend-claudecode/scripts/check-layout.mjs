@@ -8,7 +8,7 @@
  * regressions.
  */
 
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -132,6 +132,40 @@ if (hooksFile) {
 // ── component dirs (skills/agents/commands) ─────────────────────────
 for (const dir of ["skills", "agents", "commands"]) {
   if (!existsSync(join(PKG_ROOT, dir))) fail(`missing component dir: ${dir}/`);
+}
+
+// ── bin/ executables ────────────────────────────────────────────────
+// Claude Code adds bin/ to the Bash tool's PATH while the plugin is
+// enabled, so `cairn …` works in any Bash call with no global install.
+// Ship both the POSIX shim (Git-Bash) and the .cmd (native-Windows
+// PowerShell/cmd fallback); each self-locates ../dist/cli.mjs because
+// CLAUDE_PLUGIN_ROOT is not exported to Bash-tool processes.
+const binPosix = join(PKG_ROOT, "bin", "cairn");
+const binWin = join(PKG_ROOT, "bin", "cairn.cmd");
+if (!existsSync(binPosix)) {
+  fail("bin/cairn missing — POSIX CLI shim required for Git-Bash PATH");
+} else {
+  const text = readFileSync(binPosix, "utf8");
+  if (!text.startsWith("#!")) fail("bin/cairn: missing shebang");
+  if (!text.includes("../dist/cli.mjs")) {
+    fail("bin/cairn: must invoke ../dist/cli.mjs (self-located bundle)");
+  }
+  // Exec bit only carries meaning on POSIX; Windows file modes don't
+  // represent it (a Windows dev build would false-fail otherwise).
+  if (process.platform !== "win32") {
+    try {
+      if ((statSync(binPosix).mode & 0o111) === 0) {
+        fail("bin/cairn: not executable (chmod +x required for PATH invocation)");
+      }
+    } catch {
+      fail("bin/cairn: cannot stat");
+    }
+  }
+}
+if (!existsSync(binWin)) {
+  fail("bin/cairn.cmd missing — native-Windows CLI shim required");
+} else if (!readFileSync(binWin, "utf8").includes("..\\dist\\cli.mjs")) {
+  fail("bin/cairn.cmd: must invoke ..\\dist\\cli.mjs (self-located bundle)");
 }
 
 // ── skills: each subdir must contain SKILL.md with valid frontmatter ─

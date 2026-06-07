@@ -56,7 +56,7 @@ export function runGcCanary(opts: GcCanaryOptions): GcCanaryResult {
       failures.push(`workflow.md unreadable post-batch: ${message}`);
     }
     if (body.length > 0) {
-      const fmMatch = body.match(/^---\n([\s\S]*?)\n---/);
+      const fmMatch = body.match(/^---\r?\n([\s\S]*?)\r?\n---/);
       if (fmMatch === null) {
         failures.push("workflow.md missing YAML frontmatter delimiters");
       } else {

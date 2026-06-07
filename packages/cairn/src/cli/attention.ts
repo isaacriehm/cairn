@@ -20,6 +20,7 @@ import { parse as parseYaml } from "yaml";
 import { spawn } from "node:child_process";
 import {
   bulkAcceptObvious,
+  parseFrontmatterRecord,
   restoreDec,
   runAttentionUndo,
   startAttentionServer,
@@ -81,16 +82,9 @@ function ensureAdopted(repoRoot: string): void {
 }
 
 function readFrontmatter(text: string): Record<string, unknown> {
-  const m = text.match(/^---\n([\s\S]*?)\n---/);
-  if (!m || m[1] === undefined) return {};
-  try {
-    const parsed = parseYaml(m[1]) as unknown;
-    return typeof parsed === "object" && parsed !== null
-      ? (parsed as Record<string, unknown>)
-      : {};
-  } catch {
-    return {};
-  }
+  // Reuse the canonical CRLF-tolerant parser so a draft saved with Windows
+  // line endings still keys correctly (single source of frontmatter truth).
+  return parseFrontmatterRecord(text).fm;
 }
 
 function listDrafts(repoRoot: string): DraftEntry[] {
@@ -527,17 +521,22 @@ async function serveCli(repoRoot: string, argv: string[]): Promise<void> {
       `    sentinel:    ${handle.sentinelPath}\n`,
   );
   if (!noOpen) {
-    const opener =
-      process.platform === "darwin"
-        ? "open"
-        : process.platform === "win32"
-          ? "start"
-          : "xdg-open";
     try {
-      spawn(opener, [handle.url], {
-        stdio: "ignore",
-        detached: true,
-      }).unref();
+      if (process.platform === "win32") {
+        // `start` is a cmd builtin, not an executable — route through cmd.
+        // The empty "" is start's window-title arg; without it start treats
+        // the quoted URL as the title and opens a blank console.
+        spawn("cmd", ["/c", "start", "", handle.url], {
+          stdio: "ignore",
+          detached: true,
+        }).unref();
+      } else {
+        const opener = process.platform === "darwin" ? "open" : "xdg-open";
+        spawn(opener, [handle.url], {
+          stdio: "ignore",
+          detached: true,
+        }).unref();
+      }
     } catch {
       /* if open fails, operator clicks the URL manually */
     }

@@ -298,7 +298,7 @@ function rewriteVoice(
   return true;
 }
 
-const FRONTMATTER_RE = /^---\n([\s\S]*?\n)---\n?/;
+const FRONTMATTER_RE = /^---\r?\n([\s\S]*?\r?\n)---\r?\n?/;
 
 function flipStatus(text: string): string {
   const m = text.match(FRONTMATTER_RE);

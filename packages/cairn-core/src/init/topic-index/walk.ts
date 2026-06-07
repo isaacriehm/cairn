@@ -227,7 +227,7 @@ function readBodyAndFrontmatter(file: string): {
   fileMarker: MarkerKind | undefined;
 } {
   const raw = readFileSync(file, "utf8");
-  const m = raw.match(/^---\n([\s\S]*?)\n---\n?/);
+  const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
   if (m === null) return { body: raw, offsetLines: 0, fileMarker: undefined };
   const offset = (m[0].match(/\n/g) ?? []).length;
   const frontmatterText = m[1] ?? "";
@@ -270,7 +270,7 @@ function scanBlockMarker(bodyLines: string[]): MarkerKind | undefined {
 
 function extractParagraphs(rel: string, file: string, kind: ProseBlockKind): ProseBlock[] {
   const { body, offsetLines, fileMarker } = readBodyAndFrontmatter(file);
-  const lines = body.split("\n");
+  const lines = body.split(/\r?\n/);
   const out: ProseBlock[] = [];
   let bufStart: number | null = null;
   let buf: string[] = [];
@@ -324,7 +324,7 @@ function extractParagraphs(rel: string, file: string, kind: ProseBlockKind): Pro
 
 function extractSections(rel: string, file: string, kind: ProseBlockKind): ProseBlock[] {
   const { body, offsetLines, fileMarker } = readBodyAndFrontmatter(file);
-  const lines = body.split("\n");
+  const lines = body.split(/\r?\n/);
   const out: ProseBlock[] = [];
 
   let sectionStart: number | null = null;

@@ -388,7 +388,7 @@ export async function bulkAcceptObvious(
 // ── Helpers ────────────────────────────────────────────────────────
 
 function stripFrontmatter(doc: string): string {
-  return doc.replace(/^---\n[\s\S]*?\n---\n?/, "");
+  return doc.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
 }
 
 function renderDoc(fm: Record<string, unknown>, body: string): string {

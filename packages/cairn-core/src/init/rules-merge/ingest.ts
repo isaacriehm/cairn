@@ -797,7 +797,7 @@ function readEmittedBody(repoRoot: string, id: string): string | null {
     return null;
   }
   // Strip frontmatter — body is everything past the second `---` line.
-  const fmMatch = raw.match(/^---\n([\s\S]*?)\n---\n?/);
+  const fmMatch = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
   if (fmMatch === null) return raw.trim();
   return raw.slice(fmMatch[0].length).trim();
 }
