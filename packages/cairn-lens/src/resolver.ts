@@ -21,7 +21,9 @@ import { dirname, join, resolve } from "node:path";
 import {
   buildDecisionsLedger,
   buildInvariantsLedger,
+  componentsIndexPath,
   decisionsDir,
+  getComponent,
   getInvariantsLedger,
   getScopeIndexEntry,
   invariantsDir,
@@ -32,6 +34,7 @@ import {
   scopeIndexPath,
   sotRenderedCacheDir,
   type AnchorMapEntry,
+  type ComponentLedgerEntry,
   type ScopeIndex,
   type ScopeIndexEntry,
 } from "@isaacriehm/cairn-state";
@@ -92,6 +95,17 @@ interface TaskResolution {
   id: string;
   found: "active" | "done" | "not_found";
   title: string | null;
+}
+
+/**
+ * Resolution of a `@cairn <Name>` registry header. `entry` is the
+ * derived ledger projection; `exportName` is the detected export so the
+ * hover can flag drift (header name ≠ exported name).
+ */
+interface ComponentResolution {
+  found: boolean;
+  entry: ComponentLedgerEntry | null;
+  exportName: string | null;
 }
 
 interface ScopeRulesForFile {
@@ -367,6 +381,33 @@ export class LensResolver {
       found: result.found,
       title: result.title ?? null,
     };
+  }
+
+  /**
+   * Resolve a `@cairn <Name>` registry header to its component ledger
+   * entry. Collects the registry from the live `@cairn` headers (the
+   * committed source of truth), so it works even though the derived
+   * index under `.cairn/ground/components/` is gitignored / may be
+   * stale. Returns `found: false` when no component carries that name.
+   */
+  resolveComponent(name: string): ComponentResolution {
+    try {
+      const r = getComponent(this.repoRoot, name);
+      if (r === null) return { found: false, entry: null, exportName: null };
+      return { found: true, entry: r.entry, exportName: r.record.exportName };
+    } catch (err) {
+      lensLog(
+        `resolveComponent(${name}) FAILED: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return { found: false, entry: null, exportName: null };
+    }
+  }
+
+  /** Absolute on-disk path of the component index (INDEX.md / manifest). */
+  componentsIndexFilePath(): string {
+    return componentsIndexPath(this.repoRoot);
   }
 
   /** O(1) scope-index lookup — null when no entry / unscoped / empty. */

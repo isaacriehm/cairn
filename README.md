@@ -208,6 +208,12 @@ already loaded into the spec.
 
 - **Persistent decisions / invariants / canonical map** in
   version-controlled `.cairn/`.
+- **Component registry** — every component file carries a structured
+  `@cairn <ExportName>` header; the agent loads the full in-scope
+  inventory before any UI work and follows USE > EXTEND > CREATE so it
+  never rebuilds a component that already exists. A check gate blocks
+  missing headers / duplicate names; an advisory audit flags probable
+  inline rebuilds.
 - **Supersedes chains** — old decisions stay readable but flagged
   superseded; the chain is queryable via `cairn_supersedes_chain`.
 - **Scope-aware preload** — the SessionStart hook injects only the
@@ -277,7 +283,9 @@ on the next GC sweep.
 ## Editor Extension — Cairn Lens
 
 Hover, ghost text, gutter icons, code lens — all resolved live from
-`.cairn/ground/` ledgers. Read-only.
+`.cairn/ground/` ledgers. Read-only. Hovering a `@cairn` component
+header shows its registry entry (`[S]` singleton; amber drift when the
+header name ≠ the exported name).
 
 | Status      | Meaning                       |
 | ----------- | ----------------------------- |
@@ -288,7 +296,10 @@ Hover, ghost text, gutter icons, code lens — all resolved live from
 Install the latest `.vsix` from
 [releases](https://github.com/isaacriehm/cairn/releases) →
 `Cmd/Ctrl+Shift+P` → `Extensions: Install from VSIX…`. Full setup in
-[`packages/cairn-lens/README.md`](packages/cairn-lens/README.md).
+[`packages/cairn-lens/README.md`](packages/cairn-lens/README.md). Because
+the `.vsix` is not on the Marketplace, Cairn Lens checks npm once a day
+and notifies you when a newer release is published (disable via
+`cairn.lens.checkForUpdates`).
 
 ## Multi-Developer Enforcement
 
@@ -318,6 +329,7 @@ After `cairn init`:
 │   ├── decisions/               DEC-NNNN.md per choice + _inbox/<id>.draft.md
 │   ├── invariants/              INV-NNNN.md per §V rule
 │   ├── canonical-map/           topic → file index
+│   ├── components/              derived @cairn inventory (gitignored; rebuilt from headers)
 │   ├── brand/                   overview.md, voice.md
 │   ├── product/                 positioning.md, personas.yaml
 │   ├── conflicts/               <a-id>__<b-id>.md (DEC↔INV contradictions)

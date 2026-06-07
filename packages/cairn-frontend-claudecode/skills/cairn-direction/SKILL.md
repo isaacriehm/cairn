@@ -29,7 +29,7 @@ the entry-point summary.
 ## Step 0 — preload deferred tools (REQUIRED FIRST)
 
 ```
-ToolSearch(select:mcp__plugin_cairn_cairn__cairn_task_create,mcp__plugin_cairn_cairn__cairn_task_complete,mcp__plugin_cairn_cairn__cairn_in_scope,mcp__plugin_cairn_cairn__cairn_canonical_for_topic,mcp__plugin_cairn_cairn__cairn_search,mcp__plugin_cairn_cairn__cairn_mission_get,mcp__plugin_cairn_cairn__cairn_mission_start,mcp__plugin_cairn_cairn__cairn_mission_accept_draft,mcp__plugin_cairn_cairn__cairn_mission_plan_phase,mcp__plugin_cairn_cairn__cairn_mission_advance,mcp__plugin_cairn_cairn__cairn_mission_set_exit_gate,mcp__plugin_cairn_cairn__cairn_record_decision,AskUserQuestion)
+ToolSearch(select:mcp__plugin_cairn_cairn__cairn_task_create,mcp__plugin_cairn_cairn__cairn_task_complete,mcp__plugin_cairn_cairn__cairn_in_scope,mcp__plugin_cairn_cairn__cairn_canonical_for_topic,mcp__plugin_cairn_cairn__cairn_search,mcp__plugin_cairn_cairn__cairn_components_in_scope,mcp__plugin_cairn_cairn__cairn_component_get,mcp__plugin_cairn_cairn__cairn_mission_get,mcp__plugin_cairn_cairn__cairn_mission_start,mcp__plugin_cairn_cairn__cairn_mission_accept_draft,mcp__plugin_cairn_cairn__cairn_mission_plan_phase,mcp__plugin_cairn_cairn__cairn_mission_advance,mcp__plugin_cairn_cairn__cairn_mission_set_exit_gate,mcp__plugin_cairn_cairn__cairn_record_decision,AskUserQuestion)
 ```
 
 `AskUserQuestion` is deferred — without preload you fall back to
@@ -109,6 +109,25 @@ questions; it does NOT skip Step 3.
 
 `cairn_in_scope`, `cairn_canonical_for_topic`, `cairn_search`,
 `Bash: git log --oneline -5`.
+
+**UI / component work — also load the registry.** When the task creates
+or modifies any UI component (or touches a component dir), call
+`cairn_components_in_scope({path_globs})` and read the COMPLETE returned
+inventory — it is the full slice you are entitled to use, never a partial
+retrieval. Fold it into the tightened spec under a "Components in scope"
+heading, then apply the ladder:
+
+- **USE** — an indexed component fits. Read its header via
+  `cairn_component_get({name})` for `@props`/`@example` BEFORE importing;
+  never guess props, never re-style it inline.
+- **EXTEND** — a component almost fits. Add a prop/variant in place and
+  update its header. Never copy-paste it into a new file.
+- **CREATE** — nothing fits. The new component MUST carry a complete
+  `@cairn` header (see `.cairn/config/workflow.md`) before the task closes;
+  the pre-commit check blocks a missing/duplicate header.
+
+Respect `off_limits` workspaces (isolated — never import or adapt their
+components) and `[S]` singletons (extend in place, never fork).
 
 ## Step 2 — decide ready vs questions
 

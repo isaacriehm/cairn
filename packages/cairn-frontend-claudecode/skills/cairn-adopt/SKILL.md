@@ -7,7 +7,7 @@ when_to_use: |
   cairn_init_run MCP tool as state machine — each phase returns
   complete (advance) or needs_input (AskUserQuestion, thread answer,
   re-invoke). Skip when `.cairn/` exists or operator picked "never".
-allowed-tools: Skill(cairn:cairn-attention), Task(curator-map), Task(curator-reduce)
+allowed-tools: Skill(cairn:cairn-attention), Task(curator-map), Task(curator-reduce), Task(component-annotator)
 ---
 
 # Skill: cairn-adopt
@@ -301,15 +301,18 @@ descriptions:
 | `7-topic-index` | cross-source dedup pre-pass (Haiku judges semantically-similar pairs) | ~30s / 2-10min |
 | `9a-walker` | unified curator corpus walk + regex pre-filter + shard pack | <5s |
 | `9c-emit` | validate curator output + write DEC/INV ground files | <5s |
+| `9d-comp-walk` | list component files missing a `@cairn` header | <5s |
+| `9f-comp-emit` | build component index + draft singleton §INVs + audit | <5s |
 | `11-baseline` | first sensor sweep | <1s / ~5s |
 | `12-strip` | per-module strip-replace consent | operator |
 | `13-multidev` | per-host package manager hints | <1s |
 
-`8-docs-ingest`, `9b-curate`, and `10-rules-merge` are not listed. The
-first and last are v0.9.0 no-op markers (curator pipeline subsumed
-both). `9b-curate` is a skill-driven pseudo-phase — Step 3.5 below
-handles its surface (parallel Sonnet subagent dispatch); skip the
-banner for `9b-curate` since the subagent dispatch is the surface.
+`8-docs-ingest`, `9b-curate`, `9e-comp-annotate`, and `10-rules-merge`
+are not listed. The docs/rules markers are v0.9.0 no-op markers (curator
+pipeline subsumed both). `9b-curate` and `9e-comp-annotate` are
+skill-driven pseudo-phases — Step 3.5 and Step 3.6 below handle their
+surfaces (parallel subagent dispatch); skip the banner for both since
+the dispatch is the surface.
 
 For phases `3-mapper`, `7-topic-index`, `9a-walker`, and `9c-emit`,
 render a one-line context note immediately under the banner so the
@@ -450,6 +453,79 @@ whether to `retry` or `abort`. Retries restart Step 3.5 from the top.
 The next loop iteration runs `9c-emit`, which validates each entry
 and writes ground state.
 
+## Step 3.6 — component annotation (Phase 9e-comp-annotate)
+
+When the loop hits `nextPhase === "9e-comp-annotate"`, run this
+orchestration **before** invoking `cairn_init_run` for that phase. The
+prior phase (`9d-comp-walk`) wrote the corpus of un-headered component
+files; this step dispatches subagents that write `@cairn` headers into
+those files. The MCP runner for `9e-comp-annotate` just counts how many
+files now carry a header and advances — it never blocks, so annotation
+is opportunistic (anything not headered here surfaces as missing-header
+debt in the attention queue after adoption).
+
+**This whole step is OPTIONAL and gated on operator consent.** Writing
+headers mutates source files. If the operator declines, skip straight
+to Step 3.6.4 — the deterministic emit phase still indexes whatever
+headers already exist and queues the rest as debt.
+
+### Step 3.6.1 — read the corpus
+
+```bash
+cat .cairn/init/components/missing.jsonl 2>/dev/null
+```
+
+Each line is `{ file, workspace, export_name, categories }`. If the file
+is absent or empty (no missing headers — e.g. a re-adoption), skip to
+Step 3.6.4. Otherwise render a banner:
+
+```markdown
+---
+**Phase 9e-comp-annotate** — annotate component headers · operator-gated
+N component files are missing a `@cairn` registry header. Dispatching
+`component-annotator` subagents (rounds of 4) to add them. Plan-quota,
+no API billing.
+```
+
+### Step 3.6.2 — per-batch consent + dispatch
+
+Group the corpus records into batches of ~4. For each batch, surface an
+`AskUserQuestion` consent gate (like Phase 12's strip consent):
+
+- `[a]` annotate this batch · `[b]` skip this batch · `[c]` stop annotating
+
+On `[a]`, spawn one `component-annotator` subagent per file in the batch
+(up to 4 in a single assistant message → parallel; await before the next
+batch). Each brief MUST inline:
+
+- `file` — absolute path to annotate.
+- `export_name` — the detected export; the `@cairn` value MUST be the
+  exact exported name (rename neither).
+- `categories` — the workspace taxonomy; `@category` MUST be one of these.
+- The header is the FIRST comment block in the file. `@aliases` ≥2
+  concrete searchable nouns. `@purpose` one line. Add `@singleton` ONLY
+  for app-shell parts the project intends to exist exactly once.
+- Do NOT change any code outside the inserted header comment.
+
+The subagent edits the file and returns a one-line receipt. Read disk,
+not the return text, as the source of truth.
+
+### Step 3.6.3 — `component-annotator` agent
+
+The agent definition lives at `agents/component-annotator.md`
+(`Task(component-annotator)` is pre-approved in this skill's
+frontmatter). It carries the full `@cairn` grammar + the
+write-once-correct rules (port invariant 8) inline so the requirements
+ride the brief, not buried prose.
+
+### Step 3.6.4 — advance the state machine
+
+Call `cairn_init_run({ phase: "9e-comp-annotate" })`. The runner counts
+`annotated` / `still_missing` across the corpus and advances to
+`9f-comp-emit`, which builds the index, drafts singleton §INVs, and
+queues any still-missing headers + audit findings to the attention
+baseline. No error path — annotation is best-effort by design.
+
 ## Step 4 — auto-bootstrap the just-adopted clone
 
 When the loop exits with `nextPhase === null`, the on-disk `.cairn/`
@@ -490,6 +566,11 @@ node -e '
     decs_emitted:(g("9c-emit").decsWritten||[]).length,
     invs_emitted:(g("9c-emit").invsWritten||[]).length,
     curator_dropped:(g("9c-emit").dropped)||0,
+    components_indexed:(g("9f-comp-emit").indexed)||0,
+    components_missing:(g("9f-comp-emit").missing)||0,
+    components_annotated:(g("9e-comp-annotate").annotated)||0,
+    singletons_drafted:(g("9f-comp-emit").singletons_drafted)||0,
+    component_audit:(g("9f-comp-emit").audit_findings)||0,
     baseline_findings:(g("11-baseline").totalFindings)||0,
     multidev_hosts:(g("13-multidev").hostKinds)||[]
   }));'
@@ -506,6 +587,12 @@ In the same assistant message, do both:
    - Curator drop count (`curator_dropped`) — entries the validators
      refused; surface only when > 0 so the operator knows the bar
      held
+   - Components indexed (`components_indexed`) and singleton rules
+     seeded (`singletons_drafted`) — surface only when
+     `components_indexed > 0` (non-UI repos skip the component store).
+     When `components_missing > 0` or `component_audit > 0`, note that
+     N components still need `@cairn` headers / audit triage — the
+     chained attention skill surfaces them for annotation.
    - Baseline sensor findings (`baseline_findings`)
    - Multi-dev install host kinds (`multidev_hosts`)
 

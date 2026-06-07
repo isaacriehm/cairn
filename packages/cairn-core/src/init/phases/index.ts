@@ -11,6 +11,9 @@ export {
   type WalkerOutput,
   type CurateOutput,
   type EmitOutput,
+  type CompWalkOutput,
+  type CompAnnotateOutput,
+  type ComponentsPhaseOutput,
   type NoopPhaseOutput,
 } from "./types.js";
 
@@ -51,6 +54,9 @@ export { runPhase8DocsIngest } from "./8-docs-ingest.js";
 export { runPhase9aWalker } from "./9a-walker.js";
 export { runPhase9bCurate, CURATOR_FINAL_PATH } from "./9b-curate.js";
 export { runPhase9cEmit } from "./9c-emit.js";
+export { runPhase9dCompWalk, COMP_MISSING_PATH } from "./9d-comp-walk.js";
+export { runPhase9eCompAnnotate } from "./9e-comp-annotate.js";
+export { runPhase9fCompEmit } from "./9f-comp-emit.js";
 export { runPhase10RulesMerge } from "./10-rules-merge.js";
 export { runPhase11Baseline } from "./11-baseline.js";
 export { runPhase12Strip } from "./12-strip.js";

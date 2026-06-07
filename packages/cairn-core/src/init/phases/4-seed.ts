@@ -24,6 +24,7 @@ import {
   type ScopeIndexEntry,
 } from "@isaacriehm/cairn-state";
 import { seedAttestedCommits } from "../../hooks/seed-attested.js";
+import { detectComponentsConfig } from "../detect-components.js";
 import { buildProjectOverlay } from "../overlay.js";
 import { seedCairnLayout } from "../seed.js";
 import { updateWorkflowSlugBlock } from "../workflow-block.js";
@@ -92,6 +93,12 @@ export async function runPhase4Seed(state: PhaseState): Promise<PhaseResult> {
         decidedSlug: projectSlug,
         ...(mapperOutput !== undefined ? { mapperOutput } : {}),
       });
+      // Attach a detected `components:` block (deterministic FS probe,
+      // no LLM). Null for non-UI repos — the key is simply omitted, so
+      // the whole component store stays inert. overlay.ts is pure (no
+      // IO); the detection lives here where 4-seed already does IO.
+      const components = detectComponentsConfig(state.repoRoot, detection);
+      if (components !== null) config["components"] = components;
       writeFileSync(configPath, stringifyYaml(config), "utf8");
     }
 

@@ -15,6 +15,7 @@ export {
   withSpinner,
 } from "./visual.js";
 export { applyBrandAnswers, runBrandSetup } from "./brand-setup.js";
+export { detectComponentsConfig } from "./detect-components.js";
 export {
   ensureCairnRuleImport,
   installCairnRuleAndImport,
@@ -215,6 +216,10 @@ export {
   runPhase9bCurate,
   runPhase9cEmit,
   CURATOR_FINAL_PATH,
+  runPhase9dCompWalk,
+  COMP_MISSING_PATH,
+  runPhase9eCompAnnotate,
+  runPhase9fCompEmit,
   runPhase10RulesMerge,
   runPhase11Baseline,
   runPhase12Strip,
@@ -233,6 +238,9 @@ export type {
   WalkerOutput,
   CurateOutput,
   EmitOutput,
+  CompWalkOutput,
+  CompAnnotateOutput,
+  ComponentsPhaseOutput,
   NoopPhaseOutput,
   TopicIndexPhaseOutput,
 } from "./phases/index.js";

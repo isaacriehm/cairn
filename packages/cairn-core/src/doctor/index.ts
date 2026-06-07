@@ -15,8 +15,11 @@ import { parse as parseYaml } from "yaml";
 import {
   buildDecisionsLedger,
   buildInvariantsLedger,
+  hasComponentConfig,
+  loadComponentsConfig,
   matchAnyGlob,
 } from "@isaacriehm/cairn-state";
+import { runComponentCheck } from "../components/check.js";
 import { VERSION } from "../index.js";
 import { normalizeProjectName } from "../paths/index.js";
 import { z } from "zod";
@@ -71,6 +74,9 @@ export function runDoctor(opts: { repoRoot: string }): DoctorReport {
 
   // 3. Sensors
   checks.push(...checkSensorAvailability(opts.repoRoot));
+
+  // 4. Component registry (only when the project declares component dirs)
+  checks.push(...checkComponents(opts.repoRoot));
 
   const errors = checks.filter((c) => c.status === "error").length;
   const warnings = checks.filter((c) => c.status === "warn").length;
@@ -334,6 +340,54 @@ function checkSensorAvailability(repoRoot: string): DoctorCheck[] {
     });
   }
   return checks;
+}
+
+/**
+ * Component-registry health. No-op (returns []) when the project declares no
+ * component dirs, so non-UI repos see no extra check. Rebuilds the index in
+ * memory and validates `@cairn` headers; hard findings fail CI (the workflow
+ * runs `cairn doctor`).
+ */
+function checkComponents(repoRoot: string): DoctorCheck[] {
+  const config = loadComponentsConfig(repoRoot);
+  if (!hasComponentConfig(config)) return [];
+  const result = runComponentCheck(repoRoot);
+  if (result.hardFailures > 0) {
+    const sample = result.findings
+      .filter((f) => f.severity === "hard")
+      .slice(0, 3)
+      .map((f) => f.message)
+      .join("; ");
+    const more = result.hardFailures > 3 ? ` (+${result.hardFailures - 3} more)` : "";
+    return [
+      {
+        group: "ground",
+        label: "components",
+        status: "error",
+        detail: `${result.hardFailures} hard finding(s): ${sample}${more}`,
+        fixCommand: "cairn components check",
+      },
+    ];
+  }
+  if (result.softFindings > 0) {
+    return [
+      {
+        group: "ground",
+        label: "components",
+        status: "warn",
+        detail: `${result.total} component(s); ${result.softFindings} warning(s)`,
+        fixCommand: "cairn components check",
+      },
+    ];
+  }
+  return [
+    {
+      group: "ground",
+      label: "components",
+      status: "ok",
+      detail: `${result.total} component(s) across ${result.workspaces} workspace(s)`,
+    },
+  ];
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────

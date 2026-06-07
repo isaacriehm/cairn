@@ -1,9 +1,9 @@
 /**
  * Hover provider for cairn citation tokens.
  *
- * Triggers on §DEC-NNNN, §INV-NNNN, and TODO(TSK-<id>) tokens. Renders a
- * Markdown card with resolved title, status, and links to the underlying
- * ground file.
+ * Triggers on §DEC-NNNN, §INV-NNNN, TODO(TSK-<id>), and `@cairn <Name>`
+ * component-registry headers. Renders a Markdown card with resolved
+ * title, status, and links to the underlying ground file.
  */
 
 import * as vscode from "vscode";
@@ -16,10 +16,14 @@ import { lensLog } from "../debug-log.js";
 const DECISION_TOKEN_RE = /§(DEC-[0-9a-f]{7,})\b/g;
 const INVARIANT_TOKEN_RE = /§(INV-[0-9a-f]{7,})\b/g;
 const TASK_TOKEN_RE = /TODO\(TSK-[A-Za-z0-9_-]+\)/g;
+// `@cairn <ExportName>` registry header — whitespace then an identifier.
+// Deliberately excludes the colon-form `@cairn:decision` / `@cairn:rule`
+// SoT markers (those can never be whitespace-then-identifier).
+const COMPONENT_HEADER_RE = /@cairn[ \t]+([A-Za-z_$][A-Za-z0-9_$]*)/g;
 
 interface TokenMatch {
-  kind: "decision" | "invariant" | "task";
-  id: string; // "DEC-a3f7b2c", "INV-2323232", or "TSK-foo"
+  kind: "decision" | "invariant" | "task" | "component";
+  id: string; // "DEC-a3f7b2c", "INV-2323232", "TSK-foo", or "<ComponentName>"
   range: vscode.Range;
 }
 
@@ -63,6 +67,18 @@ function findTokenAt(
       return {
         kind: "task",
         id: inner,
+        range: new vscode.Range(position.line, start, position.line, end),
+      };
+    }
+  }
+  for (const m of line.matchAll(COMPONENT_HEADER_RE)) {
+    const start = m.index ?? -1;
+    if (start < 0) continue;
+    const end = start + m[0].length;
+    if (position.character >= start && position.character <= end) {
+      return {
+        kind: "component",
+        id: m[1] as string, // "<ComponentName>"
         range: new vscode.Range(position.line, start, position.line, end),
       };
     }
@@ -138,7 +154,7 @@ export class CitationHoverProvider implements vscode.HoverProvider {
       md.appendMarkdown(
         `[Open invariants ledger](${vscode.Uri.file(this.resolver.invariantsLedgerFilePath()).toString()})`,
       );
-    } else {
+    } else if (token.kind === "task") {
       const r = this.resolver.resolveTask(token.id);
       const stateLabel =
         r.found === "active"
@@ -148,6 +164,43 @@ export class CitationHoverProvider implements vscode.HoverProvider {
             : "$(circle-slash) not in tasks/{active,done}/";
       md.appendMarkdown(`**${r.id}** — ${escapeMd(r.title ?? "(no title)")}\n\n`);
       md.appendMarkdown(`${stateLabel}\n`);
+    } else {
+      const r = this.resolver.resolveComponent(token.id);
+      if (!r.found || r.entry === null) {
+        md.appendMarkdown(`**@cairn ${escapeMd(token.id)}**\n\n`);
+        md.appendMarkdown(
+          "$(question) not in the component registry — rebuild with `cairn components index`\n",
+        );
+        return new vscode.Hover(md, token.range);
+      }
+      const e = r.entry;
+      const singleton = e.singleton ? " $(pinned) `[S]` singleton" : "";
+      md.appendMarkdown(`**${escapeMd(e.name)}**${singleton}\n\n`);
+      // Drift: the registry must not lie about the code (port invariant 2).
+      if (r.exportName !== null && r.exportName !== e.name) {
+        md.appendMarkdown(
+          `$(warning) **header drifts from export** — \`@cairn ${escapeMd(e.name)}\` ≠ exported \`${escapeMd(r.exportName)}\`. Rename the export or fix the header.\n\n`,
+        );
+      } else {
+        md.appendMarkdown("$(check) registry entry\n\n");
+      }
+      if (e.category.length > 0) {
+        md.appendMarkdown(`Category: \`${escapeMd(e.category)}\`\n\n`);
+      }
+      if (e.purpose.length > 0) {
+        md.appendMarkdown(`${escapeMd(e.purpose)}\n\n`);
+      }
+      if (e.aliases.length > 0) {
+        md.appendMarkdown(`Aliases: ${e.aliases.map((a) => `\`${escapeMd(a)}\``).join(", ")}\n\n`);
+      }
+      if (e.singleton) {
+        md.appendMarkdown(
+          "$(pinned) Singleton — exists exactly once by project decision. Extend in place; never fork or rebuild.\n\n",
+        );
+      }
+      md.appendMarkdown(
+        `[Open component index](${vscode.Uri.file(this.resolver.componentsIndexFilePath()).toString()})`,
+      );
     }
     return new vscode.Hover(md, token.range);
   }

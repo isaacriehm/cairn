@@ -87,6 +87,12 @@ ground/file-candidates-map.yaml
 ground/decisions/decisions.ledger.yaml
 ground/invariants/invariants.ledger.yaml
 
+# Derived component registry index — rebuilt from the `@cairn` source
+# headers (the committed source of truth) by `cairn components index` +
+# SessionStart. Same per-clone reasoning as the indexes above. Untrack on
+# repos adopted before this landed via `cairn fix gitignore`.
+ground/components/
+
 # Per-clone alignment-pending queue — operator-pending SoT-drift review
 # items (idempotent content-slug filenames), resolved via
 # cairn_resolve_attention. Same class as ground/decisions/_inbox/: drafts

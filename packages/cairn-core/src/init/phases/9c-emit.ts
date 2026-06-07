@@ -22,7 +22,7 @@ export async function runPhase9cEmit(state: PhaseState): Promise<PhaseResult> {
     };
     return {
       status: "complete",
-      nextPhase: "10-rules-merge",
+      nextPhase: "9d-comp-walk",
       state: advancePhase(next),
     };
   }
@@ -41,7 +41,7 @@ export async function runPhase9cEmit(state: PhaseState): Promise<PhaseResult> {
     };
     return {
       status: "complete",
-      nextPhase: "10-rules-merge",
+      nextPhase: "9d-comp-walk",
       state: advancePhase(next),
     };
   } catch (err) {

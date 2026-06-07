@@ -4,6 +4,79 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.0] — 2026-06-07
+
+The component store — Cairn's fourth ground store. Cairn already stops
+agents from drifting from recorded decisions; it now also stops the most
+expensive frontend failure mode: an agent rebuilding a component that
+already exists, then misusing the refactor. Every component file carries
+a structured `@cairn <ExportName>` header — the header *is* its registry
+entry, living with the code so it can't drift elsewhere — and the daily
+flow loads the full in-scope component inventory before any UI work, so
+the agent follows USE > EXTEND > CREATE instead of guessing via grep. A
+check sensor gates (missing headers, duplicate names); an advisory audit
+informs (probable inline rebuilds, name collisions); the two are never
+blurred. Monorepos get per-workspace slices with isolation-by-default and
+opt-in sharing. The headers in source are the committed source of truth;
+the generated index under `.cairn/ground/components/` is a gitignored,
+rebuildable cache.
+
+### Added
+
+- **Component registry as the fourth ground store.** `@cairn` source
+  headers (block or hash form, framework-agnostic) parsed + collected +
+  rendered into a deterministic, sorted index under
+  `.cairn/ground/components/` — a flat `INDEX.md` for single-app repos,
+  a manifest + per-workspace `index/<ws>.md` slices for monorepos (no
+  all-workspace honeypot file). Required tags `@cairn`/`@category`/
+  `@purpose`/`@aliases`; optional `@singleton`/`@props`/`@uses`/
+  `@status`/`@example`.
+- **`cairn components index | check | audit` CLI.** `index` rebuilds the
+  derived inventory; `check` exits 1 on hard findings (missing header,
+  missing required tag, invalid category, duplicate name within a
+  workspace); `audit` always exits 0 and surfaces probable inline
+  rebuilds (Tailwind utility-root Jaccard, so value-tweaked copies still
+  match) + name collisions.
+- **Two read-only MCP tools.** `cairn_components_in_scope({ path_globs })`
+  returns the full in-scope inventory — the entitled workspace(s) + any
+  `[shared]` workspace + the OFF-LIMITS list — as the daily flow's "full
+  slice read" before UI work; `cairn_component_get({ name, workspace? })`
+  returns one component's ledger entry + raw header for correct usage.
+- **Adoption auto-wire (component trio).** Phase 4 auto-detects a
+  `components:` config by deterministic FS probe (single-app dirs +
+  monorepo `packages/*` / `apps/*`, isolation never guessed). The new
+  trio `9d-comp-walk` (lists un-headered files) → `9e-comp-annotate`
+  (operator-gated `component-annotator` subagents write `@cairn` headers
+  into source, in consented batches) → `9f-comp-emit` (builds the index,
+  drafts a §INV per `@singleton`, queues audit + still-missing-header
+  debt to the attention baseline) runs after source-comment emit and
+  no-ops on non-UI repos.
+- **Cairn Lens — `@cairn` header hover.** Hovering a component header
+  shows its registry entry, marks `[S]` singletons, and renders an amber
+  drift warning when the header name ≠ the exported name.
+- **Cairn Lens — self-update notifier.** Because the extension ships as a
+  `.vsix` (not the Marketplace), it now checks npm once per day for a
+  newer release and surfaces a dismissible notification. Throttled via
+  `globalState`, silent on any network failure, never blocks activation.
+  Toggle with the `cairn.lens.checkForUpdates` setting.
+
+### Changed
+
+- **`cairn sensor-run --staged` is now a real gate.** It was a no-op stub
+  (printed "execution not yet wired", exited 0). On repos with a
+  `components:` config it runs the component check on staged files and
+  exits 1 on any hard finding — the pre-commit hook's first real
+  execution path. Repos without a component config are unaffected.
+- **`cairn doctor` gains a component-health check.** No-op when there is
+  no component config; otherwise rebuilds the index in memory and fails
+  on hard findings, so CI (which runs `doctor`, not `sensor-run`)
+  enforces component health.
+- **New seeded `.cairn/.gitignore` entry `ground/components/`.** The
+  derived index is rebuildable and gitignored to avoid multi-dev merge
+  churn; `cairn fix gitignore` backfills it on repos adopted earlier (it
+  diffs the bundled template against the live file and untracks newly
+  ignored paths).
+
 ## [0.17.0] — 2026-06-06
 
 Native Windows support. Cairn's runtime worked on Windows, but the

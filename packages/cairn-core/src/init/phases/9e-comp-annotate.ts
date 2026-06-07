@@ -1,0 +1,98 @@
+/**
+ * Phase 9e-comp-annotate — skill-driven header annotation (confirm leg).
+ *
+ * The actual work runs in the cairn-adopt skill (Step 3.6): it reads
+ * the `.cairn/init/components/missing.jsonl` corpus from 9d-comp-walk
+ * and dispatches `component-annotator` subagents in parallel batches
+ * that write `@cairn` headers into the source files (per-batch
+ * operator consent, like Phase 12).
+ *
+ * This MCP runner is the state-machine bookkeeper. Unlike 9b-curate —
+ * which HARD-errors when its subagent output is missing — annotation is
+ * opportunistic: any file the operator declined or a subagent couldn't
+ * confidently header simply stays un-headered and surfaces as
+ * missing-header debt in 9f-comp-emit's attention baseline. So this
+ * runner is tolerant: it counts how many of the walk's files now carry
+ * a header and always advances.
+ */
+
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  hasComponentConfig,
+  loadComponentsConfig,
+  parseComponentHeader,
+} from "@isaacriehm/cairn-state";
+import { COMP_MISSING_PATH } from "./9d-comp-walk.js";
+import { advancePhase, isSelfAdoptState } from "./orchestrator.js";
+import type { CompAnnotateOutput, PhaseResult, PhaseState } from "./types.js";
+
+const NEXT_PHASE = "9f-comp-emit" as const;
+
+function complete(state: PhaseState, out: CompAnnotateOutput): PhaseResult {
+  const next: PhaseState = {
+    ...state,
+    outputs: { ...state.outputs, "9e-comp-annotate": out },
+  };
+  return { status: "complete", nextPhase: NEXT_PHASE, state: advancePhase(next) };
+}
+
+export async function runPhase9eCompAnnotate(
+  state: PhaseState,
+): Promise<PhaseResult> {
+  if (isSelfAdoptState(state)) {
+    return complete(state, { skipped: "self-adopt" });
+  }
+  const config = loadComponentsConfig(state.repoRoot);
+  if (!hasComponentConfig(config)) {
+    return complete(state, { skipped: "no-components" });
+  }
+
+  const corpusAbs = join(state.repoRoot, COMP_MISSING_PATH);
+  if (!existsSync(corpusAbs)) {
+    return complete(state, { skipped: "nothing-missing" });
+  }
+
+  let annotated = 0;
+  let stillMissing = 0;
+  try {
+    const text = readFileSync(corpusAbs, "utf8");
+    for (const line of text.split("\n")) {
+      const trimmed = line.trim();
+      if (trimmed.length === 0) continue;
+      let rec: { file?: unknown };
+      try {
+        rec = JSON.parse(trimmed) as { file?: unknown };
+      } catch {
+        continue;
+      }
+      if (typeof rec.file !== "string") continue;
+      let hasHeader = false;
+      try {
+        hasHeader =
+          parseComponentHeader(
+            readFileSync(join(state.repoRoot, rec.file), "utf8"),
+          ) !== null;
+      } catch {
+        /* file gone / unreadable → counts as still missing */
+      }
+      if (hasHeader) annotated += 1;
+      else stillMissing += 1;
+    }
+  } catch (err) {
+    return {
+      status: "error",
+      error: {
+        code: "9e-comp-annotate-failed",
+        message: "Failed to read the component annotation corpus",
+        detail: err instanceof Error ? err.stack ?? err.message : String(err),
+      },
+      state,
+    };
+  }
+
+  if (annotated + stillMissing === 0) {
+    return complete(state, { skipped: "nothing-missing" });
+  }
+  return complete(state, { annotated, still_missing: stillMissing });
+}

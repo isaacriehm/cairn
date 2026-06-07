@@ -5,6 +5,8 @@ import { attentionWaitTool } from "./attention-wait.js";
 import { bootstrapRetryTool } from "./bootstrap-retry.js";
 import { bulkAcceptAttentionTool } from "./bulk-accept-attention.js";
 import { canonicalForTopicTool } from "./canonical-for-topic.js";
+import { componentGetTool } from "./component-get.js";
+import { componentsInScopeTool } from "./components-in-scope.js";
 import { decisionGetTool } from "./decision-get.js";
 import { inScopeTool } from "./in-scope.js";
 import {
@@ -37,6 +39,9 @@ export const allTools: ToolDef<never>[] = [
   canonicalForTopicTool,
   invariantGetTool,
   inScopeTool,
+  // Read — component registry
+  componentsInScopeTool,
+  componentGetTool,
   // Read — search + retrieval
   searchTool,
   // Write

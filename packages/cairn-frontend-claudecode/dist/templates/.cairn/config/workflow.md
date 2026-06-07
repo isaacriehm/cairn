@@ -46,3 +46,61 @@ and is written directly by the `cairn-direction` skill. The reviewer
 subagent reads that spec; nothing renders this markdown body.
 
 If you're looking for the daily flow, see `docs/SYSTEM_OVERVIEW.md` §4.
+
+# Component reuse discipline
+
+**Iron rule: before building any UI component, load the in-scope component
+inventory and check it first.** The same drift Cairn prevents for decisions
+applies to components — an agent that rebuilds a component that already
+exists ships a duplicate, then misuses the refactor. `cairn-direction`
+injects the in-scope inventory into every UI task; read it in full.
+
+The ladder, in strict order — **USE > EXTEND > CREATE**:
+
+1. **USE** — an indexed component fits. Read its header via
+   `cairn_component_get({name})` for `@props`/`@example`, then import it.
+   Never reimplement what already exists.
+2. **EXTEND** — a component almost fits. Add a prop or variant **in place**
+   and reuse it. Do not fork or copy.
+3. **CREATE** — nothing fits. The new component file MUST carry a complete
+   `@cairn` header (grammar below) before the task closes, or the
+   component check blocks the commit.
+
+## `@cairn` header grammar
+
+Every component file carries a structured header comment — the header **is**
+its registry entry, living with the code so it can't drift elsewhere. Block
+form (the first `/** */` comment) or hash form (the first contiguous `#`
+run) are both accepted.
+
+Required tags:
+
+- `@cairn <ExportName>` — the exact exported name, unique within the
+  workspace. The registry must never lie about the code.
+- `@category <name>` — one of the project's component categories.
+- `@purpose <line>` — one searchable sentence.
+- `@aliases <a, b, …>` — at least two comma-separated nouns a teammate
+  might search for.
+
+Optional: `@props`, `@uses`, `@status` (`stable|wip|deprecated`),
+`@example`, and `@singleton` (valueless).
+
+Example:
+
+```tsx
+/**
+ * @cairn PrimaryButton
+ * @category forms
+ * @purpose The app's main call-to-action button with loading + disabled states.
+ * @aliases cta button, submit button, action button
+ * @props variant, size, loading, disabled
+ */
+```
+
+## Singletons
+
+A header tagged `@singleton` declares a component that exists **exactly
+once** by project decision — the app shell, the global nav, the root
+provider. Adoption promotes each `@singleton` to a hard invariant
+("`<Name>` exists exactly once"). Extend it in place; never fork, copy, or
+rebuild it. The component check's duplicate-name gate enforces uniqueness.

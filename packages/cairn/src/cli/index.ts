@@ -10,6 +10,7 @@ import {
 import { alignCli } from "./align.js";
 import { attentionCli } from "./attention.js";
 import { baselineCli } from "./baseline.js";
+import { componentsCli } from "./components.js";
 import { doctorCli } from "./doctor.js";
 import { fixCli } from "./fix.js";
 import { gcCli } from "./gc.js";
@@ -258,6 +259,9 @@ switch (subcommand) {
   case "sensor-run":
     await sensorRunCli(rest);
     break;
+  case "components":
+    await componentsCli(rest);
+    break;
   case "tag":
     await tagCli(rest);
     break;
@@ -343,6 +347,8 @@ switch (subcommand) {
         "  baseline   re-run the synthetic-diff sensor sweep post-adoption\n" +
         "             (--force? --repo <path>?)\n" +
         "  sensor-run git-hook sensor sweep (--staged | --commit-msg <path>)\n" +
+        "  components component registry tooling\n" +
+        "             (subcommands: index | check | audit; --repo <path>?)\n" +
         "  tag        operator-driven retro-tagging — insert <!-- cairn:decision -->\n" +
         "             markers after lines matching a regex pattern\n" +
         "             (--insert-marker <pattern> <file-or-dir>\n" +

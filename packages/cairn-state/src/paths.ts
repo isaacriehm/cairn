@@ -108,6 +108,41 @@ export function anchorMapPath(repoRoot: string): string {
   return join(groundDir(repoRoot), "anchor-map.yaml");
 }
 
+/* -------------------------------------------------------------------------- */
+/* Components — the registry ground store (derived; headers in source are SoT) */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * `.cairn/ground/components/` — the component-registry index store. Holds
+ * the generated INDEX.md (single-app) or manifest + `index/<ws>.md` slices
+ * (monorepo). Derived from `@cairn` source headers, so gitignored per the
+ * v0.15.0 gitignore-derived-ground-state decision: the headers in code are
+ * the committed source of truth, this directory is a rebuildable cache the
+ * agent reads in full before UI work.
+ */
+export function componentsGroundDir(repoRoot: string): string {
+  return join(groundDir(repoRoot), "components");
+}
+
+/** `.cairn/ground/components/INDEX.md` — flat inventory or monorepo manifest. */
+export function componentsIndexPath(repoRoot: string): string {
+  return join(componentsGroundDir(repoRoot), "INDEX.md");
+}
+
+/** `.cairn/ground/components/index/` — per-workspace slice dir (monorepo only). */
+export function componentsSliceDir(repoRoot: string): string {
+  return join(componentsGroundDir(repoRoot), "index");
+}
+
+/**
+ * `.cairn/ground/components/index/<ws>.md` — one workspace's inventory slice.
+ * The workspace name is sanitized to a filesystem-safe slug; callers pass the
+ * already-sanitized slice filename when iterating render output.
+ */
+export function componentSlicePath(repoRoot: string, sliceSlug: string): string {
+  return join(componentsSliceDir(repoRoot), `${sliceSlug}.md`);
+}
+
 export function conflictsDir(repoRoot: string): string {
   return join(groundDir(repoRoot), "conflicts");
 }

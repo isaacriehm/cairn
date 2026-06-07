@@ -47,6 +47,7 @@ import {
   runPhase9aWalker,
   runPhase9bCurate,
   runPhase9cEmit,
+  runPhase9dCompWalk,
   runPhase10RulesMerge,
   runPhase11Baseline,
   type PhaseResult,
@@ -420,7 +421,7 @@ async function runSmoke(): Promise<void> {
     const r = await runPhase9cEmit({ ...fresh, currentPhase: "9c-emit" });
     assert(r.status === "complete", `Step 11: 9c-emit should complete, got ${r.status}`);
     if (r.status !== "complete") return;
-    assert(r.nextPhase === "10-rules-merge", `Step 11: nextPhase should be 10-rules-merge`);
+    assert(r.nextPhase === "9d-comp-walk", `Step 11: nextPhase should be 9d-comp-walk`);
     const out = r.state.outputs["9c-emit"];
     assert(out !== undefined, "Step 11: outputs['9c-emit'] populated");
     assert(
@@ -448,6 +449,32 @@ async function runSmoke(): Promise<void> {
       "Step 11: DEC frontmatter should carry status: accepted",
     );
     console.log("  ✓ Step 11 — 9c-emit emits validated entries, drops the rest");
+  }
+
+  // ── Step 12 — 9d-comp-walk skips the whole component trio with no config ──
+  {
+    const repo = mkdtempSync(join(tmpdir(), "cairn-phase9d-"));
+    cleanups.push(repo);
+    execSync("git init -q", { cwd: repo });
+    mkdirSync(join(repo, ".cairn"), { recursive: true });
+    const fresh = freshPhaseState(repo);
+    const r = await runPhase9dCompWalk({ ...fresh, currentPhase: "9d-comp-walk" });
+    assert(r.status === "complete", `Step 12: 9d-comp-walk should complete, got ${r.status}`);
+    if (r.status !== "complete") return;
+    assert(
+      r.nextPhase === "10-rules-merge",
+      `Step 12: no-config should skip the trio to 10-rules-merge, got ${r.nextPhase}`,
+    );
+    assert(
+      r.state.currentPhase === "10-rules-merge",
+      `Step 12: persisted currentPhase should jump to 10-rules-merge, got ${r.state.currentPhase}`,
+    );
+    const out = r.state.outputs["9d-comp-walk"];
+    assert(
+      out?.skipped === "no-components",
+      `Step 12: no-config repo should stamp skipped: no-components, got ${out?.skipped}`,
+    );
+    console.log("  ✓ Step 12 — 9d-comp-walk skips the trio cleanly without a components config");
   }
 
   console.log("smoke-init-phases-all — pass");

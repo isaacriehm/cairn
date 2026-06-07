@@ -1,6 +1,6 @@
 {
   "name": "@isaacriehm/cairn",
-  "version": "0.17.0",
+  "version": "0.18.0",
   "description": "Cairn — state + context-loading layer for AI coding agents.",
   "author": "Isaac Riehm",
   "license": "MIT",
@@ -92,7 +92,8 @@
     "smoke:repo-root-anchor": "tsx scripts/smoke-repo-root-anchor.ts",
     "smoke:rebuild-derived": "tsx scripts/smoke-rebuild-derived.ts",
     "smoke:claude-rule-import": "tsx scripts/smoke-claude-rule-import.ts",
-    "smokes": "pnpm smoke:rebuild-derived && pnpm smoke:claude-rule-import && pnpm smoke:plugin-layout && pnpm smoke:resolve-attention && pnpm smoke:stop-hook && pnpm smoke:events && pnpm smoke:session-state && pnpm smoke:status-line && pnpm smoke:session-start && pnpm smoke:handoff && pnpm smoke:scope-index && pnpm smoke:read-enrich && pnpm smoke:init && pnpm smoke:ingestion-baseline && pnpm smoke:gc && pnpm smoke:lock && pnpm smoke:source-comments && pnpm smoke:rules-merge && pnpm smoke:join && pnpm smoke:bypass-detection && pnpm smoke:bootstrap-guard && pnpm smoke:e2e-adoption && pnpm smoke:e2e-daily-flow && pnpm smoke:plugin-bundle && pnpm smoke:init-phases-state && pnpm smoke:init-phases-all && pnpm smoke:init-mcp-tools && pnpm smoke:init-progress-heartbeat && pnpm smoke:stop-debounce && pnpm smoke:phase-ready-surface && pnpm smoke:mission-phase-brief && pnpm smoke:curator-validate && pnpm smoke:essay-shape-detector && pnpm smoke:entity-orphan && pnpm smoke:repo-root-anchor && pnpm smoke:bug-mine-0.13.3 && pnpm smoke:bug-mine-0.13.5 && pnpm smoke:bug-mine-0.13.8 && pnpm smoke:bug-mine-0.13.10",
+    "smoke:components": "tsx scripts/smoke-components.ts",
+    "smokes": "pnpm smoke:rebuild-derived && pnpm smoke:claude-rule-import && pnpm smoke:components && pnpm smoke:plugin-layout && pnpm smoke:resolve-attention && pnpm smoke:stop-hook && pnpm smoke:events && pnpm smoke:session-state && pnpm smoke:status-line && pnpm smoke:session-start && pnpm smoke:handoff && pnpm smoke:scope-index && pnpm smoke:read-enrich && pnpm smoke:init && pnpm smoke:ingestion-baseline && pnpm smoke:gc && pnpm smoke:lock && pnpm smoke:source-comments && pnpm smoke:rules-merge && pnpm smoke:join && pnpm smoke:bypass-detection && pnpm smoke:bootstrap-guard && pnpm smoke:e2e-adoption && pnpm smoke:e2e-daily-flow && pnpm smoke:plugin-bundle && pnpm smoke:init-phases-state && pnpm smoke:init-phases-all && pnpm smoke:init-mcp-tools && pnpm smoke:init-progress-heartbeat && pnpm smoke:stop-debounce && pnpm smoke:phase-ready-surface && pnpm smoke:mission-phase-brief && pnpm smoke:curator-validate && pnpm smoke:essay-shape-detector && pnpm smoke:entity-orphan && pnpm smoke:repo-root-anchor && pnpm smoke:bug-mine-0.13.3 && pnpm smoke:bug-mine-0.13.5 && pnpm smoke:bug-mine-0.13.8 && pnpm smoke:bug-mine-0.13.10",
     "smokes:all": "pnpm run \"/^smoke:/\""
   },
   "dependencies": {

@@ -29,6 +29,18 @@ export const inScopeInput = {
   status: z.array(z.string()).optional(),
 };
 
+// ── Read tools — component registry ────────────────────────────────────────
+
+export const componentsInScopeInput = {
+  path_globs: z.array(z.string()).min(1),
+};
+
+export const componentGetInput = {
+  name: z.string().min(1),
+  /** Optional workspace filter (monorepo). Omit for single-app. */
+  workspace: z.string().optional(),
+};
+
 // ── Read tools — 3-layer progressive retrieval ─────────────────────────────
 
 export const searchInput = {

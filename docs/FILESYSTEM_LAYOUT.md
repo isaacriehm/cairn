@@ -28,7 +28,7 @@ Replaces the prior Postgres design. Everything lives on disk. Two-zone canonical
 | Concurrency model | Per-write `flock` on `.cairn/.write-lock`; per-session state partition under `.cairn/sessions/<id>/` |
 | Branching | None — direct commits to main, gated by sensors at pre-commit + CI |
 | Two zones | `canonical` (default agent visible) / `historical` (`.cairn/runs/terminal/`, `.cairn/tasks/done/` — excluded from walkers) |
-| Sources vs. derivations | Commit sources (DEC/INV `.md`, config, canonical-map, brand, product), gitignore everything regenerable (ledgers, scope-index, manifest, topic-index, anchor-map, sot-cache, sot-bindings, file-candidates-map, quality-grades). Derived files rebuilt by `rebuildDerived` on `cairn join` / SessionStart. Committing derivations caused multi-dev merge conflicts (every clone rewrote + committed divergent copies). |
+| Sources vs. derivations | Commit sources (DEC/INV `.md`, config, canonical-map, brand, product), gitignore everything regenerable (ledgers, scope-index, manifest, topic-index, anchor-map, sot-cache, sot-bindings, file-candidates-map, quality-grades, component index). The `@cairn` headers in source are the committed source of truth for the component store; `ground/components/` is a rebuildable cache (`cairn components index`). Derived files rebuilt by `rebuildDerived` on `cairn join` / SessionStart. Committing derivations caused multi-dev merge conflicts (every clone rewrote + committed divergent copies). |
 | Provenance | YAML frontmatter required on every load-bearing markdown |
 | Append-only writes | Via Cairn MCP tools — no read-before-write penalty |
 
@@ -70,6 +70,9 @@ The layout below is **stack-agnostic**. Subdirectories under `.cairn/ground/{sch
 │   │   │   └── invariants/         ← archived INVs (status: archived)
 │   │   ├── canonical-map/
 │   │   │   └── topics.yaml         ← topic → canonical-doc-path            CANONICAL (committed)
+│   │   ├── components/             ← derived component inventory           GITIGNORED
+│   │   │   ├── INDEX.md            ← flat inventory (single-app) / manifest (monorepo) (derived)
+│   │   │   └── index/<ws>.md       ← per-workspace slice (monorepo only) (derived)
 │   │   ├── scope-index.yaml        ← file path → {decisions[], invariants[]} (derived) GITIGNORED
 │   │   ├── topic-index.yaml        ← content-slug → DEC dedup memory (derived) GITIGNORED
 │   │   ├── anchor-map.yaml         ← slug → current source location (derived) GITIGNORED

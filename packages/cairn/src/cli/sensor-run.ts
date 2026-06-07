@@ -2,26 +2,24 @@
  * `cairn sensor-run` — invoked by the cairn git hooks (pre-commit,
  * commit-msg).
  *
- * Parses the trigger flag, loads `.cairn/config/sensors.yaml`, and
- * exits cleanly. Pre-commit / commit-msg sensor execution is not yet
- * wired; the canonical sweep runs at adoption (phase 8 baseline) and
- * the Stop-hook bypass-tracker (post-commit).
+ * On `--staged` this runs the **component registry check** against staged
+ * files and blocks the commit (exit 1) on any hard finding — missing `@cairn`
+ * header, missing required tag, invalid category, or duplicate name. This is
+ * the first real execution path for the pre-commit gate (it was previously a
+ * no-op stub). Soft findings (export mismatch, alias collision) print as
+ * warnings without blocking.
  *
- * Exits 0 unless the repo is misconfigured (no `.cairn/` at all).
+ * `--commit-msg` is reserved for future commit-message sensors; it passes
+ * cleanly today.
+ *
+ * Exits 0 on a clean tree or a repo with no component config; exits 1 only on
+ * a hard component finding.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { parse as parseYaml } from "yaml";
-
-interface SensorEntry {
-  id: string;
-  triggers?: string[];
-}
-
-interface SensorsConfig {
-  sensors?: SensorEntry[];
-}
+import { runComponentCheck } from "@isaacriehm/cairn-core";
 
 type Trigger = "pre-commit" | "commit-msg";
 
@@ -36,20 +34,21 @@ function findRepoRoot(start: string): string | null {
   return null;
 }
 
-function loadSensors(repoRoot: string): SensorsConfig | null {
-  const path = join(repoRoot, ".cairn", "config", "sensors.yaml");
-  if (!existsSync(path)) return null;
+/** Staged files (added/copied/modified/renamed), repo-relative POSIX. */
+function stagedFiles(repoRoot: string): string[] {
   try {
-    const parsed = parseYaml(readFileSync(path, "utf8")) as SensorsConfig;
-    return parsed;
+    const out = execFileSync(
+      "git",
+      ["diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z"],
+      { cwd: repoRoot, maxBuffer: 64 * 1024 * 1024 },
+    ).toString("utf8");
+    return out
+      .split("\0")
+      .filter((p) => p.length > 0)
+      .map((p) => p.split("\\").join("/"));
   } catch {
-    return null;
+    return [];
   }
-}
-
-function sensorsForTrigger(cfg: SensorsConfig | null, trigger: Trigger): SensorEntry[] {
-  if (cfg === null || !Array.isArray(cfg.sensors)) return [];
-  return cfg.sensors.filter((s) => Array.isArray(s.triggers) && s.triggers.includes(trigger));
 }
 
 function parseFlags(argv: string[]): {
@@ -91,22 +90,33 @@ export async function sensorRunCli(argv: string[]): Promise<void> {
     process.exit(0);
   }
 
-  const cfg = loadSensors(repoRoot);
-  const matched = sensorsForTrigger(cfg, flags.trigger);
-
-  if (matched.length === 0) {
-    // No sensors configured for this trigger — silent pass.
+  // commit-msg has no sensors wired yet — clean pass.
+  if (flags.trigger === "commit-msg") {
     process.exit(0);
   }
 
-  // Pre-commit / commit-msg sensor execution is not yet wired.
-  // The canonical sweep runs at adoption (phase 8 baseline); the Stop hook
-  // bypass-tracker (post-commit) catches `--no-verify` after the fact.
-  // Surface a one-line note so operators with active triggers know
-  // their sensors are pending hookup.
-  const ids = matched.map((s) => s.id).join(", ");
-  console.error(
-    `cairn: ${flags.trigger} sensors configured (${ids}) but execution not yet wired for this trigger`,
-  );
+  // ── pre-commit: component registry check on staged files ──────────────
+  const staged = stagedFiles(repoRoot);
+  const result = runComponentCheck(repoRoot, { files: staged });
+
+  if (result.findings.length === 0) {
+    process.exit(0);
+  }
+
+  for (const f of result.findings) {
+    const tag = f.severity === "hard" ? "ERROR" : "WARN ";
+    console.error(`${tag} component: ${f.message}`);
+  }
+
+  if (result.hardFailures > 0) {
+    console.error(
+      `\nCairn component check FAILED — ${result.hardFailures} hard finding(s). ` +
+        "Fix the @cairn headers, then re-commit (or `git commit --no-verify` to bypass; " +
+        "the bypass is flagged at the next session and caught by CI).",
+    );
+    process.exit(1);
+  }
+
+  // soft-only — surface as warnings, don't block.
   process.exit(0);
 }

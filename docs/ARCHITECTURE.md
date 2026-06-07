@@ -82,7 +82,16 @@ What lives here:
 - `ground/` — `.cairn/ground/` schema + writers. Decisions ledger,
   invariants ledger, manifest, canonical-map, scope-index, drift events,
   frontmatter parsing, glob matching.
-- `mcp/` — MCP server. 29 typed tools (read, write-locked write,
+- `components/` — the fourth ground store (alongside decisions,
+  invariants, canonical-map). `@cairn` source-header parse + collect +
+  deterministic index render (`cairn-state`), the check sensor (the gate),
+  the advisory audit, and the adoption trio (`9d-comp-walk` lists
+  un-headered files → `9e-comp-annotate` dispatches `component-annotator`
+  subagents that write headers into source → `9f-comp-emit` builds the
+  index + drafts singleton §INVs). The `@cairn` headers in code are the
+  committed source of truth; `.cairn/ground/components/` is the gitignored
+  derived inventory.
+- `mcp/` — MCP server. 32 typed tools (read, write-locked write,
   history-summarizer, init-phase orchestration, attention queue
   drains, task lifecycle, resume layer). Bootstrap-guard wraps every
   write tool with the `BOOTSTRAP_REQUIRED` envelope when a clone is
@@ -145,12 +154,15 @@ commands (`/cairn-init`, `/cairn-direction`).
 ### 3.4 `cairn-lens` — VS Code / Cursor extension
 
 Hover provider, inlay hints, CodeLens for inline §INV references and DEC
-links. Read-only consumer of the same ground state.
+links — plus hover cards on `@cairn` component headers (`[S]` singleton
+marker; amber drift when the header name ≠ the exported name). Read-only
+consumer of the same ground state.
 
 ### 3.5 `cairn-state` — ground-state schemas + low-level I/O
 
 Lightweight package that holds the Zod schemas for `.cairn/ground/`
-(decisions, invariants, manifest, canonical-map, scope-index), path
+(decisions, invariants, manifest, canonical-map, scope-index, component
+registry), path
 resolution helpers for `.cairn/`, cached ledger and task readers, and
 the decoupled logger interface. Imported by `cairn-core` and
 `cairn-lens` so the ground-state contract is one shared module — no
@@ -167,6 +179,8 @@ into:
   filter via `types`), `cairn_invariant_get`,
   `cairn_canonical_for_topic`.
 - **Read — search + retrieval** — `cairn_search`.
+- **Read — component store** — `cairn_components_in_scope` (full in-scope
+  inventory before UI work), `cairn_component_get`.
 - **Read — historical (gated)** — `cairn_query_history` (only path to
   `.archive/`; LLM-summarized, never raw).
 - **Write — append-only, per-write `flock`** — `cairn_record_decision`,

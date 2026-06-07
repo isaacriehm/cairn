@@ -327,8 +327,16 @@ files.
    `a_source`, `b_sot_path`, `reasoning`. Treat the rendered prose
    blocks (`## DEC-<a> ...`, `## DEC-<b> ...`) as the verbatim
    sides to surface.
-4. Latest baseline audit (path only):
+4. Latest baseline audits (path only) — read the newest of BOTH the
+   sensor sweep and the component store sweep:
    `Bash: ls -1t .cairn/baseline/sensor-audit-*.yaml | head -1`
+   `Bash: ls -1t .cairn/baseline/components-*.yaml | head -1`
+   The `components-*.yaml` file shares the sensor-audit payload shape
+   (`sensors: [{sensor_id, findings: [{path, line, severity, message}]}]`),
+   so parse it identically. Its `component-missing-header` findings are
+   the components still needing a `@cairn` header; `component-audit`
+   findings are advisory inline-rebuild / name-collision EXTEND hints.
+   Surface both as `baseline_finding` items.
 5. Drift events: `cairn_search({query: "drift"})` against the
    staleness log if any.
 6. Recent invalidation events: read the per-session events marker,

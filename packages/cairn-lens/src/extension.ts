@@ -30,6 +30,7 @@ import { CitationDecorationManager } from "./providers/decoration-provider.js";
 import { CitationHoverProvider } from "./providers/hover-provider.js";
 import { ScopeCodeLensProvider } from "./providers/lens-provider.js";
 import { LensResolver } from "./resolver.js";
+import { scheduleUpdateCheck } from "./update-check.js";
 import {
   attachLensLogChannel,
   lensLog,
@@ -119,6 +120,12 @@ export function activate(context: vscode.ExtensionContext): void {
     statusBar.text = "$(error) cairn-lens";
     statusBar.tooltip = "Cairn Lens — activation error, click for log";
   }
+
+  // Phase 3 — best-effort, non-blocking update check. Cairn Lens ships
+  // as a .vsix (no Marketplace auto-update), so this is how the operator
+  // learns a newer version exists. Throttled to once/day; silent on any
+  // network failure.
+  scheduleUpdateCheck(context, version);
 }
 
 function activateProviders(

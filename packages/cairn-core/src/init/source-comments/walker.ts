@@ -19,7 +19,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import { extname, join, relative } from "node:path";
-import { toPosix } from "@isaacriehm/cairn-state";
+import { isComponentHeaderBlock, toPosix } from "@isaacriehm/cairn-state";
 import {
   type CommentBlock,
   type CommentKind,
@@ -648,6 +648,11 @@ function makeBlock(a: MakeBlockArgs): CommentBlock {
 }
 
 function passesHeuristic(b: CommentBlock): boolean {
+  // `@cairn <Name>` registry headers belong to the component store, not the
+  // decision/invariant ingest. Never capture them — they must not pollute the
+  // topic index or be stripped. The colon-form `@cairn:decision` SoT markers
+  // are NOT excluded (the signal regex requires whitespace + identifier).
+  if (isComponentHeaderBlock(b.raw)) return false;
   if (b.kind === "license") return true; // capture, just don't strip
   if (b.kind === "jsdoc") {
     if (b.wordCount > MIN_JSDOC_WORDS) return true;

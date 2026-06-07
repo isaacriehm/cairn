@@ -47,7 +47,7 @@ Adopters register the server via `.mcp.json` (created by `cairn init`):
 
 ---
 
-## Tool catalog (25 tools)
+## Tool catalog (32 tools)
 
 Conventions:
 
@@ -74,6 +74,13 @@ Source of truth: `packages/cairn-core/src/mcp/tools/index.ts` (`allTools`).
 | Tool           | What                                                                       |
 | -------------- | -------------------------------------------------------------------------- |
 | `cairn_search` | FTS over canonical-zone artifacts; compact index records (~50 tokens each). |
+
+**Read — component store (2)**
+
+| Tool                        | What                                                                          |
+| --------------------------- | ----------------------------------------------------------------------------- |
+| `cairn_components_in_scope` | Full in-scope component inventory for the supplied path-globs — the entitled workspace(s) + any `[shared]` workspace, plus the OFF-LIMITS list. Single-app → the whole inventory. The "full slice read" the daily flow loads before UI work. |
+| `cairn_component_get`       | One component's ledger entry + raw `@cairn` header (`@props`/`@example`) by name (optionally workspace-scoped). |
 
 **Write — append-only (2)**
 
@@ -181,6 +188,34 @@ Errors: `TOPIC_NOT_REGISTERED` — agent should not invent topics; topic registr
 #### `cairn_invariant_get`
 
 Same shape as `cairn_decision_get` but for `.cairn/ground/invariants/INV-<N>.md`. Returns `id, title, status, source-run, source-decision, sensor, e2e, body_markdown`.
+
+### Read tools — component store
+
+#### `cairn_components_in_scope`
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `path_globs` | string[] | Required. The repo-relative paths the task touches. |
+
+Resolves the workspace(s) the globs touch by longest-prefix match against
+each workspace's `componentDirs`, then returns that workspace's inventory
+plus any `[shared]` workspace's, plus the `off_limits` name list of
+isolated workspaces. Single-app → the whole inventory. This is the "full
+slice read" (port invariant 1): the agent loads the complete in-scope
+inventory before UI work — no per-component retrieval. Models on
+`cairn_in_scope`. Source of truth is the `@cairn` headers in code, collected
+live, so the gitignored derived index never has to be current.
+
+#### `cairn_component_get`
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `name` | string | Required. The `@cairn` export name. |
+| `workspace` | string | Optional. Disambiguates a name reused across workspaces. |
+
+Returns one component's ledger entry + the raw header so the agent reads
+`@props` / `@example` before importing. Returns `COMPONENT_NOT_FOUND` when
+no component carries the name. Models on `cairn_invariant_get`.
 
 ### Read tools — 3-layer progressive retrieval
 

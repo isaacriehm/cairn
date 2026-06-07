@@ -34,6 +34,9 @@ export const PHASE_IDS = [
   "9a-walker",
   "9b-curate",
   "9c-emit",
+  "9d-comp-walk",
+  "9e-comp-annotate",
+  "9f-comp-emit",
   "10-rules-merge",
   "11-baseline",
   "12-strip",
@@ -162,6 +165,54 @@ export interface EmitOutput {
   dropReasons?: Record<string, number>;
 }
 
+/**
+ * Output of the deterministic component-walk phase (9d-comp-walk): the
+ * corpus of files missing a `@cairn` header that the annotate step
+ * (9e) works from. No-ops on self-adopt or when the project carries no
+ * `components:` config (those skip the whole component trio).
+ */
+export interface CompWalkOutput {
+  skipped?: "self-adopt" | "no-components";
+  /** Scanned component files missing a `@cairn` header. */
+  missing_count?: number;
+  /** Repo-relative path to the missing-header corpus JSONL. */
+  corpus_path?: string;
+}
+
+/**
+ * Output of the skill-driven annotate phase (9e-comp-annotate). The
+ * cairn-adopt skill dispatches `component-annotator` subagents that
+ * write headers into source; this runner confirms how many of the
+ * walk's missing files now carry a header and advances.
+ */
+export interface CompAnnotateOutput {
+  skipped?: "self-adopt" | "no-components" | "nothing-missing";
+  /** Files from the walk corpus that now carry a `@cairn` header. */
+  annotated?: number;
+  /** Files still missing a header (surface as debt in 9f). */
+  still_missing?: number;
+}
+
+/**
+ * Output of the deterministic component-emit phase (9f-comp-emit).
+ * No-ops on self-adopt / no `components:` config. Otherwise records
+ * what the index build, singleton→§INV draft, and advisory audit
+ * produced.
+ */
+export interface ComponentsPhaseOutput {
+  skipped?: "self-adopt" | "no-components";
+  /** Components written to the derived index. */
+  indexed?: number;
+  /** Scanned component files missing a `@cairn` header. */
+  missing?: number;
+  /** `@singleton` headers promoted to §INV ledger entries. */
+  singletons_drafted?: number;
+  /** Advisory audit findings (inline rebuilds + name collisions). */
+  audit_findings?: number;
+  /** Repo-relative baseline file written for attention triage, when non-empty. */
+  baseline_path?: string;
+}
+
 export interface PhaseOutputs {
   "1-detect"?: DetectionResult;
   "2-walker"?: RepoSummary;
@@ -174,6 +225,9 @@ export interface PhaseOutputs {
   "9a-walker"?: WalkerOutput;
   "9b-curate"?: CurateOutput;
   "9c-emit"?: EmitOutput;
+  "9d-comp-walk"?: CompWalkOutput;
+  "9e-comp-annotate"?: CompAnnotateOutput;
+  "9f-comp-emit"?: ComponentsPhaseOutput;
   "10-rules-merge"?: NoopPhaseOutput;
   "11-baseline"?: BaselineAuditResult;
   "12-strip"?: StripState;

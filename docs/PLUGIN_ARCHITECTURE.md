@@ -128,6 +128,7 @@ On `[a]`, the skill (or CLI) spawns the init pipeline as a subprocess and **stre
 | 8 | **Docs ingestion** (README + docs/) | Per-doc status icons; DEC draft count |
 | 9 | **Source comment ingestion** (essay-class) | Per-batch status; DEC + §INV counts |
 | 10 | **Existing project rules merge** (CLAUDE.md) | "Merging project rules…" → diff summary |
+| 9d–9f | **Component store** trio — `9d-comp-walk` lists un-headered files, `9e-comp-annotate` (skill-driven, operator-gated) dispatches `component-annotator` subagents to write `@cairn` headers, `9f-comp-emit` builds the index + drafts singleton §INVs + audit. No-ops on non-UI repos | "Annotating components…" → annotated / indexed / singleton / missing counts |
 | 11 | Baseline sensor audit | Per-sensor status; finding counts |
 | 12 | **Comment policy enforcement** (strip) | Per-module preview + A/B/C consent |
 | 13 | Multi-dev enforcement install + summary | "Installed git hooks + CI gate" → summary |
@@ -209,6 +210,9 @@ Operator types prompt
 Main Claude spawns subagents via Task tool
    - Each subagent inherits Cairn MCP tools
    - Reads spec.tightened.md + queries `cairn_in_scope`
+   - On UI work: queries `cairn_components_in_scope` and reads the
+     FULL in-scope inventory into the spec before building (USE >
+     EXTEND > CREATE) — never rebuilds an existing component
    - Works in main repo (no mirror, no runtime checkout)
         │
         ▼
@@ -249,10 +253,11 @@ Per-session stdio MCP server. `.mcp.json` registration:
 
 The MCP server detects the project root at startup by walking up from `process.cwd()` until it finds either `.cairn/` or `.git/`. No env var dependency. Works in any project Claude Code opens.
 
-Tools (28 current, see `MCP_SURFACE.md` for full schema):
+Tools (32 current, see `MCP_SURFACE.md` for full schema):
 
 - **Read — graph traversal**: `cairn_decision_get`, `cairn_canonical_for_topic`, `cairn_invariant_get`, `cairn_in_scope` (unified DEC+INV path-glob lookup; filter via `types: ["decision"|"invariant"]`).
 - **Read — search + retrieval**: `cairn_search`.
+- **Read — component store**: `cairn_components_in_scope` (full in-scope component inventory before UI work — the "full slice read"), `cairn_component_get`.
 - **Read — historical (gated)**: `cairn_query_history`.
 - **Read — resume layer**: `cairn_resume` (cold-resume payload for an active task after `/clear`).
 - **Write — ground + tasks**: `cairn_record_decision`, `cairn_task_create`, `cairn_task_complete`, `cairn_task_reopen`, `cairn_task_journal_append`.
