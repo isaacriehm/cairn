@@ -3,12 +3,12 @@
  * left-gutter health icon column.
  *
  * Per LENS_SPEC §2.2 + §2.3:
- *   §INV-NNNN tokens:
+ *   §INV-<hash> tokens:
  *     - Active invariant   -> checkmark + title  (muted green) + filled circle gutter
- *     - Superseded         -> warning + superseded by §INV-NNNN (muted yellow) + half-circle
+ *     - Superseded         -> warning + superseded by §INV-<hash> (muted yellow) + half-circle
  *     - Not in ledger      -> ? not in ledger    (muted red)   + empty circle
  *
- *   §DEC-NNNN tokens (new format emitted by strip-replace):
+ *   §DEC-<hash> tokens (new format emitted by strip-replace):
  *     - Accepted decision  -> checkmark + title  (muted blue)
  *     - Not in ledger      -> (unresolved)        (muted red)
  *

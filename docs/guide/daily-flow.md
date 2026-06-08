@@ -25,7 +25,7 @@ A reviewer subagent fires last (multi-chunk tasks only)
    └─ Drafts new DECs from non-obvious choices in the diff
 
 Stop hook surfaces inline
-   └─ "Review DEC-0099 draft? [a] accept [b] reject [c] edit"
+   └─ "Review DEC-b1e9c04 draft? [a] accept [b] reject [c] edit"
 
 You commit → pre-commit sensors run → CI gate verifies on PR
 ```
@@ -47,7 +47,7 @@ things, all in milliseconds:
    team) edited or added since the last session, including a branch
    switch.
 2. **Re-scans the scope index.** `scope-index.yaml` (file → DEC/§INV
-   resolution) is rebuilt by walking source citations like `// §INV-0042`
+   resolution) is rebuilt by walking source citations like `// §INV-a3f7b2c`
    in your tree. Catches files moved by `git checkout`.
 3. **Builds the SessionStart context.** This is the block of text
    injected into Claude's prompt before your first message. It
@@ -70,8 +70,8 @@ things, all in milliseconds:
 
 The model sees the in-scope decisions for files you've recently
 touched **before you type anything**. So if you spent yesterday
-working in `src/auth/`, today's session opens with `DEC-0042` (auth
-token expiry) and `INV-0042` (request-id header) already in the
+working in `src/auth/`, today's session opens with `DEC-a3f7b2c` (auth
+token expiry) and `INV-a3f7b2c` (request-id header) already in the
 prompt. You don't have to remind Claude what the rules are; they're
 part of the conversation from message zero.
 
@@ -151,9 +151,9 @@ In sequence:
 
 The prompt you wrote — *"fix the bug where users with expired tokens
 still get 200 from /me"* — has gaps. What's "expired"? Per
-`DEC-0042`, that's >24h after issue. Where does the check live? Per
+`DEC-a3f7b2c`, that's >24h after issue. Where does the check live? Per
 canonical-map, probably the auth middleware. What's the right
-status code on rejection? Per `INV-0042`, every response includes
+status code on rejection? Per `INV-a3f7b2c`, every response includes
 `x-request-id`, but the spec says nothing about whether 401 or 403 is
 right for "expired" vs "missing" token.
 
@@ -167,8 +167,8 @@ status: ready
 target_path_globs:
   - packages/api/src/middleware/auth/**
   - packages/api/src/routes/me.ts
-in_scope_decisions: [DEC-0042]
-in_scope_invariants: [INV-0042]
+in_scope_decisions: [DEC-a3f7b2c]
+in_scope_invariants: [INV-a3f7b2c]
 acceptance:
   - GET /me returns 401 when token age > 24h
   - Response includes x-request-id header
@@ -179,7 +179,7 @@ acceptance:
 # Fix: expired tokens still return 200 from /me
 
 ## Goal
-Per DEC-0042, bearer tokens expire 24h after issue. The /me handler
+Per DEC-a3f7b2c, bearer tokens expire 24h after issue. The /me handler
 currently doesn't enforce this — it just decodes the JWT and returns
 the user payload. Add expiry enforcement and return 401 when expired.
 
@@ -220,8 +220,8 @@ subagent flow:
    └─ spec.tightened.md tells it: scope, in-scope DECs, acceptance criteria
 
 2. Pull additional context as needed
-   ├─ cairn_decision_get("DEC-0042") → full ADR + assertions
-   ├─ cairn_invariant_get("INV-0042") → invariant body + sensor reference
+   ├─ cairn_decision_get("DEC-a3f7b2c") → full ADR + assertions
+   ├─ cairn_invariant_get("INV-a3f7b2c") → invariant body + sensor reference
    ├─ cairn_canonical_for_topic("auth middleware") → exact file path
    └─ Read/Grep/Glob into the source
 
@@ -242,19 +242,19 @@ unified per-session events.
 ### The PostToolUse(Read) enrichment
 
 When a subagent reads a source file, the `PostToolUse(Read)` hook
-scans the content for `§INV-NNNN`, `§DEC-NNNN`, and `TODO(TSK-…)`
+scans the content for `§INV-<hash>`, `§DEC-<hash>`, and `TODO(TSK-…)`
 tokens. For each one found, it builds a citation legend prepended to
 the read result:
 
 ```
 ┌─ cairn citations ─┐
-│ §INV-0042 — All API responses include x-request-id header
-│ §DEC-0067 — Per-user rate limits use Redis token-bucket
+│ §INV-a3f7b2c — All API responses include x-request-id header
+│ §DEC-9b0f3a7 — Per-user rate limits use Redis token-bucket
 └────────────────────┘
 ```
 
 This means an agent reading `packages/api/src/middleware/auth/verify.ts`
-that contains a `// §INV-0042` cite gets the invariant title and
+that contains a `// §INV-a3f7b2c` cite gets the invariant title and
 status as part of the read result. No extra tool call required.
 
 ---
@@ -315,11 +315,11 @@ the next assistant action.
 
 Found 1 new DEC draft from the reviewer:
 
-  DEC-0099 — Refund rate limit: 10/min/user
+  DEC-b1e9c04 — Refund rate limit: 10/min/user
 
   Rationale: Implementation chose 10 requests/minute per user,
   which is below the global API limit (60/min) and matches the
-  pattern in DEC-0067 for transactional endpoints.
+  pattern in DEC-9b0f3a7 for transactional endpoints.
 
 [a] accept   [b] reject   [c] edit first
 ```
@@ -329,7 +329,7 @@ canonical zone, atomically updates `decisions.ledger.yaml` under the
 per-write `flock`, and emits an invalidation event so any other live
 sessions know the ledger changed.
 
-The reject path renames the file to `DEC-0099.rejected.md` (the id
+The reject path renames the file to `DEC-b1e9c04.rejected.md` (the id
 stays reserved — never recycled) and prompts you for a one-line
 reason.
 
@@ -365,7 +365,7 @@ The hook runs the sensor sweep:
 $ git commit -m "fix: enforce 24h token expiry on /me"
 ✓ Layer A (stub catalog)             — 0 hits
 ✓ Layer B (attestation cross-check)  — claims match diff
-✓ Layer C (decision-assertions)      — DEC-0042 a1, a2 evaluated
+✓ Layer C (decision-assertions)      — DEC-a3f7b2c a1, a2 evaluated
 ✓ Structural                          — 1 route handler verified non-empty
 [main 7f3a2c1] fix: enforce 24h token expiry on /me
 ```
@@ -427,47 +427,13 @@ When to deliberately run it:
 
 For up to 4 items, you see them in a single `AskUserQuestion` panel.
 For more, the skill batches: 4 items, then a "continue / later"
-prompt to advance. For more than 15, the skill spawns a browser GUI:
+prompt to advance.
 
-```
-⚑ 47 pending — opened triage UI:
-
-→ Open Cairn Attention   (http://127.0.0.1:51234)
-
-Triage all drafts in the browser. Click "I'm done" when finished —
-this session resumes automatically.
-```
-
-You triage in the browser. The skill calls `cairn_attention_wait`
-which blocks until you click "I'm done", then returns a summary
-(accepted / rejected / merged / edited counts).
-
-### Bulk-accept
-
-Before any interactive prompt, the skill calls
-`cairn_bulk_accept_attention` with the default `threshold: "high"`.
-This auto-accepts only drafts the heuristic is confident about —
-typically 30-60% of the queue on a freshly-adopted project. The rest
-remain for review.
-
-```
-Auto-accepted 23 obvious DEC drafts. 18 remain for triage
-(11 medium / 7 low). Invariants: 4 high / 2 medium / 1 low —
-all stamped, none auto-promoted.
-```
-
-Invariants are never auto-promoted (their detection threshold is
-already conservative; if it surfaced, it deserves review).
-
-If you want to widen acceptance:
-
-```bash
-cairn attention bulk-accept --threshold medium --dry-run
-```
-
-`--dry-run` previews without writing. Re-run without the flag to
-apply. `--threshold low` is also available but accepts almost
-everything — operators have flagged that it's rarely worth running.
+Recorded decisions **auto-accept** straight into the ledger, so the
+queue is mostly baseline sensor findings, drift events, and the
+occasional dedup-fallback DEC draft (a near-duplicate of an
+already-accepted decision). The review checkpoint for auto-accepted
+decisions is the committed (or local) diff, not a per-draft prompt.
 
 ---
 
@@ -492,8 +458,8 @@ For deeper queries, write a tiny script that uses the MCP tools
 directly. Examples:
 
 ```bash
-# What does DEC-0042 say?
-cairn mcp call cairn_decision_get '{"id":"DEC-0042"}'
+# What does DEC-a3f7b2c say?
+cairn mcp call cairn_decision_get '{"id":"DEC-a3f7b2c"}'
 
 # Where does rate limiting live?
 cairn mcp call cairn_canonical_for_topic '{"topic":"rate limiting"}'

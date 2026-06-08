@@ -18,6 +18,7 @@ import { hookCli } from "./hook.js";
 import { initCli } from "./init.js";
 import { joinCli } from "./join.js";
 import { mcpCli } from "./mcp.js";
+import { migrateCli } from "./migrate.js";
 import { missionCli } from "./mission.js";
 import { scopeCli } from "./scope.js";
 import { sensorRunCli } from "./sensor-run.js";
@@ -244,6 +245,9 @@ switch (subcommand) {
   case "fix":
     await fixCli(rest);
     break;
+  case "migrate":
+    await migrateCli(rest);
+    break;
   case "attention":
     await attentionCli(rest);
     break;
@@ -340,6 +344,8 @@ switch (subcommand) {
         "             (--repo <path>?)\n" +
         "  fix        auto-resolve doctor warnings where possible\n" +
         "             (--repo <path>?)\n" +
+        "  migrate    bring .cairn/ state up to the current cairn version\n" +
+        "             (--dry-run | --all | --repo <path>)\n" +
         "  attention  list pending DEC drafts + baseline sensor findings\n" +
         "             (--repo <path>?)\n" +
         "  align      alignment commands\n" +

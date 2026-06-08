@@ -24,21 +24,3 @@ export function loadCairnConfig(repoRoot: string): Record<string, unknown> {
   }
 }
 
-/**
- * Whether AI-proposed decisions + invariants auto-accept into the ledger
- * instead of queuing as `_inbox/` drafts for operator triage.
- *
- * Defaults to TRUE — Cairn runs inside an autonomous coding agent and the
- * human review checkpoint shifts to the committed-ground-state PR diff
- * (see docs/PLUGIN_ARCHITECTURE.md). Set `decisions.auto_accept: false`
- * in `.cairn/config.yaml` to restore the per-draft triage queue.
- */
-export function decisionsAutoAccept(repoRoot: string): boolean {
-  const cfg = loadCairnConfig(repoRoot);
-  const decisions = cfg["decisions"];
-  if (typeof decisions === "object" && decisions !== null) {
-    const v = (decisions as Record<string, unknown>)["auto_accept"];
-    if (typeof v === "boolean") return v;
-  }
-  return true;
-}

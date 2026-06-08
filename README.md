@@ -47,19 +47,19 @@ load-bearing.
 
 Three persistent stores, version-controlled in `.cairn/`:
 
-🪨 **Decisions (`DEC-NNNN`)** — every architectural choice gets a
+🪨 **Decisions (`DEC-<hash>`)** — every architectural choice gets a
 markdown file with rationale, scope, and a supersedes chain. Once
 accepted, canonical until explicitly replaced. The agent reads the
 in-scope decisions before touching the affected code.
 
 ```
-DEC-0042  Auth tokens expire after 24 hours
+DEC-a3f7b2c  Auth tokens expire after 24 hours
   Scope:       src/auth/**
   Rationale:   PCI compliance — short-lived bearer tokens
-  Supersedes:  DEC-0017 (7-day refresh, deprecated 2026-02-14)
+  Supersedes:  DEC-7c2f10a (7-day refresh, deprecated 2026-02-14)
 ```
 
-🧭 **Invariants (`§INV-NNNN`)** — domain rules whose violation is a
+🧭 **Invariants (`§INV-<hash>`)** — domain rules whose violation is a
 bug, not a style preference. *"All API responses must include a
 `request-id` header."* Sensors enforce them on every diff at
 pre-commit and again at CI.
@@ -70,7 +70,7 @@ paths instead of the agent grepping vaguely or fabricating them.
 
 Plus four runtime layers that keep those stores live: an **MCP
 server** (29 typed tools), a **Claude Code plugin** (skills + hooks +
-reviewer agent), **sensors** (4 layers of automated diff checks), and
+reviewer agent), **sensors** (stub-catalog + decision-assertions + structural diff checks), and
 a **CLI** for bootstrap and debug.
 
 ## Quick Start
@@ -127,8 +127,8 @@ Read this once and the rest of the doc reads cleanly.
 | **§INV**            | Invariant — a domain rule the codebase must obey. Violations are bugs.                                 |
 | **Scope**           | The file glob a DEC or §INV applies to (`src/auth/**`, `packages/billing/**`).                         |
 | **Canonical map**   | `topic → file` index. The single source of truth for *"where does X live?"*                            |
-| **Sensor**          | A mechanical check on a diff: stub patterns, decision violations, structural holes, attestation match. |
-| **Attestation**     | A reviewer subagent's signed-off summary of what changed and why. Cross-checked by sensors.            |
+| **Sensor**          | A mechanical check on a diff: stub patterns, decision violations, structural holes.                    |
+| **Attestation**     | A subagent's signed-off summary of what changed and why; drives task auto-graduation.                  |
 | **Drift**           | When code or docs disagree with the ground state in `.cairn/`.                                         |
 | **Bypass**          | A commit that skipped Cairn's hooks (`--no-verify`, broken hook path). Detected and surfaced.          |
 | **Attention queue** | The pile of DEC drafts, baseline findings, drift events, and conflicts waiting for operator review.    |
@@ -158,10 +158,10 @@ inline so nothing is opaque.
 | 12. Strip            | Per-module strip-replace consent — operator chooses keep / strip / skip for each flagged module.                         |
 | 13. Multi-dev        | Detects package manager, installs git hooks, emits `JOIN.md` for new contributors.                                       |
 
-After the pipeline finishes, the **`cairn-attention` skill** drains
-the resulting draft queue. High-confidence drafts auto-bulk-accept;
-the rest you triage interactively (or in a browser GUI when the queue
-exceeds 15 items).
+After the pipeline finishes, recorded decisions auto-accept into the
+ledger (the review checkpoint is the committed diff). The
+**`cairn-attention` skill** drains what's left — baseline sensor
+findings, drift events, and any dedup-fallback drafts — interactively.
 
 ### Daily flow
 
@@ -190,7 +190,7 @@ You type a prompt
                  │
                  ▼
    Stop hook surfaces inline:
-     "Review DEC-0099 draft? [a] accept [b] reject [c] edit"
+     "Review DEC-b1e9c04 draft? [a] accept [b] reject [c] edit"
                  │
                  ▼
    You commit → pre-commit hook runs sensors
@@ -241,9 +241,9 @@ already loaded into the spec.
 - **`cairn-direction` skill** — auto-tightens vague prompts (*"fix
   the bug"*) into structured specs before dispatch. Loads the
   in-scope DECs, §INVs, and canonical-map entries automatically.
-- **`cairn-attention` skill** — drains the queue of DEC drafts and
-  sensor findings. Auto-bulk-accepts high-confidence drafts; spawns
-  a local browser triage GUI when the queue exceeds 15 items.
+- **`cairn-attention` skill** — drains the queue of dedup-fallback
+  DEC drafts, baseline sensor findings, and drift events
+  interactively (decisions auto-accept; review rides the diff).
 - **Reviewer subagent** — every multi-chunk task ends with the
   reviewer attesting the diff and extracting non-obvious decisions
   into DEC drafts.
@@ -254,36 +254,37 @@ already loaded into the spec.
   per-session events. `--tail`, `--errors-only`, `--session`,
   `--json` flags supported.
 
-### Sensors (four layers)
+### Sensors
 
-| Layer          | What it checks                                                                                                |
-| -------------- | ------------------------------------------------------------------------------------------------------------- |
-| **Layer A**    | Regex stub-pattern catalog (incomplete impls) + live SoT alignment via PostToolUse Write/Edit dedupe.         |
-| **Layer B**    | Attestation cross-check — does the reviewer's claim match the actual diff?                                    |
-| **Layer C**    | Decision-assertion enforcement — was the in-scope DEC honored?                                                |
-| **Structural** | Route handlers non-empty, DTOs no fake fields, etc.                                                           |
+| Sensor                  | What it checks                                                                       |
+| ----------------------- | ----------------------------------------------------------------------------------- |
+| **Stub-pattern catalog** | Regex catalog of incomplete-impl markers (TODO throws, not-implemented, …) over the diff. |
+| **Decision-assertions** | Was the in-scope DEC honored? Machine-readable assertions evaluated against the changed tree. |
+| **Structural**          | Route handlers non-empty; DTOs carry real validators (no `@IsOptional()`-only fields). |
 
-Run at pre-commit, again at CI. Findings flow into the attention
-queue. Drift events log to `.cairn/staleness/log.jsonl` and surface
-on the next GC sweep.
+The sweep runs as a real gate at **pre-commit** (`cairn sensor-run
+--staged`, blocks on hard findings) and at **CI** (`cairn sensor-run
+--diff <range> --strict`). Live SoT alignment runs separately on every
+PostToolUse Write/Edit. The Stop hook surfaces task / GC / attention
+state — it does **not** run the sensor sweep. Drift events log to
+`.cairn/staleness/log.jsonl` and surface on the next GC sweep.
 
 ### Tooling surfaces
 
-- **MCP server** — 29 typed tools across read, write, history,
+- **MCP server** — 32 typed tools across read, write, history,
   attention, init, and search. Used by the plugin and any other MCP
   client.
 - **CLI** — `cairn init / join / mcp / gc / scope / doctor / fix /
-  attention / align / baseline / hook / sensor-run / tag / trace /
-  status-line`.
-- **Claude Code plugin** — manifest + 5 hooks (SessionStart, SessionEnd,
-  Stop, UserPromptSubmit, PostToolUse(Read|Write|Edit)) + 3 skills +
-  1 reviewer agent + 3 commands.
+  migrate / attention / align / baseline / hook / sensor-run / tag /
+  trace / status-line`.
+- **Claude Code plugin** — manifest + 5 hook events (SessionStart,
+  SessionEnd, Stop, UserPromptSubmit, PostToolUse — matchers
+  Read, Write|Edit, AskUserQuestion) + 3 skills + 1 reviewer agent +
+  3 commands.
 - **Cairn Lens** — VS Code / Cursor extension. Hover, gutter icons,
-  code lens, optional DEC Explorer sidebar. Resolves `§INV-NNNN`,
-  `§DEC-NNNN`, `TODO(TSK-…)` inline. Read-only — same ground state,
+  code lens, optional DEC Explorer sidebar. Resolves `§INV-<hash>`,
+  `§DEC-<hash>`, `TODO(TSK-…)` inline. Read-only — same ground state,
   no separate index.
-- **Browser triage GUI** — local HTTP server spawned when the
-  attention queue is large; avoids per-draft MCP round-trips.
 
 ## Editor Extension — Cairn Lens
 
@@ -331,8 +332,8 @@ After `cairn init`:
 ├── config.yaml                  slug, version, project_globs
 ├── config/                      workflow.md, sensors.yaml, stub-patterns.yaml
 ├── ground/
-│   ├── decisions/               DEC-NNNN.md per choice + _inbox/<id>.draft.md
-│   ├── invariants/              INV-NNNN.md per §V rule
+│   ├── decisions/               DEC-<hash>.md per choice + _inbox/<id>.draft.md
+│   ├── invariants/              INV-<hash>.md per §V rule
 │   ├── canonical-map/           topic → file index
 │   ├── components/              derived @cairn inventory (gitignored; rebuilt from headers)
 │   ├── brand/                   overview.md, voice.md

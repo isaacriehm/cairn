@@ -12,7 +12,6 @@ import { normalizeProjectName } from "../paths/index.js";
 import type {
   DetectionResult,
   HookCapability,
-  SensorProposal,
   StackKind,
   StackSignature,
   StartCommand,
@@ -42,7 +41,6 @@ export function detectAll(args: { repoRoot: string }): DetectionResult {
     project_slug: projectSlug,
     origin_url: originUrl,
     stack_signatures: signatures,
-    proposed_sensors: detectAvailableSensors({ repoRoot: args.repoRoot, signatures }),
     start_command: detectStartCommand({ repoRoot: args.repoRoot, signatures }),
     hook_capability: detectHookCapability(args.repoRoot).can_hook ? "claude-code" : "cli-only",
     environment: {
@@ -129,6 +127,72 @@ const STACK_GLOB_MARKERS: ReadonlyArray<{ suffix: string; stackId: StackKind }> 
   { suffix: ".cabal", stackId: "haskell" },
 ];
 
+/**
+ * Monorepo-shell markers. A JS/TS monorepo often has no dependency-bearing
+ * `package.json` at the root — just a workspace manifest — so root-only
+ * marker matching falls to `unknown`. These root files are a high-confidence
+ * TypeScript/JS signal on their own.
+ */
+const MONOREPO_TS_MARKERS = [
+  "pnpm-workspace.yaml",
+  "turbo.json",
+  "nx.json",
+  "lerna.json",
+] as const;
+
+/** Workspace container dirs scanned one level deep when the root is bare. */
+const WORKSPACE_DIRS = ["packages", "apps", "services", "libs", "modules"] as const;
+
+/** Cap on child dirs scanned per container, so a huge monorepo stays fast. */
+const SHALLOW_SCAN_DIR_CAP = 60;
+
+/**
+ * When the repo root carries no recognized manifest, look one level into the
+ * conventional workspace containers (and immediate child dirs) for the same
+ * manifest markers. Catches monorepos whose package manifests live in
+ * subpackages rather than the root. Returns the first match per stack.
+ */
+function shallowScanForStacks(repoRoot: string): StackSignature[] {
+  const out: StackSignature[] = [];
+  const seen = new Set<string>();
+  const add = (stackId: StackKind, marker: string): void => {
+    if (seen.has(stackId)) return;
+    out.push({ kind: stackId, marker });
+    seen.add(stackId);
+  };
+
+  const containers: string[] = [];
+  for (const d of WORKSPACE_DIRS) {
+    if (isDirectory(join(repoRoot, d))) containers.push(join(repoRoot, d));
+  }
+  // Also treat immediate child dirs of the root as candidate package homes.
+  containers.push(repoRoot);
+
+  for (const container of containers) {
+    let children: string[] = [];
+    try {
+      children = readdirSync(container);
+    } catch {
+      continue;
+    }
+    let scanned = 0;
+    for (const name of children) {
+      if (name.startsWith(".") || name === "node_modules") continue;
+      const childDir = join(container, name);
+      if (!isDirectory(childDir)) continue;
+      if (scanned >= SHALLOW_SCAN_DIR_CAP) break;
+      scanned += 1;
+      for (const { marker, stackId } of STACK_MARKERS) {
+        if (seen.has(stackId)) continue;
+        if (existsSync(join(childDir, marker))) {
+          add(stackId, `${name}/${marker}`);
+        }
+      }
+    }
+  }
+  return out;
+}
+
 export function detectStackSignatures(repoRoot: string): StackSignature[] {
   const out: StackSignature[] = [];
   const seen = new Set<string>();
@@ -156,146 +220,30 @@ export function detectStackSignatures(repoRoot: string): StackSignature[] {
     }
   }
 
+  // Monorepo-shell markers — a workspace manifest at the root is a strong
+  // TypeScript/JS signal even when the root package.json carries no deps.
+  for (const marker of MONOREPO_TS_MARKERS) {
+    if (seen.has("typescript")) break;
+    if (existsSync(join(repoRoot, marker))) {
+      out.push({ kind: "typescript", marker });
+      seen.add("typescript");
+    }
+  }
+
+  // Still nothing at the root → scan one level into workspace containers so a
+  // monorepo with manifests only in subpackages isn't mislabeled `unknown`.
+  if (out.length === 0) {
+    for (const sig of shallowScanForStacks(repoRoot)) {
+      if (seen.has(sig.kind)) continue;
+      out.push(sig);
+      seen.add(sig.kind);
+    }
+  }
+
   // No coercion to a default: an unrecognized stack stays "unknown" and the
   // LLM mapper names it, rather than being mislabeled TypeScript.
   if (out.length === 0) out.push({ kind: "unknown", marker: "(none)" });
   return out;
-}
-
-export function detectAvailableSensors(args: {
-  repoRoot: string;
-  signatures: StackSignature[];
-}): SensorProposal[] {
-  const sensors: SensorProposal[] = [];
-  const has = (path: string) => existsSync(join(args.repoRoot, path));
-  const hasAny = (paths: string[]) => paths.some(has);
-
-  // ── typescript ───────────────────────────────────────────
-  if (args.signatures.some((s) => s.kind === "typescript")) {
-    if (has("tsconfig.json") || has("tsconfig.base.json")) {
-      sensors.push({
-        id: "tsc",
-        command: "pnpm",
-        args: ["-w", "exec", "tsc", "-b", "--noEmit"],
-        applies_to: ["typescript"],
-        reason: "tsconfig.json present",
-      });
-    }
-    if (
-      hasAny([
-        ".eslintrc",
-        ".eslintrc.js",
-        ".eslintrc.json",
-        ".eslintrc.cjs",
-        "eslint.config.js",
-        "eslint.config.mjs",
-      ])
-    ) {
-      sensors.push({
-        id: "eslint",
-        command: "pnpm",
-        args: ["-w", "exec", "eslint", "."],
-        applies_to: ["typescript"],
-        reason: "eslint config present",
-      });
-    }
-  }
-
-  // ── python ───────────────────────────────────────────────
-  if (args.signatures.some((s) => s.kind === "python")) {
-    const pyToml = tryRead(join(args.repoRoot, "pyproject.toml"));
-    if (has("ruff.toml") || (pyToml && /\[tool\.ruff\]/.test(pyToml))) {
-      sensors.push({
-        id: "ruff",
-        command: "ruff",
-        args: ["check", "."],
-        applies_to: ["python"],
-        reason: "ruff config present",
-      });
-    }
-    if (has("mypy.ini") || (pyToml && /\[tool\.mypy\]/.test(pyToml))) {
-      sensors.push({
-        id: "mypy",
-        command: "mypy",
-        args: ["."],
-        applies_to: ["python"],
-        reason: "mypy config present",
-      });
-    }
-  }
-
-  // ── ruby ─────────────────────────────────────────────────
-  if (args.signatures.some((s) => s.kind === "ruby")) {
-    const gemfile = tryRead(join(args.repoRoot, "Gemfile"));
-    if (has(".rubocop.yml") || (gemfile && /\brubocop\b/.test(gemfile))) {
-      sensors.push({
-        id: "rubocop",
-        command: "bundle",
-        args: ["exec", "rubocop"],
-        applies_to: ["ruby"],
-        reason: "rubocop config / dep present",
-      });
-    }
-    if (gemfile && /\brails\b/.test(gemfile)) {
-      sensors.push({
-        id: "brakeman",
-        command: "bundle",
-        args: ["exec", "brakeman", "--no-pager"],
-        applies_to: ["ruby"],
-        reason: "rails app detected",
-        needs_install: true,
-      });
-    }
-  }
-
-  // ── go ───────────────────────────────────────────────────
-  if (args.signatures.some((s) => s.kind === "go")) {
-    sensors.push({
-      id: "go-vet",
-      command: "go",
-      args: ["vet", "./..."],
-      applies_to: ["go"],
-      reason: "go.mod present",
-    });
-    sensors.push({
-      id: "gofmt",
-      command: "gofmt",
-      args: ["-l", "."],
-      applies_to: ["go"],
-      reason: "go.mod present",
-    });
-  }
-
-  // ── rust ─────────────────────────────────────────────────
-  if (args.signatures.some((s) => s.kind === "rust")) {
-    sensors.push({
-      id: "cargo-check",
-      command: "cargo",
-      args: ["check"],
-      applies_to: ["rust"],
-      reason: "Cargo.toml present",
-    });
-    sensors.push({
-      id: "cargo-clippy",
-      command: "cargo",
-      args: ["clippy", "--", "-D", "warnings"],
-      applies_to: ["rust"],
-      reason: "Cargo.toml present",
-    });
-  }
-
-  // ── elixir ───────────────────────────────────────────────
-  if (args.signatures.some((s) => s.kind === "elixir")) {
-    sensors.push({
-      id: "mix-compile-warnings",
-      command: "mix",
-      args: ["compile", "--warnings-as-errors"],
-      applies_to: ["elixir"],
-      reason: "mix.exs present",
-    });
-  }
-
-  return sensors;
 }
 
 export function detectStartCommand(args: {
@@ -376,14 +324,6 @@ export function detectEnvironment(): string {
   if (process.env["GITHUB_ACTIONS"] === "true") return "github-actions";
   if (process.env["VERCEL"] === "true") return "vercel";
   return "local";
-}
-
-function tryRead(path: string): string | null {
-  try {
-    return readFileSync(path, "utf8");
-  } catch {
-    return null;
-  }
 }
 
 function isDirectory(path: string): boolean {

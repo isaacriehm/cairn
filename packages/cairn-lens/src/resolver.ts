@@ -140,14 +140,14 @@ export class LensResolver {
   }
 
   /**
-   * Resolve a §DEC-NNNN citation to a structured result.
+   * Resolve a §DEC-<hash> citation to a structured result.
    *
    * Reads directly from the decisions .md frontmatter via buildDecisionsLedger
    * (which tolerates a missing or empty decisions dir). Returns status "unknown"
    * when no matching accepted decision is found.
    */
   /**
-   * Resolve a §DEC-NNNN citation to its body — plan §10. Reads
+   * Resolve a §DEC-<hash> citation to its body — plan §10. Reads
    * `sot-bindings.yaml` to find the SoT path; routes to the ledger
    * entity file or the live-source anchor accordingly. Caches the
    * rendered body to `.cairn/cache/sot-rendered/<id>.md` so a later
@@ -303,7 +303,7 @@ export class LensResolver {
   }
 
   /**
-   * Resolve a §INV-NNNN citation to a structured result.
+   * Resolve a §INV-<hash> citation to a structured result.
    *
    * The cached `getInvariantsLedger` reader from cairn-core only carries
    * active entries; superseded ids appear only when the invariants-ledger

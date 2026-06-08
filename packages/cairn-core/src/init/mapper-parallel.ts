@@ -332,7 +332,7 @@ function parseModuleProposal(
       const e = entry as Record<string, unknown>;
       // ID-coerce — mapper LLMs occasionally smuggle ledger title prose
       // past the `items: { type: "string" }` JSON-mode gate. Drop anything
-      // not matching the canonical DEC-NNNN / INV-NNNN format.
+      // not matching the canonical DEC-<hash> / INV-<hash> format.
       const decs = Array.isArray(e["decisions"])
         ? coerceDecisionIds(e["decisions"])
         : [];

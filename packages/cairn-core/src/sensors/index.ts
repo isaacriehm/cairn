@@ -1,11 +1,7 @@
 export type {
-  Attestation,
-  AttestationDelivered,
-  AttestationDeferred,
   DiffEntry,
   ProjectGlobs,
   SensorFinding,
-  SensorInput,
   SensorLanguage,
   SensorResult,
   SensorSweepResult,
@@ -13,15 +9,17 @@ export type {
   StubPattern,
 } from "./types.js";
 
-export { getDiff, diffHasGlobMatch, filterDiffByGlobs } from "./diff.js";
+export {
+  getDiff,
+  getStagedDiff,
+  getRangeDiff,
+  diffHasGlobMatch,
+  filterDiffByGlobs,
+} from "./diff.js";
 export { loadStubCatalog, parseStubCatalog, loadSensorRegistry } from "./catalog.js";
 export type { SensorRegistry, SensorRegistryEntry } from "./catalog.js";
 export { detectStubMatches, runStubCatalog, detectLanguage } from "./stub-catalog.js";
 export type { StubMatch } from "./stub-catalog.js";
-export {
-  extractAttestation,
-  runAttestationCrossCheck,
-} from "./attestation.js";
 export {
   runRouteHandlerNonEmpty,
   runDtoNoFakeFields,
@@ -34,5 +32,5 @@ export {
 } from "./decisions.js";
 export { formatRemediation } from "./remediation.js";
 export type { RemediationOptions } from "./remediation.js";
-export { runSensors } from "./runner.js";
-export type { RunSensorsArgs } from "./runner.js";
+export { runSensorsOnDiff, loadProjectGlobs } from "./runner.js";
+export type { RunSensorsOnDiffArgs } from "./runner.js";

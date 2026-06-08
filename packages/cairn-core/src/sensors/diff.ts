@@ -151,6 +151,115 @@ export async function getDiff(args: {
   return out;
 }
 
+/**
+ * Build `DiffEntry[]` from a name-status row set, sourcing before/after
+ * content from caller-supplied readers. Shared by the staged + range diff
+ * gates (which read committed/index blobs, not the working tree).
+ */
+async function buildEntries(
+  rows: NameStatusLine[],
+  read: {
+    before: (path: string) => Promise<string | undefined>;
+    after: (path: string) => Promise<string | undefined>;
+  },
+): Promise<DiffEntry[]> {
+  const limit = pLimit(10);
+  const out: DiffEntry[] = [];
+  const tasks = rows.map((row) =>
+    limit(async () => {
+      if (row.status === "A") {
+        const after = await read.after(row.path);
+        const entry: DiffEntry = { path: row.path, status: "added" };
+        if (after !== undefined) entry.afterContent = after;
+        out.push(entry);
+      } else if (row.status === "D") {
+        const before = await read.before(row.path);
+        const entry: DiffEntry = { path: row.path, status: "deleted" };
+        if (before !== undefined) entry.beforeContent = before;
+        out.push(entry);
+      } else if (row.status === "M") {
+        const [before, after] = await Promise.all([
+          read.before(row.path),
+          read.after(row.path),
+        ]);
+        const entry: DiffEntry = { path: row.path, status: "modified" };
+        if (before !== undefined) entry.beforeContent = before;
+        if (after !== undefined) entry.afterContent = after;
+        out.push(entry);
+      } else {
+        const fromPath = row.fromPath ?? "";
+        const [before, after] = await Promise.all([
+          read.before(fromPath),
+          read.after(row.path),
+        ]);
+        const entry: DiffEntry = { path: row.path, status: "renamed", fromPath };
+        if (before !== undefined) entry.beforeContent = before;
+        if (after !== undefined) entry.afterContent = after;
+        out.push(entry);
+      }
+    }),
+  );
+  await Promise.all(tasks);
+  out.sort((a, b) => a.path.localeCompare(b.path));
+  return out;
+}
+
+/**
+ * Diff of the staged tree (index) against HEAD — the pre-commit gate's view.
+ * After-content is read from the index (`git show :path`), NOT the working
+ * tree, so the gate scans exactly what is about to be committed.
+ */
+export async function getStagedDiff(repoRoot: string): Promise<DiffEntry[]> {
+  const git = simpleGit({ baseDir: repoRoot });
+  const nameStatus = await git.raw([
+    "diff",
+    "--cached",
+    "--name-status",
+    "--find-renames",
+  ]);
+  return buildEntries(parseNameStatus(nameStatus), {
+    before: (p) => showAtSha(git, "HEAD", p),
+    after: (p) => showAtSha(git, "", p), // `git show :path` → staged blob
+  });
+}
+
+/** Split a `git diff` range into base/head refs for content lookup. */
+function parseRange(range: string): { base: string; head: string } {
+  const sep = range.includes("...") ? "..." : "..";
+  if (range.includes(sep)) {
+    const [base, head] = range.split(sep);
+    return {
+      base: (base ?? "").trim() || "HEAD",
+      head: (head ?? "").trim() || "HEAD",
+    };
+  }
+  // Bare ref: compare it against HEAD.
+  return { base: range.trim(), head: "HEAD" };
+}
+
+/**
+ * Diff of a committed range (e.g. `origin/main..HEAD`) — the CI gate's view.
+ * Both sides come from committed blobs, so this is reproducible on a fresh
+ * CI checkout with no working-tree state.
+ */
+export async function getRangeDiff(
+  repoRoot: string,
+  range: string,
+): Promise<DiffEntry[]> {
+  const git = simpleGit({ baseDir: repoRoot });
+  const { base, head } = parseRange(range);
+  const nameStatus = await git.raw([
+    "diff",
+    "--name-status",
+    "--find-renames",
+    range,
+  ]);
+  return buildEntries(parseNameStatus(nameStatus), {
+    before: (p) => showAtSha(git, base, p),
+    after: (p) => showAtSha(git, head, p),
+  });
+}
+
 function pLimit(concurrency: number): <T>(fn: () => Promise<T>) => Promise<T> {
   const queue: Array<() => void> = [];
   let activeCount = 0;

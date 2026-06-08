@@ -16,10 +16,14 @@ import {
   buildDecisionsLedger,
   buildInvariantsLedger,
   hasComponentConfig,
+  loadCairnConfig,
   loadComponentsConfig,
   matchAnyGlob,
+  matchGlob,
+  walkFs,
 } from "@isaacriehm/cairn-state";
 import { runComponentCheck } from "../components/check.js";
+import { semverCmp } from "../migrate/semver.js";
 import { VERSION } from "../index.js";
 import { normalizeProjectName } from "../paths/index.js";
 import { z } from "zod";
@@ -69,6 +73,7 @@ export function runDoctor(opts: { repoRoot: string }): DoctorReport {
 
   // 2. Ground state
   checks.push(checkScopeIndex(opts.repoRoot));
+  checks.push(...checkConfigGlobs(opts.repoRoot));
   checks.push(checkLedger(opts.repoRoot, "decisions"));
   checks.push(checkLedger(opts.repoRoot, "invariants"));
 
@@ -150,12 +155,18 @@ function checkCairnVersion(repoRoot: string): DoctorCheck {
     };
   }
   if (projectVersion !== VERSION) {
+    // Pin behind the CLI → the migration runner brings `.cairn/` forward and
+    // stamps the pin. Pin ahead → this CLI is the stale one; upgrade it.
+    // (Never advise downgrading the CLI to a frozen pin — that was backwards.)
+    const pinBehind = semverCmp(projectVersion, VERSION) < 0;
     return {
       group: "core",
       label: "cairn version",
       status: "warn",
-      detail: `running cairn ${VERSION}; project pinned to ${projectVersion} — sensor schemas may not match`,
-      fixCommand: `npm install -g @isaacriehm/cairn@${projectVersion}`,
+      detail: pinBehind
+        ? `project pinned to ${projectVersion}; running cairn ${VERSION} — run \`cairn migrate\` to bring .cairn/ to current`
+        : `project pinned to ${projectVersion}; this CLI is older (${VERSION}) — upgrade the CLI`,
+      fixCommand: pinBehind ? "cairn migrate" : "npm install -g @isaacriehm/cairn@latest",
     };
   }
   return {
@@ -231,6 +242,96 @@ function checkScopeIndex(repoRoot: string): DoctorCheck {
     status: "ok",
     detail: `${count} file${count === 1 ? "" : "s"} classified`,
   };
+}
+
+/** Dirs the config-glob walk never descends into. */
+const GLOB_WALK_SKIP_DIRS = new Set([
+  ".git",
+  "node_modules",
+  ".pnpm-store",
+  "dist",
+  "build",
+  ".next",
+  ".turbo",
+  ".cache",
+  ".archive",
+  "coverage",
+  ".cairn",
+]);
+
+/**
+ * Config-glob staleness — warn when a `config.yaml` scope glob matches zero
+ * files in the working tree. These globs (`high_stakes_globs`,
+ * `project_globs.{route_handler,dto,generator_source,high_stakes}_globs`) are
+ * written once at adoption and never reconciled to the tree, so a later
+ * directory refactor silently neuters high-stakes weighting + the
+ * route/DTO sensors (they resolve to zero matches with no signal).
+ *
+ * Returns [] when the project declares no scope globs (nothing to validate)
+ * or the tree walk yields nothing. Stale globs collapse into a single warn
+ * check so the report stays readable; the detail lists a sample.
+ */
+function checkConfigGlobs(repoRoot: string): DoctorCheck[] {
+  const cfg = loadCairnConfig(repoRoot);
+
+  const pairs: { source: string; glob: string }[] = [];
+  const collect = (source: string, raw: unknown): void => {
+    if (!Array.isArray(raw)) return;
+    for (const g of raw) {
+      if (typeof g === "string" && g.length > 0) pairs.push({ source, glob: g });
+    }
+  };
+
+  collect("high_stakes_globs", cfg["high_stakes_globs"]);
+  const projectGlobs = cfg["project_globs"];
+  if (typeof projectGlobs === "object" && projectGlobs !== null) {
+    const pg = projectGlobs as Record<string, unknown>;
+    collect("project_globs.route_handler_globs", pg["route_handler_globs"]);
+    collect("project_globs.dto_globs", pg["dto_globs"]);
+    collect("project_globs.generator_source_globs", pg["generator_source_globs"]);
+    collect("project_globs.high_stakes_globs", pg["high_stakes_globs"]);
+  }
+
+  if (pairs.length === 0) return [];
+
+  const files: string[] = [];
+  walkFs({
+    dir: repoRoot,
+    skipDirs: GLOB_WALK_SKIP_DIRS,
+    onFile: (rel) => {
+      files.push(rel);
+    },
+  });
+  if (files.length === 0) return [];
+
+  const stale = pairs.filter((p) => !files.some((f) => matchGlob(f, p.glob)));
+  if (stale.length === 0) {
+    return [
+      {
+        group: "ground",
+        label: "config globs",
+        status: "ok",
+        detail: `${pairs.length} scope glob${pairs.length === 1 ? "" : "s"} all match tree files`,
+      },
+    ];
+  }
+
+  const sample = stale
+    .slice(0, 3)
+    .map((p) => `${p.glob} (${p.source})`)
+    .join("; ");
+  const more = stale.length > 3 ? ` (+${stale.length - 3} more)` : "";
+  return [
+    {
+      group: "ground",
+      label: "config globs",
+      status: "warn",
+      detail:
+        `${stale.length} of ${pairs.length} scope glob(s) match zero tree files — ` +
+        `stale after a directory refactor? high-stakes weighting + route/DTO sensors silently skip these: ${sample}${more}`,
+      fixCommand: "cairn init --force",
+    },
+  ];
 }
 
 function checkLedger(

@@ -209,9 +209,9 @@ export function onTaskCompleted(
   // Cross-check: if the phase's exit_criteria enumerates PR slugs
   // (e.g. `3.5-MK2`, `3.5-MK3`), refuse to fire phase-ready until a
   // task has graduated for each named PR. Counting `task_ids.length`
-  // alone passes false-positive when only some PRs ever got a task
-  // (bug-mine report #13). Free-form exit criteria with no PR slugs
-  // skip this check — `allPhaseTasksDone` is authoritative there.
+  // alone passes false-positive when only some PRs ever got a task.
+  // Free-form exit criteria with no PR slugs skip this check —
+  // `allPhaseTasksDone` is authoritative there.
   const phaseDef = roadmap.frontmatter.phases.find((p) => p.id === anchor.phase_id);
   const exitCriteriaText = phaseDef?.exit_criteria ?? "";
   const prSlugs = extractExitCriteriaPrSlugs(exitCriteriaText);

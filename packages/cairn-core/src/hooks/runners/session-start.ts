@@ -19,6 +19,7 @@ import {
 } from "../../session-start/index.js";
 import { rebuildDerived } from "../../state/rebuild-derived.js";
 import { inspectJoinState, runJoin } from "../../join/index.js";
+import { runMigrations, type RunMigrationsResult } from "../../migrate/index.js";
 import { findCurrentActiveTask, readTaskJournal } from "../../tasks/index.js";
 import {
   resolveSessionId,
@@ -228,6 +229,25 @@ export async function runSessionStartHook(): Promise<void> {
     );
   }
 
+  // Auto-apply `safe`-class `.cairn/` migrations on session open (D2), and
+  // bump the stale `cairn_version` pin. Never blocks: a held lock or a
+  // failure degrades to a warning. `review`-class migrations are surfaced
+  // for the operator via the banner, never auto-applied.
+  let migrationResult: RunMigrationsResult | null = null;
+  try {
+    migrationResult = await runMigrations({ repoRoot });
+    const applied = migrationResult.outcomes.filter((o) => o.status === "applied");
+    if (applied.length > 0) {
+      sessionWarnings.push(`migrations_applied:${applied.map((o) => o.id).join(",")}`);
+    }
+    if (migrationResult.newPin !== null) {
+      sessionWarnings.push(`pin_bumped:${migrationResult.newPin}`);
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    sessionWarnings.push(`migrations_failed: ${message}`);
+  }
+
   const isResume = source === "resume";
   const buildArgs: Parameters<typeof buildSessionStartContext>[0] = { repoRoot };
   if (isResume) buildArgs.maxChars = 4_000;
@@ -263,9 +283,14 @@ export async function runSessionStartHook(): Promise<void> {
   const bootstrapBanner = renderBootstrapBanner(repoRoot);
   const resumeBanner = renderResumeBanner(repoRoot, sessionId);
   const midAdoptionBanner = renderMidAdoptionBanner(repoRoot);
-  const banners = [bootstrapBanner, resumeBanner, midAdoptionBanner].filter(
-    (b): b is string => b !== null,
-  );
+  const migrationBanner =
+    migrationResult !== null ? renderMigrationBanner(migrationResult) : null;
+  const banners = [
+    bootstrapBanner,
+    resumeBanner,
+    midAdoptionBanner,
+    migrationBanner,
+  ].filter((b): b is string => b !== null);
   const additionalContext =
     banners.length === 0
       ? result.additionalContext
@@ -504,6 +529,46 @@ function renderMidAdoptionBanner(repoRoot: string): string | null {
     "detects the in-progress state and resumes via `cairn_init_resume` without",
     "re-asking consent. Do NOT pre-ask inline.**",
   ].join("\n");
+}
+
+/**
+ * Render a one-line surface when migrations changed `.cairn/` on session
+ * open, or when `review`-class migrations are waiting. Returns null when
+ * nothing applied and nothing is pending (the silent steady state).
+ *
+ * `.cairn/` is usually committed, so an auto-applied migration produces a
+ * working-tree diff — the banner tells the operator to commit it with their
+ * normal flow (Cairn never auto-commits).
+ */
+function renderMigrationBanner(result: RunMigrationsResult): string | null {
+  const applied = result.outcomes.filter((o) => o.status === "applied");
+  if (applied.length === 0 && result.pendingReview.length === 0 && result.newPin === null) {
+    return null;
+  }
+  const lines: string[] = [];
+  lines.push("## Cairn — migrations");
+  lines.push("");
+  if (applied.length > 0) {
+    lines.push(
+      `Auto-applied ${applied.length} safe migration(s) to \`.cairn/\` on session open:`,
+    );
+    for (const o of applied) lines.push(`- \`${o.id}\` — ${o.detail}`);
+    lines.push("");
+    lines.push(
+      "These changed committed `.cairn/` state — review the diff and commit it with your normal flow (Cairn does not auto-commit).",
+    );
+    lines.push("");
+  }
+  if (result.newPin !== null) {
+    lines.push(`Pin advanced to \`${result.newPin}\`.`);
+    lines.push("");
+  }
+  if (result.pendingReview.length > 0) {
+    lines.push(
+      `${result.pendingReview.length} review migration(s) need confirmation — run \`cairn migrate --all\` when ready: ${result.pendingReview.map((id) => `\`${id}\``).join(", ")}.`,
+    );
+  }
+  return lines.join("\n").trimEnd();
 }
 
 /**

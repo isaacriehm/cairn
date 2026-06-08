@@ -31,7 +31,7 @@
  *
  * The mapper turns this into the `<slug>:` extension block (route_handler_globs,
  * dto_globs, generator_source_globs, high_stakes_globs, off_limits_globs,
- * key_modules, proposed_sensors, domain_summary).
+ * key_modules, domain_summary).
  */
 
 import { execFileSync } from "node:child_process";

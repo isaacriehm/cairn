@@ -21,20 +21,6 @@ export interface StackSignature {
   marker: string;
 }
 
-/** A sensor the cairn proposes adding to .cairn/config/sensors.yaml. */
-export interface SensorProposal {
-  id: string;
-  /** Command + args. Run via child_process from the user tree. */
-  command: string;
-  args: string[];
-  /** Stack signature(s) this sensor binds to. */
-  applies_to: StackKind[];
-  /** Why this sensor was proposed (file presence, config block, etc.). */
-  reason: string;
-  /** Whether running this sensor needs `pnpm install` / `pip install` / etc. */
-  needs_install?: boolean;
-}
-
 export interface StartCommand {
   command: string;
   args: string[];
@@ -54,8 +40,6 @@ export interface DetectionResult {
   origin_url: string | null;
   /** All matching stack signatures (may be empty for non-source repos). */
   stack_signatures: StackSignature[];
-  /** Sensors the cairn proposes. Ordered by stack signature. */
-  proposed_sensors: SensorProposal[];
   /** Best-guess start command for the dev server. */
   start_command: StartCommand | null;
   hook_capability: HookCapability;

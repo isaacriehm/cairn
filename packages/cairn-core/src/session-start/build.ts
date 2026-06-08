@@ -238,7 +238,7 @@ export async function buildSessionStartContext(
   // Only render the bodies when a `scopeRelPath` is supplied (task-in-
   // flight context). For idle sessions, ship only a summary line so the
   // operator's context isn't bloated by every accepted decision every
-  // session — bare `§DEC-NNNN` / `§INV-NNNN` tokens in source resolve
+  // session — bare `§DEC-<hash>` / `§INV-<hash>` tokens in source resolve
   // on-demand via the read-enricher PostToolUse hook.
   const decisionEntries = safeBuildDecisionsLedger(args.repoRoot, warnings);
   counts.decisions = decisionEntries.length;
@@ -472,9 +472,9 @@ function renderActiveMissionSection(repoRoot: string, warnings: string[]): strin
         existsSync(join(repoRoot, ".cairn", "tasks", "done", id)),
       );
     // PR-slug cross-check: if exit_criteria enumerates PR refs, every
-    // ref must have a graduated task before phase-ready fires (bug-mine
-    // report #13). Falls through cleanly when exit_criteria is free-form
-    // prose with no PR-shaped tokens.
+    // ref must have a graduated task before phase-ready fires. Falls
+    // through cleanly when exit_criteria is free-form prose with no
+    // PR-shaped tokens.
     const prCoverage = computePhasePrCoverage(
       cursorPhase.exit_criteria ?? "",
       taskIds,
@@ -609,9 +609,7 @@ function readBrandAndPositioning(repoRoot: string, warnings: string[]): string |
   // ~150-300 tokens of SessionStart context per session. Render once
   // under a merged heading when bodies match (whitespace-collapsed); fall
   // back to separate sections only when operator has actually edited
-  // one of the files. Bug-mine: a consumer's SessionStart was emitting
-  // the brand paragraph twice (overview heading + positioning heading,
-  // identical body).
+  // one of the files.
   interface Section {
     label: string;
     body: string;
@@ -770,7 +768,7 @@ function renderGroundStateSummary(
   lines.push(`${decTxt}, ${invTxt} in this project.`);
   lines.push("");
   lines.push(
-    "Bare `§DEC-NNNN` and `§INV-NNNN` citations in source files resolve " +
+    "Bare `§DEC-<hash>` and `§INV-<hash>` citations in source files resolve " +
       "automatically when you Read them — the PostToolUse(Read) hook " +
       "prepends a legend with each citation's title + status. Use " +
       "`cairn_in_scope({path_globs, types?})` for path-targeted lookups " +

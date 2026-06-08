@@ -226,10 +226,9 @@ export interface ReopenTaskError {
  * `tasks/active/<id>/` and reset its phase to `running`. Inverse of
  * `completeTask`.
  *
- * Bug-mine: operator hit a case where `cairn_task_complete` without
- * `task_id` graduated the wrong task (a parallel-session task picked
- * via mtime-based active-task fallback). There was no recovery tool —
- * operator was told to `mv` the directory manually.
+ * Recovery tool for when `cairn_task_complete` without `task_id`
+ * graduated the wrong task (a parallel-session task picked via
+ * mtime-based active-task fallback).
  *
  * Side-effect: renames any pre-existing `attestation.yaml` to
  * `attestation.<completedAt>.yaml` so the Stop-hook auto-graduator
@@ -430,15 +429,13 @@ export function appendTaskJournal(args: AppendJournalArgs): boolean {
 
   // Bump status.yaml mtime so the stalled-task detector (which reads
   // mtime on status.yaml) sees a journal-only turn as live activity.
-  // Without this, journaling without a status edit causes the 30-min
-  // idle clock to fire mid-active-work (bug-mine report #2).
+  // Without this, journaling without a status edit lets the idle clock
+  // fire mid-active-work.
   //
-  // Also stamp `last_journal_session` so the stall scan can tell
-  // which session is currently working the task. Two concurrent CC
-  // sessions on the same checkout (bug-mine: an operator running
-  // both windows simultaneously sharing one `.cairn/`) previously
-  // saw each other's tasks as stalled because nothing distinguished
-  // "owned by another session" from "abandoned."
+  // Also stamp `last_journal_session` so the stall scan can tell which
+  // session is currently working the task — two concurrent CC sessions
+  // sharing one `.cairn/` must not see each other's tasks as stalled
+  // ("owned by another session" vs "abandoned").
   const statusPath = join(taskDir, "status.yaml");
   if (existsSync(statusPath)) {
     if (args.sessionId !== null && args.sessionId !== "") {

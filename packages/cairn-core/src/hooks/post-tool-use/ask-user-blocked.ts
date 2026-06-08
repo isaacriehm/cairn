@@ -4,8 +4,7 @@
  * so the Stop hook's stalled-task scanner skips it (the work can't
  * progress until the operator answers).
  *
- * Wired into `bug-mine 0.13.8` / Phase 5. Producer pair for the
- * existing `blocked_on: operator` skip rule in
+ * Producer pair for the `blocked_on: operator` skip rule in
  * `runners/stop.ts:scanStalledRunningTasks`.
  *
  * No-op when:

@@ -5,7 +5,7 @@
  *
  * The agent's MCP client already receives full tool descriptions from
  * the server's `registerTool` calls; SessionStart does NOT need to
- * duplicate them. Bare `§DEC-NNNN` and `§INV-NNNN` citations resolve
+ * duplicate them. Bare `§DEC-<hash>` and `§INV-<hash>` citations resolve
  * via the PostToolUse(Read) enricher hook.
  */
 

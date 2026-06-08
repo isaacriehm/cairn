@@ -67,10 +67,9 @@ function writeMissionPhaseDefer(
  * force) or when the parent mission closes — keeping a stale marker
  * around suppresses the prompt for a phase that no longer needs it.
  *
- * Caught in bug-mine: a deferred phase that auto-advanced 53 min after
- * the operator picked `not_yet` left the marker on disk, suppressing
- * future phase-ready prompts on entirely different missions until the
- * 24h expiry rolled past.
+ * A stale marker left after a deferred phase auto-advances would
+ * otherwise suppress phase-ready prompts on unrelated missions until
+ * the 24h expiry rolled past.
  */
 export function clearMissionPhaseDeferIfMatches(
   repoRoot: string,
@@ -167,7 +166,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     // not re-fire the same phase-exit AskUserQuestion. The defer file
     // only suppresses the cross-session SessionStart re-ask; in-session
     // re-emit on a new task completion still flows via the
-    // `ready_emitted = false` reset above (bug-mine report #15).
+    // `ready_emitted = false` reset above.
     const deferredUntil = writeMissionPhaseDefer(
       ctx.repoRoot,
       missionId,
@@ -211,10 +210,9 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
   if (input.choice === "exit") {
     // Cursor validation — `exit` is the cursor-honouring advance. Reject
     // out-of-order phase exits so a caller can't skip an incomplete phase
-    // by submitting a later phase_id (caught in bug-mine: mission-2
-    // advanced phase-2 while phase-1 was still active, orphaning phase-1
-    // and corrupting progress accounting). Operator must use `force` to
-    // skip ahead intentionally.
+    // by submitting a later phase_id (which would orphan the skipped
+    // phase and corrupt progress accounting). Operator must use `force`
+    // to skip ahead intentionally.
     const cursorPhase = state.cursor.active_phase;
     if (cursorPhase !== null && cursorPhase !== input.phase_id) {
       return mcpError(
@@ -233,11 +231,9 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     }
 
     // Failed-task gate — refuse to mark a phase as graduated if every
-    // linked task ended in failure. Caught in bug-mine: mission-2
-    // advanced past `phase-1-auth` after three consecutive failed auth
-    // task_completes, leaving the mission journal claiming "phase done"
-    // while no work succeeded. Force can still skip, but it requires
-    // explicit operator intent.
+    // linked task ended in failure, which would leave the mission
+    // journal claiming "phase done" while no work succeeded. Force can
+    // still skip, but it requires explicit operator intent.
     const outcomes = progress.task_ids.map((id) => readGraduatedOutcome(ctx.repoRoot, id));
     const hasUngraduated = outcomes.some((o) => o === "unknown");
     const hasSucceeded = outcomes.some((o) => o === "succeeded");

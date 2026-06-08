@@ -6,7 +6,7 @@
  *   - Status-bar item (always visible after activate)
  *   - Palette commands: showLog, diagnose, refresh, openDecisionsLedger,
  *     openInvariantsLedger
- *   - Hover provider for §DEC-NNNN, §INV-NNNN, TSK-* tokens
+ *   - Hover provider for §DEC-<hash>, §INV-<hash>, TSK-* tokens
  *   - Decoration manager (inlay ghost text + gutter health icons)
  *   - Code Lens provider (decisions in scope above functions)
  *   - DEC Explorer tree view (optional, behind config flag)

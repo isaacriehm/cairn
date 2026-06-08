@@ -60,12 +60,6 @@ export interface MapperKeyModule {
   purpose: string;
 }
 
-export interface MapperProposedSensor {
-  id: string;
-  description: string;
-  applies_to_globs: string[];
-}
-
 export interface MapperScopeIndexEntry {
   decisions: string[];
   invariants: string[];
@@ -84,7 +78,6 @@ export interface MapperOutput {
   generator_source_globs: string[];
   high_stakes_globs: string[];
   off_limits_globs: string[];
-  proposed_sensors: MapperProposedSensor[];
   notes: string;
   scope_index: MapperScopeIndex;
 }
@@ -127,7 +120,6 @@ function isMapperOutput(value: unknown): value is MapperOutput {
       Array.isArray(v["generator_source_globs"]) &&
       Array.isArray(v["high_stakes_globs"]) &&
       Array.isArray(v["off_limits_globs"]) &&
-      Array.isArray(v["proposed_sensors"]) &&
       typeof v["notes"] === "string"
     )
   ) {
@@ -242,7 +234,6 @@ export async function runMapper(args: RunMapperArgs): Promise<MapperResult> {
     proposals,
     workspacePackageJson,
     projectSlug: args.detection.project_slug,
-    detectionSensors: args.detection.proposed_sensors,
     inferredGlobs,
   });
 
@@ -250,7 +241,6 @@ export async function runMapper(args: RunMapperArgs): Promise<MapperResult> {
     {
       proposals: proposals.length,
       successful: proposals.filter((p) => !p.failed).length,
-      total_sensors: merged.proposed_sensors.length,
     },
     "chunked mapper complete",
   );

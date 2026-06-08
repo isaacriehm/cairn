@@ -1,7 +1,7 @@
 /**
  * Scans the visible body of a Read tool's content for cairn citation
  * patterns: §INV invariants, §DEC decisions, and TODO(TSK-...) linked
- * todos. Both `§INV-NNNN` and `§DEC-NNNN` are the canonical bare-symbol
+ * todos. Both `§INV-<hash>` and `§DEC-<hash>` are the canonical bare-symbol
  * citation forms produced by the strip-replace phase and resolved by
  * the read-enricher into the legend.
  *
@@ -21,7 +21,7 @@ export interface CitationMatch {
 export interface ScannedCitations {
   invariants: CitationMatch[];
   todos: CitationMatch[];
-  /** §DEC-NNNN citations resolved against the decisions ledger. */
+  /** §DEC-<hash> citations resolved against the decisions ledger. */
   decisions: CitationMatch[];
 }
 

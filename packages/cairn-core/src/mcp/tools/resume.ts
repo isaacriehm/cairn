@@ -62,7 +62,7 @@ interface ResumePayload {
    * Deduplicated union of `files_touched` from the journal entries
    * returned in `recent_entries`. Lets the resume primer Read these
    * paths upfront so post-`/clear` Edit calls don't trip the "File
-   * has not been read yet" wall (bug-mine report #10).
+   * has not been read yet" wall.
    */
   files_touched: string[];
 }

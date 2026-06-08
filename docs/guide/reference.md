@@ -28,9 +28,7 @@ or directly via `npm install -g @isaacriehm/cairn`.
 | Command                                  | What                                                                     |
 | ---------------------------------------- | ------------------------------------------------------------------------ |
 | `cairn attention`                        | Drain the pending-attention queue interactively.                         |
-| `cairn attention bulk-accept`            | Auto-accept high-confidence DEC drafts.                                  |
-| `cairn attention bulk-accept --dry-run`  | Preview what bulk-accept would do without writing.                       |
-| `cairn attention bulk-accept --threshold medium` | Widen the auto-accept criteria (default `high`).               |
+| `cairn migrate`                          | Bring `.cairn/` state up to the current cairn version.                   |
 | `cairn scope --files <a>,<b>`            | Show DECs and §INVs in scope for the listed files.                       |
 | `cairn scope rebuild`                    | Force-rebuild `scope-index.yaml` from source citations.                  |
 
@@ -107,7 +105,7 @@ The MCP server exposes 25 typed tools. Source of truth is
 
 | Tool                    | What                                                                   |
 | ----------------------- | ---------------------------------------------------------------------- |
-| `cairn_record_decision` | Drop new DEC draft to `_inbox/`. Server allocates `DEC-NNNN`.          |
+| `cairn_record_decision` | Drop new DEC draft to `_inbox/`. Id is content-addressed (`DEC-` + 7 hex).          |
 | `cairn_task_create`     | Create `.cairn/tasks/active/<id>/` with spec.tightened.md + status.yaml. |
 
 ### Attention queue
@@ -115,10 +113,7 @@ The MCP server exposes 25 typed tools. Source of truth is
 | Tool                          | What                                                                |
 | ----------------------------- | ------------------------------------------------------------------- |
 | `cairn_resolve_attention`     | Resolve a single item (DEC / finding / drift / conflict / bypass).  |
-| `cairn_bulk_accept_attention` | Auto-promote high-confidence drafts before triage.                  |
 | `cairn_attention_dedup`       | Cluster near-duplicate drafts by Jaccard ≥ 0.4.                     |
-| `cairn_attention_serve`       | Spawn local browser triage GUI when queue > 15.                     |
-| `cairn_attention_wait`        | Block until browser GUI emits resolutions or operator cancels.      |
 
 ### Init pipeline
 
@@ -141,7 +136,7 @@ Phase IDs (passed as `phase` arg): `1-detect`, `2-walker`, `3-mapper`,
 ### Calling MCP tools from a shell
 
 ```bash
-cairn mcp call cairn_decision_get '{"id":"DEC-0042"}'
+cairn mcp call cairn_decision_get '{"id":"DEC-a3f7b2c"}'
 
 cairn mcp call cairn_in_scope '{"path_globs":["src/auth/**"]}'
 
@@ -224,10 +219,10 @@ A consolidated map of where everything lives.
 ├── ground/
 │   ├── manifest.yaml                              {path, sha256, verified_at, …} per file
 │   ├── decisions/
-│   │   ├── DEC-NNNN.md                            accepted decisions
+│   │   ├── DEC-<hash>.md                            accepted decisions
 │   │   └── decisions.ledger.yaml                  compact summary, always-loaded
 │   ├── invariants/
-│   │   ├── INV-NNNN.md                            §INV invariants
+│   │   ├── INV-<hash>.md                            §INV invariants
 │   │   └── invariants.ledger.yaml                 compact summary
 │   ├── canonical-map/
 │   │   ├── topics.yaml                            topic → canonical-doc-path

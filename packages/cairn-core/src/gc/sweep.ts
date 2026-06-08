@@ -1,7 +1,7 @@
 /**
  * Sweep + batch entry points for GC.
  *
- * `runGcSweep` composes all five passes against a repo root and returns the
+ * `runGcSweep` composes all twelve passes against a repo root and returns the
  * aggregated `GcSweepResult` (findings + commit proposals). Callers decide
  * whether to apply.
  *

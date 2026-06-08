@@ -2,7 +2,7 @@
  * `cairn hook read-enrich` — PostToolUse hook on the Read tool.
  *
  * Scans the file content the agent just read for cairn citation
- * patterns (`§INV-NNNN`, `TODO(TSK-<id>)`, banned `DEC-<N>`) and prepends a
+ * patterns (`§INV-<hash>`, `TODO(TSK-<id>)`, banned `DEC-<N>`) and prepends a
  * legend block to Shape-B `additionalContext`.
  *
  * This hook is critical for "Honest Agent" context continuity — it

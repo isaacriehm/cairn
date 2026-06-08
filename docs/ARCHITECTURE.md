@@ -91,7 +91,7 @@ What lives here:
   index + drafts singleton §INVs). The `@cairn` headers in code are the
   committed source of truth; `.cairn/ground/components/` is the gitignored
   derived inventory.
-- `mcp/` — MCP server. 32 typed tools (read, write-locked write,
+- `mcp/` — MCP server. 29 typed tools (read, write-locked write,
   history-summarizer, init-phase orchestration, attention queue
   drains, task lifecycle, resume layer). Bootstrap-guard wraps every
   write tool with the `BOOTSTRAP_REQUIRED` envelope when a clone is
@@ -110,9 +110,11 @@ What lives here:
   only the SAFE subset, canary-gated.
 - `decision-capture/` — DEC id allocator + scanner. The `cairn_record_decision`
   MCP tool composes a draft on top of these.
-- `sensors/` — Layer A (stub catalog), Layer B (attestation), Layer C
-  (structural project-agnostic), decision-assertions, runner, remediation
-  prompt body.
+- `sensors/` — Layer A (stub catalog), Layer C (structural,
+  project-agnostic), decision-assertions, the diff-scoped `runSensorsOnDiff`
+  sweep runner, and the remediation prompt body. Runs at pre-commit
+  (staged) + CI (`--diff`). (Layer B attestation cross-check was removed —
+  no production path emitted the attestation it depended on.)
 - `session-start/` — `buildSessionStartContext()` composes the SessionStart
   hook payload. Priority-ordered truncation to token budget.
 - `events/` — invalidation events writer + reader; per-session marker.
@@ -124,6 +126,11 @@ What lives here:
   --json-schema`. Used by mapper, source-comments classifier, rules-merge,
   docs-ingest, history summarizer.
 - `join/` — per-clone bootstrap orchestrator. `runJoin` + `inspectJoinState`.
+- `migrate/` — coded `.cairn/` migration registry. Ordered migrations keyed
+  by `introducedIn`; `runMigrations` selects by semver vs the `cairn_version`
+  pin (with a `detect()` idempotency backstop), applies the `safe` subset
+  under `.migrate-lock`, surfaces `review` migrations, and stamps the pin.
+  Runs at SessionStart, `cairn join`, MCP boot, and `cairn migrate`.
 - `lock.ts` — per-write `flock` on `.cairn/.write-lock` for global writes.
 - `logger.ts` — pino setup.
 
@@ -187,9 +194,7 @@ into:
   `cairn_task_create`.
 - **Write — retirement** — `cairn_retire_decision`,
   `cairn_retire_invariant` (archive to `.archive/`; not a hard delete).
-- **Attention queue** — `cairn_resolve_attention`,
-  `cairn_bulk_accept_attention`, `cairn_attention_dedup`,
-  `cairn_attention_serve`, `cairn_attention_wait`.
+- **Attention queue** — `cairn_resolve_attention`, `cairn_attention_dedup`.
 - **Init pipeline** — `cairn_init_phase_*` (13 phases) +
   `cairn_init_resume`, `cairn_init_phases_8_9_10_parallel`.
 

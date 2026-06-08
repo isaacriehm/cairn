@@ -47,7 +47,7 @@ Adopters register the server via `.mcp.json` (created by `cairn init`):
 
 ---
 
-## Tool catalog (32 tools)
+## Tool catalog (29 tools)
 
 Conventions:
 
@@ -86,7 +86,7 @@ Source of truth: `packages/cairn-core/src/mcp/tools/index.ts` (`allTools`).
 
 | Tool                    | What                                                                     |
 | ----------------------- | ------------------------------------------------------------------------ |
-| `cairn_record_decision` | Record a DEC — auto-accepts into the ledger by default (verify-then-accept; near-dup → `_inbox/` draft). Server allocates `DEC-NNNN`. |
+| `cairn_record_decision` | Record a DEC — auto-accepts into the ledger by default (verify-then-accept; near-dup → `_inbox/` draft). Id is content-addressed (`DEC-` + 7 hex), not sequential. |
 | `cairn_task_create`     | Create `.cairn/tasks/active/<id>/` with `spec.tightened.md` + `status.yaml`. |
 
 **Write — retirement (2)**
@@ -96,15 +96,12 @@ Source of truth: `packages/cairn-core/src/mcp/tools/index.ts` (`allTools`).
 | `cairn_retire_decision`   | Archive an accepted DEC that has rotted. Moves it to `.cairn/ground/.archive/`; not a hard delete. |
 | `cairn_retire_invariant`  | Archive an active INV that no longer holds. Same archive semantics.                    |
 
-**Write — plugin-era attention queue (5)**
+**Write — plugin-era attention queue (2)**
 
 | Tool                          | What                                                                      |
 | ----------------------------- | ------------------------------------------------------------------------- |
 | `cairn_resolve_attention`     | Resolve a single attention item (DEC draft / baseline finding / drift).   |
-| `cairn_bulk_accept_attention` | Auto-promote high-confidence drafts before interactive triage.            |
 | `cairn_attention_dedup`       | Cluster near-duplicate drafts by Jaccard ≥ 0.4.                            |
-| `cairn_attention_serve`       | Spawn a local browser triage GUI when queue > 15.                         |
-| `cairn_attention_wait`        | Block until the browser GUI emits resolutions or the operator cancels.    |
 
 **Init pipeline (2)**
 
@@ -131,13 +128,13 @@ skill doesn't need a separate code path for the parallel runner.
 
 | Field | Type | Notes |
 |-------|------|-------|
-| `id` | string | Required. e.g., `"DEC-0042"` |
+| `id` | string | Required. e.g., `"DEC-a3f7b2c"` |
 
 Returns:
 
 ```json
 {
-  "id": "DEC-0042",
+  "id": "DEC-a3f7b2c",
   "title": "actor_user_id denormalization on candidate_actions",
   "status": "accepted",
   "scope_globs": [...],
@@ -148,7 +145,7 @@ Returns:
     { "id": "a1", "kind": "schema_must_contain", ... }
   ],
   "human_review_hint": "...",
-  "related_invariants": ["INV-0042"],
+  "related_invariants": ["INV-a3f7b2c"],
   "body_markdown": "(full ADR text)"
 }
 ```
@@ -232,8 +229,8 @@ Returns compact index records (~50 tokens each):
 
 ```json
 [
-  { "id": "DEC-0042", "kind": "decision", "title": "actor_user_id denormalization", "score": 0.91 },
-  { "id": "INV-0042", "kind": "invariant", "title": "No JSONB-userId filter", "score": 0.88 }
+  { "id": "DEC-a3f7b2c", "kind": "decision", "title": "actor_user_id denormalization", "score": 0.91 },
+  { "id": "INV-a3f7b2c", "kind": "invariant", "title": "No JSONB-userId filter", "score": 0.88 }
 ]
 ```
 
@@ -245,7 +242,7 @@ Backed by FTS over the ground/. No LLM.
 
 | Field | Type | Notes |
 |-------|------|-------|
-| `id` | string | Optional; server generates next `DEC-NNNN` if absent |
+| `id` | string | Optional; server derives `DEC-<hash>` from the content if absent |
 | `title` | string | Required |
 | `summary` | string | Required |
 | `scope_globs` | string[] | Required |
@@ -256,7 +253,7 @@ Backed by FTS over the ground/. No LLM.
 | `target` | `"inbox"` \| `"accepted"` | Optional; omit for the default auto-accept path |
 
 **Auto-accept by default** (see PLUGIN_ARCHITECTURE.md §7.6). When `target`
-is omitted and `decisions.auto_accept` is not `false`, the decision is
+is omitted, the decision is
 verified (assertions schema-valid — already enforced — and the title not a
 near-duplicate of an accepted DEC) and written straight to the canonical
 zone `.cairn/ground/decisions/<DEC-id>.md` with `auto_accepted: true`;
@@ -346,9 +343,9 @@ Deliberate omissions, with reasons:
 ```
 1. `cairn hook session-start` injects decisions_in_scope[] + invariants_active[]
    summary into context (per docs/SESSIONSTART_SPEC.md)
-2. Agent sees DEC-0042 in the rendered list ("actor_user_id denormalization on dashboard/")
-3. Agent calls: cairn_decision_get("DEC-0042") → full ADR + assertions
-4. Agent calls: cairn_in_scope({path_globs:["core/src/dashboard/**"], types:["invariant"]}) → [INV-0042]
+2. Agent sees DEC-a3f7b2c in the rendered list ("actor_user_id denormalization on dashboard/")
+3. Agent calls: cairn_decision_get("DEC-a3f7b2c") → full ADR + assertions
+4. Agent calls: cairn_in_scope({path_globs:["core/src/dashboard/**"], types:["invariant"]}) → [INV-a3f7b2c]
 5. Agent reads relevant code (canonical zone — Cairn walkers exclude historical paths)
 6. Agent makes change
 7. Agent emits `attestation.yaml` (runtime reads it directly from run dir)
@@ -372,14 +369,14 @@ Deliberate omissions, with reasons:
    bug report OR observation per its when_to_use trigger gate)
 3. Skill gathers in-scope context (cairn_in_scope), asks ≤3 clarifying
    questions per round, tightens the spec via cairn_task_create
-4. Reviewer subagent (after dispatch) calls cairn_record_decision → DEC-0099
+4. Reviewer subagent (after dispatch) calls cairn_record_decision → DEC-b1e9c04
    verifies (assertions valid, not a near-dup) and AUTO-ACCEPTS into
-   .cairn/ground/decisions/DEC-0099.md (auto_accepted: true); emits an
-   invalidation event; future sessions see DEC-0099. Review rides the PR diff.
-   (Had DEC-0099 been a near-duplicate, it would instead land as an _inbox/
+   .cairn/ground/decisions/DEC-b1e9c04.md (auto_accepted: true); emits an
+   invalidation event; future sessions see DEC-b1e9c04. Review rides the PR diff.
+   (Had DEC-b1e9c04 been a near-duplicate, it would instead land as an _inbox/
    draft and Step 5 below would run.)
 5. [dedup-fallback / explicit-inbox only] Stop hook surfaces inline:
-   "Review DEC-0099 draft? [a] accept [b] reject [c] edit" → operator picks
+   "Review DEC-b1e9c04 draft? [a] accept [b] reject [c] edit" → operator picks
    → cairn-attention calls cairn_resolve_attention → server moves draft to
    canonical.
 ```
@@ -412,11 +409,8 @@ packages/cairn-core/src/mcp/
     ├── task-create.ts
     ├── reject-candidate.ts
     ├── resolve-attention.ts
-    ├── bulk-accept-attention.ts
     ├── attention-dedup.ts
     ├── attention-restore.ts
-    ├── attention-serve.ts
-    ├── attention-wait.ts
     ├── align-drain.ts
     └── init-phases.ts            ← `initPhaseTools` (13 phases) + `initResumeTool` + `initParallel8910Tool`
 ```

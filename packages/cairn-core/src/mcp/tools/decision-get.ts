@@ -66,8 +66,8 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     }
   }
   // Suggest near-matches so an AI that hallucinated a sequential id
-  // (`DEC-0001`, `DEC-0002`, etc. — the bug-mine top error) can pick the
-  // right one on the retry. Real ids are `DEC-<7-hex>` content-addressed.
+  // (`DEC-0001`, `DEC-0002`, etc.) can pick the right one on the retry.
+  // Real ids are `DEC-<7-hex>` content-addressed.
   const allIds = collectExistingIds(searchDirs);
   return mcpError(
     "DECISION_NOT_FOUND",

@@ -17,7 +17,7 @@
  *      `_inbox/<id>.draft.md`, flip `status: accepted` → the original
  *      draft status, and rebuild the decisions ledger so the canonical
  *      surface no longer resolves the id. Source files keep the
- *      `// §DEC-NNNN` cite (we don't reverse-strip — the cite is a
+ *      `// §DEC-<hash>` cite (we don't reverse-strip — the cite is a
  *      durable artifact of the prior accept and removing it without
  *      operator intent risks dropping a legit DEC reference if the
  *      operator never re-accepts). Operator can re-accept (idempotent

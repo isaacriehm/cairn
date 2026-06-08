@@ -22,7 +22,7 @@ SessionStart auto-runs `cairn join` when `core.hooksPath` is unset,
 so by the time this skill engages bootstrap should be wired. If
 `cairn_resolve_attention` still refuses with `BOOTSTRAP_REQUIRED`,
 SessionStart's auto-bootstrap failed — call `cairn_bootstrap_retry`
-once to retry inline. On `ok: true`, fall through to Step 0.3. On
+once to retry inline. On `ok: true`, fall through to Step 0.7. On
 `ok: false`, surface the `failed_steps` list to the operator and
 end the turn (the `remediation` field of the error envelope cites
 this same tool plus a Claude Code restart as the recovery paths).
@@ -169,90 +169,6 @@ call (max 4 questions per batch — same rule as the main queue).
 After mission attention resolves, fall through to the regular
 attention queue below.
 
-## Step 0.3 — large-queue routing (browser triage GUI)
-
-When `attention_count > 15`, the inline `AskUserQuestion` flow burns
-one MCP round-trip per draft and 4-cap batches force the operator
-through dozens of turns. Above the threshold, hand off to the browser:
-
-1. Call `cairn_attention_serve({})`. Returns
-   `{ url, port, sentinel_path }`. The browser auto-opens. If it
-   doesn't, the operator clicks the URL.
-
-2. Print a **single chat message** containing the URL as a clickable
-   markdown link, **nothing else**:
-
-   ```markdown
-   ⚑ N pending — opened triage UI:
-
-   → **[Open Cairn Attention](<url>)**
-
-   Triage all drafts in the browser. Click "I'm done" when finished —
-   this session resumes automatically.
-   ```
-
-3. Call `cairn_attention_wait({})` (default 1800s). The MCP tool
-   blocks until the operator clicks "I'm done" in the UI (or the
-   server idles out). Returns the `DoneState`:
-
-   ```
-   { ok, reason: "done"|"idle"|"abort",
-     accepted, rejected, merged, edited,
-     startedAt, endedAt }
-   ```
-
-4. Render a one-line summary to the operator:
-
-   ```markdown
-   ✓ Triage complete (reason). Accepted N · Rejected M · Merged K · Edited E.
-   ```
-
-5. **Exit the skill.** Do **not** run Steps 0.5 / 0.7 / 1 / 2 / 3 —
-   the GUI handled all of them.
-
-If `attention_count <= 15`, fall through to the inline flow below.
-
-## Step 0.5 — bulk-accept obvious DEC drafts
-
-Phase 7b emits one DEC draft per "rationale"-class JSDoc / block
-comment. On a busy monorepo this produces hundreds of drafts that
-no operator will sort through one click at a time. Before any
-interactive triage, drain the obvious ones via the bulk tool:
-
-```
-cairn_bulk_accept_attention({})
-```
-
-Tool default `threshold: "high"` only auto-promotes drafts the
-heuristic is confident about — file in `high_stakes_globs` /
-`route_handler_globs` / `dto_globs`, prose 80–800
-chars, decision-verb tokens (`chose`, `because`, `enforce`, …),
-JSDoc tags. Stamps `capture_confidence` on every draft + invariant
-so subsequent passes can sort. Returns counts:
-
-```
-{ decsScanned, decsAccepted, decsByConfidence: {high, medium, low},
-  acceptedIds, invariantsScanned, invariantsByConfidence }
-```
-
-Render a one-line summary to the operator before continuing:
-
-```
-Auto-accepted N obvious DEC drafts. M remain for triage
-(K medium / L low). Invariants: P high / Q medium / R low —
-all stamped, none auto-promoted.
-```
-
-Do **not** call this tool with `threshold: "medium"` or `"low"`
-without explicit operator consent — those settings widen
-acceptance significantly (medium ≈ 60% accept, low ≈ 100%).
-Operator can opt in via the CLI: `cairn attention bulk-accept
---threshold medium --dry-run` to preview, then re-run without
-`--dry-run`.
-
-After this step, the inbox holds only medium + low-confidence
-drafts. Continue with the normal triage flow below.
-
 ## Step 0.7 — flag duplicate DEC drafts
 
 Phase 7b emits one DEC draft per essay-class comment, so the same
@@ -391,6 +307,7 @@ truncate):
 **DEC draft:** `accept` / `reject` / `edit first`
 **Baseline finding:** `triage now` / `suppress` / `defer`
 **Invalidation event:** `refresh in scope` / `continue under old` / `abort`
+**Drift event:** `refresh source` / `defer` / `dismiss`
 **Conflict:** `keep A side` / `keep B side` / `merge both` / `archive both`
   — see Step 3b for the side-by-side prose render that MUST appear
     on the same turn before the question lands.
@@ -408,8 +325,8 @@ same assistant turn) — the MCP write lock serializes them on disk.
 
 The tool dispatches by kind: `decision_draft` for accept/reject/edit,
 `baseline_finding` for triage/suppress/defer, `invalidation_event`
-for refresh/continue/abort, `bypass` and `review` for Stop-hook
-surfaces. On `decision_draft + a`, the tool also strips the
+for refresh/continue/abort, `drift` for refresh/defer/dismiss,
+`bypass` and `review` for Stop-hook surfaces. On `decision_draft + a`, the tool also strips the
 originating source comment and replaces it with a bare `§DEC-NNNN`
 symbol (matching the `§INV-NNNN` invariant convention; Cairn Lens
 resolves title + body from the ledger) when the DEC came from

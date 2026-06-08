@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { runJoin } from "@isaacriehm/cairn-core";
+import { runJoin, runMigrations } from "@isaacriehm/cairn-core";
 
 interface ParsedFlags {
   positional: string[];
@@ -63,6 +63,36 @@ export async function joinCli(argv: string[]): Promise<void> {
     dryRun: parsed.flags["dry-run"] === true,
     strict: parsed.flags["strict"] === true,
   });
+
+  // Catch the clone up on any pending safe `.cairn/` migrations (the pin
+  // bump + dead-field cleanup land here on a fresh clone). Best-effort —
+  // never fail the join over a migration.
+  if (
+    result.repoRoot !== null &&
+    parsed.flags["dry-run"] !== true &&
+    result.steps.every((s) => s.status !== "error")
+  ) {
+    try {
+      const mig = await runMigrations({ repoRoot: result.repoRoot });
+      const applied = mig.outcomes.filter((o) => o.status === "applied").length;
+      if (applied > 0 || mig.newPin !== null) {
+        result.steps.push({
+          step: "migrate",
+          status: "ok",
+          detail:
+            applied > 0
+              ? `applied ${applied} migration(s)${mig.newPin !== null ? `, pin → ${mig.newPin}` : ""}`
+              : `pin → ${mig.newPin}`,
+        });
+      }
+    } catch (err) {
+      result.steps.push({
+        step: "migrate",
+        status: "warn",
+        detail: `migration run failed (retries next session): ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+  }
 
   if (parsed.flags["json"] === true) {
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);

@@ -27,3 +27,11 @@ jobs:
 
       - name: Cairn doctor — verify ground state is healthy
         run: cairn doctor
+
+      - name: Cairn sensor sweep — enforce decisions/invariants on the diff
+        run: |
+          BASE="${{ github.event.pull_request.base.sha || github.event.before }}"
+          if [ -z "$BASE" ] || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            BASE="origin/${{ github.event.repository.default_branch || 'main' }}"
+          fi
+          cairn sensor-run --diff "${BASE}..HEAD" --strict

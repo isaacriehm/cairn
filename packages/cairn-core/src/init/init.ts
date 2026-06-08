@@ -901,24 +901,6 @@ function printMapperProposal(r: MapperResult): void {
     );
     process.stdout.write("\n");
   }
-  // Sensors block
-  const sensors = o.proposed_sensors;
-  if (sensors.length > 0) {
-    const headLine = `${sensors.length} proposed`;
-    process.stdout.write(`  ${visualC.bold("Sensors")}    ${headLine}\n`);
-    const widest = Math.max(...sensors.slice(0, 3).map((s) => s.id.length), 1);
-    for (const s of sensors.slice(0, 3)) {
-      process.stdout.write(
-        `             ${s.id.padEnd(widest + 2)}${truncateOneLine(s.description, 80 - widest)}\n`,
-      );
-    }
-    if (sensors.length > 3) {
-      process.stdout.write(
-        `             ${visualC.dim(`+ ${sensors.length - 3} more`)}\n`,
-      );
-    }
-    process.stdout.write("\n");
-  }
 }
 
 function truncateOneLine(s: string, max: number): string {

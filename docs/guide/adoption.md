@@ -224,7 +224,6 @@ pick one. The pilot module gets:
 
 - More aggressive source-comment ingestion (Phase 9 spends extra
   budget on it).
-- Higher confidence threshold for bulk-accept.
 - First place in the canonical-map seed list.
 
 Pick the module you'd recognize as "the heart" of the project — the
@@ -318,7 +317,7 @@ Time: <1s on small, ~5s on large.
 Source-comment policy enforcement. Phase 9 detected essay-class
 block comments and proposed extractions. This phase walks each
 module and asks for consent to strip the original comment and
-replace it with a one-line `// §INV-NNNN` citation:
+replace it with a one-line `// §INV-<hash>` citation:
 
 > Module `packages/api/src/auth` has 8 essay-style comment blocks.
 > Extracted: 3 DEC drafts, 2 invariants. Diff preview: [collapsible].
@@ -375,13 +374,9 @@ into `cairn-attention`. **This is mandatory** — adoption is not
 
 What you'll see:
 
-1. **Bulk-accept summary.**
-
-   ```
-   Auto-accepted 23 obvious DEC drafts. 18 remain for triage
-   (11 medium / 7 low). Invariants: 4 high / 2 medium / 1 low —
-   all stamped, none auto-promoted.
-   ```
+1. **Auto-accept.** Recorded decisions land straight in the ledger;
+   the review checkpoint is the committed diff. Only a near-duplicate
+   of an already-accepted DEC falls back to an `_inbox/` draft.
 
 2. **Dedup summary** (only if duplicates were detected).
 
@@ -397,13 +392,9 @@ What you'll see:
    conflict surfaces both verbatim sides plus the Haiku judge's
    reasoning — you pick which to keep, merge, or archive both.
 
-4. **Per-item triage** (up to 4 per `AskUserQuestion` panel) for
-   medium-confidence drafts. Each draft shows title and rationale.
-   Options: `accept` / `reject` / `edit first`.
-
-5. **Browser triage** (only if queue exceeds 15). The skill spawns
-   a localhost GUI; you triage in the browser; click "I'm done" to
-   resume the chat.
+4. **Per-item triage** (up to 4 per `AskUserQuestion` panel) for any
+   dedup-fallback drafts + baseline findings. Each draft shows title
+   and rationale. Options: `accept` / `reject` / `edit first`.
 
 ### How to interpret drafts
 
@@ -445,11 +436,11 @@ Concrete inventory after a typical adoption:
 │   └── stub-patterns.yaml             — Layer A catalog (grows via /oops)
 ├── ground/
 │   ├── decisions/
-│   │   ├── DEC-0001.md … DEC-0042.md  — accepted decisions (typically 20-80 on first adoption)
+│   │   ├── DEC-<hash>.md                — accepted decisions (typically 20-80 on first adoption)
 │   │   ├── _inbox/                    — remaining drafts (often empty after first drain)
 │   │   └── decisions.ledger.yaml      — compact summary, always-loaded at SessionStart
 │   ├── invariants/
-│   │   ├── INV-0001.md … INV-0019.md  — active invariants (typically 5-25)
+│   │   ├── INV-<hash>.md                — active invariants (typically 5-25)
 │   │   └── invariants.ledger.yaml
 │   ├── canonical-map/
 │   │   └── topics.yaml                — N entries from Phase 8
@@ -489,7 +480,7 @@ tasks. The status-line tracks live state.
 
 You may notice the system "knows" things it didn't before:
 
-- It cites `DEC-0042` when refusing to extend a token's lifetime.
+- It cites `DEC-a3f7b2c` when refusing to extend a token's lifetime.
 - It uses the path `cairn_canonical_for_topic` returned instead of
   guessing.
 - It asks better clarifying questions because the in-scope context

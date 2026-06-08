@@ -25,7 +25,7 @@ There are seven concepts. They compose:
 
 ---
 
-## 1. Decisions (`DEC-NNNN`)
+## 1. Decisions (`DEC-<hash>`)
 
 A decision is a markdown file that records one architectural choice
 the project has made, the reason for the choice, the files the choice
@@ -37,21 +37,21 @@ gets a numbered file:
 
 ```
 .cairn/ground/decisions/
-├── DEC-0001.md
-├── DEC-0017.md
-├── DEC-0042.md
+├── DEC-3f2a1b8.md
+├── DEC-7c2f10a.md
+├── DEC-a3f7b2c.md
 ├── _inbox/
-│   └── DEC-0099.draft.md       # awaiting accept/reject
+│   └── DEC-b1e9c04.draft.md       # awaiting accept/reject
 └── decisions.ledger.yaml       # compact summary, always-loaded
 ```
 
 ### What a decision file looks like
 
-Here is `DEC-0042.md` after acceptance:
+Here is `DEC-a3f7b2c.md` after acceptance:
 
 ```markdown
 ---
-id: DEC-0042
+id: DEC-a3f7b2c
 title: Auth tokens expire after 24 hours
 status: accepted
 audience: dual
@@ -62,12 +62,12 @@ decided_by: operator
 scope_globs:
   - src/auth/**
   - packages/api/src/middleware/auth/**
-supersedes: DEC-0017
+supersedes: DEC-7c2f10a
 superseded_by: null
-related_invariants: [INV-0042]
+related_invariants: [INV-a3f7b2c]
 ---
 
-# DEC-0042 — Auth tokens expire after 24 hours
+# DEC-a3f7b2c — Auth tokens expire after 24 hours
 
 ## Context
 
@@ -87,7 +87,7 @@ lifetime use the silent-refresh middleware in
 - Mobile clients: must implement silent-refresh or re-prompt for login
   daily.
 - Service-to-service: use the `service-account` flow which has its own
-  90-day rotation policy (covered by DEC-0019).
+  90-day rotation policy (covered by DEC-d4e6a92).
 - Old test fixtures with 7-day token lifetimes need updating —
   baseline scan flagged 14 files.
 ```
@@ -96,7 +96,7 @@ lifetime use the silent-refresh middleware in
 
 The agent reads the in-scope decisions before touching any file in the
 scope. So when you open a Friday session and prompt *"clean up the
-auth refresh logic"*, the agent loads `DEC-0042` automatically and
+auth refresh logic"*, the agent loads `DEC-a3f7b2c` automatically and
 sees the 24-hour rule before writing any code. It can no longer
 silently roll the lifetime back to 7 days because the constraint
 exists in its working context.
@@ -121,8 +121,8 @@ Three paths, in order of how often you'll see each:
    surfaces it inline.
 3. **Manually, via `cairn_record_decision`.** When you're about to
    make a load-bearing call and want it recorded before the agent
-   acts, drop a DEC explicitly. The MCP tool allocates the next
-   `DEC-NNNN` and writes a draft to `_inbox/`. You accept it, and the
+   acts, drop a DEC explicitly. The MCP tool derives a content-addressed
+   `DEC-<hash>` id and writes a draft to `_inbox/`. You accept it, and the
    next time anything touches the scoped files, the agent reads it.
 
 ### Scope: what `scope_globs` means
@@ -132,7 +132,7 @@ agent's `cairn_in_scope` query takes a list of paths (the
 files about to be touched in this task) and returns only the
 decisions whose `scope_globs` overlap.
 
-For `DEC-0042` the scope is:
+For `DEC-a3f7b2c` the scope is:
 
 ```yaml
 scope_globs:
@@ -156,38 +156,38 @@ supersedes the old one:
 
 ```markdown
 ---
-id: DEC-0099
+id: DEC-b1e9c04
 title: Auth tokens expire after 8 hours (PCI Level 1)
 status: accepted
-supersedes: DEC-0042
+supersedes: DEC-a3f7b2c
 ...
 ---
 ```
 
-`DEC-0042.md` then gets `superseded_by: DEC-0099` written into its
+`DEC-a3f7b2c.md` then gets `superseded_by: DEC-b1e9c04` written into its
 frontmatter, but the file stays. The chain is queryable:
 
 ```bash
-cairn_supersedes_chain({ decision_id: "DEC-0042" })
+cairn_supersedes_chain({ decision_id: "DEC-a3f7b2c" })
 # returns:
 # [
-#   { id: "DEC-0017", status: "superseded", supersedes: null },
-#   { id: "DEC-0042", status: "superseded", supersedes: "DEC-0017" },
-#   { id: "DEC-0099", status: "accepted",   supersedes: "DEC-0042" }
+#   { id: "DEC-7c2f10a", status: "superseded", supersedes: null },
+#   { id: "DEC-a3f7b2c", status: "superseded", supersedes: "DEC-7c2f10a" },
+#   { id: "DEC-b1e9c04", status: "accepted",   supersedes: "DEC-a3f7b2c" }
 # ]
 ```
 
 This means you can always reconstruct *why the architecture evolved*.
 Six months from now when someone asks "why is the token lifetime so
-short?", the answer is the chain: DEC-0017 (7-day refresh) →
-DEC-0042 (24h, PCI compliance) → DEC-0099 (8h, escalated to Level 1).
+short?", the answer is the chain: DEC-7c2f10a (7-day refresh) →
+DEC-a3f7b2c (24h, PCI compliance) → DEC-b1e9c04 (8h, escalated to Level 1).
 
 The agent reads only the active link in the chain when planning new
 work, but the history stays accessible for audit and onboarding.
 
 ---
 
-## 2. Invariants (`§INV-NNNN`)
+## 2. Invariants (`§INV-<hash>`)
 
 An invariant is a domain rule whose violation is **always a bug**, not
 a style preference and not an architectural choice that could
@@ -201,9 +201,9 @@ it."*
 Examples:
 
 ```
-§INV-0042 — All API responses include an `x-request-id` header.
-§INV-0067 — No direct database access outside src/db/.
-§INV-0091 — Refund operations must be idempotent (same idempotency-key
+§INV-a3f7b2c — All API responses include an `x-request-id` header.
+§INV-9b0f3a7 — No direct database access outside src/db/.
+§INV-2e7c4d1 — Refund operations must be idempotent (same idempotency-key
             returns the same result).
 §INV-0104 — User input is sanitized before reaching any HTML render path.
 ```
@@ -212,17 +212,17 @@ Each invariant is a markdown file in `.cairn/ground/invariants/`:
 
 ```yaml
 ---
-id: INV-0042
+id: INV-a3f7b2c
 title: All API responses include x-request-id header
 type: invariant
 status: active
 audience: dual
-source-decision: DEC-0019
+source-decision: DEC-d4e6a92
 sensor: cairn/scripts/check-inv0042-request-id.ts
-e2e: e2e/INV-0042_request_id_header.spec.ts
+e2e: e2e/INV-a3f7b2c_request_id_header.spec.ts
 ---
 
-# §INV-0042 — All API responses include x-request-id header
+# §INV-a3f7b2c — All API responses include x-request-id header
 
 ## Why
 
@@ -244,17 +244,17 @@ health check at `/healthz` and the static asset server.
 | Hardness          | A choice with reasoning. Could change.              | A hard rule. Violations are bugs.                      |
 | Failure mode      | Drift = future code disagrees with rationale.       | Drift = production bug.                                |
 | Enforcement       | Loaded into agent context so it's honored.          | Loaded into context **and** enforced by sensors.       |
-| Citation in code  | Rare. The DEC is the rationale, not the rule.       | Common: `// §INV-0042` next to the relevant line.      |
+| Citation in code  | Rare. The DEC is the rationale, not the rule.       | Common: `// §INV-a3f7b2c` next to the relevant line.      |
 | Supersedes chain  | Yes — replaced via new DEC.                          | Rarely replaced, but not eternal — an INV whose source is refactored away is auto-retired (archived) by the `entity-orphan` GC pass. |
 
 In source code, only invariants get inline citations:
 
 ```ts
-// §INV-0042
+// §INV-a3f7b2c
 res.setHeader('x-request-id', ctx.requestId);
 ```
 
-The `§INV-0042` token is recognized by Cairn Lens (the editor
+The `§INV-a3f7b2c` token is recognized by Cairn Lens (the editor
 extension) which renders the invariant title and body on hover. The
 strip-replace pass during adoption inserts these citations
 automatically when essay-style comments map to a known invariant; you
@@ -264,7 +264,7 @@ can also add them by hand.
 
 - **Adoption ingestion (Phase 9).** When the source-comment classifier
   reads an essay-style block comment and decides it's expressing a
-  hard rule rather than a rationale, it writes an `INV-NNNN.md` with
+  hard rule rather than a rationale, it writes an `INV-<hash>.md` with
   status `active` directly. (Invariants don't go through the draft
   inbox the way DECs do — adoption seeds them straight into ground
   state because their detection threshold is conservative.)
@@ -393,7 +393,7 @@ cairn_in_scope({
 
 Cairn returns the DECs whose `scope_globs` overlap. If the task
 touches only `src/billing/checkout.ts`, neither glob matches, the
-function returns nothing, and the agent doesn't load `DEC-0042` into
+function returns nothing, and the agent doesn't load `DEC-a3f7b2c` into
 context. It would be noise.
 
 ### Why this matters for context efficiency
@@ -446,7 +446,7 @@ What lands in it:
 | Source-comment ingestion     | DEC drafts + INVs     | "All API responses include x-request-id."         |
 | Phase 11 baseline sweep      | Sensor findings       | "14 files reference deprecated `oldAuth.signJwt`."|
 | Phase 7c rules merge         | Conflicts             | "docs/auth.md says 24h; src/auth.ts comment says 7d." |
-| GC drift sweep               | Drift events          | "DEC-0042 cites `src/auth/old.ts`; file is gone." |
+| GC drift sweep               | Drift events          | "DEC-a3f7b2c cites `src/auth/old.ts`; file is gone." |
 | Stop hook bypass detection   | Bypass alerts         | "Commit `abc1234` skipped pre-commit (--no-verify)." |
 
 ### Where it accumulates
@@ -455,9 +455,9 @@ Drafts live in `.cairn/ground/decisions/_inbox/`:
 
 ```
 .cairn/ground/decisions/_inbox/
-├── DEC-0099.draft.md       # awaiting triage
-├── DEC-0100.draft.md
-└── DEC-0101.rejected.md    # rejected, kept so id stays reserved
+├── DEC-b1e9c04.draft.md       # awaiting triage
+├── DEC-58af6d2.draft.md
+└── DEC-e0c93f4.rejected.md    # rejected, kept so id stays reserved
 ```
 
 Conflicts live in `.cairn/ground/conflicts/<a-id>__<b-id>.md`.
@@ -475,26 +475,16 @@ one queue when the skill reads them.
 2. **`cairn attention` CLI.** Same operations from a terminal. Useful
    when you want to triage outside a Claude Code session.
 
-For both surfaces, when the queue exceeds 15 items, the skill spawns
-a local browser triage GUI on a random localhost port. The GUI
-short-circuits the per-item MCP round-trips that make 50-item triage
-slow inline.
+### Auto-accept by default
 
-### Auto-bulk-accept vs interactive triage
-
-Adoption can produce hundreds of DEC drafts on a busy monorepo.
-Triaging each one inline would be miserable, and most are obvious
-("we use `pnpm`" — not exactly contested).
-
-The `cairn_bulk_accept_attention` MCP tool runs first, with a default
-`threshold: "high"`. It auto-accepts only the drafts a heuristic is
-confident about — drafts in high-stakes globs, with prose between
-80-800 characters, with decision-verb tokens (`chose`, `because`,
-`enforce`, …). The medium and low confidence drafts stay in the
-inbox for interactive review.
-
-Operator can opt in to widening — `cairn attention bulk-accept
---threshold medium --dry-run` — but the default is conservative.
+Recorded decisions **auto-accept straight into the ledger** — the
+human review checkpoint is the committed (or local) diff, not a
+per-draft triage queue. A decision only lands in `_inbox/` as a draft
+when it's a near-duplicate of an already-accepted DEC (the dedup
+fallback). So the queue you triage is mostly baseline sensor findings,
+drift events, and the occasional dedup-fallback draft — not hundreds
+of decision drafts. Force a specific decision into the queue with
+`target: "inbox"` if you want to review it before it lands.
 
 ---
 
@@ -632,7 +622,7 @@ Two passes:
      contradicts?
 2. **`PostToolUse(Write|Edit)` hook.** When an agent writes a file,
    the hook runs a deterministic scope-index sync: the new content is
-   re-scanned for `§INV-NNNN` and `§DEC-NNNN` cite tokens, and the
+   re-scanned for `§INV-<hash>` and `§DEC-<hash>` cite tokens, and the
    `scope-index.yaml` mapping (file → DECs/INVs cited) is updated
    immediately. No staleness window.
 
@@ -645,9 +635,9 @@ When the GC sweep finds drift, it writes a row to
 {
   "ts": "2026-05-09T14:23:00Z",
   "kind": "decision_target_missing",
-  "decision_id": "DEC-0042",
+  "decision_id": "DEC-a3f7b2c",
   "missing_path": "src/auth/old-jwt-helpers.ts",
-  "context": "DEC-0042 references this file in scope_globs but it no longer exists."
+  "context": "DEC-a3f7b2c references this file in scope_globs but it no longer exists."
 }
 ```
 
@@ -676,27 +666,27 @@ the refunds endpoint."*
    (`packages/api/src/routes/refunds.ts` plus the middleware in
    `packages/api/src/middleware/rate-limit.ts`).
 2. **In-scope decisions + invariants loaded.** `cairn_in_scope` returns
-   `DEC-0019` (Stripe is the only payment processor — relevant
-   because refunds touch Stripe), `DEC-0067` (per-user rate limits
-   use the Redis token-bucket pattern), `DEC-0091` (refunds are
-   idempotent), plus the §INVs `INV-0042` (`x-request-id` on every
-   response) and `INV-0091` (refund operations idempotent).
+   `DEC-d4e6a92` (Stripe is the only payment processor — relevant
+   because refunds touch Stripe), `DEC-9b0f3a7` (per-user rate limits
+   use the Redis token-bucket pattern), `DEC-2e7c4d1` (refunds are
+   idempotent), plus the §INVs `INV-a3f7b2c` (`x-request-id` on every
+   response) and `INV-2e7c4d1` (refund operations idempotent).
 4. **Canonical map consulted.** `cairn_canonical_for_topic("rate
    limiting")` returns the middleware path, so the agent reads the
    right file rather than grepping.
 5. **Implementation runs.** The agent writes the code. Because the
    relevant DECs are loaded, the rate-limit uses the Redis
-   token-bucket pattern (matching `DEC-0067`) and not, say, an
+   token-bucket pattern (matching `DEC-9b0f3a7`) and not, say, an
    in-memory counter.
 6. **Reviewer subagent fires.** Reads the diff, notices the limit was
    set to 10 requests per minute (a non-obvious choice nobody
-   prompted for). Drafts `DEC-0099` proposing "Refund rate limit:
+   prompted for). Drafts `DEC-b1e9c04` proposing "Refund rate limit:
    10/min/user" and writes the attestation.
-7. **Stop hook surfaces.** "Review DEC-0099 draft? `[a]` accept
+7. **Stop hook surfaces.** "Review DEC-b1e9c04 draft? `[a]` accept
    `[b]` reject `[c]` edit." You pick `[a]`. The DEC moves to the
    canonical zone.
 8. **Pre-commit sensors run.** Layer A finds no stubs. Layer C
-   evaluates the `INV-0091` idempotency assertion against the diff
+   evaluates the `INV-2e7c4d1` idempotency assertion against the diff
    — the new handler reuses the existing idempotency-key middleware,
    so the assertion passes. Layer B cross-checks the reviewer's
    attestation against the diff: claimed files match actual files,
@@ -705,7 +695,7 @@ the refunds endpoint."*
    appended.
 
 Next Friday, when you prompt *"adjust the rate limit on refunds to
-20/min"*, the agent reads `DEC-0099` and updates the limit
+20/min"*, the agent reads `DEC-b1e9c04` and updates the limit
 *intentionally* — supersedes if the rationale changed, in-place
 update if it's just a tuning. The choice is recorded; nothing
 silently drifts.

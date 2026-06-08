@@ -6,12 +6,6 @@ export {
 } from "./scoring.js";
 
 export {
-  bulkAcceptObvious,
-  type BulkAcceptArgs,
-  type BulkAcceptResult,
-} from "./bulk-accept.js";
-
-export {
   findDuplicateClusters,
   DEFAULT_THRESHOLD_DEFINITE,
   DEFAULT_THRESHOLD_FLOOR,
@@ -34,11 +28,3 @@ export {
   type RestoreResult,
   type RestoreState,
 } from "./restore.js";
-
-export {
-  getActiveAttentionServer,
-  startAttentionServer,
-  type AttentionServeOptions,
-  type AttentionServeHandle,
-  type DoneState,
-} from "./serve/index.js";

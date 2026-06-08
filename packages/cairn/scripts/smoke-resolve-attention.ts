@@ -189,6 +189,34 @@ async function runSmoke(): Promise<void> {
     console.log("  ✓ Step 6 — Invalidation refresh/continue/abort");
   }
 
+  // ── Step 6b — Drift event ack (previously a dead enum branch) ──────
+  {
+    const repoRoot = mkRepoRoot();
+    const ctx: McpContext = { repoRoot, sessionId: "session-drift" };
+    const refresh = await call(tool, ctx, {
+      item_id: "doc_source_drift:DEC-1234567",
+      kind: "drift",
+      choice: "a",
+    });
+    assert(
+      refresh.ok === true && refresh.resolved_kind === "drift_refresh",
+      `Step 6b-a: drift refresh expected, got ${JSON.stringify(refresh)}`,
+    );
+    const defer = await call(tool, ctx, {
+      item_id: "drift2",
+      kind: "drift",
+      choice: "b",
+    });
+    assert(defer.resolved_kind === "drift_defer", "Step 6b-b: drift defer");
+    const dismiss = await call(tool, ctx, {
+      item_id: "drift3",
+      kind: "drift",
+      choice: "c",
+    });
+    assert(dismiss.resolved_kind === "drift_dismiss", "Step 6b-c: drift dismiss");
+    console.log("  ✓ Step 6b — Drift refresh/defer/dismiss (enum branch wired)");
+  }
+
   // ── Step 7 — Errors — missing draft, malformed item_id ─────────────
   {
     const repoRoot = mkRepoRoot();

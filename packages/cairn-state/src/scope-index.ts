@@ -142,7 +142,7 @@ export interface RescanScopeIndexResult {
 
 /**
  * Deterministic regex sweep — walk every git-tracked source file, parse
- * `§INV-NNNN` / `§DEC-NNNN` cite tokens, and sync the scope-index so the
+ * `§INV-<hash>` / `§DEC-<hash>` cite tokens, and sync the scope-index so the
  * in-scope tools never lag behind source-cite reality. No LLM, no
  * incremental tracking complexity. Cheap enough to run on every
  * SessionStart (~100ms on 50k files).

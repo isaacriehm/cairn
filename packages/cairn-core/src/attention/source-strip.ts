@@ -5,7 +5,7 @@
  * comments) to `_inbox/` and stamps `sourceFile` + `blockId` on the
  * frontmatter. When the operator accepts a draft — either inline via
  * `cairn_resolve_attention` or in bulk via `cairn_bulk_accept_attention`
- * — the original essay should be replaced with `// §DEC-NNNN` so the
+ * — the original essay should be replaced with `// §DEC-<hash>` so the
  * file ends up carrying the canonical bare cite, not the original prose.
  *
  * The full block coordinates (start/end byte offsets, language) live in
@@ -169,7 +169,7 @@ export function findLatestSourceCommentsAudit(repoRoot: string): string | null {
 
 /**
  * Strip the original source-comment block for one accepted DEC and
- * replace it with `// §DEC-NNNN` (or `# §DEC-NNNN` in hash-comment
+ * replace it with `// §DEC-<hash>` (or `# §DEC-<hash>` in hash-comment
  * languages). Reads block coordinates from the latest 7b audit YAML;
  * skips when the audit is missing, the block id isn't found, or the
  * source file is dirty (strip-replace's own dirty check).

@@ -113,11 +113,11 @@ export function detectStubMatches(args: {
 /** Convert a character offset within `text` to a 1-based line number. */
 
 
-/** Run the Layer A sensor against a diff. */
+/** Run the Layer A sensor against a diff. `languages: undefined` = all. */
 export function runStubCatalog(args: {
   diff: DiffEntry[];
   catalog: StubCatalog;
-  languages: readonly SensorLanguage[];
+  languages: readonly SensorLanguage[] | undefined;
 }): SensorResult {
   const startedAt = Date.now();
   const matches = detectStubMatches({

@@ -3,10 +3,13 @@
 #
 # Runs two passes against the staged tree:
 #
-#   1. `cairn sensor-run --staged`      — sensor-driven enforcement
-#                                         (may exit non-zero, blocking
-#                                         the commit when a configured
-#                                         sensor's trigger fires).
+#   1. `cairn sensor-run --staged`      — component-registry check + the
+#                                         sensor sweep (Layer A stub
+#                                         catalog, Layer C structural,
+#                                         decision-assertions) over the
+#                                         staged tree. Exits non-zero,
+#                                         blocking the commit, on any hard
+#                                         finding.
 #
 #   2. `cairn hook pre-commit-align`    — Layer B (plan §4.2)
 #                                         detection-only SoT drift log.

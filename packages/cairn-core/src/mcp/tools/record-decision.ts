@@ -10,7 +10,6 @@ import { writeInvalidationEvent } from "../../events/index.js";
 import { isDuplicateOfAccepted } from "../../attention/dedup.js";
 import {
   bodyContentHash,
-  decisionsAutoAccept,
   decisionsDir,
   deriveDecId,
   readAnchorMap,
@@ -186,12 +185,13 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     // accepted ledger so a restatement of an existing decision still queues
     // as a draft for human eyes rather than silently re-landing.
     //
-    // An explicit `target` is always honored: `"accepted"` forces direct
-    // accept (skips the dedup gate); `"inbox"` forces a triage draft even
-    // when auto-accept is globally on (the per-call escape hatch).
+    // Decisions always auto-accept (the human review checkpoint is the
+    // committed/local diff). An explicit `target` is always honored:
+    // `"accepted"` forces direct accept (skips the dedup gate); `"inbox"`
+    // forces a triage draft (the per-call escape hatch).
     let autoAccepted = false;
     let dedupNote: string | undefined;
-    if (input.target === undefined && decisionsAutoAccept(ctx.repoRoot)) {
+    if (input.target === undefined) {
       const dup = isDuplicateOfAccepted({ repoRoot: ctx.repoRoot, title });
       if (dup.dup) {
         dedupNote =
@@ -316,7 +316,7 @@ function allocateUniqueDecId(
 export const recordDecisionTool: ToolDef<Input> = {
   name: "cairn_record_decision",
   description:
-    "Record a decision. Use `slug` to promote a candidate from the topic index, or provide `title` and `summary` for a manual entry. By default decisions AUTO-ACCEPT straight into the ledger (the human review checkpoint is the committed-ground-state PR diff); a near-duplicate of an already-accepted decision falls back to an `_inbox/` draft instead. The response reports `auto_accepted` and, on dedup fallback, a `note`. Set `decisions.auto_accept: false` in `.cairn/config.yaml` to restore per-draft triage. `target='accepted'` forces direct accept (skips the dedup gate).\n\n" +
+    "Record a decision. Use `slug` to promote a candidate from the topic index, or provide `title` and `summary` for a manual entry. Decisions AUTO-ACCEPT straight into the ledger (the human review checkpoint is the committed/local diff); a near-duplicate of an already-accepted decision falls back to an `_inbox/` draft instead. The response reports `auto_accepted` and, on dedup fallback, a `note`. `target='accepted'` forces direct accept (skips the dedup gate); `target='inbox'` forces a triage draft.\n\n" +
     "**`assertions` schema** (only emit one of these `kind` values — anything else returns INVALID_ASSERTION_KIND):\n" +
     "- `text_must_match` / `text_must_not_match`: `{id, kind, pattern, in_globs[]}` — regex over files in globs.\n" +
     "- `ast_pattern`: `{id, kind, language, pattern, in_globs[]}` — AST grep in named lang over globs.\n" +

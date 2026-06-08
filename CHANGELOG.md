@@ -4,6 +4,81 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.0] — 2026-06-08
+
+Enforcement that's real, not theatre. The advertised sensor sweep now runs
+at actual gates (pre-commit + CI) instead of being orphaned dead code;
+`.cairn/` state self-heals via a coded migration registry that bumps the
+frozen `cairn_version` pin; and a sweep of vapor (an attestation sensor with
+no producer, a proposed-sensors pipeline with no executor, dead config
+fields, and triage surfaces made redundant by always-on auto-accept) is
+gone. Hard cutover, no compatibility shims.
+
+### Added
+
+- **Sensor sweep wired at real gates.** `runSensorsOnDiff` (Layer A
+  stub-pattern catalog + Layer C structural sensors + decision-assertions)
+  now runs at **pre-commit** (`cairn sensor-run --staged`, blocks on hard
+  findings) and **CI** (`cairn sensor-run --diff <range> --strict`). New
+  `getStagedDiff` / `getRangeDiff` diff sources. Previously the whole sweep
+  was composed but invoked from zero production paths.
+- **Coded `.cairn/` migration registry.** New `cairn migrate` CLI
+  (`--dry-run` / `--all`) + `packages/cairn-core/src/migrate/` (registry,
+  semver-selected runner with a `detect()` idempotency backstop, `.migrate-lock`
+  flock, pin stamping). Runs at SessionStart (safe subset auto-applied,
+  `review` class surfaced), `cairn join`, and MCP boot. First migration
+  (`0001-drop-dead-config-fields`) cleans existing adopters. The
+  `cairn_version` pin is now live — `cairn doctor` advises `cairn migrate`
+  instead of downgrading the CLI.
+- **`cairn doctor` config-glob staleness check.** Warns when a `config.yaml`
+  scope glob (`high_stakes_globs`, `project_globs.*`) matches zero working-tree
+  files — catches globs left stale by a directory refactor.
+- **Stack-detection hardening.** Monorepo-shell markers
+  (`pnpm-workspace.yaml`, `turbo.json`, `nx.json`, `lerna.json`) + a shallow
+  subpackage scan, so a repository with no root manifest is detected
+  as `typescript` instead of `unknown`.
+
+### Changed
+
+- **Decisions always auto-accept.** Removed the `decisions.auto_accept: false`
+  config option (hard cutover); the human review checkpoint is the committed
+  (or local) diff. `target: "inbox"` remains the per-call override to force a
+  draft, and a near-duplicate still falls back to an `_inbox/` draft.
+- **Content-addressed IDs documented consistently.** README + docs now show
+  `DEC-`/`INV-` + 7-hex content hashes everywhere (were sequential-looking
+  `DEC-0001` / `DEC-NNNN`); allocation prose corrected ("derived from a
+  content hash", not "allocates the next" / "zero-padded").
+- **Write-Guardian** copy-leakage scan now reads the written body
+  (`tool_input.content` / `new_string`) instead of `tool_response` (a status
+  string), so the scan runs on real content.
+- **Conflict-merge id** is now content-addressed (deterministic) instead of
+  seeded on `Date.now()+Math.random()`.
+
+### Removed
+
+- **Layer-B attestation cross-check sensor** + the orphaned mirror-based
+  `runSensors` — no production path emitted the attestation it depended on.
+- **Proposed-sensors pipeline** (mapper/detect/overlay) — it was advertised
+  but never had an executor.
+- **Eight dead `config.yaml` keys** at the source (`detected_sensor_commands`,
+  `mapper_proposed_sensors`, `mapper_notes`, `key_modules`, `stack_signatures`,
+  `hook_capability`, `start_command`, `origin_url`); existing adopters are
+  cleaned by migration `0001`.
+- **`cairn_bulk_accept_attention`, `cairn_attention_serve`,
+  `cairn_attention_wait` MCP tools** + the browser triage GUI + the
+  `cairn attention bulk-accept` / `serve` CLI subcommands — redundant now that
+  decisions auto-accept. MCP surface 32 → 29 tools.
+- **`cairn fix confidence` / `cairn fix duration_ms`** pointer-only stubs.
+
+### Fixed
+
+- `cairn_resolve_attention` `kind: "drift"` now resolves (was a dead enum
+  branch returning an error), and `choice: "d"` on a `decision_draft` rejects
+  with `VALIDATION_FAILED` before the filesystem lookup.
+- Stripped historical bug-incident narration from hot-path comments
+  (Stop hook, session-start, lifecycle, mission tools) — load-bearing
+  rationale kept, archaeology removed.
+
 ## [0.20.0] — 2026-06-08
 
 Language-agnostic Cairn. Every place that silently assumed

@@ -1,9 +1,6 @@
 import type { ToolDef } from "./types.js";
 import { attentionDedupTool } from "./attention-dedup.js";
-import { attentionServeTool } from "./attention-serve.js";
-import { attentionWaitTool } from "./attention-wait.js";
 import { bootstrapRetryTool } from "./bootstrap-retry.js";
-import { bulkAcceptAttentionTool } from "./bulk-accept-attention.js";
 import { canonicalForTopicTool } from "./canonical-for-topic.js";
 import { componentGetTool } from "./component-get.js";
 import { componentsInScopeTool } from "./components-in-scope.js";
@@ -57,10 +54,7 @@ export const allTools: ToolDef<never>[] = [
   resumeTool,
   // Write — plugin-era attention queue
   resolveAttentionTool,
-  bulkAcceptAttentionTool,
   attentionDedupTool,
-  attentionServeTool,
-  attentionWaitTool,
   // Write — bootstrap recovery (replaces CLI exposure in BOOTSTRAP_REQUIRED)
   bootstrapRetryTool,
   // Write — init pipeline (v0.7.2 single-umbrella surface)

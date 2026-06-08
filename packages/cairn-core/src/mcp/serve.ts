@@ -17,6 +17,7 @@ import { resolve } from "node:path";
 import { createContext } from "./context.js";
 import { startMcpServer } from "./server.js";
 import { logger } from "../logger.js";
+import { runMigrations } from "../migrate/index.js";
 import { resolveAnchorRoot } from "../session-start/index.js";
 
 const log = logger("mcp.serve");
@@ -60,6 +61,18 @@ function parseArgs(argv: string[]): ParsedArgs {
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
+
+  // Defensive catch-up: auto-apply safe `.cairn/` migrations on server boot.
+  // No-op on unadopted repos / held lock; never blocks server start.
+  try {
+    await runMigrations({ repoRoot: args.repoRoot });
+  } catch (err) {
+    log.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      "boot migration run failed",
+    );
+  }
+
   const ctx = createContext({
     repoRoot: args.repoRoot,
     ...(args.runId !== null ? { runId: args.runId } : {}),

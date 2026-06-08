@@ -123,22 +123,18 @@ function clampReason(body: string): string {
 
 /**
  * Time window (ms) after which an identical Stop-cue payload may re-fire.
- * Suppresses cue spam — caught in bug-mine: same "5 commits not attested"
- * payload re-fired 3× across a 10-minute span while the operator was
- * mid-resolution, because `bypass_accept` silently no-op'd from a worktree
- * (Bug A / fixed via `resolveRepoRoot` worktree-collapse). Re-emit after
- * the window or whenever the payload hash changes.
+ * Suppresses cue spam: re-emit only after the window elapses or whenever
+ * the payload hash changes.
  */
 const CUE_DEBOUNCE_WINDOW_MS = 60 * 60 * 1000;
 
 /**
- * Bug-mine 0.13.8 — Phase 5 stall-cue tuning.
+ * Stall-cue tuning.
  *
  * `SESSION_ACTIVITY_WINDOW_MS` — when the transcript records any
  * `tool_use` within this window, the AI is actively working; suppress
  * the stalled-task surface so the cue doesn't interrupt productive
- * flow. Mining showed stall cues firing while an Agent subagent was
- * mid-dispatch and a research run was committing.
+ * flow.
  *
  * `SESSION_STALLED_CUE_WINDOW_MS` — at most one stalled cue per
  * session per hour, total (not per-task). Per-task throttle
@@ -339,7 +335,7 @@ export async function runStopHook(): Promise<void> {
     // First-turn stops fire before the assistant has done any real
     // work (e.g. operator typed "continue", SessionStart resume primer
     // hasn't been processed yet) and surfacing prompts immediately
-    // short-circuits the resume flow (bug-mine report #18).
+    // short-circuits the resume flow.
     const isFirstTurnWarmup = inFirstTurnWarmup(repoRoot, sessionId, 30);
     if (isFirstTurnWarmup) warnings.push("first_turn_warmup:suppress_surfaces");
 
@@ -382,8 +378,7 @@ export async function runStopHook(): Promise<void> {
       }
 
       // Stalled-task scanner — surfaces tasks stuck in phase=running
-      // with no attestation for 2h+ (raised from 30 min in bug-mine
-      // 0.13.8 / Phase 5 — see CONTEXT.md §2.4 for false-fire mining).
+      // with no attestation for 2h+.
       // Catches the failure mode where the autonomous flow finished
       // the work but skipped spawning the reviewer subagent (no
       // attestation → auto-graduator never fires → task accumulates
@@ -397,13 +392,11 @@ export async function runStopHook(): Promise<void> {
       //      `tool_use` event within the last 5 minutes, the AI is
       //      actively working; suppress entirely.
       //   2. Per-session rate limit — at most one stalled cue per
-      //      session per hour, total (not per-task). Bug-mine showed
-      //      three active tasks idle = three prompts per hour without
-      //      a global cap.
+      //      session per hour, total (not per-task), so N idle tasks
+      //      don't yield N prompts per hour.
       //   3. Per-task throttle — 60 minute suppression window per
       //      task id so the operator isn't asked the same triage
-      //      question every Stop tick (bug-mine report #9 — same
-      //      task flagged 3× in 90s).
+      //      question every Stop tick.
       if (reason.length === 0 && !isFirstTurnWarmup) {
         try {
           gcStalledWarnedMarkers(repoRoot);
@@ -590,12 +583,10 @@ export async function runStopHook(): Promise<void> {
   // so we cannot reach the model context without `decision: "block"`.
 
   // Payload-hash debounce — suppress identical `reason` payloads within
-  // CUE_DEBOUNCE_WINDOW_MS. Prevents the 3×-cue-spam pattern bug-mine
-  // found: when the underlying scan keeps returning the same flagged
-  // set (operator didn't act, OR resolve_attention silently no-op'd
-  // pre-Bug-A-fix), the cue re-fired on every Stop. The hash includes
-  // every surface (ctx-threshold, reviewer, bypass) so any change in
-  // surfaced state breaks the suppression.
+  // CUE_DEBOUNCE_WINDOW_MS. Prevents re-firing the same cue on every Stop
+  // when the underlying scan keeps returning the same flagged set. The
+  // hash includes every surface (ctx-threshold, reviewer, bypass) so any
+  // change in surfaced state breaks the suppression.
   let emitReason = reason;
   if (reason.length > 0 && repoRoot !== null && sessionId !== null && sessionId.length > 0) {
     const hash = hashCuePayload(reason);
@@ -699,9 +690,9 @@ function scanPendingReviews(repoRoot: string): PendingReview[] {
     if (existsSync(attestation)) continue;
 
     // Phase gate — `running` / `tightening` / etc. are not review-ready.
-    // Reviewer is now opt-in (bug-mine 0.13.5); this surface only fires
-    // when an explicit reviewer subagent set phase=ready_for_review and
-    // ended its turn before writing attestation.yaml.
+    // Reviewer is opt-in; this surface only fires when an explicit
+    // reviewer subagent set phase=ready_for_review and ended its turn
+    // before writing attestation.yaml.
     const phase = readTaskPhase(taskDir);
     if (phase !== null && !REVIEW_READY_PHASES.has(phase)) continue;
     let mtime = 0;
@@ -806,9 +797,9 @@ interface StalledTask {
  *   - no `attestation.yaml`
  *   - no `subagents/<id>/attestation.yaml` either (else the regular
  *     auto-graduator path will transition it)
- *   - `status.yaml` mtime > 2h ago (raised from 30 min in 0.13.8 —
- *     most legit long-running work, including Agent dispatches,
- *     batch tests, builds, deploys, finishes inside 2h)
+ *   - `status.yaml` mtime > 2h ago (most legit long-running work,
+ *     including Agent dispatches, batch tests, builds, deploys,
+ *     finishes inside 2h)
  *   - upper bound 7d so we don't surface long-archived noise that
  *     the operator already mentally retired
  *
@@ -886,10 +877,9 @@ function scanStalledRunningTasks(
       continue;
     }
 
-    // Journal mtime is also a liveness signal — Bug 2 fix bumps
-    // status.yaml on every appendTaskJournal, but a session running
-    // an older client may write journal.jsonl only. Take the max so
-    // either path counts.
+    // Journal mtime is also a liveness signal — `appendTaskJournal`
+    // bumps status.yaml, but a session running an older client may write
+    // journal.jsonl only. Take the max so either path counts.
     const journalPath = join(taskDir, "journal.jsonl");
     let journalMtime = 0;
     try {
@@ -992,7 +982,7 @@ function renderStalledTasksHint(stalled: StalledTask[]): string {
 /**
  * Auto-graduate active tasks based on attestation presence.
  *
- * Self-attest is the default path (bug-mine 0.13.5): the AI calls
+ * Self-attest is the default path: the AI calls
  * `cairn_task_complete({outcome, summary})` and the tool moves the
  * directory itself. This auto-graduator is the fallback for the rare
  * case where an opt-in reviewer subagent wrote attestation.yaml but

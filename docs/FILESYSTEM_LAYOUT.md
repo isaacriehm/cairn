@@ -197,11 +197,11 @@ This means simple "doc still right" checks don't require a human; GC handles the
 
 ---
 
-## 4. Decision file shape (`.cairn/ground/decisions/DEC-NNNN.md`)
+## 4. Decision file shape (`.cairn/ground/decisions/DEC-<hash>.md`)
 
 ```yaml
 ---
-id: DEC-0042
+id: DEC-a3f7b2c
 title: actor_user_id denormalization on candidate_actions
 type: adr
 status: accepted
@@ -262,10 +262,10 @@ assertions:
     before_returning: true
 human_review_hint: |
   Verify all CandidateAction emitters write actor_user_id natively.
-related_invariants: [INV-0042]
+related_invariants: [INV-a3f7b2c]
 ---
 
-# DEC-0042 — actor_user_id denormalization
+# DEC-a3f7b2c — actor_user_id denormalization
 
 ## Summary
 
@@ -282,12 +282,12 @@ Compact ledger at `.cairn/ground/decisions/decisions.ledger.yaml`:
 
 ```yaml
 # Always-loaded into agent system prompt (~50 lines for 100 decisions)
-- id: DEC-0042
+- id: DEC-a3f7b2c
   title: actor_user_id denormalization on candidate_actions
   status: accepted
   scope_globs: [core/src/dashboard/**, core/src/proactive-actions/**]
   supersedes: DB-2-original
-- id: DEC-0043
+- id: DEC-c81d5e0
   title: ...
 ```
 
@@ -297,7 +297,7 @@ Compact ledger at `.cairn/ground/decisions/decisions.ledger.yaml`:
 
 ```yaml
 ---
-id: INV-0042
+id: INV-a3f7b2c
 title: No JSONB-userId filter in dashboard scope
 type: invariant
 status: active
@@ -305,14 +305,14 @@ audience: dual
 generated: 2026-05-02T03:14:00Z
 verified-at: 2026-05-02T03:14:00Z
 source-run: run-abc123
-source-decision: DEC-0042
+source-decision: DEC-a3f7b2c
 introduced_for_bug: "Found in run-abc103: dashboard query used JSONB filter on commandPayload->>'userId', causing full-table scan."
 sensor: cairn/scripts/check-inv0042-no-jsonb-userid-filter.ts
-e2e: e2e/INV-0042_actor_user_id_denorm.spec.ts
+e2e: e2e/INV-a3f7b2c_actor_user_id_denorm.spec.ts
 naming_convention: "Tests must cite invariant ID — e.g., TestINV0042_RefundIdempotent."
 ---
 
-# §INV-0042 — No JSONB-userId filter in dashboard scope
+# §INV-a3f7b2c — No JSONB-userId filter in dashboard scope
 
 (invariant body — full text)
 ```
@@ -550,12 +550,12 @@ files:
     classification: rule
     audience: dual
     verified_at: 2026-05-02T03:00:00Z
-  - path: .cairn/ground/decisions/DEC-0042.md
+  - path: .cairn/ground/decisions/DEC-a3f7b2c.md
     sha256: ...
     classification: decision
     audience: dual
     verified_at: 2026-05-01T18:23:00Z
-    related_invariants: [INV-0042]
+    related_invariants: [INV-a3f7b2c]
   - path: docs/engineering/api-map.md
     sha256: ...
     classification: generated

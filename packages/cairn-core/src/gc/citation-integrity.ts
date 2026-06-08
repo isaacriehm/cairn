@@ -5,8 +5,8 @@
  * (§INV invariants, §DEC decisions, TODO(TSK-...) linked todos). Each
  * citation is resolved against the appropriate source of truth:
  *
- *   - §INV-NNNN  resolved against `invariants.ledger.yaml` (Active/Superseded)
- *   - §DEC-NNNN  resolved against `decisions.ledger.yaml` (Accepted/Superseded)
+ *   - §INV-<hash>  resolved against `invariants.ledger.yaml` (Active/Superseded)
+ *   - §DEC-<hash>  resolved against `decisions.ledger.yaml` (Accepted/Superseded)
  *   - TODO(TSK-) resolved against `tasks/{active,done}/`
  *
  * Findings surface orphaned citations (target missing) or stale citations

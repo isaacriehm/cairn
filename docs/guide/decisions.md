@@ -1,6 +1,6 @@
 # Working with decisions
 
-Decisions (DEC-NNNN) are the load-bearing artifact in Cairn. This
+Decisions (DEC-<hash>) are the load-bearing artifact in Cairn. This
 page covers everything about creating, accepting, querying, and
 designing them. If you only read one guide besides
 [concepts.md](concepts.md), make it this one.
@@ -68,7 +68,7 @@ explicitly. From within Claude Code:
 > the billing retry strategy, capped at 5 to avoid runaway hot loops."
 
 Claude calls `cairn_record_decision` with those fields. The MCP
-server allocates the next `DEC-NNNN`, writes the draft, and returns
+server derives the `DEC-<hash>` id from the content, writes the draft, and returns
 the id and path. The draft surfaces in the stop hook the same way
 reviewer-extracted drafts do.
 
@@ -97,7 +97,7 @@ Every accepted DEC is a markdown file with YAML frontmatter:
 
 ```yaml
 ---
-id: DEC-0042
+id: DEC-a3f7b2c
 title: Auth tokens expire after 24 hours
 type: adr
 status: accepted
@@ -109,7 +109,7 @@ decided_by: operator
 scope_globs:
   - src/auth/**
   - packages/api/src/middleware/auth/**
-supersedes: DEC-0017
+supersedes: DEC-7c2f10a
 superseded_by: null
 assertions:
   - id: a1
@@ -119,10 +119,10 @@ assertions:
 human_review_hint: |
   When changing the lifetime, update the silent-refresh middleware
   consumers and notify mobile clients via the changelog.
-related_invariants: [INV-0042]
+related_invariants: [INV-a3f7b2c]
 ---
 
-# DEC-0042 — Auth tokens expire after 24 hours
+# DEC-a3f7b2c — Auth tokens expire after 24 hours
 
 ## Context
 
@@ -143,7 +143,7 @@ lifetime use the silent-refresh middleware in
 - Mobile clients: must implement silent-refresh or re-prompt for
   login daily.
 - Service-to-service: use the `service-account` flow which has its
-  own 90-day rotation policy (covered by DEC-0019).
+  own 90-day rotation policy (covered by DEC-d4e6a92).
 - Old test fixtures with 7-day token lifetimes need updating —
   baseline scan flagged 14 files.
 ```
@@ -152,7 +152,7 @@ lifetime use the silent-refresh middleware in
 
 | Field                | Type            | Required | Notes                                                                       |
 | -------------------- | --------------- | -------- | --------------------------------------------------------------------------- |
-| `id`                 | string          | yes      | `DEC-NNNN` zero-padded, server-allocated.                                   |
+| `id`                 | string          | yes      | `DEC-<hash>` — content-addressed (`DEC-` + 7 hex), server-derived.                                   |
 | `title`              | string          | yes      | One-line, ≤80 chars. Rendered everywhere — keep specific.                   |
 | `type`               | string          | yes      | Always `adr` for decisions.                                                 |
 | `status`             | string          | yes      | `draft`, `accepted`, `superseded`, `archived`.                              |
@@ -222,11 +222,11 @@ When the stop hook surfaces a draft (or `cairn-attention` drains the
 queue), you get an `AskUserQuestion` panel:
 
 ```
-DEC-0099 — Refund rate limit: 10/min/user
+DEC-b1e9c04 — Refund rate limit: 10/min/user
 
 Rationale: Implementation chose 10 requests/minute per user, which
 is below the global API limit (60/min) and matches the pattern in
-DEC-0067 for transactional endpoints.
+DEC-9b0f3a7 for transactional endpoints.
 
 [a] accept   [b] reject   [c] edit first
 ```
@@ -236,8 +236,8 @@ DEC-0067 for transactional endpoints.
 The draft is moved from `_inbox/` to the canonical zone:
 
 ```
-.cairn/ground/decisions/_inbox/DEC-0099.draft.md  →  
-.cairn/ground/decisions/DEC-0099.md
+.cairn/ground/decisions/_inbox/DEC-b1e9c04.draft.md  →  
+.cairn/ground/decisions/DEC-b1e9c04.md
 ```
 
 `status: draft` becomes `status: accepted`. `decisions.ledger.yaml`
@@ -247,7 +247,7 @@ ledger changed.
 
 If the draft came from a source-comment ingest (Phase 9), accept
 also strips the originating essay comment and replaces it with a
-bare `§DEC-NNNN` symbol on the same line. (Phase 12 typically
+bare `§DEC-<hash>` symbol on the same line. (Phase 12 typically
 handles this earlier, but if you accept a draft that wasn't part of
 a strip-replace pass, accept does it now.)
 
@@ -256,8 +256,8 @@ a strip-replace pass, accept does it now.)
 The draft is renamed:
 
 ```
-.cairn/ground/decisions/_inbox/DEC-0099.draft.md  →  
-.cairn/ground/decisions/_inbox/DEC-0099.rejected.md
+.cairn/ground/decisions/_inbox/DEC-b1e9c04.draft.md  →  
+.cairn/ground/decisions/_inbox/DEC-b1e9c04.rejected.md
 ```
 
 The id stays reserved — Cairn never recycles ids. You're prompted
@@ -269,7 +269,7 @@ draft:
 ```
 cairn_resolve_attention({
   kind: "decision_draft",
-  item_id: "DEC-0099",
+  item_id: "DEC-b1e9c04",
   choice: "a"   // accept
 })
 ```
@@ -282,18 +282,18 @@ it. Response includes `auto_restored_from: "rejected"`.
 The skill renders the full draft body inline as a chat message:
 
 ````
-**Editing DEC-0099.**
+**Editing DEC-b1e9c04.**
 
 ```markdown
 ---
-id: DEC-0099
+id: DEC-b1e9c04
 title: Refund rate limit: 10/min/user
 status: draft
 scope_globs:
   - packages/billing/refunds/**
 ---
 
-# DEC-0099 — Refund rate limit: 10/min/user
+# DEC-b1e9c04 — Refund rate limit: 10/min/user
 
 ## Rationale
 
@@ -314,7 +314,7 @@ You pick which field. The skill asks you for the replacement text
 inline:
 
 ```
-> Replacement title for DEC-0099?
+> Replacement title for DEC-b1e9c04?
 ```
 
 You type. The skill applies the edit via `Edit` against the
@@ -349,43 +349,43 @@ cairn mcp call cairn_record_decision '{
   "title": "Auth tokens expire after 8 hours (PCI Level 1)",
   "summary": "Escalated from 24h after the Q2 audit reclassified us as Level 1.",
   "scope_globs": ["src/auth/**", "packages/api/src/middleware/auth/**"],
-  "supersedes": "DEC-0042",
+  "supersedes": "DEC-a3f7b2c",
   "body_markdown": "## Context\n\nThe Q2 PCI audit reclassified us as Level 1 (>6M transactions/year), which mandates an 8-hour cap.\n\n## Decision\n\nAll bearer tokens expire 8 hours after issue. Refresh tokens follow the same lifetime."
 }'
 ```
 
-The new DEC's frontmatter has `supersedes: DEC-0042`. On accept,
-`DEC-0042.md` gets `superseded_by: DEC-0099` written into its
+The new DEC's frontmatter has `supersedes: DEC-a3f7b2c`. On accept,
+`DEC-a3f7b2c.md` gets `superseded_by: DEC-b1e9c04` written into its
 frontmatter. The file stays in place — it's still readable, still in
 the ledger, just marked as no longer the active link.
 
 ### What the chain looks like
 
 ```
-DEC-0017 (status: superseded)  ──supersedes──→  null
+DEC-7c2f10a (status: superseded)  ──supersedes──→  null
    │
-   superseded_by: DEC-0042
+   superseded_by: DEC-a3f7b2c
    │
-DEC-0042 (status: superseded)  ──supersedes──→  DEC-0017
+DEC-a3f7b2c (status: superseded)  ──supersedes──→  DEC-7c2f10a
    │
-   superseded_by: DEC-0099
+   superseded_by: DEC-b1e9c04
    │
-DEC-0099 (status: accepted)    ──supersedes──→  DEC-0042
+DEC-b1e9c04 (status: accepted)    ──supersedes──→  DEC-a3f7b2c
 ```
 
 Querying:
 
 ```bash
-cairn mcp call cairn_supersedes_chain '{"decision_id":"DEC-0017"}'
+cairn mcp call cairn_supersedes_chain '{"decision_id":"DEC-7c2f10a"}'
 ```
 
 Returns the full chain forward to the current binding decision:
 
 ```json
 [
-  { "id": "DEC-0017", "status": "superseded", "supersedes": null },
-  { "id": "DEC-0042", "status": "superseded", "supersedes": "DEC-0017" },
-  { "id": "DEC-0099", "status": "accepted",   "supersedes": "DEC-0042" }
+  { "id": "DEC-7c2f10a", "status": "superseded", "supersedes": null },
+  { "id": "DEC-a3f7b2c", "status": "superseded", "supersedes": "DEC-7c2f10a" },
+  { "id": "DEC-b1e9c04", "status": "accepted",   "supersedes": "DEC-a3f7b2c" }
 ]
 ```
 
@@ -394,29 +394,29 @@ Returns the full chain forward to the current binding decision:
 Six months later, when someone asks *"why is the token lifetime so
 short? users are complaining"*, the chain is the answer:
 
-- DEC-0017 — original 7-day refresh, default for the framework.
-- DEC-0042 — narrowed to 24h for PCI compliance.
-- DEC-0099 — narrowed again to 8h after Level 1 escalation.
+- DEC-7c2f10a — original 7-day refresh, default for the framework.
+- DEC-a3f7b2c — narrowed to 24h for PCI compliance.
+- DEC-b1e9c04 — narrowed again to 8h after Level 1 escalation.
 
 You can't relax the 8h limit without an explicit new decision —
 which forces the conversation to acknowledge what's being walked
 back.
 
-The agent reads only the active link (`DEC-0099`) when planning new
+The agent reads only the active link (`DEC-b1e9c04`) when planning new
 work, so context isn't bloated. The chain is queryable on demand
 when the historical reasoning is what you need.
 
 ### Multi-step revision
 
-Sometimes the chain branches. If `DEC-0042` covered both auth
+Sometimes the chain branches. If `DEC-a3f7b2c` covered both auth
 tokens *and* refresh tokens, and you want to split them so refresh
 tokens get a different policy, you write two superseders:
 
-- `DEC-0099` supersedes `DEC-0042` for the auth-token portion (8h).
-- `DEC-0100` supersedes `DEC-0042` for the refresh-token portion
+- `DEC-b1e9c04` supersedes `DEC-a3f7b2c` for the auth-token portion (8h).
+- `DEC-58af6d2` supersedes `DEC-a3f7b2c` for the refresh-token portion
   (24h).
 
-`DEC-0042` ends up with `superseded_by: [DEC-0099, DEC-0100]` (yes,
+`DEC-a3f7b2c` ends up with `superseded_by: [DEC-b1e9c04, DEC-58af6d2]` (yes,
 the field can be a list when the split occurs). The chain query
 walks both branches.
 
@@ -446,7 +446,7 @@ overlap any of the supplied paths:
 ```json
 [
   {
-    "id": "DEC-0042",
+    "id": "DEC-a3f7b2c",
     "title": "Auth tokens expire after 24 hours",
     "status": "accepted",
     "scope_globs": ["src/auth/**", "packages/api/src/middleware/auth/**"]
@@ -463,7 +463,7 @@ Returns the full ADR with frontmatter, assertions, body, and
 related invariants:
 
 ```
-cairn_decision_get({ id: "DEC-0042" })
+cairn_decision_get({ id: "DEC-a3f7b2c" })
 ```
 
 The tool resolves both accepted DECs (canonical zone) and drafts
@@ -485,8 +485,8 @@ Returns compact records (~50 tokens each):
 
 ```json
 [
-  { "id": "INV-0091", "kind": "invariant", "title": "Refund operations idempotent", "score": 0.94 },
-  { "id": "DEC-0067", "kind": "decision",  "title": "Per-user rate limits use Redis token-bucket", "score": 0.71 }
+  { "id": "INV-2e7c4d1", "kind": "invariant", "title": "Refund operations idempotent", "score": 0.94 },
+  { "id": "DEC-9b0f3a7", "kind": "decision",  "title": "Per-user rate limits use Redis token-bucket", "score": 0.71 }
 ]
 ```
 
@@ -519,13 +519,13 @@ heuristics keep this clean.
 **Too narrow.** You write `scope_globs: ["src/auth/jwt.ts"]` for a
 decision about JWT signing. A new file `src/auth/refresh.ts` lands
 that handles refresh tokens. The decision doesn't apply (per scope),
-so the agent writing `refresh.ts` doesn't load `DEC-0042` and may
+so the agent writing `refresh.ts` doesn't load `DEC-a3f7b2c` and may
 silently use a different lifetime. You catch it in review — or you
 don't.
 
 **Too broad.** You write `scope_globs: ["src/**"]` for the same
 decision. Now every task that touches anything in `src/` loads
-`DEC-0042`, even if the task is about UI components or
+`DEC-a3f7b2c`, even if the task is about UI components or
 billing or data-export — none of which care about JWT. The agent's
 context fills with irrelevant DECs; the signal-to-noise ratio
 drops; tightening becomes noisy.
@@ -539,7 +539,7 @@ drops; tightening becomes noisy.
    Auth often lives in two places — the request middleware and the
    token issuer. Both globs in `scope_globs`.
 3. **Include the test directory if the decision is testable.** If
-   `INV-0091` says refunds must be idempotent, the test files that
+   `INV-2e7c4d1` says refunds must be idempotent, the test files that
    verify this should be in scope (so the agent reads the
    invariant when writing or modifying the tests).
 4. **Don't include build tooling or vendored deps.** A decision
@@ -659,7 +659,7 @@ bodies waste the context budget.
 
 ### Anti-pattern: stacking many DECs about the same subsystem
 
-If you find yourself writing `DEC-0099`, `DEC-0100`, `DEC-0101` all
+If you find yourself writing `DEC-b1e9c04`, `DEC-58af6d2`, `DEC-e0c93f4` all
 about auth tokens (one for lifetime, one for refresh strategy, one
 for the rotation policy), consider whether they're actually one
 decision split into pieces. Sometimes that's right (the pieces are
@@ -679,7 +679,7 @@ and the chain compose.
 You're building the auth subsystem. You record a baseline:
 
 ```yaml
-id: DEC-0017
+id: DEC-7c2f10a
 title: Auth tokens expire after 7 days
 status: accepted
 scope_globs:
@@ -696,18 +696,18 @@ Q1 PCI audit lands. Tokens > 24h are out of policy for cardholder
 data. You write a superseder:
 
 ```yaml
-id: DEC-0042
+id: DEC-a3f7b2c
 title: Auth tokens expire after 24 hours
 status: accepted
 scope_globs:
   - src/auth/**
   - packages/api/src/middleware/auth/**     # added — middleware was a separate dir
-supersedes: DEC-0017
+supersedes: DEC-7c2f10a
 decided_at: 2026-04-12
 ```
 
 The body explains the audit findings, references the silent-refresh
-strategy. `DEC-0017` is now `superseded_by: DEC-0042`.
+strategy. `DEC-7c2f10a` is now `superseded_by: DEC-a3f7b2c`.
 
 You also add machine-checkable assertions for the lifetime:
 
@@ -728,20 +728,20 @@ You hit 6M transactions, get reclassified to PCI Level 1. The cap
 drops to 8h:
 
 ```yaml
-id: DEC-0099
+id: DEC-b1e9c04
 title: Auth tokens expire after 8 hours (PCI Level 1)
 status: accepted
 scope_globs:
   - src/auth/**
   - packages/api/src/middleware/auth/**
-supersedes: DEC-0042
+supersedes: DEC-a3f7b2c
 decided_at: 2026-08-15
 ```
 
 The body explains Level 1 mandate, links to the silent-refresh
 escalation work, notes mobile-client coordination required.
 
-`DEC-0042` is now `superseded_by: DEC-0099`. Assertions are updated
+`DEC-a3f7b2c` is now `superseded_by: DEC-b1e9c04`. Assertions are updated
 to match `'8h'`.
 
 ### Day 220: someone asks "why is the token lifetime so short?"
@@ -751,10 +751,10 @@ A new contributor opens an issue. They want to know the history.
 You point them at:
 
 ```bash
-cairn mcp call cairn_supersedes_chain '{"decision_id":"DEC-0017"}'
+cairn mcp call cairn_supersedes_chain '{"decision_id":"DEC-7c2f10a"}'
 ```
 
-Returns the full chain — DEC-0017 → DEC-0042 → DEC-0099 — with
+Returns the full chain — DEC-7c2f10a → DEC-a3f7b2c → DEC-b1e9c04 — with
 status, dates, and supersedes pointers. They read the bodies in
 order and have the complete history in 5 minutes.
 
@@ -762,12 +762,12 @@ order and have the complete history in 5 minutes.
 
 A new feature needs longer-lived tokens for a specific use case
 (server-to-server). An agent prompted with *"add long-lived tokens
-for service-to-service"* loads `DEC-0099` and refuses to touch the
+for service-to-service"* loads `DEC-b1e9c04` and refuses to touch the
 existing token issuer. Instead, the spec it tightens to says:
 
 > Add a separate service-account flow with its own lifetime
-> (DEC-0019 covers the 90-day rotation). Do not modify the user
-> bearer-token lifetime, which is constrained by DEC-0099.
+> (DEC-d4e6a92 covers the 90-day rotation). Do not modify the user
+> bearer-token lifetime, which is constrained by DEC-b1e9c04.
 
 The chain prevents the new feature from silently relaxing the
 PCI-mandated cap. The constraint is enforced not by the agent

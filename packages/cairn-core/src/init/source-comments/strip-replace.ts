@@ -42,7 +42,7 @@ export interface ReplaceItem {
   endOffset: number;
   /**
    * Replacement comment text. Caller composes per spec §15:
-   *   - "// §INV-NNNN" for invariant cites
+   *   - "// §INV-<hash>" for invariant cites
    *   - "// TODO(TSK-<id>)" for active-task links
    *   - leave undefined (item omitted entirely) to skip stripping a block
    *
@@ -262,8 +262,8 @@ export function previewStripReplace(args: {
 /**
  * Build a bare-symbol citation comment for a given language + symbol id.
  *
- *   §DEC-0042   →  `// §DEC-0042`   in C-like languages
- *   §DEC-0042   →  `# §DEC-0042`    in py / rb / sh / lua
+ *   §DEC-a3f7b2c   →  `// §DEC-a3f7b2c`   in C-like languages
+ *   §DEC-a3f7b2c   →  `# §DEC-a3f7b2c`    in py / rb / sh / lua
  *
  * Single source of truth for citation formatting — both phase 9's
  * inline invariant strip-replace and the post-DEC-accept strip in

@@ -22,7 +22,7 @@ Cairn becomes the **project maintainer**. After install + adoption, the operator
 2. Tightens the prompt into a structured spec via iterative dialogue.
 3. **Chunks complex tasks** and dispatches them as Claude Code subagents — each subagent inherits MCP tools and reads the tightened spec.
 4. **Reviews and attests** at task completion via a bundled reviewer subagent.
-5. **Enforces constraints** at two gates: plugin Stop hook (in-session early signal) + pre-commit git hook (canonical backstop).
+5. **Enforces constraints** with the sensor sweep at two gates: the pre-commit git hook (canonical backstop, blocks on hard findings) + CI (`cairn sensor-run --diff … --strict`). The plugin Stop hook surfaces in-session signals (stalled tasks, attention, bypasses) but does not run the sweep.
 6. **Captures decisions** the reviewer surfaces from the diff, auto-accepted into the ledger by default (verify-then-accept; §7.6) — review rides the PR diff, with dedup-fallback drafts surfaced inline next session.
 7. **Detects drift** between ground state and the working tree (GC sweep), surfaces remediation inline.
 
@@ -134,7 +134,7 @@ On `[a]`, the skill (or CLI) spawns the init pipeline as a subprocess and **stre
 | 12 | **Comment policy enforcement** (strip) | Per-module preview + A/B/C consent |
 | 13 | Multi-dev enforcement install + summary | "Installed git hooks + CI gate" → summary |
 
-After this single pass, Cairn IS the project maintainer. Source files are clean (only `// §INV-NNNN` and `// TODO(TSK-)` cites). All prior decisions are canonicalized. Existing rules are merged. Sensors are baselined. Inconsistencies are resolved or queued.
+After this single pass, Cairn IS the project maintainer. Source files are clean (only `// §INV-<hash>` and `// TODO(TSK-)` cites). All prior decisions are canonicalized. Existing rules are merged. Sensors are baselined. Inconsistencies are resolved or queued.
 
 ## §7 State model
 
@@ -152,9 +152,9 @@ Session ID generated at plugin SessionStart (Claude Code session id if exposed, 
 
 - **Per-write `flock`** on `.cairn/.write-lock` for any global-state write. OS-level — auto-release on process crash. Reads unlocked.
 - **Whole-operation locks** on `.cairn/.gc-lock` and `.cairn/.audit-lock` for sweep operations. Second concurrent sweep bails fast with "another in progress".
-- **DEC ID allocation** atomic under the per-write lock. Two sessions calling `cairn_record_decision` get distinct DEC-NNNN values.
+- **DEC ID allocation** atomic under the per-write lock. Two sessions calling `cairn_record_decision` get distinct DEC-<hash> values.
 - **Invalidation events**: when a global write completes, Cairn writes `.cairn/events/<ts>-<event>.json`. Plugin instances poll the events directory at Stop hook (chokidar file watcher armed, debounced). If an event touches a DEC/§INV in the current session's in-scope set → surface inline:
-  > A modified DEC-0042 (which you're using). `[a]` refresh in-scope `[b]` continue under old `[c]` abort
+  > A modified DEC-a3f7b2c (which you're using). `[a]` refresh in-scope `[b]` continue under old `[c]` abort
 
 Default `[a]`. Event log retention: last 7 days, GC'd by sweep.
 
@@ -193,9 +193,7 @@ promotes a decision to `accepted` when **all** hold:
 1. The caller did not pin a `target` (the normal AI path; an explicit
    `target: "inbox"` is the per-call escape hatch that forces a draft, and
    `target: "accepted"` forces direct accept).
-2. `decisions.auto_accept` is not set to `false` in `.cairn/config.yaml`
-   (default is on).
-3. **Verify-then-accept passes**: the decision's assertions are
+2. **Verify-then-accept passes**: the decision's assertions are
    schema-valid (already enforced by the tool) and the title is **not a
    near-duplicate of an already-accepted decision** (deterministic
    title-Jaccard against the ledger at the `definite` threshold). A
@@ -211,8 +209,9 @@ normal pull-request diff like any other committed file.
 This is independent of **§17 multi-developer enforcement**, which gates
 *sensor attestation* at commit/CI time, not decision approval. Auto-accept
 does not weaken §17: sensors still run, CI still gates, and an
-auto-accepted DEC whose assertions break a build surfaces at PR time. Set
-`decisions.auto_accept: false` to restore the per-draft triage queue.
+auto-accepted DEC whose assertions break a build surfaces at PR time.
+(`target: "inbox"` remains the per-call way to force a specific decision
+into the triage queue instead.)
 
 ## §8 Daily flow (post-adoption)
 
@@ -296,7 +295,7 @@ Tools (32 current, see `MCP_SURFACE.md` for full schema):
 - **Read — historical (gated)**: `cairn_query_history`.
 - **Read — resume layer**: `cairn_resume` (cold-resume payload for an active task after `/clear`).
 - **Write — ground + tasks**: `cairn_record_decision`, `cairn_task_create`, `cairn_task_complete`, `cairn_task_reopen`, `cairn_task_journal_append`.
-- **Write — attention queue**: `cairn_resolve_attention(item_id, choice)` (inline-A/B/C resolution endpoint — skill calls this after operator picks), `cairn_bulk_accept_attention`, `cairn_attention_dedup`, `cairn_attention_serve`, `cairn_attention_wait`.
+- **Write — attention queue**: `cairn_resolve_attention(item_id, choice)` (inline-A/B/C resolution endpoint — skill calls this after operator picks), `cairn_attention_dedup`.
 - **Write — bootstrap recovery**: `cairn_bootstrap_retry`.
 - **Write — init pipeline**: `cairn_init_resume`, `cairn_init_run`.
 - **Mission system — supra-task layer**: `cairn_mission_start`, `cairn_mission_accept_draft`, `cairn_mission_get`, `cairn_mission_plan_phase`, `cairn_mission_advance`, `cairn_mission_resume`, `cairn_mission_resync`, `cairn_mission_resync_accept`, `cairn_mission_set_exit_gate`.
@@ -400,7 +399,7 @@ Tightened spec: `.cairn/tasks/active/<task-id>/spec.tightened.md`
   brief: |
     Read .cairn/tasks/active/<task-id>/spec.tightened.md.
     Implement the auth middleware portion (files: services/auth/*.ts).
-    Cite §INV-0042, §INV-0043 in any new code. If you leave any
+    Cite §INV-a3f7b2c, §INV-c81d5e0 in any new code. If you leave any
     explicit follow-up in source (deferred edge case, missing piece
     that belongs to this task but is out of scope for this chunk),
     drop a `// TODO(TSK-<task_id>)` cite on that line.
@@ -409,7 +408,7 @@ Tightened spec: `.cairn/tasks/active/<task-id>/spec.tightened.md`
   brief: |
     Read the same spec.
     Implement the billing portion (files: services/billing/*.ts).
-    Cite §INV-0012. Same TODO(TSK-) rule. Return summary.
+    Cite §INV-5d6e7f8. Same TODO(TSK-) rule. Return summary.
 ```
 ````
 
@@ -571,7 +570,7 @@ tier0's job is to detect **forks that materially change the spec**, not UX trivi
 
 | Good question | Why good |
 |---------------|---------|
-| "You said 'add billing'. Per DEC-0019 Stripe is the only payment processor. Adding a new product to the existing integration `@/services/stripe`, or replacing it with something else?" | References existing constraint; identifies fork; asks about something that materially changes the spec |
+| "You said 'add billing'. Per DEC-d4e6a92 Stripe is the only payment processor. Adding a new product to the existing integration `@/services/stripe`, or replacing it with something else?" | References existing constraint; identifies fork; asks about something that materially changes the spec |
 | "You said 'make X faster'. The current bottleneck is the BullMQ queue depth (per RUN-0042 perf trace). Optimize queue throughput, or change the architecture (e.g., direct execution)?" | Cites recent evidence; offers a fork the operator likely has an opinion on |
 
 tier0 inputs:
@@ -587,7 +586,7 @@ tier0 output is JSON: `{ ready: boolean, questions?: Question[], spec_seed?: str
 
 **Two legal citations** in source files:
 
-- `// §INV-NNNN` — invariant reference
+- `// §INV-<hash>` — invariant reference
 - `// TODO(TSK-<id>)` — linked task
 
 Banned: DEC-id comments, essay JSDoc, multi-paragraph rationale, restated requirements.
@@ -598,7 +597,7 @@ Banned: DEC-id comments, essay JSDoc, multi-paragraph rationale, restated requir
 |-------|------|--------------|
 | **Detection** | **No** — deterministic | Walker finds essay-style comment blocks via heuristic: block comment > 3 lines OR > 200 chars OR JSDoc with > 30 words of prose. Per-language tweaks (Python `"""…"""`, Rust `///`, Go `//`, etc.) |
 | **Extraction** | **Yes** — Haiku batch | 20 detected blocks per Haiku call → JSON: `{ block_id, type: "rationale" | "constraint" | "citation" | "license" | "other", suggested_dec_draft?, suggested_invariant?, suggested_canonical_topic? }`. License headers + "other" left in source untouched |
-| **Replacement** | **No** — deterministic | Mechanical string substitution: strip the original block, insert `// §INV-NNNN` (if §INV exists or was just proposed) or `// TODO(TSK-<id>)` (if linked to active task). Never LLM-rewritten |
+| **Replacement** | **No** — deterministic | Mechanical string substitution: strip the original block, insert `// §INV-<hash>` (if §INV exists or was just proposed) or `// TODO(TSK-<id>)` (if linked to active task). Never LLM-rewritten |
 
 ### Pre-write safety checks
 
@@ -618,7 +617,7 @@ Before any source file is modified during Phase 10:
 
 **Per-file escalation when operator picks `[b]`:**
 
-> `services/auth.ts:42-78` — 24-line JSDoc on JWT signing rationale. Extracted as DEC-draft-0042 + §INV-0042 invariant proposal. Replacement: `// §INV-0042`. Diff: [collapsible].
+> `services/auth.ts:42-78` — 24-line JSDoc on JWT signing rationale. Extracted as DEC-draft-0042 + §INV-a3f7b2c invariant proposal. Replacement: `// §INV-a3f7b2c`. Diff: [collapsible].
 > `[a]` apply `[b]` keep as-is `[c]` modify (open in editor)
 
 If the file has uncommitted changes the per-file prompt also shows the dirty-file warning.
@@ -724,13 +723,17 @@ Forces dev2 through the bootstrap before any Cairn feature engages.
 
 ### Adoption commits
 
-Phase 13 (pre-commit hook install) becomes "git hooks + CI workflow + bootstrap docs". Files committed:
+The git hooks + CI workflow + bootstrap docs are **seeded from
+`templates/` by Phase 4 (seed)** and **activated per-clone by `cairn
+join`** (`git config core.hooksPath`). Phase 13 (multi-dev) layers the
+host hints + the `.claude/rules` import on top — it does not install the
+hooks itself. Files committed:
 
 ```
-.cairn/git-hooks/pre-commit            — sensor runner
-.cairn/git-hooks/commit-msg            — optional: validates DEC/TSK refs in commit msg
+.cairn/git-hooks/pre-commit            — sensor runner (seed; activated by join)
+.cairn/git-hooks/commit-msg            — clean pass (no commit-message sensors)
 .cairn/JOIN.md                         — instructions for new contributors
-.github/workflows/cairn-check.yml      — CI gate (or equivalent for non-GitHub)
+.github/workflows/cairn-check.yml      — CI gate (cairn doctor + sensor sweep)
 package.json prepare script            — auto-bootstrap on install (Node projects)
 ```
 

@@ -43,12 +43,11 @@ const ClaudePostToolUsePayloadSchema = z.object({
   tool_name: z.string().optional(),
   tool_input: z.object({
     file_path: z.string().optional(),
-    new_string: z.string().optional(),
-  }).passthrough().optional(),
-  tool_response: z.object({
+    // Write writes `content`; Edit writes `new_string`. The copy-leakage
+    // scan needs the body that landed on disk — NOT `tool_response`, which
+    // for a Write is just a "File created…" status string.
     content: z.string().optional(),
-    text: z.string().optional(),
-    output: z.string().optional(),
+    new_string: z.string().optional(),
   }).passthrough().optional(),
 }).passthrough();
 
@@ -81,7 +80,7 @@ export async function runWriteGuardian(): Promise<void> {
     }
 
     const filePath = payload.tool_input?.file_path;
-    const content = pickContent(payload.tool_response);
+    const content = pickWrittenContent(payload.tool_name, payload.tool_input);
     if (filePath === undefined || content === undefined || content.length === 0) {
       outcome = {
         skip: "no-content",
@@ -214,15 +213,23 @@ function parsePayload(text: string): ClaudePostToolUsePayload {
   }
 }
 
-function pickContent(
-  resp: ClaudePostToolUsePayload["tool_response"],
+/**
+ * The body that landed on disk: Write carries it as `content`, Edit as the
+ * `new_string` replacement. Read from `tool_input` — `tool_response` holds
+ * the tool's status string ("File created…"), not the file body, so scanning
+ * it silently finds nothing.
+ */
+function pickWrittenContent(
+  toolName: string | undefined,
+  input: ClaudePostToolUsePayload["tool_input"],
 ): string | undefined {
-  if (resp === undefined) return undefined;
-  
-  if (typeof resp.content === "string" && resp.content.length > 0) return resp.content;
-  if (typeof resp.text === "string" && resp.text.length > 0) return resp.text;
-  if (typeof resp.output === "string" && resp.output.length > 0) return resp.output;
-
+  if (input === undefined) return undefined;
+  if (toolName === "Write") {
+    return typeof input.content === "string" ? input.content : undefined;
+  }
+  // Edit (and MultiEdit-shaped payloads) carry the replacement text.
+  if (typeof input.new_string === "string") return input.new_string;
+  if (typeof input.content === "string") return input.content;
   return undefined;
 }
 

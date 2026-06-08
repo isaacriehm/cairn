@@ -30,7 +30,7 @@ runtime** — the plugin uses Claude Code's built-in subagent dispatch.
 | **Plugin** | `cairn-frontend-claudecode` | Claude Code manifest + hook bins + skills + commands + the reviewer subagent. The everyday surface. |
 | **MCP server** | `cairn-core/src/mcp/` | 20 tools — graph reads (`cairn_in_scope`, `cairn_invariant_get`, …), writes (`cairn_record_decision`, `cairn_resolve_attention`, `cairn_archive`), init phase tools (`cairn_init_phase_*`). |
 | **CLI** | `cairn` (umbrella) | `cairn init`, `cairn join`, `cairn doctor`, `cairn scope rebuild`, `cairn trace`, `cairn hook <name>`. Bootstrap + debug. |
-| **Lens** | `cairn-lens` | VS Code / Cursor extension. Resolves `§INV-NNNN` / `§DEC-NNNN` / `TODO(TSK-…)` tokens inline. Hover + decoration + CodeLens. |
+| **Lens** | `cairn-lens` | VS Code / Cursor extension. Resolves `§INV-<hash>` / `§DEC-<hash>` / `TODO(TSK-…)` tokens inline. Hover + decoration + CodeLens. |
 | **Hook bins** | `cairn-core/src/hooks/` | Thin entrypoints called by Claude Code at hook events; delegate to runners in `hooks/runners/`. |
 
 ```mermaid
@@ -110,10 +110,10 @@ flowchart TD
   P4 --> P5[Phase 5 — brand<br/>operator Q&A · 4 brand questions]
   P5 --> P7[Phase 7 — topic-index<br/>cross-source dedup pre-pass]
   P7 --> P8[Phase 8 — docs-ingest<br/>Haiku per doc · canonical-map topics]
-  P8 --> P9[Phase 9 — source-comments<br/>Walker grabs essay blocks · Haiku batch classifies<br/>writes DEC drafts to _inbox/, INV-NNNN.md to ground/<br/>caps: 5000 files default]
+  P8 --> P9[Phase 9 — source-comments<br/>Walker grabs essay blocks · Haiku batch classifies<br/>writes DEC drafts to _inbox/, INV-<hash>.md to ground/<br/>caps: 5000 files default]
   P9 --> P10[Phase 10 — rules-merge<br/>Walks CLAUDE.md/AGENTS.md · Haiku per section<br/>writes more DEC drafts]
   P10 --> P11[Phase 11 — baseline<br/>JS sensors · synthetic full-tree diff<br/>caps: 5000 files default]
-  P11 --> P12[Phase 12 — strip<br/>JS only · per-module operator consent<br/>strips essay comments + inserts // §INV-NNNN<br/>folds IDs into scope-index]
+  P11 --> P12[Phase 12 — strip<br/>JS only · per-module operator consent<br/>strips essay comments + inserts // §INV-<hash><br/>folds IDs into scope-index]
   P12 --> P13[Phase 13 — multidev<br/>JS only · multi-dev enforcement seed]
   P13 --> Done([Adoption complete<br/>cairn-attention surfaces DEC drafts])
 
@@ -180,13 +180,13 @@ sequenceDiagram
 .cairn/
 ├── ground/                            ← curated knowledge
 │   ├── decisions/
-│   │   ├── DEC-NNNN.md                  written by: cairn_record_decision, resolve-attention(accept), Phase 8/9/10
+│   │   ├── DEC-<hash>.md                  written by: cairn_record_decision, resolve-attention(accept), Phase 8/9/10
 │   │   ├── _inbox/
-│   │   │   ├── DEC-NNNN.draft.md        written by: Phase 8/9/10, cairn-attention(edit)
-│   │   │   └── DEC-NNNN.rejected.md     written by: resolve-attention(reject)
+│   │   │   ├── DEC-<hash>.draft.md        written by: Phase 8/9/10, cairn-attention(edit)
+│   │   │   └── DEC-<hash>.rejected.md     written by: resolve-attention(reject)
 │   │   └── decisions.ledger.yaml        rebuilt: SessionStart, resolve-attention(accept). Read: in-scope tools, lens
 │   ├── invariants/
-│   │   ├── INV-NNNN.md                  written by: Phase 9 ingest
+│   │   ├── INV-<hash>.md                  written by: Phase 9 ingest
 │   │   └── invariants.ledger.yaml       rebuilt: SessionStart, ingest. Read: in-scope tools, lens
 │   ├── scope-index.yaml                 rebuilt: SessionStart, PostToolUse(Write/Edit), Phase 9 post-pop, Phase 10
 │   ├── canonical-map/

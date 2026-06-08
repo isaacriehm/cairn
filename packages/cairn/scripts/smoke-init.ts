@@ -39,7 +39,6 @@ import { execSync } from "node:child_process";
 import { parse as parseYaml } from "yaml";
 import {
   detectAll,
-  detectAvailableSensors,
   detectStackSignatures,
   runInit,
 } from "@isaacriehm/cairn-core";
@@ -95,16 +94,13 @@ async function main(): Promise<void> {
   const root1 = makeTsRepo();
   const det1 = detectAll({ repoRoot: root1 });
   console.log(
-    `  slug=${det1.project_slug} stacks=[${det1.stack_signatures.map((s) => s.kind).join(", ")}] sensors=[${det1.proposed_sensors.map((s) => s.id).join(", ")}]`,
+    `  slug=${det1.project_slug} stacks=[${det1.stack_signatures.map((s) => s.kind).join(", ")}]`,
   );
   assert(det1.project_slug === "demo_app", `expected demo_app slug, got ${det1.project_slug}`);
   assert(
     det1.stack_signatures.find((s) => s.kind === "typescript") !== undefined,
     "typescript signature missing",
   );
-  const sensorIds1 = det1.proposed_sensors.map((s) => s.id);
-  assert(sensorIds1.includes("tsc"), `tsc not proposed: ${sensorIds1.join(",")}`);
-  assert(sensorIds1.includes("eslint"), `eslint not proposed: ${sensorIds1.join(",")}`);
   assert(det1.start_command !== null, "start_command not detected on package.json scripts.dev");
   assert(
     det1.start_command!.command === "pnpm",
@@ -112,20 +108,43 @@ async function main(): Promise<void> {
   );
 
   // ── Step 2: empty repo flags unknown stack.
-  header("Step 2: empty repo → stack=[unknown], 0 sensors");
+  header("Step 2: empty repo → stack=[unknown]");
   const root2 = mkdtempSync(join(tmpdir(), "cairn-smoke-init-empty-"));
   cleanups.push(root2);
   execSync("git init -q", { cwd: root2 });
   const sigs2 = detectStackSignatures(root2);
-  const sensors2 = detectAvailableSensors({ repoRoot: root2, signatures: sigs2 });
-  console.log(
-    `  stacks=[${sigs2.map((s) => s.kind).join(", ")}] sensors=${sensors2.length}`,
-  );
+  console.log(`  stacks=[${sigs2.map((s) => s.kind).join(", ")}]`);
   assert(
     sigs2.length === 1 && sigs2[0]!.kind === "unknown",
     `expected unknown stack, got ${sigs2.map((s) => s.kind).join(",")}`,
   );
-  assert(sensors2.length === 0, `expected 0 sensors on empty repo, got ${sensors2.length}`);
+
+  // ── Step 2b: TS monorepo with no root manifest → typescript (WS5).
+  header("Step 2b: monorepo (no root package.json) → typescript, not unknown");
+  // (a) workspace shell marker only.
+  const rootShell = mkdtempSync(join(tmpdir(), "cairn-smoke-init-mono-shell-"));
+  cleanups.push(rootShell);
+  writeFileSync(join(rootShell, "pnpm-workspace.yaml"), "packages:\n  - 'packages/*'\n");
+  const sigsShell = detectStackSignatures(rootShell);
+  assert(
+    sigsShell.some((s) => s.kind === "typescript"),
+    `expected typescript from workspace shell, got ${sigsShell.map((s) => s.kind).join(",")}`,
+  );
+  // (b) manifests only under packages/* (shallow scan).
+  const rootMono = mkdtempSync(join(tmpdir(), "cairn-smoke-init-mono-pkgs-"));
+  cleanups.push(rootMono);
+  mkdirSync(join(rootMono, "packages", "api"), { recursive: true });
+  writeFileSync(join(rootMono, "packages", "api", "package.json"), '{"name":"@x/api"}\n');
+  const sigsMono = detectStackSignatures(rootMono);
+  assert(
+    sigsMono.some((s) => s.kind === "typescript"),
+    `expected typescript from packages/* scan, got ${sigsMono.map((s) => s.kind).join(",")}`,
+  );
+  assert(
+    !sigsMono.some((s) => s.kind === "unknown"),
+    "monorepo must not resolve to unknown",
+  );
+  console.log(`  shell=[${sigsShell.map((s) => s.kind).join(",")}] pkgs=[${sigsMono.map((s) => s.kind).join(",")}]`);
 
   // ── Step 3: runInit auto-mode seeds layout.
   header("Step 3: runInit --no-prompt seeds .cairn/");
@@ -167,19 +186,23 @@ async function main(): Promise<void> {
     typeof configParsed["cairn_version"] === "string" && (configParsed["cairn_version"] as string).length > 0,
     `config.cairn_version missing or empty: ${JSON.stringify(configParsed["cairn_version"])}`,
   );
-  assert(
-    Array.isArray(configParsed["stack_signatures"]) &&
-      (configParsed["stack_signatures"] as string[]).includes("typescript"),
-    "config.stack_signatures missing typescript",
-  );
-  assert(
-    Array.isArray(configParsed["detected_sensor_commands"]) &&
-      (configParsed["detected_sensor_commands"] as Array<{ id: string }>).some(
-        (s) => s.id === "tsc",
-      ),
-    "config.detected_sensor_commands missing tsc",
-  );
-  console.log(`  slug=${configParsed["slug"]}, cairn_version=${configParsed["cairn_version"]}, stack=[${(configParsed["stack_signatures"] as string[]).join(", ")}]`);
+  // Dead detection-derived keys are no longer persisted to config (WS4).
+  for (const dead of [
+    "stack_signatures",
+    "detected_sensor_commands",
+    "mapper_proposed_sensors",
+    "hook_capability",
+    "start_command",
+    "origin_url",
+    "key_modules",
+    "mapper_notes",
+  ]) {
+    assert(
+      !(dead in configParsed),
+      `config should not persist dead key '${dead}'`,
+    );
+  }
+  console.log(`  slug=${configParsed["slug"]}, cairn_version=${configParsed["cairn_version"]}`);
 
   // ── Step 5: re-run without --force preserves existing.
   header("Step 5: re-run without --force → collisions, no overwrite");

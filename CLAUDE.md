@@ -66,7 +66,7 @@ codenames — must NEVER appear in:
 The public maintainer name attached to the repo's package metadata
 and LICENSE is the only personally-identifying string allowed; it is
 the deliberate public attribution. Everything else from the operator's
-local environment is private.
+local environment is private, do not mention even redacted references.
 
 When describing a class of bug that involves one of these strings
 (e.g. "paths with spaces"), use a generic placeholder such as
@@ -98,17 +98,17 @@ brand. Same with the `cairn_*` MCP tool prefix.
 
 Root-level pnpm scripts. No filter args, no package navigation, no bash loops.
 
-| Command                       | What                                                          |
-| ----------------------------- | ------------------------------------------------------------- |
-| `pnpm install`                | Install workspace deps.                                       |
-| `pnpm build`                  | Build all packages.                                           |
-| `pnpm typecheck`              | Typecheck all packages.                                       |
-| `pnpm clean`                  | Wipe `dist/` + `*.tsbuildinfo` across packages.               |
-| `pnpm smokes`                 | Run the 38-smoke gate. All must pass on a clean tree.         |
-| `pnpm smokes:all`             | Run every declared smoke (~46). Slower; pre-release sweep.    |
-| `pnpm smoke:llm-prompt-eval`  | Opt-in real-Haiku regression smoke (burns quota — see below). |
-| `pnpm version:check`          | Verify package versions in sync.                              |
-| `pnpm release:patch\|minor\|major` | Bump versions across the workspace.                      |
+| Command                            | What                                                          |
+| ---------------------------------- | ------------------------------------------------------------- |
+| `pnpm install`                     | Install workspace deps.                                       |
+| `pnpm build`                       | Build all packages.                                           |
+| `pnpm typecheck`                   | Typecheck all packages.                                       |
+| `pnpm clean`                       | Wipe `dist/` + `*.tsbuildinfo` across packages.               |
+| `pnpm smokes`                      | Run the 38-smoke gate. All must pass on a clean tree.         |
+| `pnpm smokes:all`                  | Run every declared smoke (~46). Slower; pre-release sweep.    |
+| `pnpm smoke:llm-prompt-eval`       | Opt-in real-Haiku regression smoke (burns quota — see below). |
+| `pnpm version:check`               | Verify package versions in sync.                              |
+| `pnpm release:patch\|minor\|major` | Bump versions across the workspace.                           |
 
 Bootstrap once:
 

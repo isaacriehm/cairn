@@ -13,14 +13,12 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
-  readdirSync,
   renameSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
-import { createHash } from "node:crypto";
 import { stringify as stringifyYaml } from "yaml";
 import { z } from "zod";
 import type { McpContext } from "../context.js";
@@ -126,6 +124,8 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
       return resolveBaselineFinding(ctx, input);
     case "invalidation_event":
       return resolveInvalidationEvent(ctx, input);
+    case "drift":
+      return resolveDriftEvent(ctx, input);
     case "bypass":
       return resolveStopSignal(ctx, input, "bypass");
     case "review":
@@ -258,6 +258,18 @@ function appendAttestedShas(repoRoot: string, flagged: string[]): number {
 }
 
 async function resolveDecisionDraft(ctx: McpContext, input: Input): Promise<unknown> {
+  // `d` is only meaningful for conflict resolution (keep A / keep B / merge /
+  // archive both). DEC drafts accept a/b/c (accept / reject / edit) — reject
+  // `d` before any filesystem lookup so the caller gets a clear validation
+  // error rather than a misleading FILE_NOT_FOUND.
+  if (input.choice === "d") {
+    return Promise.resolve(
+      mcpError(
+        "VALIDATION_FAILED",
+        `choice "d" is only valid for kind="conflict"; decision_draft accepts a (accept) / b (reject) / c (edit)`,
+      ),
+    );
+  }
   if (!/^DEC-[0-9a-f]{7,}$/.test(input.item_id)) {
     return Promise.resolve(
       mcpError(
@@ -1146,7 +1158,7 @@ function mergeConflict(
   const now = new Date().toISOString();
   const mergedKind: "DEC" | "INV" =
     conflict.aRef.kind === "INV" && conflict.bRef.kind === "INV" ? "INV" : "DEC";
-  const mergedId = synthesizeMergedId(repoRoot, mergedKind);
+  const mergedId = synthesizeMergedId(mergedKind, conflict.aRef.id, conflict.bRef.id);
   const mergedRel =
     mergedKind === "DEC"
       ? `.cairn/ground/decisions/${mergedId}.md`
@@ -1202,32 +1214,25 @@ function mergeConflict(
   return { mergedId, mergedRel };
 }
 
-function synthesizeMergedId(repoRoot: string, kind: "DEC" | "INV"): string {
-  const dir = kind === "DEC" ? decisionsDir(repoRoot) : invariantsDir(repoRoot);
-  const existing = new Set<string>();
-  if (existsSync(dir)) {
-    try {
-      for (const e of readdirSync(dir, { withFileTypes: true })) {
-        if (e.isFile() && e.name.endsWith(".md")) {
-          existing.add(e.name.replace(/\.md$/, ""));
-        }
-      }
-    } catch {
-      /* ignore */
-    }
-  }
-  const seed = `merge-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
-  let candidate = `${kind}-${hashHex(seed).slice(0, 7)}`;
-  let suffix = 0;
-  while (existing.has(candidate)) {
-    suffix += 1;
-    candidate = `${kind}-${hashHex(`${seed}-${suffix}`).slice(0, 7)}`;
-  }
-  return candidate;
-}
-
-function hashHex(input: string): string {
-  return createHash("sha256").update(input, "utf8").digest("hex");
+/**
+ * Derive the merged entity's id deterministically from the two source ids.
+ *
+ * Content-addressed like every other emit path (`deriveLedger{Dec,Inv}Id`):
+ * the same conflict pair always yields the same merged id, so re-running a
+ * merge reuses the id instead of forking a new entity. (The previous
+ * `Date.now()+Math.random()` seed broke that idempotency contract.)
+ */
+function synthesizeMergedId(
+  kind: "DEC" | "INV",
+  aId: string,
+  bId: string,
+): string {
+  const derive = kind === "DEC" ? deriveLedgerDecId : deriveLedgerInvId;
+  return derive({
+    source_file: `conflict-merge:${aId}+${bId}`,
+    source_offset: 0,
+    capture_source: "conflict-merge",
+  });
 }
 
 function resolveInvalidationEvent(_ctx: McpContext, input: Input): Promise<unknown> {
@@ -1240,6 +1245,30 @@ function resolveInvalidationEvent(_ctx: McpContext, input: Input): Promise<unkno
   return Promise.resolve({
     ok: true,
     resolved_kind: `invalidation_${map[choice]}`,
+    item_id: input.item_id,
+    ...(input.rationale !== undefined ? { rationale: input.rationale } : {}),
+  });
+}
+
+/**
+ * Drift events (GC staleness findings — doc-source drift, doc-claim drift,
+ * scope-orphan, generator drift) surface in the cairn-attention queue and
+ * resolve via the same A/B/C path. Resolution records the operator's intent;
+ * the actual repair (re-sync the drifted source) is a caller action, exactly
+ * like baseline/invalidation findings. The staleness log is an append-only
+ * advisory snapshot rebuilt by the next GC sweep, so there is no per-event
+ * entry to mutate here.
+ */
+function resolveDriftEvent(_ctx: McpContext, input: Input): Promise<unknown> {
+  const map: Record<"a" | "b" | "c", string> = {
+    a: "refresh",
+    b: "defer",
+    c: "dismiss",
+  };
+  const choice = input.choice as "a" | "b" | "c";
+  return Promise.resolve({
+    ok: true,
+    resolved_kind: `drift_${map[choice]}`,
     item_id: input.item_id,
     ...(input.rationale !== undefined ? { rationale: input.rationale } : {}),
   });
@@ -1266,7 +1295,7 @@ function emitEvent(
 export const resolveAttentionTool: ToolDef<Input> = {
   name: "cairn_resolve_attention",
   description:
-    "Resolve an inline-A/B/C attention pick — DEC draft accept/reject/edit, baseline finding suppress/defer/triage, invalidation event refresh/continue/abort. Called by the cairn-attention skill after the operator picks an option.",
+    "Resolve an inline-A/B/C attention pick — DEC draft accept/reject/edit, baseline finding suppress/defer/triage, invalidation event refresh/continue/abort, drift event refresh/defer/dismiss. Called by the cairn-attention skill after the operator picks an option.",
   inputSchema: resolveAttentionInput,
   handler,
 };

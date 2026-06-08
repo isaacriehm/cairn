@@ -1,26 +1,34 @@
 /**
- * Sensor runner — orchestrator-facing entry point.
+ * Sensor sweep — the live enforcement entry point.
  *
- * Composes Layer A + Layer B + Layer C + decision-assertions into a single
- * sweep. Returns the aggregated result + the remediation prompt body the
- * orchestrator feeds back to the agent on retry.
+ * Composes the sensors that actually have teeth into one diff-scoped sweep:
+ *   - Layer A — stub-pattern catalog (mechanical debt regex)
+ *   - Layer C — generic structural sensors (route handlers, DTOs)
+ *   - decision-assertions — "was the in-scope DEC honored?"
  *
- * Phase 9 wires the implementer-side stack only. SessionStart Drain (reviewer subagent)
- * is Phase 10; Layer E (high-stakes E2E) and U (UAT) are Phases 11+. Soft
- * findings emitted here are intentionally surfaced for those later layers
- * to consume.
+ * Runs at the real gates: pre-commit (staged diff), CI (`--diff` range), and
+ * advisory at the Stop hook (working-tree diff). The diff + repoRoot are the
+ * only inputs — there is no mirror checkout or orchestrator runtime.
+ *
+ * Layer-B attestation cross-check was removed: it depended on an
+ * agent-emitted attestation block that no production path produced, so it
+ * never ran. Project-specific "proposed sensors" were likewise never wired
+ * to an executor and have been dropped.
  */
 
 import { logger } from "../logger.js";
-import { decisionsInScope, loadAcceptedDecisions, runDecisionAssertions } from "./decisions.js";
-import { extractAttestation, runAttestationCrossCheck } from "./attestation.js";
-import { getDiff } from "./diff.js";
+import { loadCairnConfig } from "@isaacriehm/cairn-state";
+import {
+  decisionsInScope,
+  loadAcceptedDecisions,
+  runDecisionAssertions,
+} from "./decisions.js";
 import { loadStubCatalog } from "./catalog.js";
 import { formatRemediation } from "./remediation.js";
 import { runStubCatalog } from "./stub-catalog.js";
 import { runDtoNoFakeFields, runRouteHandlerNonEmpty } from "./structural.js";
 import type {
-  Attestation,
+  DiffEntry,
   ProjectGlobs,
   SensorLanguage,
   SensorResult,
@@ -29,91 +37,46 @@ import type {
 
 const log = logger("sensors.runner");
 
-export interface RunSensorsArgs {
-  /** Mirror checkout where the agent worked. */
-  mirrorPath: string;
-  /** SHA pin captured at workspace prep. */
-  shaPin: string;
-  /** Final assistant text, used to extract the attestation block. */
-  finalAssistantText?: string;
-  /** Languages active for this profile (filters Layer A patterns). */
-  languages: SensorLanguage[];
-  /** Project-block globs from workflow.md. */
-  projectGlobs: ProjectGlobs;
-  /** Run id used in log lines. */
-  runId: string;
-  /** Number of this attempt (1 = first run, 2 = first retry). */
-  attempt: number;
-  /** Max attempts the orchestrator will allow. */
-  maxAttempts: number;
-  /**
-   * Optional pre-extracted attestation. Useful for tests / smokes that
-   * inject the attestation directly without going through the assistant
-   * stream. When supplied, finalAssistantText is ignored for extraction.
-   */
-  attestation?: Attestation;
+export interface RunSensorsOnDiffArgs {
+  /** Repo root — decisions, stub catalog, and config are read from here. */
+  repoRoot: string;
+  /** Files changed in this diff, content already loaded. */
+  diff: DiffEntry[];
+  /** Languages to filter Layer A patterns. Omit = scan all known languages. */
+  languages?: SensorLanguage[];
+  /** Route/DTO globs. Omit = loaded from `.cairn/config.yaml`. */
+  projectGlobs?: ProjectGlobs;
+  /** Label for log lines (e.g. the gate name). */
+  runId?: string;
+  /** Retry context for the remediation prompt. Defaults to a single 1/1 pass. */
+  attempt?: number;
+  maxAttempts?: number;
 }
 
 /**
- * Run all sensors for a finished implementer run. Returns:
- *   - per-sensor results (with `ok` + findings)
- *   - aggregate `ok` (false if any hard failure)
- *   - remediation prompt body for the next retry (empty string on success)
+ * Run the live sensor sweep over a diff. Returns per-sensor results, the
+ * aggregate `ok` (false on any hard failure), and a remediation prompt body
+ * the caller can surface to the agent.
  */
-export async function runSensors(args: RunSensorsArgs): Promise<SensorSweepResult> {
+export async function runSensorsOnDiff(
+  args: RunSensorsOnDiffArgs,
+): Promise<SensorSweepResult> {
   const startedAt = Date.now();
-  const diff = await getDiff({ mirrorPath: args.mirrorPath, shaPin: args.shaPin });
-
-  const stubCatalog = loadStubCatalog(args.mirrorPath);
-  const acceptedDecisions = loadAcceptedDecisions(args.mirrorPath);
+  const { repoRoot, diff } = args;
+  const projectGlobs = args.projectGlobs ?? loadProjectGlobs(repoRoot);
+  const stubCatalog = loadStubCatalog(repoRoot);
+  const acceptedDecisions = loadAcceptedDecisions(repoRoot);
   const inScope = decisionsInScope(acceptedDecisions, diff);
 
-  const attestation =
-    args.attestation ?? extractAttestation(args.finalAssistantText ?? "");
-
-  const results: SensorResult[] = [];
-
-  // Layer A — stub-pattern catalog.
-  results.push(
-    runStubCatalog({
-      diff,
-      catalog: stubCatalog,
-      languages: args.languages,
-    }),
-  );
-
-  // Layer B — attestation cross-check.
-  results.push(
-    runAttestationCrossCheck({
-      attestation,
-      diff,
-      stubCatalog,
-      ignoreGlobs: [".cairn/runs/active/**", ".cairn/inbox/processed/**"],
-    }),
-  );
-
-  // Layer C — generic structural sensors.
-  results.push(
-    runRouteHandlerNonEmpty({
-      diff,
-      globs: args.projectGlobs.route_handler_globs,
-    }),
-  );
-  results.push(
-    runDtoNoFakeFields({
-      diff,
-      globs: args.projectGlobs.dto_globs,
-    }),
-  );
-
-  // Decision-assertions.
-  results.push(
-    runDecisionAssertions({
-      mirrorPath: args.mirrorPath,
-      diff,
-      decisions: inScope,
-    }),
-  );
+  const results: SensorResult[] = [
+    // Layer A — stub-pattern catalog.
+    runStubCatalog({ diff, catalog: stubCatalog, languages: args.languages }),
+    // Layer C — generic structural sensors.
+    runRouteHandlerNonEmpty({ diff, globs: projectGlobs.route_handler_globs }),
+    runDtoNoFakeFields({ diff, globs: projectGlobs.dto_globs }),
+    // Decision-assertions — the core value prop.
+    runDecisionAssertions({ mirrorPath: repoRoot, diff, decisions: inScope }),
+  ];
 
   const hard_failures = results.filter((r) => !r.ok).length;
   const soft_findings = results.reduce(
@@ -124,14 +87,13 @@ export async function runSensors(args: RunSensorsArgs): Promise<SensorSweepResul
   const remediation_prompt = ok
     ? ""
     : formatRemediation(results, {
-        attempt: args.attempt,
-        maxAttempts: args.maxAttempts,
+        attempt: args.attempt ?? 1,
+        maxAttempts: args.maxAttempts ?? 1,
       });
 
   log.info(
     {
-      run_id: args.runId,
-      attempt: args.attempt,
+      run_id: args.runId ?? "sensor-sweep",
       ok,
       hard_failures,
       soft_findings,
@@ -153,4 +115,30 @@ export async function runSensors(args: RunSensorsArgs): Promise<SensorSweepResul
     remediation_prompt,
     duration_ms: Date.now() - startedAt,
   };
+}
+
+/** Read route/DTO/high-stakes globs from `.cairn/config.yaml`. */
+export function loadProjectGlobs(repoRoot: string): ProjectGlobs {
+  const cfg = loadCairnConfig(repoRoot);
+  const out: ProjectGlobs = {};
+  const asStrings = (v: unknown): string[] | undefined =>
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : undefined;
+
+  const pg = cfg["project_globs"];
+  if (typeof pg === "object" && pg !== null) {
+    const p = pg as Record<string, unknown>;
+    const rh = asStrings(p["route_handler_globs"]);
+    if (rh) out.route_handler_globs = rh;
+    const dto = asStrings(p["dto_globs"]);
+    if (dto) out.dto_globs = dto;
+    const gen = asStrings(p["generator_source_globs"]);
+    if (gen) out.generator_source_globs = gen;
+    const hs = asStrings(p["high_stakes_globs"]);
+    if (hs) out.high_stakes_globs = hs;
+  }
+  if (out.high_stakes_globs === undefined) {
+    const topHs = asStrings(cfg["high_stakes_globs"]);
+    if (topHs) out.high_stakes_globs = topHs;
+  }
+  return out;
 }

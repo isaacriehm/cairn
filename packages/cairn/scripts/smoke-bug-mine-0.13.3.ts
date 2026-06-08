@@ -30,9 +30,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   allTools,
-  bulkAcceptObvious,
   clearMissionPhaseDeferIfMatches,
-  eventsDir,
   type McpContext,
   type ToolDef,
 } from "@isaacriehm/cairn-core";
@@ -237,54 +235,6 @@ async function runSmoke(): Promise<void> {
       `ledger should include the newly-accepted DEC id ${decId}`,
     );
     console.log("  ✓ Step 4 — record_decision direct-accept extends ledger");
-  }
-
-  // ─────────────────────────────────────────────────────────────────
-  // Step 5 — bulkAcceptObvious emits decision_accepted events
-  // ─────────────────────────────────────────────────────────────────
-  {
-    const repoRoot = mkRepoRoot();
-    const inbox = join(repoRoot, ".cairn", "ground", "decisions", "_inbox");
-    const draftId = "DEC-bbbbbbb";
-    const body = [
-      "Critical security invariant: tenant context must never leak. Auth middleware",
-      "requires tenant scoping on all queries to prevent cross-tenant data exposure.",
-      "All endpoints must validate tenant before proceeding with database access or",
-      "any privileged operation. This is enforced at multiple layers including the",
-      "JWT validation step.",
-    ].join(" ");
-    writeFileSync(
-      join(inbox, `${draftId}.draft.md`),
-      [
-        `---`,
-        `id: ${draftId}`,
-        `title: must validate tenant context before db access`,
-        `status: draft`,
-        `capture_confidence: high`,
-        `sourceFile: core/src/auth/middleware.ts`,
-        `proposedRationale: ${body}`,
-        `---`,
-        ``,
-        body,
-      ].join("\n"),
-      "utf8",
-    );
-    const before = readdirSync(eventsDir(repoRoot)).filter((n) =>
-      n.includes("decision_accepted"),
-    ).length;
-    await bulkAcceptObvious({
-      repoRoot,
-      globs: { source: ["**/*.ts"], copySafety: [], offLimits: [] },
-      threshold: "low",
-    });
-    const after = readdirSync(eventsDir(repoRoot)).filter((n) =>
-      n.includes("decision_accepted"),
-    ).length;
-    assert(
-      after > before,
-      `bulkAcceptObvious should emit at least one decision_accepted event (before=${before} after=${after})`,
-    );
-    console.log("  ✓ Step 5 — bulkAcceptObvious emits decision_accepted events");
   }
 
   // ─────────────────────────────────────────────────────────────────

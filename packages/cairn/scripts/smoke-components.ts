@@ -403,7 +403,6 @@ async function adoption(): Promise<void> {
     project_slug: "smoke",
     origin_url: null,
     stack_signatures: [{ kind: "typescript" as const, marker: "tsconfig.json" }],
-    proposed_sensors: [],
     start_command: null,
     hook_capability: "cli-only" as const,
     environment: { claude_auth: false },

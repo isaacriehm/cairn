@@ -1,7 +1,7 @@
 /**
  * Hover provider for cairn citation tokens.
  *
- * Triggers on §DEC-NNNN, §INV-NNNN, TODO(TSK-<id>), and `@cairn <Name>`
+ * Triggers on §DEC-<hash>, §INV-<hash>, TODO(TSK-<id>), and `@cairn <Name>`
  * component-registry headers. Renders a Markdown card with resolved
  * title, status, and links to the underlying ground file.
  */

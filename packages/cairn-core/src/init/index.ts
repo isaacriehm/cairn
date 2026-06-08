@@ -1,6 +1,5 @@
 export {
   detectAll,
-  detectAvailableSensors,
   detectEnvironment,
   detectHookCapability,
   detectOriginUrl,
@@ -136,7 +135,6 @@ export {
 export type {
   MapperKeyModule,
   MapperOutput,
-  MapperProposedSensor,
   MapperResult,
   MapperScopeIndex,
   MapperScopeIndexEntry,
@@ -176,7 +174,6 @@ export {
 export type {
   DetectionResult,
   HookCapability,
-  SensorProposal,
   StackKind,
   StackSignature,
   StartCommand,

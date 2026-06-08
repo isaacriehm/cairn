@@ -16,18 +16,15 @@
  *     For projects adopted under v0.4.0 builds before the dirty-file
  *     overwrite fix landed: their accepted DECs sit in
  *     `.cairn/ground/decisions/<id>.md` but the originating source
- *     file still carries the prose instead of `// §DEC-NNNN`.
+ *     file still carries the prose instead of `// §DEC-<hash>`.
  *
- *   - `cairn fix confidence` — pointer to `cairn attention bulk-accept
- *     --threshold high --dry-run`, which already scores + stamps
- *     `capture_confidence` on every draft + invariant. Documented
- *     here so operators don't hunt for it; this subcommand defers
- *     to the existing tool.
+ * (Plus `align`, `gitignore`, `scrub-cache`, `claude-rules`, and the
+ * no-subcommand doctor auto-fix pass — see `cairn fix --help`.)
  *
- *   - `cairn fix duration_ms` — pointer-only. Phase durations are
- *     recorded going forward; pre-v0.4.0 init runs cannot be
- *     retroactively backfilled because the trace doesn't carry
- *     phase boundaries.
+ * Note: the version-keyed retroactive repairs above are candidates for
+ * folding into the coded migration registry (`cairn migrate`); until each
+ * has a forward migration + is confirmed dead on all adopters, they stay
+ * here (no blind removal — see docs/MIGRATION_FEATURE_EVAL.md §4.5).
  */
 
 import { execFileSync } from "node:child_process";
@@ -506,8 +503,6 @@ const RETROACTIVE_SUBCOMMANDS = new Set([
   "gitignore",
   "scrub-cache",
   "claude-rules",
-  "confidence",
-  "duration_ms",
 ]);
 
 function parseAlignFlags(argv: string[]): {
@@ -735,13 +730,7 @@ export async function fixCli(argv: string[]): Promise<void> {
         "    claude-rules    write .claude/rules/cairn.md so teammates whose Claude\n" +
         "                    Code lacks the Cairn plugin still see install\n" +
         "                    instructions on session start. Auto-loaded by Claude\n" +
-        "                    Code regardless of plugin install state.\n" +
-        "    confidence      alias for `cairn attention bulk-accept --threshold high`\n" +
-        "                    which scores + stamps capture_confidence on every\n" +
-        "                    draft + invariant. Run with --dry-run first.\n" +
-        "    duration_ms     not implemented — phase durations are recorded\n" +
-        "                    going forward (v0.4.0+); the trace doesn't carry\n" +
-        "                    pre-existing phase boundaries.\n",
+        "                    Code regardless of plugin install state.\n",
     );
     process.exit(0);
   }
@@ -775,24 +764,6 @@ export async function fixCli(argv: string[]): Promise<void> {
       return;
     case "claude-rules":
       await fixClaudeRules(repoRoot, dryRun);
-      return;
-    case "confidence":
-      process.stdout.write(
-        "  cairn fix confidence is an alias for `cairn attention bulk-accept`.\n" +
-          "  Run: cairn attention bulk-accept --threshold high --dry-run\n" +
-          "  to score + stamp capture_confidence without auto-accepting,\n" +
-          "  then re-run without --dry-run when ready.\n",
-      );
-      process.exit(0);
-      return;
-    case "duration_ms":
-      process.stdout.write(
-        "  cairn fix duration_ms is not implemented.\n" +
-          "  Phase durations are recorded going forward (v0.4.0+);\n" +
-          "  pre-existing phase boundaries are not in the trace and cannot\n" +
-          "  be retroactively backfilled.\n",
-      );
-      process.exit(0);
       return;
   }
 }

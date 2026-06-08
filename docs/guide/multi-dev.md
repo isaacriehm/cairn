@@ -20,7 +20,7 @@ enforcement layer. Concretely, it installs:
 1. **Versioned git hooks** at `.cairn/git-hooks/`:
    - `pre-commit` — runs the sensor sweep on the staged diff.
    - `post-commit` — appends the new SHA to `.cairn/.attested-commits`.
-   - `commit-msg` — optional validation of `DEC-NNNN` / `TSK-NNNN`
+   - `commit-msg` — optional validation of `DEC-<hash>` / `TSK-NNNN`
      references in commit messages.
 2. **`core.hooksPath`** set on this clone:
    ```
@@ -225,7 +225,7 @@ won't land without addressing the underlying issue.
        pattern: throw new Error('not implemented')
 
   Layer C (decision-assertions) — 1 fail
-     DEC-0042 a1: text_must_match
+     DEC-a3f7b2c a1: text_must_match
        expected pattern: expiresIn:\s*'24h'
        in_globs: src/auth/jwt.ts
        result: pattern not found

@@ -1,16 +1,10 @@
 /**
- * Sensor types — Phase 9 honest-agent invariants stack.
+ * Sensor types — honest-agent invariants stack.
  *
- * Sensors run after the implementer agent finishes. Each sensor reads a
- * `SensorInput` (diff + attestation + decisions + project block) and emits
- * `SensorFinding[]`. The orchestrator collects every sensor's `SensorResult`,
- * builds a remediation prompt from any findings, and either passes the run
- * through or feeds the prompt back to the agent for retry.
- *
- * Sensors follow the remediation-prompt pattern: failure messages are consumed by the agent on retry.
+ * Each sensor reads a diff (+ decisions + project globs) and emits
+ * `SensorFinding[]`. The sweep runner collects every sensor's `SensorResult`,
+ * aggregates `ok`, and builds a remediation prompt from any hard findings.
  */
-
-import type { DecisionFrontmatter } from "@isaacriehm/cairn-state";
 
 /** A single file changed in this run. */
 export interface DiffEntry {
@@ -67,30 +61,6 @@ export interface StubCatalog {
   patterns: StubPattern[];
 }
 
-/** YAML block the agent emits at end of turn. */
-export interface AttestationDelivered {
-  symbol: string;
-  path?: string;
-  behavior: "full" | "partial" | "scaffolded";
-  sensors_passed?: string[];
-}
-
-export interface AttestationDeferred {
-  symbol: string;
-  reason: string;
-}
-
-export interface Attestation {
-  delivered: AttestationDelivered[];
-  deferred: AttestationDeferred[];
-  known_limitations: string[];
-  todos_introduced: number;
-  stubs_introduced: number;
-  files_touched: string[];
-  /** Set when the agent could not proceed; runner reports it as soft finding. */
-  blocked_by?: { reason: string; needed_from_operator?: string };
-}
-
 /**
  * Project-extension block resolved from workflow.md `<project>:` extension.
  * Sensors that trigger on `glob_keys` look up the matching key here.
@@ -103,27 +73,6 @@ export interface ProjectGlobs {
   /** Off-limits — file_must_not_be_modified assertions also enforce these. */
   off_limits?: string[];
   [key: string]: string[] | undefined;
-}
-
-export interface SensorInput {
-  /** Absolute path to the mirror checkout. */
-  mirrorPath: string;
-  /** origin/main SHA pinned at workspace prep. */
-  shaPin: string;
-  /** Files changed in this run, content already loaded. */
-  changedFiles: DiffEntry[];
-  /** Parsed attestation; undefined if the agent emitted none (Layer B fails). */
-  attestation: Attestation | undefined;
-  /** Decisions accepted in scope of this diff. Already filtered. */
-  decisionsInScope: DecisionFrontmatter[];
-  /** Layer A catalog. */
-  stubCatalog: StubCatalog;
-  /** Stack profile language list — pattern filtering. */
-  languages: SensorLanguage[];
-  /** Project-extension globs. */
-  projectGlobs: ProjectGlobs;
-  /** Run id used in log lines. */
-  runId: string;
 }
 
 export interface SensorFinding {

@@ -38,14 +38,6 @@ interface BuildProjectOverlayArgs {
 export function buildProjectOverlay(
   args: BuildProjectOverlayArgs,
 ): Record<string, unknown> {
-  const detected_sensor_commands = args.detection.proposed_sensors.map((s) => ({
-    id: s.id,
-    command: s.command,
-    args: s.args,
-    applies_to: s.applies_to,
-    reason: s.reason,
-  }));
-
   const m = args.mapperOutput;
   const offLimits = [...DEFAULT_OFF_LIMITS];
   if (m !== undefined) {
@@ -54,15 +46,15 @@ export function buildProjectOverlay(
     }
   }
 
+  // Only keys with a runtime reader are written. Detection-derived fields
+  // (origin_url, stack_signatures, hook_capability, start_command) and the
+  // never-executed proposed-sensors output are consumed only at init time —
+  // persisting them produced dead config (audit Tier 2). `domain_summary`
+  // is kept (read by `cairn fix`).
   const overlay: Record<string, unknown> = {
     version: 1,
     cairn_version: VERSION,
     slug: args.decidedSlug,
-    origin_url: args.detection.origin_url,
-    stack_signatures: args.detection.stack_signatures.map((s) => s.kind),
-    hook_capability: args.detection.hook_capability,
-    start_command: args.detection.start_command,
-    detected_sensor_commands,
     off_limits: offLimits,
     high_stakes_globs: m?.high_stakes_globs ?? [],
     defer_hours: 24,
@@ -75,9 +67,6 @@ export function buildProjectOverlay(
   };
   if (m !== undefined) {
     overlay["domain_summary"] = m.domain_summary;
-    overlay["key_modules"] = m.key_modules;
-    overlay["mapper_proposed_sensors"] = m.proposed_sensors;
-    if (m.notes.trim().length > 0) overlay["mapper_notes"] = m.notes;
   }
   return overlay;
 }

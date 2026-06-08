@@ -34,22 +34,6 @@ export const MAPPER_OUTPUT_SCHEMA = {
     generator_source_globs: { type: "array", items: { type: "string" } },
     high_stakes_globs: { type: "array", items: { type: "string" } },
     off_limits_globs: { type: "array", items: { type: "string" } },
-    proposed_sensors: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          id: { type: "string" },
-          description: { type: "string" },
-          applies_to_globs: {
-            type: "array",
-            items: { type: "string" },
-          },
-        },
-        required: ["id", "description", "applies_to_globs"],
-      },
-    },
     notes: { type: "string" },
     scope_index: {
       type: "object",
@@ -80,7 +64,6 @@ export const MAPPER_OUTPUT_SCHEMA = {
     "generator_source_globs",
     "high_stakes_globs",
     "off_limits_globs",
-    "proposed_sensors",
     "notes",
   ],
 } as const;
@@ -101,9 +84,8 @@ export const MAPPER_SYSTEM_PROMPT = [
   "- `generator_source_globs` — globs whose changes mean a generator must re-run. Examples: `core/openapi.json`, `core/src/db/schema.ts` (Drizzle), `**/*.proto`, `prisma/schema.prisma`, `db/structure.sql`. EMPTY if no generators apparent.",
   "- `high_stakes_globs` — globs for high-risk surfaces (auth, billing, multi-tenant boundaries, payments, integrations storing tokens, telephony, anything where a regression leaks user data or charges money). Be conservative; over-flagging dilutes the gate. EMPTY if not clear.",
   "- `off_limits_globs` — globs the cairn MUST NOT touch beyond the generic defaults already in place (`node_modules/**`, `dist/**`, `.git/**`, `.cairn/**`, `.archive/**`, generated artifact dirs are already excluded). Add things like vendored third-party code, copied snapshots, large binary fixtures, anything under a directory the operator should not let an agent rewrite. EMPTY if nothing extra.",
-  "- `proposed_sensors` — project-specific sensors beyond the generic cairn Layer A/B/C/D. Each `{ id, description, applies_to_globs }`. Examples: `event-emit-coverage` (every emit() has a label), `migration-naming-convention`, `auth-guard-on-controllers`, `dto-discriminator-coverage`. EMPTY if nothing project-specific is obvious.",
   "- `notes` — anything notable that didn't fit a structured field — e.g., \"truncated at file cap; coverage may be conservative\", \"no test infra detected\", \"monorepo with pnpm-workspace\".",
-  "- `scope_index` — forward map from repo-relative file paths to the decisions and invariants whose `scope_globs` apply, keyed by file. Shape: `{ files: { \"<repo-relative-path>\": { decisions: [\"DEC-NNNN\"], invariants: [\"INV-NNNN\"], unscoped?: true } } }`. The user prompt provides a list of in-scope decisions + invariants when ground state already exists; classify which apply to each meaningful source file. Use `unscoped: true` for files that should never carry rules (lockfiles, generated, vendored, dotfile config) so the GC scope-coverage pass doesn't re-flag them. EMPTY `{ files: {} }` is acceptable on first-run adopters with no decisions yet. IDs ONLY in these arrays — never copy titles or descriptive prose.",
+  "- `scope_index` — forward map from repo-relative file paths to the decisions and invariants whose `scope_globs` apply, keyed by file. Shape: `{ files: { \"<repo-relative-path>\": { decisions: [\"DEC-<hash>\"], invariants: [\"INV-<hash>\"], unscoped?: true } } }`. The user prompt provides a list of in-scope decisions + invariants when ground state already exists; classify which apply to each meaningful source file. Use `unscoped: true` for files that should never carry rules (lockfiles, generated, vendored, dotfile config) so the GC scope-coverage pass doesn't re-flag them. EMPTY `{ files: {} }` is acceptable on first-run adopters with no decisions yet. IDs ONLY in these arrays — never copy titles or descriptive prose.",
   "",
   "Rules:",
   "- Globs MUST start from repo root, no leading slash.",
@@ -136,14 +118,6 @@ export function buildMapperUserPrompt(args: {
     parts.push(
       `Start command (detected): ${[d.start_command.command, ...d.start_command.args].join(" ")}`,
     );
-  }
-  if (d.proposed_sensors.length > 0) {
-    parts.push("Generic stack-detected sensors already proposed:");
-    for (const sensor of d.proposed_sensors) {
-      parts.push(
-        `  - ${sensor.id} (${sensor.command} ${sensor.args.join(" ")}) — ${sensor.reason}`,
-      );
-    }
   }
   parts.push("");
   parts.push(`## Repo summary`);

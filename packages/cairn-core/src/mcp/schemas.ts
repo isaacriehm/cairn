@@ -221,7 +221,7 @@ export const retireInvariantInput = {
 
 export const resolveAttentionInput = {
   /**
-   * Item id from the attention skill — DEC-NNNN for a draft, the
+   * Item id from the attention skill — DEC-<hash> for a draft, the
    * baseline finding key (e.g. `BASELINE-stub_catalog_hits-services/auth.ts`)
    * for sensor findings, the event filename for invalidation events.
    *
