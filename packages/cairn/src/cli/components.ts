@@ -46,7 +46,7 @@ export async function componentsCli(argv: string[]): Promise<void> {
 
   switch (sub) {
     case "detect": {
-      const r = ensureComponentsConfig(repoRoot);
+      const r = await ensureComponentsConfig(repoRoot);
       switch (r.status) {
         case "not-adopted":
           console.error(

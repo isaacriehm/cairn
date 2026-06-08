@@ -38,12 +38,16 @@ inline prose and break the structured-answer contract.
 ## Step 0.4 — operator-rejection capture
 
 Operator rejects prior work ("bad", "don't like", "stop using",
-"wrong") → capture as draft DEC BEFORE the local fix. Extract regex
-+ globs + rationale → dedupe via `cairn_search` →
+"wrong") → capture as a DEC BEFORE the local fix. Extract regex
++ globs + rationale →
 `cairn_record_decision({..., assertions: [{kind:
-"text_must_not_match", pattern, in_globs}]})` (default `target:
-"inbox"`) → surface ``Captured rejection → draft `DEC-<id>`
-queued.`` Full playbook: `docs/PLUGIN_ARCHITECTURE.md` §11.
+"text_must_not_match", pattern, in_globs}]})` — omit `target`; it
+auto-accepts into the ledger by default (verify-then-accept; the
+built-in dedup gate routes a near-duplicate to an `_inbox/` draft).
+Read the result's `auto_accepted`: if true surface ``Captured
+rejection → `DEC-<id>` accepted.``; else ``Captured rejection →
+draft `DEC-<id>` queued for review.`` Full playbook:
+`docs/PLUGIN_ARCHITECTURE.md` §11.
 
 ## Step 0.5 — pivot detection (active-task path)
 

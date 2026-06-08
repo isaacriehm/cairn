@@ -1,6 +1,6 @@
 {
   "name": "@isaacriehm/cairn",
-  "version": "0.18.2",
+  "version": "0.19.0",
   "description": "Cairn — state + context-loading layer for AI coding agents.",
   "author": "Isaac Riehm",
   "license": "MIT",
@@ -75,6 +75,7 @@
     "smoke:propose-decision": "tsx scripts/smoke-propose-decision.ts",
     "smoke:tag-cli": "tsx scripts/smoke-tag-cli.ts",
     "smoke:llm-prompt-eval": "tsx scripts/smoke-llm-prompt-eval.ts",
+    "smoke:llm-detect-components": "tsx scripts/smoke-llm-detect-components.ts",
     "smoke:conflicts-queue": "tsx scripts/smoke-conflicts-queue.ts",
     "smoke:sot-align": "tsx scripts/smoke-sot-align.ts",
     "smoke:layer-b-precommit": "tsx scripts/smoke-layer-b-precommit.ts",

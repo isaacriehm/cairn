@@ -20,7 +20,7 @@
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { decisionsDir } from "@isaacriehm/cairn-state";
+import { buildDecisionsLedger, decisionsDir } from "@isaacriehm/cairn-state";
 import { jaccard, tokenize } from "../text/jaccard.js";
 
 /** Default char window of body to fold into the token bag. */
@@ -285,4 +285,63 @@ export function findDuplicateClusters(args: {
     thresholdFloor,
     thresholdDefinite,
   };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Accepted-ledger dedup — the verify gate for auto-accept                     */
+/* -------------------------------------------------------------------------- */
+
+export interface AcceptedDuplicate {
+  dup: boolean;
+  /** Matched accepted DEC id, present only when `dup`. */
+  matchId?: string;
+  /** Matched accepted DEC title, present only when `dup`. */
+  matchTitle?: string;
+  /** Title-Jaccard similarity of the match, present only when `dup`. */
+  similarity?: number;
+}
+
+/**
+ * Is a candidate decision a near-duplicate of one ALREADY accepted in the
+ * ledger? This is the dedup half of the auto-accept verify gate: a fresh
+ * DEC that merely restates an accepted one should NOT silently re-land —
+ * it falls back to an `_inbox/` draft for human eyes instead.
+ *
+ * Title-token Jaccard against the accepted (non-superseded) ledger, at the
+ * same `definite` threshold the inbox clusterer uses. Title-vs-title keeps
+ * it symmetric (the ledger only carries titles); deterministic, no LLM.
+ */
+export function isDuplicateOfAccepted(args: {
+  repoRoot: string;
+  title: string;
+  threshold?: number;
+}): AcceptedDuplicate {
+  const threshold = args.threshold ?? DEFAULT_THRESHOLD_DEFINITE;
+  const candidate = tokenize(args.title);
+  if (candidate.size === 0) return { dup: false };
+
+  let entries;
+  try {
+    entries = buildDecisionsLedger({ repoRoot: args.repoRoot });
+  } catch {
+    return { dup: false };
+  }
+
+  let best = { sim: 0, id: "", title: "" };
+  for (const e of entries) {
+    const t = tokenize(e.title);
+    if (t.size === 0) continue;
+    const sim = jaccard(candidate, t);
+    if (sim > best.sim) best = { sim, id: e.id, title: e.title };
+  }
+
+  if (best.sim >= threshold) {
+    return {
+      dup: true,
+      matchId: best.id,
+      matchTitle: best.title,
+      similarity: Math.round(best.sim * 100) / 100,
+    };
+  }
+  return { dup: false };
 }

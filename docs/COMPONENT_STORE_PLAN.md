@@ -131,21 +131,26 @@ Do these in order. Keep `pnpm build` green at every step; never leave
 `overlay.ts` (`buildProjectOverlay`) is a **pure function — do not add IO
 there.** Instead:
 
-1. New `packages/cairn-core/src/init/detect-components.ts` —
-   `detectComponentsConfig(repoRoot, detection): ComponentsConfig | null`.
-   Deterministic FS scan (no LLM). Probe conventional dirs that EXIST:
-   `src/components`, `src/features`, `app/components`, `components`,
-   `src/app/components`; monorepo: `packages/*/src/components`,
-   `apps/*/src/components`. Extensions from the stack signature (default
-   `[.tsx, .jsx]`; `.vue`/`.svelte` if such files exist). `categories` =
-   `DEFAULT_CATEGORIES` (import from cairn-state). For 2+ packages/apps each
-   with a component dir → emit `workspaces` keyed by package name, **all
-   `shared: false`** (invariant 3 — never guess `shared`; operator flips
-   manually, or the 9e annotate step asks). Return `null` when nothing found.
+1. `packages/cairn-core/src/init/detect-components.ts` —
+   `detectComponentsConfig(repoRoot): Promise<ComponentsConfig | null>`.
+   **LLM-driven + convention-agnostic** (not a fixed dir-name probe).
+   Adoption always runs inside an LLM coding agent, so detection asks a
+   model (Sonnet via `runClaude`) rather than hardcoding conventions: a
+   deterministic walk builds a structural digest (per-directory file-
+   extension histogram + the dirs holding a `package.json` + workspace-
+   manifest files), the model returns which workspaces carry reusable UI,
+   their component dirs (wherever they sit — no `src/components` /
+   `packages/*` assumption), the extensions in play, and a taxonomy fitting
+   each workspace. 2+ UI workspaces → `workspaces` form keyed by package
+   name, **never `shared`** (invariant 3 — operator flips manually, or the
+   9e annotate step asks). Returns `null` for non-UI repos (a backend with
+   no components). LLM-only by design — no deterministic fallback; "no
+   model" means adoption isn't running. Detection quality is guarded by the
+   opt-in `pnpm smoke:llm-detect-components` real-LLM smoke.
 2. Call it in `packages/cairn-core/src/init/phases/4-seed.ts` right before
-   `writeFileSync(configPath, stringifyYaml(config))`: attach
-   `config.components = detected` when non-null. (4-seed already has
-   `repoRoot` + `detection` + does IO.)
+   `writeFileSync(configPath, stringifyYaml(config))`: `await` it and
+   attach `config.components = detected` when non-null. (4-seed already has
+   `repoRoot` + does IO.)
 
 **S6.2 — adoption phase that builds the index + drafts singleton §INVs +
 runs the audit.** Recommended shape: a single deterministic phase

@@ -22,7 +22,6 @@ import { join } from "node:path";
 import {
   buildComponentIndex,
   componentsInScope,
-  detectComponentsConfig,
   emitComponentStore,
   ensureComponentsConfig,
   runComponentAudit,
@@ -268,13 +267,12 @@ async function adoption(): Promise<void> {
     hook_capability: "cli-only" as const,
     environment: { claude_auth: false },
   };
-  const detected = detectComponentsConfig(root, detection);
-  assert(detected !== null, "detection finds the single-app component dir");
-  assert(
-    (detected as { componentDirs?: string[] }).componentDirs?.includes("src/components") === true,
-    "detection proposes src/components",
-  );
-  writeConfig(root, detected);
+  // Component-layout detection is LLM-driven (convention-agnostic), so the
+  // discovery quality is exercised by the opt-in real-LLM smoke
+  // (`smoke:llm-detect-components`), not this deterministic gate. Here we
+  // inject the config directly and assert the mechanical adoption pipeline
+  // (walk → annotate → emit → baseline) end-to-end.
+  writeConfig(root, { componentDirs: ["src/components"], extensions: [".tsx"] });
 
   const base = {
     repoRoot: root,
@@ -344,48 +342,37 @@ async function adoption(): Promise<void> {
   console.log("  ✓ adoption trio: walk lists debt, annotate is tolerant, emit indexes + drafts singleton");
 }
 
-function backfill(): void {
-  step("Backfill — ensureComponentsConfig + emitComponentStore on an already-adopted repo");
+async function backfill(): Promise<void> {
+  step("Backfill — ensureComponentsConfig guards + emitComponentStore on an already-adopted repo");
 
-  // not-adopted: a bare dir with no .cairn/ refuses.
+  // not-adopted: a bare dir with no .cairn/ refuses (early return, no LLM).
   const bare = mkdtempSync(join(tmpdir(), "cairn-smoke-comp-bare-"));
   cleanups.push(bare);
   assert(
-    ensureComponentsConfig(bare).status === "not-adopted",
+    (await ensureComponentsConfig(bare)).status === "not-adopted",
     "no .cairn/config.yaml → not-adopted",
   );
 
-  // none: adopted (config.yaml exists) but no component layout on disk.
-  const nonUi = mkdtempSync(join(tmpdir(), "cairn-smoke-comp-nonui-"));
-  cleanups.push(nonUi);
-  mkdirSync(join(nonUi, ".cairn"), { recursive: true });
-  writeFileSync(join(nonUi, ".cairn", "config.yaml"), "project:\n  slug: nonui\n", "utf8");
-  assert(
-    ensureComponentsConfig(nonUi).status === "none",
-    "adopted repo with no component dirs → none",
-  );
-
-  // backfill: adopted repo, no components: block, real component dirs.
+  // exists: a repo that already carries a components: block is the
+  // idempotent no-op path (early return, no LLM). Detection quality
+  // (none for non-UI repos, written for UI repos, the monorepo flag) is
+  // LLM-driven and lives in `smoke:llm-detect-components`, not this gate.
   const root = mkdtempSync(join(tmpdir(), "cairn-smoke-comp-backfill-"));
   cleanups.push(root);
   mkdirSync(join(root, ".cairn"), { recursive: true });
-  writeFileSync(join(root, ".cairn", "config.yaml"), "project:\n  slug: demo\n", "utf8");
+  writeFileSync(
+    join(root, ".cairn", "config.yaml"),
+    "project:\n  slug: demo\ncomponents:\n  componentDirs:\n    - src/components\n  extensions:\n    - .tsx\n",
+    "utf8",
+  );
   write(root, "src/components/AppShell.tsx", header("AppShell", "layout", " * @singleton"));
   write(root, "src/components/Card.tsx", "export function Card() { return null; }\n");
 
-  const detect = ensureComponentsConfig(root);
-  assert(detect.status === "written", `first run writes the block (got ${detect.status})`);
-  assert(detect.monorepo === false, "single-app layout is not flagged monorepo");
+  const exists = await ensureComponentsConfig(root);
+  assert(exists.status === "exists", `existing block → exists no-op (got ${exists.status})`);
   const cfgText = readFileSync(join(root, ".cairn", "config.yaml"), "utf8");
   assert(/^project:/m.test(cfgText), "the pre-existing project: key is preserved");
-  assert(/^components:/m.test(cfgText), "a components: block was merged in");
-  assert(/src\/components/.test(cfgText), "the detected dir is written");
-
-  // Idempotent: a second run leaves the existing block untouched.
-  assert(
-    ensureComponentsConfig(root).status === "exists",
-    "second run is a no-op (exists)",
-  );
+  assert(/^components:/m.test(cfgText), "the components: block is left intact");
 
   // emitComponentStore: same end state as adoption Phase 9f.
   const emit = emitComponentStore(root);
@@ -402,7 +389,7 @@ function backfill(): void {
   assert(/AppShell exists exactly once/.test(ledger), "singleton §INV landed in the ledger");
   const index = readFileSync(join(root, ".cairn/ground/components/INDEX.md"), "utf8");
   assert(/AppShell/.test(index), "INDEX lists the indexed component");
-  console.log("  ✓ backfill: detect merges config, idempotent re-run, emit reaches the 9f end state");
+  console.log("  ✓ backfill: guards (not-adopted / exists no-op), emit reaches the 9f end state");
 }
 
 async function main(): Promise<void> {
@@ -410,7 +397,7 @@ async function main(): Promise<void> {
   monorepo();
   preCommit();
   await adoption();
-  backfill();
+  await backfill();
   cleanup();
   console.log("\nsmoke-components — pass");
 }

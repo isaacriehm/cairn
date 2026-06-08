@@ -4,6 +4,55 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.0] — 2026-06-07
+
+Two adoption-layer changes that lean on the fact Cairn always runs inside
+an LLM coding agent: component detection stops guessing from a hardcoded
+convention list and asks the model instead, and AI-proposed decisions stop
+waiting in a triage queue and land in the ledger directly.
+
+### Changed
+
+- **Component-store detection is now LLM-driven and convention-agnostic.**
+  `detectComponentsConfig` previously probed a fixed list of directory
+  names (`src/components`, `packages/*`, `apps/*`) — so any repo that put
+  its workspaces or component dirs anywhere else simply went undetected
+  and had to be configured by hand. Detection now feeds a structural
+  digest of the repo (per-directory file-extension histogram, the dirs
+  holding a `package.json`, and any workspace-manifest files) to a model,
+  which returns the workspaces that carry reusable UI, their component
+  dirs (wherever they live), the extensions in play, and a taxonomy fit to
+  each workspace. No naming or monorepo-tooling assumptions. Non-UI repos
+  (a backend with no components) still resolve to "nothing to do". The
+  detector is LLM-only by design — there is no deterministic fallback,
+  because "no model available" means adoption is not running at all. The
+  function is now async; callers (`4-seed`, the `cairn components detect`
+  CLI) await it.
+- **Decisions auto-accept into the ledger by default.** `cairn_record_decision`
+  no longer drops every AI-proposed decision into the `_inbox/` triage
+  queue. When the caller does not pin a `target`, the decision is verified
+  (assertions schema-valid — already enforced — and the title not a
+  near-duplicate of an already-accepted decision) and written straight to
+  the canonical decisions zone with `auto_accepted: true` in its
+  frontmatter. The human review checkpoint shifts from the `cairn-attention`
+  queue to the committed-ground-state PR diff. A near-duplicate still falls
+  back to an `_inbox/` draft; an explicit `target: "inbox"` always drafts
+  and `target: "accepted"` always direct-accepts. This is independent of
+  §17 multi-developer enforcement (sensors + CI are unaffected). Opt out
+  with `decisions.auto_accept: false` in `.cairn/config.yaml`.
+- **`component-annotator` subagent pinned to Sonnet** (`claude-sonnet-4-6`).
+  It previously inherited the session model; header annotation is a tight,
+  structured task that does not need the top tier.
+
+### Added
+
+- **`smoke:llm-detect-components`** — opt-in real-Sonnet regression for the
+  agnostic detector (top-level workspaces with non-conventional dir names,
+  single-app, non-UI → null). Burns quota; not part of `pnpm smokes`. Run
+  it when touching the detection prompt/schema or the model alias.
+- **`decisions.auto_accept` config flag** + `auto_accepted` decision
+  frontmatter for provenance.
+
 ## [0.18.2] — 2026-06-07
 
 The component store, for projects that predate it. v0.18.0 wired the

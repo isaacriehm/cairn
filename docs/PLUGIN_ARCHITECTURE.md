@@ -23,7 +23,7 @@ Cairn becomes the **project maintainer**. After install + adoption, the operator
 3. **Chunks complex tasks** and dispatches them as Claude Code subagents — each subagent inherits MCP tools and reads the tightened spec.
 4. **Reviews and attests** at task completion via a bundled reviewer subagent.
 5. **Enforces constraints** at two gates: plugin Stop hook (in-session early signal) + pre-commit git hook (canonical backstop).
-6. **Captures decisions** the reviewer surfaces from the diff, drafts to the inbox, surfaces inline next session.
+6. **Captures decisions** the reviewer surfaces from the diff, auto-accepted into the ledger by default (verify-then-accept; §7.6) — review rides the PR diff, with dedup-fallback drafts surfaced inline next session.
 7. **Detects drift** between ground state and the working tree (GC sweep), surfaces remediation inline.
 
 Operator never types `cairn <subcommand>` for ongoing work. Only `cairn init` (terminal-side bootstrap) remains as a CLI surface; the in-Claude-Code path is the `/cairn-init` slash command + the auto-invoked `cairn-adopt` skill.
@@ -183,6 +183,37 @@ State freshness is event-driven, not wall-clock-driven. Every stateful operation
 
 **Stale state never blocks anything dangerous.** The session-boundary contract is: between two SessionStarts (or between a SessionStart and the next Stop), state can grow stale, but no destructive operation runs against the stale view. Sensor sweeps against the live tree at commit time; in-scope DECs/§INVs are re-read by the MCP read tools on every call. The result is "eventually consistent" — fast for the operator, no background process, drift caught at the next session boundary.
 
+## §7.6 Decision auto-accept
+
+Cairn runs inside an autonomous coding agent, so AI-proposed decisions
+**auto-accept** straight into the ledger by default rather than queuing as
+`_inbox/` drafts for per-item operator triage. `cairn_record_decision`
+promotes a decision to `accepted` when **all** hold:
+
+1. The caller did not pin a `target` (the normal AI path; an explicit
+   `target: "inbox"` is the per-call escape hatch that forces a draft, and
+   `target: "accepted"` forces direct accept).
+2. `decisions.auto_accept` is not set to `false` in `.cairn/config.yaml`
+   (default is on).
+3. **Verify-then-accept passes**: the decision's assertions are
+   schema-valid (already enforced by the tool) and the title is **not a
+   near-duplicate of an already-accepted decision** (deterministic
+   title-Jaccard against the ledger at the `definite` threshold). A
+   near-duplicate falls back to an `_inbox/` draft for human eyes instead
+   of silently re-landing.
+
+Auto-accepted decisions carry `auto_accepted: true` in their frontmatter
+for provenance. **The human review checkpoint moves from the
+`cairn-attention` triage queue to the committed-ground-state PR diff** —
+the decision lands in `.cairn/ground/decisions/` and is reviewed in the
+normal pull-request diff like any other committed file.
+
+This is independent of **§17 multi-developer enforcement**, which gates
+*sensor attestation* at commit/CI time, not decision approval. Auto-accept
+does not weaken §17: sensors still run, CI still gates, and an
+auto-accepted DEC whose assertions break a build surfaces at PR time. Set
+`decisions.auto_accept: false` to restore the per-draft triage queue.
+
 ## §8 Daily flow (post-adoption)
 
 ```
@@ -219,7 +250,9 @@ Main Claude spawns subagents via Task tool
         ▼
 Reviewer subagent fires LAST
    - Reads diff, sensors output, attestation.yaml from each subagent
-   - Surfaces non-obvious choices as DEC drafts → _inbox/
+   - Records non-obvious choices as DECs — auto-accepted into the ledger
+     by default (verify-then-accept; see §7.6), dedup-rejected ones land
+     as _inbox/ drafts
    - Returns attestation summary
         │
         ▼
@@ -227,7 +260,8 @@ Stop hook (plugin) — fires when assistant turn ends
    - Run sensors on diff (staged + unstaged)
    - If findings → surface inline A/B/C
    - Poll invalidation events; if relevant → surface refresh prompt
-   - If new DEC drafts → surface "review N pending decisions? [a/b/c]"
+   - If DEC drafts queued (dedup fallbacks / explicit-inbox) → surface
+     "review N pending decisions? [a/b/c]"
         │
         ▼
 Operator commits → pre-commit git hook (canonical backstop)
@@ -385,7 +419,7 @@ For 1-chunk tasks where main Claude implements inline, the same `// TODO(TSK-<ta
 
 ### Operator-rejection capture
 
-When the operator's prompt rejects prior work, the `cairn-direction` skill captures the pattern as a draft DEC BEFORE the local fix so the rule materializes into ground state (sensors + reviewer + SessionStart context all read DECs). Trigger gate — ALL must hold:
+When the operator's prompt rejects prior work, the `cairn-direction` skill captures the pattern as a DEC BEFORE the local fix so the rule materializes into ground state (sensors + reviewer + SessionStart context all read DECs). The DEC auto-accepts by default (§7.6) — the rejection IS the operator's decision, so it lands in the ledger immediately rather than waiting in a triage queue. Trigger gate — ALL must hold:
 
 1. Rejection signal in the current prompt (substring, case-insensitive): `bad,` / `bad.` / `is bad` / `was bad` (as a verdict — not embedded in `badge` etc.); `don't like` / `dislike` / `i hate`; `stop using` / `don't use` / `never use`; `avoid` (as a directive); `remove that` / `kill that` / `kill the`; `that's wrong` / `wrong approach`; sentence-leading `no, ` rejecting prior work.
 2. The prior assistant turn produced visible code or a concrete pattern (file edit, diff, code snippet, MCP tool output). Skip when the rejection targets a question or proposal rather than shipped code.
@@ -395,7 +429,7 @@ When all three hit:
 
 1. Extract a concrete regex (e.g. `\bas\s+unknown\s+as\b`, `@ts-ignore`, `console\.log`), the scope globs the rule applies to (language-wide default like `**/*.ts` / `**/*.tsx`; narrow when the operator scoped it), and a one-line rationale (operator's reason or best inference).
 2. Dedupe via `cairn_search({query: "<regex/token>", kind: "decision"})`. When an accepted DEC already targets the same pattern, surface `Pattern already in DEC-<id>; not re-drafting.` and continue.
-3. Call `cairn_record_decision` with the inbox-targeted shape (`target: "inbox"` is the default):
+3. Call `cairn_record_decision` (omit `target` — it auto-accepts by default per §7.6; the built-in dedup gate routes a near-duplicate to an `_inbox/` draft instead):
 
    ```jsonc
    cairn_record_decision({
@@ -412,7 +446,7 @@ When all three hit:
    })
    ```
 
-4. Surface ONE line: ``Captured rejection → draft `DEC-<id>` queued for review (`/cairn-attention`).``
+4. Surface ONE line — using the tool's `auto_accepted` result: when accepted, ``Captured rejection → `DEC-<id>` accepted into ground state.``; on dedup fallback, ``Captured rejection → draft `DEC-<id>` queued for review (`/cairn-attention`).``
 5. Continue normal direction flow (pivot detection, mission scope, Step 1 onward). The operator's current-turn fix still needs handling — the capture is additive, not a replacement.
 
 When the rejection is too vague to encode within ~30 seconds of reasoning, skip the draft and apply the local fix directly. A hand-wavy assertion is worse than no DEC.

@@ -86,7 +86,7 @@ Source of truth: `packages/cairn-core/src/mcp/tools/index.ts` (`allTools`).
 
 | Tool                    | What                                                                     |
 | ----------------------- | ------------------------------------------------------------------------ |
-| `cairn_record_decision` | Drop new DEC draft into `_inbox/`. Server allocates `DEC-NNNN`.          |
+| `cairn_record_decision` | Record a DEC — auto-accepts into the ledger by default (verify-then-accept; near-dup → `_inbox/` draft). Server allocates `DEC-NNNN`. |
 | `cairn_task_create`     | Create `.cairn/tasks/active/<id>/` with `spec.tightened.md` + `status.yaml`. |
 
 **Write — retirement (2)**
@@ -253,8 +253,21 @@ Backed by FTS over the ground/. No LLM.
 | `assertions` | object[] | Optional; validated against 11-kind schema |
 | `human_review_hint` | string | Optional |
 | `body_markdown` | string | Optional; inferred from title+summary if absent |
+| `target` | `"inbox"` \| `"accepted"` | Optional; omit for the default auto-accept path |
 
-Drops to `.cairn/ground/decisions/_inbox/<DEC-id>.draft.md`. The cairn-attention skill surfaces the draft inline at the next assistant turn for accept / reject / edit; on accept the file moves to the canonical zone and `decisions.ledger.yaml` updates atomically under the per-write `flock`.
+**Auto-accept by default** (see PLUGIN_ARCHITECTURE.md §7.6). When `target`
+is omitted and `decisions.auto_accept` is not `false`, the decision is
+verified (assertions schema-valid — already enforced — and the title not a
+near-duplicate of an accepted DEC) and written straight to the canonical
+zone `.cairn/ground/decisions/<DEC-id>.md` with `auto_accepted: true`;
+`decisions.ledger.yaml` updates atomically under the per-write `flock`. The
+human review checkpoint is the committed PR diff.
+
+A near-duplicate falls back to `.cairn/ground/decisions/_inbox/<DEC-id>.draft.md`,
+which the cairn-attention skill surfaces inline at the next assistant turn
+for accept / reject / edit. An explicit `target: "inbox"` always drafts;
+`target: "accepted"` always direct-accepts (skips the dedup gate). The
+response reports `auto_accepted` and, on dedup fallback, a `note`.
 
 Errors: `DECISION_ID_TAKEN`, `INVALID_ASSERTION_KIND`, `SUPERSEDES_NOT_FOUND`.
 
@@ -359,11 +372,16 @@ Deliberate omissions, with reasons:
    bug report OR observation per its when_to_use trigger gate)
 3. Skill gathers in-scope context (cairn_in_scope), asks ≤3 clarifying
    questions per round, tightens the spec via cairn_task_create
-4. Reviewer subagent (after dispatch) calls cairn_record_decision → DEC-0099 draft lands in _inbox/
-5. Stop hook surfaces inline: "Review DEC-0099 draft? [a] accept [b] reject [c] edit"
-6. Operator picks [a]
-7. cairn-attention skill calls cairn_resolve_attention({ item_id: "DEC-0099", choice: "a", kind: "decision_draft" })
-8. Server moves draft to canonical, emits invalidation event; future sessions see DEC-0099
+4. Reviewer subagent (after dispatch) calls cairn_record_decision → DEC-0099
+   verifies (assertions valid, not a near-dup) and AUTO-ACCEPTS into
+   .cairn/ground/decisions/DEC-0099.md (auto_accepted: true); emits an
+   invalidation event; future sessions see DEC-0099. Review rides the PR diff.
+   (Had DEC-0099 been a near-duplicate, it would instead land as an _inbox/
+   draft and Step 5 below would run.)
+5. [dedup-fallback / explicit-inbox only] Stop hook surfaces inline:
+   "Review DEC-0099 draft? [a] accept [b] reject [c] edit" → operator picks
+   → cairn-attention calls cairn_resolve_attention → server moves draft to
+   canonical.
 ```
 
 ---

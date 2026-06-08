@@ -15,6 +15,7 @@
     "smokes": "pnpm --filter @isaacriehm/cairn smokes",
     "smokes:all": "pnpm --filter @isaacriehm/cairn smokes:all",
     "smoke:llm-prompt-eval": "pnpm --filter @isaacriehm/cairn smoke:llm-prompt-eval",
+    "smoke:llm-detect-components": "pnpm --filter @isaacriehm/cairn smoke:llm-detect-components",
     "knip": "knip",
     "knip:strict": "knip --no-progress --max-issues 0",
     "version:check": "node scripts/sync-version.mjs --check",

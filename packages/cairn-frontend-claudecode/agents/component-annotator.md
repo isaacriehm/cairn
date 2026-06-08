@@ -1,6 +1,7 @@
 ---
 name: component-annotator
 description: Cairn component-annotator subagent — writes one `@cairn` registry header into one component file. Spawned in parallel batches during Phase 9e-comp-annotate.
+model: claude-sonnet-4-6
 tools:
   - Read
   - Edit

@@ -1,166 +1,285 @@
 /**
- * Deterministic component-dir detection for adoption (Phase 4-seed).
+ * LLM-driven, convention-agnostic component-layout detection.
  *
- * No LLM. Probes conventional component directories that actually
- * exist on disk and proposes a `components:` block for
- * `.cairn/config.yaml`. Returns `null` when the project has no
- * recognizable component layout (non-UI repos stay untouched).
+ * Cairn adoption ALWAYS runs inside an LLM coding agent, so detection
+ * leans on a model rather than a hardcoded convention list — there is no
+ * `src/components` / `packages/*` assumption baked in. A Sonnet call reads
+ * the repo's structural digest (per-directory file-extension histogram,
+ * the dirs that hold a `package.json`, and any workspace-manifest files)
+ * and returns the `components:` config: which workspaces carry reusable
+ * UI, where their component dirs live, the extensions in play, and a
+ * taxonomy that fits THAT workspace. A non-UI repo (a backend with no
+ * components) returns null and is left untouched.
  *
- * Isolation invariant (port invariant 3): a monorepo workspace is
- * NEVER guessed as `shared`. We omit the flag entirely — it normalizes
- * to isolated — and leave the opt-in to the operator (manual config
- * edit or the future annotate step).
+ * Only mechanical, repo-agnostic facts stay deterministic: the file walk
+ * and the universal build-output exclude list. Everything that requires
+ * understanding "what is this directory for" is the model's job — naming,
+ * monorepo tooling, framework, and taxonomy are all inferred, never
+ * assumed.
+ *
+ * Isolation invariant (port invariant 3): a workspace is NEVER emitted as
+ * `shared`. The flag is omitted (it normalizes to isolated); the operator
+ * opts in afterward (the skill asks).
  */
 
-import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { extname, join } from "node:path";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { z } from "zod";
 import {
-  DEFAULT_CATEGORIES,
   DEFAULT_EXCLUDE,
-  DEFAULT_EXTENSIONS,
   walkFs,
   type ComponentsConfig,
 } from "@isaacriehm/cairn-state";
-import { detectAll } from "./detect.js";
-import type { DetectionResult } from "./types.js";
+import { runClaude } from "../claude/index.js";
+import { logger } from "../logger.js";
 
-/** Conventional component-dir suffixes, probed in order under a root or package. */
-const CONVENTIONAL_DIRS = [
-  "src/components",
-  "src/features",
-  "app/components",
-  "src/app/components",
-  "components",
+const log = logger("init.detect-components");
+
+const TIMEOUT_MS = 120_000;
+/** Cap the directory histogram so a huge repo can't blow the prompt. */
+const MAX_DIGEST_DIRS = 600;
+const MAX_MANIFEST_CHARS = 2_000;
+
+/** Workspace-tooling manifests, read verbatim as grouping signal. */
+const WORKSPACE_MANIFESTS = [
+  "pnpm-workspace.yaml",
+  "lerna.json",
+  "nx.json",
+  "turbo.json",
+  "rush.json",
 ] as const;
 
-/** Monorepo package parents to scan for nested component dirs. */
-const MONOREPO_PARENTS = ["packages", "apps"] as const;
-
-/** Extensions we sniff for beyond the React default. */
-const SVELTE_EXT = ".svelte";
-const VUE_EXT = ".vue";
+interface RepoDigest {
+  /** `dir: <count><ext> …` per directory containing source files. */
+  histogram: string;
+  /** Repo-relative dirs that hold a `package.json` (workspace boundaries). */
+  packageRoots: string[];
+}
 
 /**
- * Detect the extension set to scan. Defaults to the React profile
- * (`.tsx`/`.jsx`); appends `.vue`/`.svelte` only when such files
- * actually exist under the candidate dirs (framework-agnostic, but
- * presence-driven so we never invent extensions a repo doesn't use).
+ * Walk the repo once and build an agnostic structural digest: a
+ * per-directory extension histogram plus the set of dirs that carry a
+ * `package.json`. No convention names are consulted — this is raw shape.
  */
-function detectExtensions(repoRoot: string, dirs: string[]): string[] {
-  let hasVue = false;
-  let hasSvelte = false;
-  let hasReact = false;
-  const skipDirs = new Set<string>([...DEFAULT_EXCLUDE]);
-  for (const dir of dirs) {
-    const abs = join(repoRoot, dir);
-    if (!existsSync(abs)) continue;
-    walkFs({
-      dir: abs,
-      repoRoot,
-      skipDirs,
-      onFile: (_rel, fileAbs) => {
-        const e = extname(fileAbs);
-        if (e === VUE_EXT) hasVue = true;
-        else if (e === SVELTE_EXT) hasSvelte = true;
-        else if (e === ".tsx" || e === ".jsx") hasReact = true;
-      },
-    });
-  }
-  const exts: string[] = [];
-  // Keep the React pair as the baseline unless the repo is purely
-  // Vue/Svelte — most TS UI repos still carry .tsx alongside framework files.
-  if (hasReact || (!hasVue && !hasSvelte)) exts.push(...DEFAULT_EXTENSIONS);
-  if (hasVue) exts.push(VUE_EXT);
-  if (hasSvelte) exts.push(SVELTE_EXT);
-  return exts;
-}
+function buildRepoDigest(repoRoot: string): RepoDigest {
+  const skip = new Set<string>([...DEFAULT_EXCLUDE]);
+  const perDir = new Map<string, Map<string, number>>();
+  const packageRoots: string[] = [];
 
-/** Conventional dirs (relative to `base`) that exist on disk. */
-function existingDirs(repoRoot: string, base: string): string[] {
-  return CONVENTIONAL_DIRS.map((suffix) =>
-    base.length > 0 ? `${base}/${suffix}` : suffix,
-  ).filter((rel) => existsSync(join(repoRoot, rel)));
-}
-
-interface WorkspaceProbe {
-  name: string;
-  dirs: string[];
-}
-
-/** Scan `packages/*` + `apps/*` for sub-packages with component dirs. */
-function probeMonorepo(repoRoot: string): WorkspaceProbe[] {
-  const exclude = new Set<string>([...DEFAULT_EXCLUDE]);
-  const found: WorkspaceProbe[] = [];
-  const usedNames = new Set<string>();
-  for (const parent of MONOREPO_PARENTS) {
-    const parentAbs = join(repoRoot, parent);
-    if (!existsSync(parentAbs)) continue;
-    let subs: import("node:fs").Dirent[];
-    try {
-      subs = readdirSync(parentAbs, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const d of subs.sort((a, b) => a.name.localeCompare(b.name))) {
-      if (!d.isDirectory() || exclude.has(d.name) || d.name.startsWith(".")) {
-        continue;
+  walkFs({
+    dir: repoRoot,
+    repoRoot,
+    skipDirs: skip,
+    onFile: (rel, _abs, entry) => {
+      const slash = rel.lastIndexOf("/");
+      const dir = slash === -1 ? "." : rel.slice(0, slash);
+      if (entry.name === "package.json") packageRoots.push(dir);
+      const dot = rel.lastIndexOf(".");
+      const ext = dot > slash ? rel.slice(dot) : "(noext)";
+      let m = perDir.get(dir);
+      if (m === undefined) {
+        m = new Map();
+        perDir.set(dir, m);
       }
-      const dirs = existingDirs(repoRoot, `${parent}/${d.name}`);
-      if (dirs.length === 0) continue;
-      // Disambiguate a name shared by packages/<x> and apps/<x>.
-      let name = d.name;
-      if (usedNames.has(name)) name = `${parent}-${d.name}`;
-      usedNames.add(name);
-      found.push({ name, dirs });
+      m.set(ext, (m.get(ext) ?? 0) + 1);
+    },
+  });
+
+  const dirs = [...perDir.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  const lines: string[] = [];
+  for (const [dir, exts] of dirs) {
+    const parts = [...exts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([e, c]) => `${c}${e}`);
+    lines.push(`${dir}: ${parts.join(" ")}`);
+    if (lines.length >= MAX_DIGEST_DIRS) {
+      lines.push(`… (${dirs.length - MAX_DIGEST_DIRS} more dirs truncated)`);
+      break;
     }
   }
-  return found;
+  return { histogram: lines.join("\n"), packageRoots: packageRoots.sort() };
+}
+
+function readWorkspaceManifests(repoRoot: string): string {
+  const out: string[] = [];
+  for (const name of WORKSPACE_MANIFESTS) {
+    const p = join(repoRoot, name);
+    if (!existsSync(p)) continue;
+    try {
+      out.push(`${name}:\n${readFileSync(p, "utf8").slice(0, MAX_MANIFEST_CHARS)}`);
+    } catch {
+      /* unreadable → skip */
+    }
+  }
+  const rootPkg = join(repoRoot, "package.json");
+  if (existsSync(rootPkg)) {
+    try {
+      out.push(
+        `package.json (root):\n${readFileSync(rootPkg, "utf8").slice(0, MAX_MANIFEST_CHARS)}`,
+      );
+    } catch {
+      /* skip */
+    }
+  }
+  return out.join("\n\n");
+}
+
+const SYSTEM_PROMPT = `You map a repository's reusable-UI-component layout for a component registry. You receive the repo's workspace-manifest files, the directories that contain a package.json, and a per-directory file-extension histogram.
+
+Return STRICT JSON matching the schema. No prose, no markdown.
+
+Definitions:
+- A "component dir" is a directory whose primary contents are REUSABLE UI components (buttons, cards, modals, layout, navigation, domain widgets). It is NOT a route/page dir, NOT tests, NOT stories, NOT backend/service/data/model code, NOT email templates.
+- A "workspace" is an independently-scoped package. A monorepo has 2+ (each typically rooted at a package.json); a single app has one. Infer workspaces from the manifests / package roots / structure.
+
+Hard rules — be convention-agnostic:
+- Do NOT assume any naming. Component dirs are NOT necessarily named "components"; workspaces are NOT necessarily under "packages/" or "apps/". Decide from the actual extension histogram and package roots, wherever they sit (top-level dirs, nested, anywhere).
+- componentDirs are repo-relative POSIX paths that appear in the histogram.
+- Include a workspace ONLY if it actually contains reusable UI components. A backend-only or data-only package (e.g. mostly .ts services with no component dir, or only email-template files) is OMITTED ENTIRELY.
+- extensions: the component file extensions actually present in that workspace's component dirs (e.g. ".tsx", ".jsx", ".vue", ".svelte", ".astro").
+- categories: a SHORT taxonomy (5-12 lowercase kebab-case tags) derived from what THIS workspace actually is — a marketing site leans ["layout","navigation","marketing","forms","media","feedback"], an app shell leans ["layout","navigation","shell","domain","forms","overlay","feedback","data-display"]. Do not copy a fixed list; fit the workspace.
+- name: "" for a single-app repo; for monorepo workspaces use the package's directory name (the last path segment of its root).
+- If the repo has NO reusable UI components at all, return {"is_ui_repo": false, "monorepo": false, "workspaces": []}.`;
+
+const OUTPUT_SCHEMA = {
+  type: "object",
+  required: ["is_ui_repo", "monorepo", "workspaces"],
+  properties: {
+    is_ui_repo: { type: "boolean" },
+    monorepo: { type: "boolean" },
+    workspaces: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["name", "componentDirs", "extensions", "categories"],
+        properties: {
+          name: { type: "string" },
+          componentDirs: { type: "array", items: { type: "string" } },
+          extensions: { type: "array", items: { type: "string" } },
+          categories: { type: "array", items: { type: "string" } },
+        },
+      },
+    },
+  },
+} satisfies object;
+
+const ResultSchema = z.object({
+  is_ui_repo: z.boolean(),
+  monorepo: z.boolean(),
+  workspaces: z.array(
+    z.object({
+      name: z.string(),
+      componentDirs: z.array(z.string()),
+      extensions: z.array(z.string()),
+      categories: z.array(z.string()),
+    }),
+  ),
+});
+type DetectResult = z.infer<typeof ResultSchema>;
+
+function buildPrompt(repoRoot: string): string {
+  const digest = buildRepoDigest(repoRoot);
+  const manifests = readWorkspaceManifests(repoRoot);
+  return [
+    "WORKSPACE MANIFESTS:",
+    manifests.length > 0 ? manifests : "(none)",
+    "",
+    "DIRS CONTAINING A package.json (workspace boundaries):",
+    digest.packageRoots.length > 0 ? digest.packageRoots.join("\n") : "(none)",
+    "",
+    "DIRECTORY EXTENSION HISTOGRAM (path: <count><ext> …):",
+    digest.histogram.length > 0 ? digest.histogram : "(no source files found)",
+    "",
+    "Return the component-layout JSON.",
+  ].join("\n");
+}
+
+async function attempt(
+  repoRoot: string,
+  prompt: string,
+): Promise<DetectResult | null> {
+  let result;
+  try {
+    result = await runClaude({
+      tier: "sonnet",
+      prompt,
+      system: SYSTEM_PROMPT,
+      jsonSchema: OUTPUT_SCHEMA,
+      timeoutMs: TIMEOUT_MS,
+      repoRoot,
+      cacheable: true,
+      isolateAmbientContext: true,
+      purpose: "init.detect-components",
+    });
+  } catch (err) {
+    log.warn(
+      { error: err instanceof Error ? err.message : String(err) },
+      "detect-components: runClaude failed",
+    );
+    return null;
+  }
+  const parsed = ResultSchema.safeParse(result.parsed);
+  if (!parsed.success) {
+    log.warn(
+      { error: parsed.error.message },
+      "detect-components: response failed schema",
+    );
+    return null;
+  }
+  return parsed.data;
+}
+
+function toConfig(parsed: DetectResult): ComponentsConfig | null {
+  if (!parsed.is_ui_repo) return null;
+  const ws = parsed.workspaces.filter((w) => w.componentDirs.length > 0);
+  if (ws.length === 0) return null;
+
+  const exclude = [...DEFAULT_EXCLUDE];
+
+  // Multi-workspace → monorepo `workspaces` form. A lone workspace (even
+  // if the model flagged the repo a monorepo) collapses to the flat form.
+  if (ws.length >= 2) {
+    const usedNames = new Set<string>();
+    const workspaces: Record<string, unknown> = {};
+    for (const w of ws) {
+      let name = w.name.trim().length > 0 ? w.name.trim() : "app";
+      let n = 2;
+      while (usedNames.has(name)) name = `${w.name || "app"}-${n++}`;
+      usedNames.add(name);
+      workspaces[name] = {
+        componentDirs: w.componentDirs,
+        extensions: w.extensions,
+        categories: w.categories,
+      };
+    }
+    return { exclude, workspaces } as ComponentsConfig;
+  }
+
+  const single = ws[0]!;
+  return {
+    componentDirs: single.componentDirs,
+    extensions: single.extensions,
+    categories: single.categories,
+    exclude,
+  };
 }
 
 /**
- * Probe `repoRoot` for a component layout and return a `components:`
- * config block (raw yaml shape), or `null` when nothing is found.
- *
- * - 2+ monorepo packages with component dirs → `workspaces` form.
- * - Exactly one package, or root-level dirs → flat single-app form.
- *
- * `detection` is reserved for future stack-aware tuning; extension
- * detection is presence-driven so the result holds even when stack
- * signatures are absent (e.g. a Vue repo with no tsconfig).
+ * Detect the repo's component layout via the model and return a
+ * `components:` config block (raw yaml shape), or `null` when the repo
+ * carries no reusable UI components. Retries the model call once before
+ * giving up. There is no deterministic fallback by design: detection only
+ * ever runs inside an LLM coding agent, so "no model" means adoption is
+ * not happening at all.
  */
-export function detectComponentsConfig(
+export async function detectComponentsConfig(
   repoRoot: string,
-  _detection: DetectionResult,
-): ComponentsConfig | null {
-  const workspaces = probeMonorepo(repoRoot);
-
-  if (workspaces.length >= 2) {
-    const allDirs = workspaces.flatMap((w) => w.dirs);
-    const config: ComponentsConfig = {
-      extensions: detectExtensions(repoRoot, allDirs),
-      categories: [...DEFAULT_CATEGORIES],
-      exclude: [...DEFAULT_EXCLUDE],
-      workspaces: Object.fromEntries(
-        workspaces.map((w) => [w.name, { componentDirs: w.dirs }]),
-      ),
-    };
-    return config;
-  }
-
-  // Single-app: a lone monorepo package's dirs, else root-level dirs.
-  const dirs =
-    workspaces.length === 1
-      ? workspaces[0]!.dirs
-      : existingDirs(repoRoot, "");
-  if (dirs.length === 0) return null;
-
-  return {
-    componentDirs: dirs,
-    extensions: detectExtensions(repoRoot, dirs),
-    categories: [...DEFAULT_CATEGORIES],
-    exclude: [...DEFAULT_EXCLUDE],
-  };
+): Promise<ComponentsConfig | null> {
+  const prompt = buildPrompt(repoRoot);
+  const out = (await attempt(repoRoot, prompt)) ?? (await attempt(repoRoot, prompt));
+  if (out === null) return null;
+  return toConfig(out);
 }
 
 export type EnsureComponentsStatus =
@@ -168,7 +287,7 @@ export type EnsureComponentsStatus =
   | "not-adopted"
   /** A `components:` block already exists — left untouched (idempotent). */
   | "exists"
-  /** No recognizable component layout on disk — nothing written (non-UI repo). */
+  /** No reusable UI components on disk — nothing written (non-UI repo). */
   | "none"
   /** A `components:` block was detected and merged into the config. */
   | "written";
@@ -183,9 +302,9 @@ export interface EnsureComponentsConfigResult {
 
 /**
  * Backfill a `components:` block into an already-adopted repo's
- * `.cairn/config.yaml`. The same deterministic FS probe adoption Phase
- * 4-seed runs, but applied to a config that already exists — so it MERGES
- * the key in (preserving every other key) rather than writing a fresh file.
+ * `.cairn/config.yaml`. Runs the same LLM detection adoption Phase 4-seed
+ * runs, but MERGES the key into a config that already exists (preserving
+ * every other key) rather than writing a fresh file.
  *
  * Idempotent: a repo that already carries a `components:` block is left
  * untouched ("exists"). The standalone backfill path
@@ -193,12 +312,12 @@ export interface EnsureComponentsConfigResult {
  * is the only caller; adoption keeps using `detectComponentsConfig`
  * directly inside 4-seed.
  *
- * Isolation invariant (port invariant 3): monorepo workspaces are never
- * guessed as `shared` — the operator opts in afterward (the skill asks).
+ * Isolation invariant (port invariant 3): workspaces are never emitted as
+ * `shared` — the operator opts in afterward (the skill asks).
  */
-export function ensureComponentsConfig(
+export async function ensureComponentsConfig(
   repoRoot: string,
-): EnsureComponentsConfigResult {
+): Promise<EnsureComponentsConfigResult> {
   const configPath = join(repoRoot, ".cairn", "config.yaml");
   if (!existsSync(configPath)) {
     return { status: "not-adopted", monorepo: false };
@@ -210,8 +329,7 @@ export function ensureComponentsConfig(
     return { status: "exists", monorepo: false };
   }
 
-  const detection: DetectionResult = detectAll({ repoRoot });
-  const components = detectComponentsConfig(repoRoot, detection);
+  const components = await detectComponentsConfig(repoRoot);
   if (components === null) {
     return { status: "none", monorepo: false };
   }

@@ -7,8 +7,10 @@ import {
 } from "../../decision-capture/index.js";
 import type { McpContext } from "../context.js";
 import { writeInvalidationEvent } from "../../events/index.js";
+import { isDuplicateOfAccepted } from "../../attention/dedup.js";
 import {
   bodyContentHash,
+  decisionsAutoAccept,
   decisionsDir,
   deriveDecId,
   readAnchorMap,
@@ -86,8 +88,9 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
 
   return withWriteLock(ctx.repoRoot, async () => {
     const existingIds = scanExistingDecisionIds(ctx.repoRoot);
-    const target = input.target ?? "inbox";
-    const outDir = target === "accepted" ? dir : inboxDir;
+    // `target` may be promoted from "inbox" to "accepted" by the
+    // auto-accept gate below (after the body/title are resolved).
+    let target = input.target ?? "inbox";
 
     let id: string;
     let body: string;
@@ -174,6 +177,34 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
       return mcpError("SUPERSEDES_NOT_FOUND", `supersedes target "${input.supersedes}" not found`);
     }
 
+    // ── Auto-accept gate ──────────────────────────────────────────────
+    // When auto-accept is on (the default) and the caller did NOT pin a
+    // target, an AI-proposed decision lands straight in the ledger instead
+    // of the triage inbox — the human review checkpoint shifts to the
+    // committed-ground-state PR diff. Verify-then-accept: assertions
+    // already passed schema validation above; here we dedup against the
+    // accepted ledger so a restatement of an existing decision still queues
+    // as a draft for human eyes rather than silently re-landing.
+    //
+    // An explicit `target` is always honored: `"accepted"` forces direct
+    // accept (skips the dedup gate); `"inbox"` forces a triage draft even
+    // when auto-accept is globally on (the per-call escape hatch).
+    let autoAccepted = false;
+    let dedupNote: string | undefined;
+    if (input.target === undefined && decisionsAutoAccept(ctx.repoRoot)) {
+      const dup = isDuplicateOfAccepted({ repoRoot: ctx.repoRoot, title });
+      if (dup.dup) {
+        dedupNote =
+          `near-duplicate of accepted ${dup.matchId} ("${dup.matchTitle}", ` +
+          `sim ${dup.similarity}) — queued as a draft for triage instead of ` +
+          `auto-accepting`;
+      } else {
+        target = "accepted";
+        autoAccepted = true;
+      }
+    }
+
+    const outDir = target === "accepted" ? dir : inboxDir;
     mkdirSync(outDir, { recursive: true });
 
     const frontmatter = {
@@ -191,6 +222,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
       sot_path: sotPath,
       sot_content_hash: bodyContentHash(body),
       source_file: sourceFile,
+      ...(autoAccepted ? { auto_accepted: true } : {}),
       ...(input.supersedes !== undefined ? { supersedes: input.supersedes } : {}),
       ...(input.assertions !== undefined ? { assertions: input.assertions } : {}),
       ...(input.human_review_hint !== undefined ? { human_review_hint: input.human_review_hint } : {}),
@@ -230,7 +262,14 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
       /* ignore */
     }
 
-    return { ok: true, id, target, path: relPath };
+    return {
+      ok: true,
+      id,
+      target,
+      path: relPath,
+      auto_accepted: autoAccepted,
+      ...(dedupNote !== undefined ? { note: dedupNote } : {}),
+    };
   });
 }
 
@@ -277,7 +316,7 @@ function allocateUniqueDecId(
 export const recordDecisionTool: ToolDef<Input> = {
   name: "cairn_record_decision",
   description:
-    "Record a decision in the ledger or inbox. Use `slug` to promote a candidate from the topic index, or provide `title` and `summary` for a manual entry. Use `target='accepted'` (operator only) to bypass the inbox.\n\n" +
+    "Record a decision. Use `slug` to promote a candidate from the topic index, or provide `title` and `summary` for a manual entry. By default decisions AUTO-ACCEPT straight into the ledger (the human review checkpoint is the committed-ground-state PR diff); a near-duplicate of an already-accepted decision falls back to an `_inbox/` draft instead. The response reports `auto_accepted` and, on dedup fallback, a `note`. Set `decisions.auto_accept: false` in `.cairn/config.yaml` to restore per-draft triage. `target='accepted'` forces direct accept (skips the dedup gate).\n\n" +
     "**`assertions` schema** (only emit one of these `kind` values — anything else returns INVALID_ASSERTION_KIND):\n" +
     "- `text_must_match` / `text_must_not_match`: `{id, kind, pattern, in_globs[]}` — regex over files in globs.\n" +
     "- `ast_pattern`: `{id, kind, language, pattern, in_globs[]}` — AST grep in named lang over globs.\n" +

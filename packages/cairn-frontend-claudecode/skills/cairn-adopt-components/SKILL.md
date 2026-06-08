@@ -59,7 +59,9 @@ Branch:
 
 ## Step 1 — detect + write the `components:` config
 
-Run detection (deterministic FS probe — same one adoption uses):
+Run detection (LLM-driven + convention-agnostic — the same one adoption
+uses; it reasons over the repo's structure rather than probing a fixed
+list of conventional dir names, so any layout / monorepo tooling works):
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" components detect
@@ -67,9 +69,9 @@ node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" components detect
 
 Read the stdout and branch:
 
-- **"No recognizable component layout found"** → this isn't a UI repo
-  (no `src/components`, `packages/*`, etc.). Surface one line and end —
-  there is nothing to backfill.
+- **"No recognizable component layout found"** → the model found no
+  reusable UI components (e.g. a backend-only repo). Surface one line and
+  end — there is nothing to backfill.
 - **"already carries a components: block"** → fall through to Step 2.
 - **"Wrote a components: block"** → the config now has a `components:`
   block. If the output also says **"Monorepo detected"**, run Step 1.5.
