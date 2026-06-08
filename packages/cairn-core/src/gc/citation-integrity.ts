@@ -21,6 +21,7 @@ import {
   buildInvariantsLedger,
   decisionsLedgerPath,
   invariantsLedgerPath,
+  knownExtensions,
 } from "@isaacriehm/cairn-state";
 import { walkSourceTree } from "./walk-source.js";
 import type { GcFinding } from "./types.js";
@@ -97,11 +98,13 @@ function fileExt(path: string): string {
   return idx === -1 ? "" : path.slice(idx).toLowerCase();
 }
 
-const SOURCE_EXTENSIONS = new Set([
-  ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs",
-  ".py", ".rb", ".go", ".rs", ".java", ".c", ".cc", ".cpp", ".h", ".hpp",
-  ".swift", ".kt", ".sh", ".bash", ".zsh",
-  ".sql", ".html", ".vue", ".svelte", ".css", ".scss",
+// Code extensions come from the shared language registry (single source);
+// the markup/style extras have no language profile but still carry citations.
+const SOURCE_EXTENSIONS = new Set<string>([
+  ...knownExtensions(),
+  ".html",
+  ".css",
+  ".scss",
 ]);
 
 const INV_RE = /§INV-([0-9a-f]{7,})\b/g;

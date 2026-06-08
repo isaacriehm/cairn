@@ -6,8 +6,8 @@
  * files and blocks the commit (exit 1) on any hard finding — missing `@cairn`
  * header, missing required tag, invalid category, or duplicate name. This is
  * the first real execution path for the pre-commit gate (it was previously a
- * no-op stub). Soft findings (export mismatch, alias collision) print as
- * warnings without blocking.
+ * no-op stub). Soft findings (export mismatch) print as warnings without
+ * blocking.
  *
  * `--commit-msg` is reserved for future commit-message sensors; it passes
  * cleanly today.

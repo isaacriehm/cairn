@@ -50,6 +50,10 @@ const COMPONENT = (name: string): string =>
   `export function ${name}() {\n  return <div className="${name.toLowerCase()}" />;\n}\n`;
 const SERVICE = (name: string): string =>
   `export class ${name} {\n  run() { return ${JSON.stringify(name)}; }\n}\n`;
+const VUE = (name: string): string =>
+  `<template>\n  <div class="${name.toLowerCase()}" />\n</template>\n<script setup lang="ts">\ndefineProps<{ label: string }>()\n</script>\n`;
+const SVELTE = (name: string): string =>
+  `<script lang="ts">\n  export let label: string;\n</script>\n<button class="${name.toLowerCase()}">{label}</button>\n`;
 
 /** Flatten a config's component dirs across flat + workspace forms. */
 function allDirs(cfg: {
@@ -59,6 +63,18 @@ function allDirs(cfg: {
   const out: string[] = [...(cfg.componentDirs ?? [])];
   for (const ws of Object.values(cfg.workspaces ?? {})) {
     out.push(...(ws.componentDirs ?? []));
+  }
+  return out;
+}
+
+/** Flatten a config's extensions across flat + workspace forms. */
+function allExtensions(cfg: {
+  extensions?: string[];
+  workspaces?: Record<string, { extensions?: string[] }>;
+}): string[] {
+  const out: string[] = [...(cfg.extensions ?? [])];
+  for (const ws of Object.values(cfg.workspaces ?? {})) {
+    out.push(...(ws.extensions ?? []));
   }
   return out;
 }
@@ -164,11 +180,106 @@ async function nonUi(): Promise<void> {
   console.log("  ✓ non-UI repo correctly returns null");
 }
 
+/* -------------------------------------------------------------------------- */
+/* Case 4 — NON-REACT stacks (Vue + Svelte). Proves the detector + the         */
+/*          language profile table are not React-bound: a `.vue` / `.svelte`   */
+/*          SFC layout is detected with the right extensions.                  */
+/* -------------------------------------------------------------------------- */
+
+async function nonReactStacks(): Promise<void> {
+  step("Non-React monorepo (Vue SFCs + Svelte SFCs, non-conventional dirs)");
+  const root = mkdtempSync(join(tmpdir(), "cairn-llm-detect-nonreact-"));
+  cleanups.push(root);
+
+  writeFileSync(
+    join(root, "pnpm-workspace.yaml"),
+    "packages:\n  - storefront\n  - console\n",
+    "utf8",
+  );
+
+  // storefront — a Vue app, components under ui/blocks (NOT "components").
+  w(root, "storefront/package.json", '{ "name": "storefront", "dependencies": { "vue": "^3" } }\n');
+  for (const c of ["Hero", "ProductCard", "CartDrawer"]) {
+    w(root, `storefront/ui/blocks/${c}.vue`, VUE(c));
+  }
+
+  // console — a Svelte app, components under src/lib/parts.
+  w(root, "console/package.json", '{ "name": "console", "dependencies": { "svelte": "^4" } }\n');
+  for (const c of ["Sidebar", "StatTile", "FilterBar"]) {
+    w(root, `console/src/lib/parts/${c}.svelte`, SVELTE(c));
+  }
+
+  const cfg = await detectComponentsConfig(root);
+  assert(cfg !== null, "Vue+Svelte monorepo detected (not null)");
+  const dirs = allDirs(cfg!);
+  const exts = allExtensions(cfg!);
+  assert(
+    dirs.some((d) => d.startsWith("storefront/")),
+    `Vue workspace's component dir found (got ${JSON.stringify(dirs)})`,
+  );
+  assert(
+    dirs.some((d) => d.startsWith("console/")),
+    `Svelte workspace's component dir found (got ${JSON.stringify(dirs)})`,
+  );
+  assert(
+    exts.includes(".vue"),
+    `detected extensions include .vue (got ${JSON.stringify(exts)})`,
+  );
+  assert(
+    exts.includes(".svelte"),
+    `detected extensions include .svelte (got ${JSON.stringify(exts)})`,
+  );
+  console.log(`  ✓ detected dirs: ${JSON.stringify(dirs)} · exts: ${JSON.stringify(exts)}`);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Case 5 — NATIVE UI (SwiftUI). No package.json at all: the detector must     */
+/*          find a `.swift` View layout from the histogram + Package.swift,     */
+/*          proving "full native" detection, not just web frameworks.          */
+/* -------------------------------------------------------------------------- */
+
+const SWIFT_VIEW = (name: string): string =>
+  `import SwiftUI\n\nstruct ${name}: View {\n  var body: some View { Text(${JSON.stringify(name)}) }\n}\n`;
+const SWIFT_SERVICE = (name: string): string =>
+  `import Foundation\n\nfinal class ${name} {\n  func run() {}\n}\n`;
+
+async function nativeSwiftUI(): Promise<void> {
+  step("Native SwiftUI app (Package.swift, .swift Views — no package.json)");
+  const root = mkdtempSync(join(tmpdir(), "cairn-llm-detect-swift-"));
+  cleanups.push(root);
+  w(root, "Package.swift", '// swift-tools-version:5.9\nimport PackageDescription\n');
+  // Reusable views under Sources/UI/Components (non-conventional for Cairn).
+  for (const c of ["PrimaryButton", "AvatarBadge", "CardStack"]) {
+    w(root, `Sources/UI/Components/${c}.swift`, SWIFT_VIEW(c));
+  }
+  // A non-UI services dir that must be excluded.
+  for (const s of ["NetworkClient", "AuthStore"]) {
+    w(root, `Sources/Core/Services/${s}.swift`, SWIFT_SERVICE(s));
+  }
+
+  const cfg = await detectComponentsConfig(root);
+  assert(cfg !== null, "SwiftUI app detected (not null)");
+  const dirs = allDirs(cfg!);
+  const exts = allExtensions(cfg!);
+  assert(
+    dirs.some((d) => d.includes("Sources/UI")),
+    `the SwiftUI view dir is found (got ${JSON.stringify(dirs)})`,
+  );
+  assert(
+    !dirs.some((d) => d.includes("Services")),
+    `the non-UI Services dir is excluded (got ${JSON.stringify(dirs)})`,
+  );
+  assert(exts.includes(".swift"), `detected extensions include .swift (got ${JSON.stringify(exts)})`);
+  console.log(`  ✓ detected dirs: ${JSON.stringify(dirs)} · exts: ${JSON.stringify(exts)}`);
+}
+
 async function main(): Promise<void> {
   console.log("== smoke-llm-detect-components (real Sonnet — burns quota) ==");
   await topLevelWorkspaces();
   await singleApp();
   await nonUi();
+  await nonReactStacks();
+  await nativeSwiftUI();
   cleanup();
   console.log("\n✓ smoke-llm-detect-components passed");
 }

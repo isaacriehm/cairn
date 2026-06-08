@@ -8,7 +8,7 @@
  * Layer A mechanical stub-pattern catalog. Catalog grows additively via /oops dialog.
  */
 
-import { lineOf, matchAnyGlob } from "@isaacriehm/cairn-state";
+import { lineOf, matchAnyGlob, sensorLangForFile } from "@isaacriehm/cairn-state";
 import type {
   DiffEntry,
   SensorFinding,
@@ -19,19 +19,12 @@ import type {
 
 const SENSOR_ID = "stub-pattern-catalog";
 
-/** Detect language from extension. Returns undefined for binaries / unknown. */
+/**
+ * Detect sensor language from extension via the shared `languages.ts` profile
+ * table (single source of truth). Returns undefined for binaries / unknown.
+ */
 export function detectLanguage(path: string): SensorLanguage | undefined {
-  const lower = path.toLowerCase();
-  if (lower.endsWith(".ts") || lower.endsWith(".tsx") || lower.endsWith(".cts") || lower.endsWith(".mts"))
-    return "typescript";
-  if (lower.endsWith(".js") || lower.endsWith(".jsx") || lower.endsWith(".cjs") || lower.endsWith(".mjs"))
-    return "javascript";
-  if (lower.endsWith(".py")) return "python";
-  if (lower.endsWith(".rb")) return "ruby";
-  if (lower.endsWith(".go")) return "go";
-  if (lower.endsWith(".rs")) return "rust";
-  if (lower.endsWith(".sql")) return "sql";
-  return undefined;
+  return sensorLangForFile(path);
 }
 
 /** A single stub-pattern regex match found inside the diff. */

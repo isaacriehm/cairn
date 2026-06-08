@@ -95,6 +95,9 @@ function singleApp(): void {
     componentDirs: ["src/components"],
     extensions: [".tsx"],
   });
+  // The inline-rebuild audit is Tailwind-gated (config-file presence) — a
+  // realistic Tailwind project carries a config, so the fixture does too.
+  write(root, "tailwind.config.js", "module.exports = { content: [] };\n");
 
   write(root, "src/components/AppNav.tsx", header("AppNav", "navigation", " * @singleton"));
 
@@ -132,13 +135,29 @@ function singleApp(): void {
   const clean = runComponentCheck(root);
   assert(clean.hardFailures === 0, `clean check has no hard failures (got ${clean.hardFailures})`);
 
-  // Drop a header → missing-header hard finding.
-  write(root, "src/components/Card.tsx", "export function Card() { return null; }\n");
+  // Drop a header on a unit-shaped (PascalCase + JSX) file → missing-header.
+  write(
+    root,
+    "src/components/Card.tsx",
+    "export function Card() { return <div className=\"rounded border p-4\" />; }\n",
+  );
+  // A co-located lowercase ROUTE file with no header is NOT a missing unit —
+  // FIX-1: the walk gates on isUnitShaped, so route/entry files in a mixed
+  // component dir don't flood the gate.
+  write(
+    root,
+    "src/components/page.tsx",
+    "export default function Page() { return <main>home</main>; }\n",
+  );
   const dirty = runComponentCheck(root);
   assert(dirty.hardFailures >= 1, "missing-header is a hard failure");
   assert(
     dirty.findings.some((f) => f.path === "src/components/Card.tsx"),
     "the missing-header finding names Card.tsx",
+  );
+  assert(
+    !dirty.findings.some((f) => f.path === "src/components/page.tsx"),
+    "a co-located lowercase route file (page.tsx) is NOT flagged missing-header",
   );
 
   // Inline rebuild — a lowercase ROUTE file (page.tsx) that copies Hero's
@@ -347,7 +366,11 @@ function preCommit(): void {
   cleanups.push(root);
   writeConfig(root, { componentDirs: ["src/components"], extensions: [".tsx"] });
   write(root, "src/components/Ok.tsx", header("Ok", "utility"));
-  write(root, "src/components/Bad.tsx", "export function Bad() { return null; }\n");
+  write(
+    root,
+    "src/components/Bad.tsx",
+    "export function Bad() { return <div className=\"p-2\">bad</div>; }\n",
+  );
 
   // Only the bad file is staged.
   const staged = runComponentCheck(root, { files: ["src/components/Bad.tsx"] });
@@ -369,7 +392,11 @@ async function adoption(): Promise<void> {
   cleanups.push(root);
 
   write(root, "src/components/AppShell.tsx", header("AppShell", "layout", " * @singleton"));
-  write(root, "src/components/Card.tsx", "export function Card() { return null; }\n");
+  write(
+    root,
+    "src/components/Card.tsx",
+    "export function Card() { return <div className=\"grid gap-2\">card</div>; }\n",
+  );
 
   const detection = {
     repo_root: root,
@@ -480,7 +507,11 @@ async function backfill(): Promise<void> {
     "utf8",
   );
   write(root, "src/components/AppShell.tsx", header("AppShell", "layout", " * @singleton"));
-  write(root, "src/components/Card.tsx", "export function Card() { return null; }\n");
+  write(
+    root,
+    "src/components/Card.tsx",
+    "export function Card() { return <div className=\"grid gap-2\">card</div>; }\n",
+  );
 
   const exists = await ensureComponentsConfig(root);
   assert(exists.status === "exists", `existing block → exists no-op (got ${exists.status})`);

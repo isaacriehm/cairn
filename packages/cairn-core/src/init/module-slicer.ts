@@ -22,34 +22,13 @@ import {
 } from "node:fs";
 import { basename, join, relative } from "node:path";
 import { parse as parseYaml } from "yaml";
+import { knownExtensions } from "@isaacriehm/cairn-state";
 import { logger } from "../logger.js";
 
 const log = logger("init.module-slicer");
 
-const SOURCE_EXTS = new Set<string>([
-  ".ts",
-  ".tsx",
-  ".js",
-  ".jsx",
-  ".mjs",
-  ".cjs",
-  ".py",
-  ".rb",
-  ".go",
-  ".rs",
-  ".java",
-  ".kt",
-  ".swift",
-  ".php",
-  ".cs",
-  ".ex",
-  ".exs",
-  ".c",
-  ".cc",
-  ".cpp",
-  ".h",
-  ".hpp",
-]);
+/** Source extensions counted toward module detection — the shared registry. */
+const SOURCE_EXTS = new Set<string>(knownExtensions());
 
 const SKIP_DIRS = new Set<string>([
   ".git",

@@ -52,9 +52,10 @@ Branch:
   builds the component store as part of adoption." End the turn.
 - **`has-store`** → a `components:` block and a built index already
   exist. This is a **refresh**, not a first backfill — skip Step 1's
-  detect (the config is already there) and go straight to Step 3 (walk
-  for newly-added un-headered files). Surface: "Component store already
-  present — re-checking for un-headered components."
+  detect (the config is already there), run **Step 2.5 (config-gap
+  check)** first, then go to Step 3 (walk for newly-added un-headered
+  files). Surface: "Component store already present — re-checking for
+  un-headered components."
 - **`backfill`** → the normal path. Continue to Step 1.
 
 ## Step 1 — detect + write the `components:` config
@@ -101,6 +102,39 @@ For better `@purpose` / `@aliases`, gather a one-line domain summary the
 annotators can ride on. Prefer `.cairn/ground/brand/` if it exists;
 otherwise infer from the README's first paragraph. Keep it to one
 sentence. This is optional context, not a gate.
+
+## Step 2.5 — config-gap check (refresh path only)
+
+A config written by an older detector — or one that never re-detected —
+can miss whole dirs of co-located components (e.g. `app/**` next to the
+declared `components/` dir). The audit already finds these; on refresh,
+**elevate them** instead of letting them sink into the emit baseline.
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" components audit 2>&1
+```
+
+Collect the `UNREGISTERED-COMPONENT:` lines — each names a component-shaped
+file living OUTSIDE the declared `componentDirs`. Group them by their
+parent directory. If there are none, continue to Step 3 silently.
+
+If there are some, render an `AskUserQuestion` naming the top offending
+dir(s):
+
+> N component-shaped files live outside your component dirs (e.g.
+> `<dir>/…`). Add their dir(s) to the workspace's `componentDirs` so the
+> registry can see them?
+>
+> - `a` add the dir(s) to `componentDirs` · `b` re-detect the layout with
+>   the LLM (a stale config self-corrects) · `c` skip — leave the config
+
+On `a`, edit `.cairn/config.yaml` in place: append each chosen dir to the
+matching workspace's `componentDirs` (top-level for single-app). This is
+safe now — the missing-header walk gates on `isUnitShaped`, so adding a
+mixed dir surfaces only genuine un-headered units, never route/entry
+files (`page.tsx`, `layout.tsx`, …). On `b`, run Step 1's
+`components detect` to rewrite the block, then continue. On `c`, leave
+the config untouched and continue to Step 3.
 
 ## Step 3 — walk for un-headered components
 

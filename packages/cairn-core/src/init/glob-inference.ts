@@ -56,6 +56,35 @@ export function inferGlobsFromDetection(
     route_handler_globs.push("**/handlers.rs", "**/routes.rs");
   }
 
+  // ── Java (Spring) ────────────────────────────────────────
+  if (sigs.some((s) => s.kind === "java")) {
+    route_handler_globs.push("**/*Controller.java", "**/*Resource.java");
+    dto_globs.push("**/dto/**/*.java", "**/*Dto.java", "**/*Request.java");
+  }
+
+  // ── Kotlin (Spring / Ktor) ───────────────────────────────
+  if (sigs.some((s) => s.kind === "kotlin")) {
+    route_handler_globs.push("**/*Controller.kt", "**/routes/**/*.kt");
+    dto_globs.push("**/dto/**/*.kt", "**/*Dto.kt", "**/*Request.kt");
+  }
+
+  // ── C# (.NET) ────────────────────────────────────────────
+  if (sigs.some((s) => s.kind === "csharp")) {
+    route_handler_globs.push("**/Controllers/**/*.cs", "**/*Controller.cs");
+    dto_globs.push("**/Dtos/**/*.cs", "**/*Dto.cs");
+  }
+
+  // ── PHP (Laravel / Symfony) ──────────────────────────────
+  if (sigs.some((s) => s.kind === "php")) {
+    route_handler_globs.push("app/Http/Controllers/**/*.php", "**/*Controller.php");
+    dto_globs.push("app/Http/Requests/**/*.php");
+  }
+
+  // ── Elixir (Phoenix) ─────────────────────────────────────
+  if (sigs.some((s) => s.kind === "elixir")) {
+    route_handler_globs.push("lib/**/*_controller.ex", "lib/**/controllers/**/*.ex");
+  }
+
   // ── Prisma ───────────────────────────────────────────────
   if (has("prisma/schema.prisma")) {
     generator_source_globs.push("prisma/schema.prisma");

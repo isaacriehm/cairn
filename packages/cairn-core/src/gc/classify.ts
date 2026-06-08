@@ -12,7 +12,7 @@
  * over safe.
  */
 
-import { matchAnyGlob } from "@isaacriehm/cairn-state";
+import { knownExtensions, matchAnyGlob } from "@isaacriehm/cairn-state";
 import type { ProjectGlobs } from "../sensors/types.js";
 import type { GcAutoMergeClass } from "./types.js";
 
@@ -27,21 +27,8 @@ const SAFE_PATH_PREFIXES = [
  *  off-source-tree location they are. */
 const DOC_LIKE_EXTS = [".md", ".yaml", ".yml", ".json", ".txt"];
 
-/** Source-code extensions that escalate to code-class. */
-const CODE_EXTS = [
-  ".ts",
-  ".tsx",
-  ".cts",
-  ".mts",
-  ".js",
-  ".jsx",
-  ".cjs",
-  ".mjs",
-  ".py",
-  ".rb",
-  ".go",
-  ".rs",
-];
+/** Source-code extensions that escalate to code-class — the shared registry. */
+const CODE_EXTS = knownExtensions();
 
 export interface ClassifyArgs {
   paths: readonly string[];

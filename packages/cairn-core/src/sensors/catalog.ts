@@ -10,6 +10,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
+import { isSensorLang } from "@isaacriehm/cairn-state";
 import type { StubCatalog, StubPattern, SensorLanguage } from "./types.js";
 import { z } from "zod";
 
@@ -115,16 +116,9 @@ export function parseStubCatalog(yamlText: string): StubCatalog {
 }
 
 function isKnownLanguageOrAll(s: unknown): s is SensorLanguage | "all" {
-  if (s === "all") return true;
-  return (
-    s === "typescript" ||
-    s === "javascript" ||
-    s === "python" ||
-    s === "go" ||
-    s === "ruby" ||
-    s === "rust" ||
-    s === "sql"
-  );
+  // Open registry: `"all"` plus any language profile id. A typo'd tag is
+  // still rejected (not in the table), but any table language is accepted.
+  return s === "all" || isSensorLang(s);
 }
 
 /** Load + parse the sensor registry. */

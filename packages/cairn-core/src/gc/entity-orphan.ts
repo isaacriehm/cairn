@@ -36,6 +36,7 @@ import { join } from "node:path";
 import {
   decisionsDir,
   invariantsDir,
+  knownExtensions,
   parseFrontmatterRecord,
 } from "@isaacriehm/cairn-state";
 import { walkSourceTree } from "./walk-source.js";
@@ -48,11 +49,13 @@ const GRACE_MS = GRACE_DAYS * 86_400_000;
 const INV_RE = /§INV-([0-9a-f]{7,})\b/g;
 const DEC_RE = /§DEC-([0-9a-f]{7,})\b/g;
 
-const SOURCE_EXTENSIONS = new Set([
-  ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs",
-  ".py", ".rb", ".go", ".rs", ".java", ".c", ".cc", ".cpp", ".h", ".hpp",
-  ".swift", ".kt", ".sh", ".bash", ".zsh",
-  ".sql", ".html", ".vue", ".svelte", ".css", ".scss",
+// Code extensions from the shared language registry (single source); markup
+// /style extras have no language profile but still carry §INV/§DEC citations.
+const SOURCE_EXTENSIONS = new Set<string>([
+  ...knownExtensions(),
+  ".html",
+  ".css",
+  ".scss",
 ]);
 
 export type OrphanClassification = "safe" | "ambiguous";

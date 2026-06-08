@@ -95,6 +95,7 @@ export async function runPhase9dCompWalk(
       try {
         exportName = extractExportName(
           readFileSync(join(state.repoRoot, file), "utf8"),
+          file,
         );
       } catch {
         /* unreadable — leave null */

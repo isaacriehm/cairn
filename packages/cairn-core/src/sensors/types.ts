@@ -25,15 +25,13 @@ export interface DiffEntry {
   fromPath?: string;
 }
 
-/** Languages used to filter Layer A patterns + AST assertions. */
-export type SensorLanguage =
-  | "typescript"
-  | "javascript"
-  | "python"
-  | "ruby"
-  | "go"
-  | "rust"
-  | "sql";
+/**
+ * Language tag used to filter Layer A patterns + AST assertions. OPEN string
+ * equal to a `languages.ts` profile id — the registry is the single source,
+ * so a new language is filterable just by living in the table. Common values:
+ * typescript, javascript, python, ruby, go, rust, sql.
+ */
+export type SensorLanguage = string;
 
 /** One pattern entry from .cairn/config/stub-patterns.yaml. */
 export interface StubPattern {

@@ -19,7 +19,12 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import { extname, join, relative } from "node:path";
-import { isComponentHeaderBlock, toPosix } from "@isaacriehm/cairn-state";
+import {
+  commentLangForFile,
+  isComponentHeaderBlock,
+  knownExtensions,
+  toPosix,
+} from "@isaacriehm/cairn-state";
 import {
   type CommentBlock,
   type CommentKind,
@@ -27,36 +32,12 @@ import {
 } from "@isaacriehm/cairn-state";
 export type { CommentBlock, CommentKind, CommentLang };
 
-const SOURCE_EXTENSIONS = new Set<string>([
-  ".ts",
-  ".tsx",
-  ".js",
-  ".jsx",
-  ".mjs",
-  ".cjs",
-  ".py",
-  ".rs",
-  ".go",
-  ".java",
-  ".kt",
-  ".kts",
-  ".swift",
-  ".scala",
-  ".c",
-  ".cc",
-  ".cpp",
-  ".cxx",
-  ".h",
-  ".hpp",
-  ".cs",
-  ".rb",
-  ".sh",
-  ".bash",
-  ".zsh",
-  ".php",
-  ".lua",
-  ".dart",
-]);
+/**
+ * Source extensions scanned for essay comments — derived from the shared
+ * `languages.ts` profile table (single source of truth). An extension whose
+ * `commentLang` is `"unknown"` is listed but skipped during extraction.
+ */
+const SOURCE_EXTENSIONS = new Set<string>(knownExtensions());
 
 const SKIP_DIRS = new Set<string>([
   ".git",
@@ -236,54 +217,7 @@ function pathInSkipDir(rel: string): boolean {
 /* -------------------------------------------------------------------------- */
 
 export function detectLang(file: string): CommentLang {
-  const ext = extname(file).toLowerCase();
-  switch (ext) {
-    case ".ts":
-    case ".tsx":
-    case ".js":
-    case ".jsx":
-    case ".mjs":
-    case ".cjs":
-      return "js";
-    case ".py":
-      return "py";
-    case ".rs":
-      return "rs";
-    case ".go":
-      return "go";
-    case ".java":
-      return "java";
-    case ".kt":
-    case ".kts":
-      return "kt";
-    case ".swift":
-      return "swift";
-    case ".scala":
-      return "scala";
-    case ".c":
-    case ".cc":
-    case ".cpp":
-    case ".cxx":
-    case ".h":
-    case ".hpp":
-      return "c";
-    case ".cs":
-      return "cs";
-    case ".rb":
-      return "rb";
-    case ".sh":
-    case ".bash":
-    case ".zsh":
-      return "sh";
-    case ".php":
-      return "php";
-    case ".lua":
-      return "lua";
-    case ".dart":
-      return "dart";
-    default:
-      return "unknown";
-  }
+  return commentLangForFile(file);
 }
 
 /* -------------------------------------------------------------------------- */

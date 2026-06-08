@@ -1,8 +1,14 @@
 /**
  * Component audit — advisory, read-only, never blocks (port invariant 5).
  *
+ * Language-agnostic: class extraction, unit-shape, and style attributes come
+ * from the shared `languages.ts` profile table (className for JSX, class= /
+ * :class for Vue/Svelte/HTML, SwiftUI `View`, Flutter `Widget`, …). The
+ * Tailwind-specific inline-rebuild scan (1) is gated on a detected Tailwind
+ * config — a non-Tailwind repo skips it rather than misfiring.
+ *
  * Finds violations that predate adoption:
- *   1. Probable inline rebuilds — `className` lists in non-component code
+ *   1. Probable inline rebuilds — class lists in non-component code
  *      whose Tailwind utility ROOTS closely match an indexed component's
  *      (max-w-2xl ≈ max-w-4xl, so value-tweaked copies still match).
  *      Similarity is IDF-weighted over the component corpus: a utility root
@@ -22,14 +28,17 @@
  * rename / register recommendations; never auto-fixed.
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   collectComponents,
+  escapeRegExp,
   extractExportName,
-  extractExportNames,
   hasComponentConfig,
   loadComponentsConfig,
+  profileForExtension,
+  profileForFile,
+  typeDeclKeywordsForFile,
   walkFs,
   type ComponentRecord,
   type NormalizedComponentsConfig,
@@ -45,8 +54,46 @@ const MIN_CLASSES = 3;
  */
 const IDF_DISTINCTIVE_FLOOR = Math.log(2);
 
-const CLASS_ATTR_RE = /className\s*=\s*(?:"([^"]+)"|'([^']+)'|\{`([^`]+)`\})/g;
 const VALUE_SUFFIX = /-(?:\d[^-]*|xs|sm|md|lg|xl|\dxl|auto|full|none|screen|px)$/;
+
+/** Tailwind config filenames — presence gates the inline-rebuild scan. */
+const TAILWIND_CONFIGS = [
+  "tailwind.config.js",
+  "tailwind.config.cjs",
+  "tailwind.config.mjs",
+  "tailwind.config.ts",
+] as const;
+
+/**
+ * Whether the project uses Tailwind — the inline-rebuild scan's utility-root
+ * grammar is Tailwind-specific, so a non-Tailwind repo skips it rather than
+ * misfiring. Detected by config-file presence (root or any workspace's top
+ * segment) or a `tailwindcss` dependency, never assumed.
+ */
+function usesTailwind(repoRoot: string, config: NormalizedComponentsConfig): boolean {
+  const dirs = new Set<string>([""]);
+  for (const ws of config.workspaces) {
+    for (const d of ws.componentDirs) {
+      const seg = d.split("/")[0];
+      if (seg) dirs.add(seg);
+    }
+  }
+  for (const dir of dirs) {
+    for (const name of TAILWIND_CONFIGS) {
+      if (existsSync(join(repoRoot, dir, name))) return true;
+    }
+  }
+  try {
+    const pkg = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+    if (pkg.dependencies?.["tailwindcss"] ?? pkg.devDependencies?.["tailwindcss"]) return true;
+  } catch {
+    /* no / invalid package.json */
+  }
+  return false;
+}
 
 const SKIP_DIRS = new Set([".git", ".cairn", "node_modules", "dist", ".next", "build", "coverage"]);
 
@@ -89,18 +136,38 @@ interface ClassList {
   line: number;
 }
 
-function classLists(source: string): ClassList[] {
+/**
+ * Class lists found via the file's language profile style-attribute regexes
+ * (`className=` for JSX, `class=` / `:class` for Vue/Svelte/HTML, …). The
+ * captured class string is whichever of the alternation's groups matched.
+ */
+function classLists(source: string, styleAttrs: readonly RegExp[]): ClassList[] {
   const lists: ClassList[] = [];
-  CLASS_ATTR_RE.lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = CLASS_ATTR_RE.exec(source)) !== null) {
-    const raw = (m[1] ?? m[2] ?? m[3] ?? "").replace(/\$\{[^}]*\}/g, " ");
-    const classes = raw.split(/\s+/).filter(Boolean);
-    if (classes.length >= MIN_CLASSES) {
-      lists.push({ classes, line: source.slice(0, m.index).split("\n").length });
+  for (const attr of styleAttrs) {
+    const re = new RegExp(attr.source, attr.flags.includes("g") ? attr.flags : `${attr.flags}g`);
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(source)) !== null) {
+      let captured = "";
+      for (let i = 1; i < m.length; i++) {
+        if (m[i] !== undefined) {
+          captured = m[i]!;
+          break;
+        }
+      }
+      const raw = captured.replace(/\$\{[^}]*\}/g, " ");
+      const classes = raw.split(/\s+/).filter(Boolean);
+      if (classes.length >= MIN_CLASSES) {
+        lists.push({ classes, line: source.slice(0, m.index).split("\n").length });
+      }
+      if (re.lastIndex === m.index) re.lastIndex += 1;
     }
   }
   return lists;
+}
+
+/** Style-attribute regexes for a file, or `[]` when the language is unknown. */
+function styleAttrsFor(rel: string): readonly RegExp[] {
+  return profileForFile(rel)?.styleAttrs ?? [];
 }
 
 /** Distinct utility roots of a class list. */
@@ -114,28 +181,19 @@ function inComponentDirs(rel: string, config: NormalizedComponentsConfig): boole
   );
 }
 
-/** JSX markup signal — a tag or a className attribute. */
-const JSX_RE = /<[A-Za-z][^>]*\/?>|className\s*=/;
-
 /**
- * If a file outside the component dirs looks like a misplaced COMPONENT
- * (rather than a hook/context/util, or markup duplicated inside
- * non-component code), return its exported names; otherwise null. Three
- * convention-based signals, no framework list:
- *   1. PascalCase basename — named component files are `FeaturedShell.tsx`;
- *      framework route entry files are lowercase (`page.tsx`, `layout.tsx`).
- *   2. Exports a PascalCase symbol — a component-like export exists (a file
- *      exporting only `useThing` / consts is a hook/util, not a component).
- *   3. Renders JSX — excludes type-only / pure-logic files.
+ * If a file outside the component dirs looks like a misplaced reusable UNIT
+ * (rather than a hook/util/route entry or markup duplicated inside
+ * non-component code), return its exported names; otherwise null. The
+ * "looks like a unit" test is the file's language profile `isUnitShaped` —
+ * React PascalCase + JSX, a Vue/Svelte SFC, a SwiftUI `View`, a Flutter
+ * `Widget`, a Compose `@Composable` — never a hardcoded framework list.
  */
-function misplacedComponentExports(rel: string, source: string): string[] | null {
-  const base = rel.slice(rel.lastIndexOf("/") + 1);
-  const stem = base.includes(".") ? base.slice(0, base.indexOf(".")) : base;
-  if (!/^[A-Z][a-z]/.test(stem)) return null;
-  const names = extractExportNames(source);
-  if (!names.some((n) => /^[A-Z][a-z]/.test(n))) return null;
-  if (!JSX_RE.test(source)) return null;
-  return names;
+function misplacedUnitExports(rel: string, source: string): string[] | null {
+  const profile = profileForFile(rel);
+  if (profile === null || !profile.isUnitShaped(source, rel)) return null;
+  const names = profile.exportSymbols(source, rel);
+  return names.length > 0 ? names : null;
 }
 
 export function runComponentAudit(repoRoot: string): ComponentAuditResult {
@@ -144,29 +202,41 @@ export function runComponentAudit(repoRoot: string): ComponentAuditResult {
 
   const { components } = collectComponents(repoRoot, config);
   const extensions = new Set(config.workspaces.flatMap((w) => w.extensions));
-  const typeExts = new Set([...extensions, ".ts"]);
+  // Files scanned for type-name collisions: the configured UI extensions plus
+  // their language families, so a `.tsx` project also scans sibling `.ts`
+  // type files — derived from the registry, not a hardcoded `.ts`.
+  const typeExts = new Set<string>(extensions);
+  for (const e of extensions) {
+    for (const x of profileForExtension(e)?.extensions ?? []) typeExts.add(x);
+  }
   const skipDirs = new Set([...SKIP_DIRS, ...config.workspaces.flatMap((w) => w.exclude)]);
+  // The inline-rebuild grammar is Tailwind-specific; non-Tailwind repos skip
+  // it (unregistered-component + name-collision still run).
+  const tailwind = usesTailwind(repoRoot, config);
 
   const findings: ComponentAuditFinding[] = [];
   let scanned = 0;
 
   // ── 1. Inline-rebuild scan ────────────────────────────────────────────
-  // Each component's className lists, with utility roots precomputed.
-  const signatures = components
-    .map((c: ComponentRecord) => {
-      let src = "";
-      try {
-        src = readFileSync(join(repoRoot, c.file), "utf8");
-      } catch {
-        /* skip unreadable */
-      }
-      const lists = classLists(src).map((l) => ({
-        line: l.line,
-        roots: rootSet(l.classes),
-      }));
-      return { name: c.tags.cairn ?? "?", file: c.file, lists };
-    })
-    .filter((c) => c.lists.length > 0);
+  // Each component's class lists (per the file's profile), utility roots
+  // precomputed. Skipped entirely when the project isn't on Tailwind.
+  const signatures = !tailwind
+    ? []
+    : components
+        .map((c: ComponentRecord) => {
+          let src = "";
+          try {
+            src = readFileSync(join(repoRoot, c.file), "utf8");
+          } catch {
+            /* skip unreadable */
+          }
+          const lists = classLists(src, styleAttrsFor(c.file)).map((l) => ({
+            line: l.line,
+            roots: rootSet(l.classes),
+          }));
+          return { name: c.tags.cairn ?? "?", file: c.file, lists };
+        })
+        .filter((c) => c.lists.length > 0);
 
   // Corpus IDF: how distinctive each utility root is. A root present in many
   // components (df → N) gets idf → 0; a rare root gets a high weight. Document
@@ -228,13 +298,13 @@ export function runComponentAudit(repoRoot: string): ComponentAuditResult {
 
       // Inline rebuild — only in non-component code with a UI extension.
       if (extensions.has(ext) && !inComponentDirs(rel, config)) {
-        // A component-shaped file outside the component dirs is not a
-        // rebuild — it is a co-located component the registry can't see.
-        // Surface it (with its export names + file) as an offer to
-        // relocate/register; skip the rebuild scan for it.
-        const exports = misplacedComponentExports(rel, source);
+        // A unit-shaped file outside the component dirs is not a rebuild — it
+        // is a co-located component the registry can't see. Surface it (with
+        // its export names + file) as an offer to relocate/register; skip the
+        // rebuild scan for it.
+        const exports = misplacedUnitExports(rel, source);
         if (exports !== null) {
-          const primary = extractExportName(source) ?? exports[0]!;
+          const primary = extractExportName(source, rel) ?? exports[0]!;
           const others = exports.filter((n) => n !== primary);
           const dirs = config.workspaces.flatMap((w) => w.componentDirs).join(", ");
           findings.push({
@@ -249,7 +319,7 @@ export function runComponentAudit(repoRoot: string): ComponentAuditResult {
           });
           return;
         }
-        for (const target of classLists(source)) {
+        for (const target of tailwind ? classLists(source, styleAttrsFor(rel)) : []) {
           const troots = rootSet(target.classes);
           let best: { name: string; file: string; score: number } | null = null;
           for (const comp of signatures) {
@@ -277,19 +347,25 @@ export function runComponentAudit(repoRoot: string): ComponentAuditResult {
         }
       }
 
-      // Name collision — across all type/interface declarations.
-      for (const [name, comp] of nameToComponent) {
-        if (comp.file === rel) continue;
-        const re = new RegExp(`\\b(?:interface|type)\\s+${name}\\b`);
-        if (re.test(source)) {
-          findings.push({
-            kind: "name-collision",
-            file: rel,
-            component: name,
-            componentFile: comp.file,
-            message: `@cairn "${name}" (${comp.file}) collides with a type/interface in ${rel}`,
-            recommendation: "rename the export (and header with it)",
-          });
+      // Name collision — across the file language's type declarations
+      // (TS interface/type/class, Swift struct/protocol, Kotlin class, …).
+      // Languages with no nominal types contribute no keywords → skipped.
+      const declKeywords = typeDeclKeywordsForFile(rel);
+      if (declKeywords.length > 0) {
+        const kw = declKeywords.map(escapeRegExp).join("|");
+        for (const [name, comp] of nameToComponent) {
+          if (comp.file === rel) continue;
+          const re = new RegExp(`\\b(?:${kw})\\s+${escapeRegExp(name)}\\b`);
+          if (re.test(source)) {
+            findings.push({
+              kind: "name-collision",
+              file: rel,
+              component: name,
+              componentFile: comp.file,
+              message: `@cairn "${name}" (${comp.file}) collides with a type declaration in ${rel}`,
+              recommendation: "rename the export (and header with it)",
+            });
+          }
         }
       }
     },

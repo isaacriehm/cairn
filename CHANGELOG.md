@@ -4,6 +4,69 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.0] — 2026-06-08
+
+Language-agnostic Cairn. Every place that silently assumed
+TypeScript/React/Tailwind now routes through one shared language profile
+table, so the component store, sensors, stack detection, and adoption work
+across web (React/Vue/Svelte/Astro) and native (SwiftUI/Flutter/Compose/
+Razor) stacks — not just JS/React. Hard cutover, no compatibility shims.
+
+### Added
+
+- **`cairn-state/src/languages.ts` — the language profile registry.** One
+  data table keyed by extension carrying, per language: comment forms,
+  top-level export extraction, "is this a reusable UI unit" detection,
+  class/style attributes, the source-comment bucket, and the sensor language
+  tag. Eight subsystems now read from it (component collection + audit,
+  `stub-catalog`, the source-comment walker, `gc/citation-integrity`,
+  `gc/entity-orphan`, `gc/classify`, `init/module-slicer`, and the assertion
+  engine's schema filter) — the legacy per-subsystem extension maps are gone.
+- **Native UI support.** SwiftUI views (`struct X: View`), Flutter/Compose
+  widgets, and Razor/Blazor components are first-class units; the LLM
+  component-layout detector and its module-boundary signal recognize native
+  stacks and their manifests (Gradle/Flutter/Swift), not just `package.json`.
+- **`smoke-units-multilang`** — mechanical gate over TS/Vue/Python/Go/Swift/
+  Kotlin/Java (export extraction, every comment-form header, unit-shape,
+  profile-driven name-collision). Opt-in `smoke:llm-detect-components` gains
+  Vue+Svelte and native-SwiftUI cases.
+
+### Changed
+
+- **BREAKING — `@cairn` registry headers parse in every comment form.** Block
+  / JSDoc, `//`, `#`, `<!-- -->` (Vue/Svelte/Razor/HTML), `--` (Lua/SQL), and
+  Python `"""` docstrings; the earliest comment carrying the signal wins.
+- **BREAKING — `SensorLanguage` and `StackKind` are now open strings** backed
+  by the registry. Stack detection covers ~18 ecosystems via a data table and
+  never defaults to TypeScript; the stub-pattern catalog accepts any table
+  language.
+- **BREAKING — the inline-rebuild audit is Tailwind-gated** (config-file
+  presence); non-Tailwind repos skip it instead of misfiring. Style/class
+  extraction is per-language (`className` for JSX, `class`/`:class` for
+  Vue/Svelte/HTML).
+- **BREAKING — the component-store `extensions` fallback is the full
+  `UI_EXTENSIONS` set** (web + native), not React `.tsx`/`.jsx`.
+- Shared regex/string primitives (`escapeRegExp`, `splitCsv`, `PASCAL_CASE_RE`,
+  `HEADER_SIGNAL_RE`, `stemOf`) live in `cairn-state/src/text.ts`.
+
+### Removed
+
+- **BREAKING — the `alias-collision` component finding.** `@aliases` are
+  intentionally-overlapping search hints; overlap is correct, not a defect.
+
+### Fixed
+
+- **Missing-header debt is gated on `isUnitShaped`.** Route/entry files
+  (`page.tsx`, `layout.tsx`) co-located in a component dir no longer flood the
+  gate — only genuine un-headered units count, so a mixed dir is safe to add.
+- **`ast_pattern` assertions stop claiming a verdict they didn't compute.** On
+  a language the text approximation can't handle, the rule downgrades to a
+  one-line advisory; schema assertions now scan every code language.
+- **The audit's name-collision scan is profile-driven** (Swift `struct`,
+  Kotlin `class`, Go `type`, …), not TypeScript `interface`/`type` only.
+- Repaired four NUL bytes that had corrupted template-literal separators in
+  `components.ts` (the file read as binary, not text).
+
 ## [0.19.1] — 2026-06-08
 
 Component-store audit accuracy. The export-name check and the

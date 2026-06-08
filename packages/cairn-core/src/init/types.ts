@@ -5,14 +5,14 @@
  * and proposes per-sensor approval at adoption.
  */
 
-export type StackKind =
-  | "typescript"
-  | "python"
-  | "ruby"
-  | "go"
-  | "rust"
-  | "elixir"
-  | "unknown";
+/**
+ * A stack id — OPEN string, not a closed union. Common ids: typescript,
+ * python, ruby, go, rust, elixir, java, kotlin, csharp, php, dart, swift,
+ * scala, clojure, haskell, cpp, zig, "unknown". The deterministic marker
+ * table in `detect.ts` names the common ecosystems; anything it can't name
+ * is left for the LLM mapper phase rather than coerced to a default.
+ */
+export type StackKind = string;
 
 /** A single detected stack signature with the marker file that flagged it. */
 export interface StackSignature {

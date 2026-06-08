@@ -8,14 +8,18 @@
  * rendering, and validation. Disk writes, the advisory audit, MCP tools, and
  * adoption phases live in cairn-core.
  *
- * Two comment forms are accepted (framework-agnostic; defaults React-flavored):
- *   1. Block form  — the FIRST `/** *​/` comment in the file.
- *   2. Hash form   — the first contiguous run of `#` lines (shebang-aware).
+ * The registry header is recognized in EVERY comment form (language-agnostic):
+ * block `/* *​/` / JSDoc, `//` line runs, `#` hash runs, `<!-- -->` (Vue /
+ * Svelte / Razor / HTML), `--` (Lua / SQL), and Python `"""` docstrings. The
+ * earliest comment carrying the `@cairn <Name>` signal wins. Export extraction
+ * and unit-shape detection are routed through the shared `languages.ts`
+ * profile table, so a Python `def`, a Go capitalized ident, a SwiftUI `View`,
+ * or a Vue SFC are all first-class — there is no JS/React default.
  *
  * The `@cairn <Name>` registry header is disjoint from the pre-existing
  * `@cairn:decision` / `@cairn:rule` SoT markers: the header detector requires
  * whitespace then an identifier start, so a colon-form marker can never be
- * misread as a header. See docs/COMPONENT_STORE_PLAN.md §2.
+ * misread as a header.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -23,9 +27,16 @@ import { extname, join } from "node:path";
 import { z } from "zod";
 import { parse as parseYaml } from "yaml";
 import { walkFs } from "./fs.js";
+import { escapeRegExp, splitCsv, HEADER_SIGNAL_RE } from "./text.js";
+import {
+  extractExportName,
+  extractExportNames,
+  profileForFile,
+  UI_EXTENSIONS,
+} from "./languages.js";
 
 /* -------------------------------------------------------------------------- */
-/* Defaults — the React/UI profile. Overridable per project in config.yaml.   */
+/* Defaults — overridable per project in config.yaml.                         */
 /* -------------------------------------------------------------------------- */
 
 export const DEFAULT_CATEGORIES = [
@@ -40,7 +51,10 @@ export const DEFAULT_CATEGORIES = [
   "utility",
 ] as const;
 
-export const DEFAULT_EXTENSIONS = [".tsx", ".jsx"] as const;
+// The fallback when a config omits `extensions` — every UI file type (web +
+// native), NOT a silent React default. The LLM detector normally writes a
+// precise list; this only fires for hand-written configs that omit it.
+export const DEFAULT_EXTENSIONS = UI_EXTENSIONS;
 
 export const DEFAULT_EXCLUDE = [
   "node_modules",
@@ -193,14 +207,6 @@ export interface ComponentRecord {
   exportNames: string[];
 }
 
-const BLOCK_RE = /\/\*\*([\s\S]*?)\*\//;
-/**
- * Registry-header signal: `@cairn` then whitespace then an identifier start.
- * Deliberately excludes the colon-form `@cairn:decision` / `@cairn:rule`
- * SoT markers — those can never be whitespace-then-identifier.
- */
-const HEADER_SIGNAL_RE = /@cairn[ \t]+[A-Za-z_$]/;
-
 /**
  * True when a raw comment block is a `@cairn` registry header. Exported so
  * the source-comment + curator walkers can exclude headers from candidate
@@ -222,83 +228,70 @@ function parseTagLines(lines: string[]): ComponentTags {
   return tags as ComponentTags;
 }
 
-/**
- * Parse a file's component header into a tag map, or null if absent.
- * Honors the spec rule that the header must be the FIRST block comment
- * (block form) or the first contiguous `#` run (hash form).
- */
-export function parseComponentHeader(source: string): ComponentTags | null {
-  const block = source.match(BLOCK_RE);
-  if (block && isComponentHeaderBlock(block[1] ?? "")) {
-    return parseTagLines((block[1] ?? "").split("\n"));
-  }
-
-  const lines = source.split("\n");
-  let i = 0;
-  if (lines[0]?.startsWith("#!")) i = 1;
-  while (i < lines.length && (lines[i] ?? "").trim() === "") i++;
-  const hash: string[] = [];
-  while (i < lines.length && (lines[i] ?? "").trim().startsWith("#")) {
-    hash.push((lines[i] ?? "").replace(/^\s*#+\s?/, ""));
-    i++;
-  }
-  if (isComponentHeaderBlock(hash.join("\n"))) return parseTagLines(hash);
-  return null;
+interface CommentCandidate {
+  index: number;
+  raw: string;
 }
 
-/**
- * Every top-level exported name in a JS/TS source (best-effort, no AST):
- * `export function/class/const/let/var X`, `export default function/class X`,
- * `export default X;`, and `export { A, B as C }` lists. Order-preserving,
- * de-duplicated. A component file routinely exports several things (the
- * component plus its hooks, schemas, constant tables) — the registry header
- * only needs to match ONE of them, so validation works over this whole set
- * rather than guessing a single "the" export.
- */
-export function extractExportNames(source: string): string[] {
-  const names: string[] = [];
-  const push = (n: string | undefined): void => {
-    if (n && !names.includes(n)) names.push(n);
-  };
+/** Delimited comment forms: block / JSDoc, `<!-- -->`, and `""" """` docstrings. */
+const DELIMITED_COMMENT_RES: readonly RegExp[] = [
+  /\/\*+[\s\S]*?\*\//g, // block + JSDoc
+  /<!--[\s\S]*?-->/g, // html / Vue / Svelte / Razor
+  /(?:"""|''')[\s\S]*?(?:"""|''')/g, // python docstring
+];
 
-  // `export default function/class Name`
-  for (const m of source.matchAll(
-    /export\s+default\s+(?:async\s+)?(?:function|class)\s+([A-Za-z0-9_$]+)/g,
-  )) {
-    push(m[1]);
+/** Single-line comment markers whose contiguous runs form a header block. */
+const LINE_COMMENT_MARKERS = ["//", "#", "--"] as const;
+
+/** Contiguous runs of lines that (ignoring indent) start with `marker`. */
+function lineRuns(source: string, marker: string): CommentCandidate[] {
+  const out: CommentCandidate[] = [];
+  const lines = source.split("\n");
+  const offsets: number[] = [];
+  let o = 0;
+  for (const ln of lines) {
+    offsets.push(o);
+    o += ln.length + 1;
   }
-  // `export function/class/const/let/var Name`
-  for (const m of source.matchAll(
-    /export\s+(?:async\s+)?(?:function|class|const|let|var)\s+([A-Za-z0-9_$]+)/g,
-  )) {
-    push(m[1]);
-  }
-  // `export default Name;` (bare identifier — not a declaration)
-  for (const m of source.matchAll(/export\s+default\s+([A-Za-z0-9_$]+)\s*;/g)) {
-    push(m[1]);
-  }
-  // `export { A, B as C }` — the exported (post-`as`) name is what counts.
-  for (const block of source.matchAll(/export\s*\{([^}]*)\}/g)) {
-    for (const spec of (block[1] ?? "").split(",")) {
-      const parts = spec.trim().split(/\s+as\s+/);
-      push((parts[parts.length - 1] ?? "").trim() || undefined);
+  let i = 0;
+  while (i < lines.length) {
+    if ((lines[i] ?? "").trimStart().startsWith(marker)) {
+      let j = i;
+      const buf: string[] = [];
+      while (j < lines.length && (lines[j] ?? "").trimStart().startsWith(marker)) {
+        buf.push(lines[j] ?? "");
+        j++;
+      }
+      out.push({ index: offsets[i]!, raw: buf.join("\n") });
+      i = j;
+    } else {
+      i++;
     }
   }
-  return names;
+  return out;
 }
 
 /**
- * Best-effort single exported name — the likely `@cairn` value, used as the
- * annotator's hint and for display. Prefers a PascalCase declaration (the
- * component convention) over hooks (`useX`) / SCREAMING_CASE constants that
- * may be declared earlier in the file. Null when nothing is exported.
+ * Parse a file's component header into a tag map, or null if absent. The
+ * header is the EARLIEST comment — in any supported form — that carries the
+ * `@cairn <Name>` signal. The per-line tag finder is tolerant of leading
+ * markers (`*`, `//`, `#`, `--`), so raw comment text parses directly.
  */
-export function extractExportName(source: string): string | null {
-  const names = extractExportNames(source);
-  if (names.length === 0) return null;
-  // PascalCase = leading uppercase followed by a lowercase letter
-  // (excludes SCREAMING_CASE constants like CAMPAIGN_TYPES_BY_CHANNEL).
-  return names.find((n) => /^[A-Z][a-z]/.test(n)) ?? names[0]!;
+export function parseComponentHeader(source: string): ComponentTags | null {
+  const candidates: CommentCandidate[] = [];
+  for (const re of DELIMITED_COMMENT_RES) {
+    for (const m of source.matchAll(re)) {
+      candidates.push({ index: m.index ?? 0, raw: m[0] });
+    }
+  }
+  for (const marker of LINE_COMMENT_MARKERS) {
+    candidates.push(...lineRuns(source, marker));
+  }
+  candidates.sort((a, b) => a.index - b.index);
+  for (const c of candidates) {
+    if (HEADER_SIGNAL_RE.test(c.raw)) return parseTagLines(c.raw.split("\n"));
+  }
+  return null;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -336,8 +329,8 @@ export function collectComponents(
         skipDirs,
         onFile: (rel, abs) => {
           if (!exts.has(extname(abs))) return;
-          if (seen.has(`${ws.name} ${rel}`)) return;
-          seen.add(`${ws.name} ${rel}`);
+          if (seen.has(`${ws.name} ${rel}`)) return;
+          seen.add(`${ws.name} ${rel}`);
           let source: string;
           try {
             source = readFileSync(abs, "utf8");
@@ -346,15 +339,20 @@ export function collectComponents(
           }
           const tags = parseComponentHeader(source);
           if (tags === null) {
-            missing.push(rel);
+            // Only a unit-shaped file (a real component/widget/view) is
+            // "missing a header". Non-unit files co-located in a component
+            // dir — route/entry files like page.tsx / layout.tsx (lowercase,
+            // not unit-shaped) — are skipped, so a mixed dir (e.g. app/) can
+            // be added to componentDirs without flooding the gate with debt.
+            if (profileForFile(rel)?.isUnitShaped(source, rel)) missing.push(rel);
             return;
           }
           components.push({
             file: rel,
             workspace: ws.name,
             tags,
-            exportName: extractExportName(source),
-            exportNames: extractExportNames(source),
+            exportName: extractExportName(source, rel),
+            exportNames: extractExportNames(source, rel),
           });
         },
       });
@@ -400,7 +398,7 @@ function renderGroup(
   depth: number,
 ): void {
   const extRe = new RegExp(
-    `(${extensions.map((e) => e.replace(".", "\\.")).join("|")})$`,
+    `(${extensions.map(escapeRegExp).join("|")})$`,
   );
   const byCat = new Map<string, ComponentRecord[]>();
   for (const c of components) {
@@ -546,8 +544,7 @@ export type ComponentFindingKind =
   | "missing-tag"
   | "invalid-category"
   | "duplicate-name"
-  | "export-mismatch"
-  | "alias-collision";
+  | "export-mismatch";
 
 export interface ComponentFinding {
   kind: ComponentFindingKind;
@@ -558,9 +555,14 @@ export interface ComponentFinding {
 }
 
 /**
- * Validate headers across all workspaces. Name uniqueness + alias collisions
- * are scoped per workspace — platform/Button and site/Button may coexist.
- * Hard findings are gate failures; soft findings are warnings.
+ * Validate headers across all workspaces. Name uniqueness is scoped per
+ * workspace — platform/Button and site/Button may coexist. Hard findings are
+ * gate failures; soft findings are warnings.
+ *
+ * `@aliases` overlap is NOT a finding: aliases are intentionally-overlapping
+ * fuzzy search hints (two components both findable by "activity log" is
+ * correct), so collision is a non-constraint — flagging it drove edits that
+ * deleted valid aliases and degraded search recall.
  */
 export function validateComponents(
   result: CollectResult,
@@ -601,7 +603,7 @@ export function validateComponents(
       });
     }
     if (t.cairn) {
-      const key = `${c.workspace} ${t.cairn}`;
+      const key = `${c.workspace} ${t.cairn}`;
       const prior = names.get(key);
       if (prior !== undefined) {
         findings.push({
@@ -624,28 +626,6 @@ export function validateComponents(
         file: c.file,
         message: `${c.file}: @cairn "${t.cairn}" is not an exported name of the file (exports: ${c.exportNames.join(", ")}) — the registry must not lie about the code; rename the export or fix the header`,
       });
-    }
-  }
-
-  const aliasMap = new Map<string, string>();
-  for (const c of result.components) {
-    const aliases = (c.tags.aliases || "")
-      .split(",")
-      .map((s) => s.trim().toLowerCase())
-      .filter(Boolean);
-    for (const a of aliases) {
-      const key = `${c.workspace} ${a}`;
-      const owner = aliasMap.get(key);
-      if (owner !== undefined && owner !== c.tags.cairn) {
-        findings.push({
-          kind: "alias-collision",
-          severity: "soft",
-          file: c.file,
-          message: `alias "${a}" claimed by both ${owner} and ${c.tags.cairn ?? "?"}`,
-        });
-      } else if (c.tags.cairn) {
-        aliasMap.set(key, c.tags.cairn);
-      }
     }
   }
 
@@ -675,15 +655,9 @@ function toLedgerEntry(c: ComponentRecord): ComponentLedgerEntry {
     file: c.file,
     category: c.tags.category ?? "",
     purpose: c.tags.purpose ?? "",
-    aliases: (c.tags.aliases ?? "")
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean),
+    aliases: splitCsv(c.tags.aliases),
     singleton: Boolean(c.tags.singleton),
-    uses: (c.tags.uses ?? "")
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean),
+    uses: splitCsv(c.tags.uses),
   };
   if (c.tags.status) entry.status = c.tags.status;
   return entry;

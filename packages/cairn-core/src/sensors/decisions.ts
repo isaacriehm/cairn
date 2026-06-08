@@ -14,7 +14,14 @@
 import { execSync } from "node:child_process";
 import { type Dirent, existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { decisionsDir, lineOf, matchAnyGlob, parseFrontmatter } from "@isaacriehm/cairn-state";
+import {
+  decisionsDir,
+  escapeRegExp,
+  knownExtensions,
+  lineOf,
+  matchAnyGlob,
+  parseFrontmatter,
+} from "@isaacriehm/cairn-state";
 import { DecisionFrontmatter, type DecisionAssertion } from "@isaacriehm/cairn-state";
 import type {
   DiffEntry,
@@ -23,6 +30,41 @@ import type {
 } from "./types.js";
 
 const SENSOR_ID = "decision-assertions";
+
+/**
+ * Languages whose `ast_pattern` we can honestly approximate with a text regex
+ * (no ast-grep engine is wired). A DEC targeting any other language is
+ * downgraded to a visible advisory rather than reporting an AST verdict it
+ * never computed. Accepts both ast-grep ids and bare extensions-as-ids.
+ */
+const AST_TEXT_APPROX = new Set<string>([
+  "typescript",
+  "ts",
+  "tsx",
+  "javascript",
+  "js",
+  "jsx",
+  "python",
+  "py",
+  "go",
+  "rust",
+  "rs",
+  "ruby",
+  "rb",
+  "sql",
+]);
+
+/**
+ * Files that may carry a DB schema or migration — any known code file plus the
+ * schema DSLs. Replaces the old `sql|prisma|ts|py|rb` allowlist so schema
+ * assertions check Go/Java/Kotlin/C#/PHP migrations too, not just JS/Python/Ruby.
+ */
+const SCHEMA_FILE_EXTS = new Set<string>([...knownExtensions(), ".prisma", ".graphql", ".gql"]);
+
+function isSchemaFile(path: string): boolean {
+  const dot = path.lastIndexOf(".");
+  return dot !== -1 && SCHEMA_FILE_EXTS.has(path.slice(dot).toLowerCase());
+}
 
 /** All decisions accepted at HEAD with parsed frontmatter. */
 export function loadAcceptedDecisions(repoRoot: string): DecisionFrontmatter[] {
@@ -178,11 +220,9 @@ function evaluateAssertion(args: {
 
   switch (a.kind) {
     case "schema_must_contain": {
-      const candidates = args.allFiles.filter((p) =>
-        /\.(sql|prisma|ts|py|rb)$/i.test(p),
-      );
-      const tableRe = new RegExp(`\\b${escapeReg(a.table)}\\b`);
-      const columnRe = new RegExp(`\\b${escapeReg(a.column)}\\b`);
+      const candidates = args.allFiles.filter((p) => isSchemaFile(p));
+      const tableRe = new RegExp(`\\b${escapeRegExp(a.table)}\\b`);
+      const columnRe = new RegExp(`\\b${escapeRegExp(a.column)}\\b`);
       for (const path of candidates) {
         const text = args.reader.read(path);
         if (!text || !tableRe.test(text) || !columnRe.test(text)) continue;
@@ -237,14 +277,12 @@ function evaluateAssertion(args: {
     }
 
     case "index_must_exist": {
-      const candidates = args.allFiles.filter((p) =>
-        /\.(sql|prisma|ts|py|rb)$/i.test(p),
-      );
+      const candidates = args.allFiles.filter((p) => isSchemaFile(p));
       const colsPattern = a.columns
-        .map((c) => `(?=.*\\b${escapeReg(c)}\\b)`)
+        .map((c) => `(?=.*\\b${escapeRegExp(c)}\\b)`)
         .join("");
       const re = new RegExp(
-        `(?:CREATE\\s+(?:UNIQUE\\s+)?INDEX|index\\s*\\(.*\\bon\\s*:?\\s*['"\`]${escapeReg(a.table)}['"\`])[\\s\\S]{0,400}\\b${escapeReg(a.table)}\\b[\\s\\S]{0,400}${colsPattern}`,
+        `(?:CREATE\\s+(?:UNIQUE\\s+)?INDEX|index\\s*\\(.*\\bon\\s*:?\\s*['"\`]${escapeRegExp(a.table)}['"\`])[\\s\\S]{0,400}\\b${escapeRegExp(a.table)}\\b[\\s\\S]{0,400}${colsPattern}`,
         "i",
       );
       for (const path of candidates) {
@@ -268,16 +306,27 @@ function evaluateAssertion(args: {
     }
 
     case "ast_pattern": {
-      // v1 fallback: regex over in_globs, language ignored beyond filtering.
+      // No ast-grep engine is wired — the pattern is approximated as a text
+      // regex. That approximation is only honest for the languages the
+      // regex fallback handles; for anything else we must NOT report a hard
+      // pass/fail we didn't actually check. Downgrade to a one-line advisory
+      // (operator-chosen) so the rule is visibly text-only, never silent.
       const re = safeRegex(a.pattern);
       if (!re) return finding("soft", `${ctx.decision_id}/${ctx.assertion_id} pattern unparseable`, ctx);
+      if (!AST_TEXT_APPROX.has(a.language.toLowerCase())) {
+        return finding(
+          "soft",
+          `${ctx.decision_id}/${ctx.assertion_id} ast_pattern is advisory on \`${a.language}\` (no AST enforcement, and the text approximation is unreliable here) — verify \`${a.pattern}\` under ${a.in_globs.join(", ")} manually`,
+          ctx,
+        );
+      }
       const inScope = args.allFiles.filter((p) => matchAnyGlob(p, a.in_globs));
       for (const path of inScope) {
         if (re.test(args.reader.read(path))) return null;
       }
       return finding(
         "hard",
-        `${ctx.decision_id}/${ctx.assertion_id} ast_pattern (lang=${a.language}) \`${a.pattern}\` — no match under ${a.in_globs.join(", ")}`,
+        `${ctx.decision_id}/${ctx.assertion_id} ast_pattern (lang=${a.language}, text-approximated) \`${a.pattern}\` — no match under ${a.in_globs.join(", ")}`,
         ctx,
       );
     }
@@ -296,7 +345,7 @@ function evaluateAssertion(args: {
       // Approximate: search in_globs for table + each column appearing in the
       // same statement-ish window. For ORM=drizzle: `.where(and(...col1...col2...))`.
       const inScope = args.allFiles.filter((p) => matchAnyGlob(p, a.in_globs));
-      const tableRef = new RegExp(`\\b${escapeReg(a.table)}\\b`);
+      const tableRef = new RegExp(`\\b${escapeRegExp(a.table)}\\b`);
       const combinator = a.require_combination === "and" ? /\band\s*\(/i : /\bor\s*\(/i;
       let anyHit = false;
       for (const path of inScope) {
@@ -316,7 +365,7 @@ function evaluateAssertion(args: {
             break;
           }
           for (const col of a.columns) {
-            if (!new RegExp(`\\b${escapeReg(col)}\\b`).test(win)) {
+            if (!new RegExp(`\\b${escapeRegExp(col)}\\b`).test(win)) {
               allPresent = false;
               break;
             }
@@ -372,11 +421,11 @@ function evaluateAssertion(args: {
       let any = false;
       for (const path of inScope) {
         const text = args.reader.read(path);
-        const callRe = new RegExp(`\\b${escapeReg(a.after_method)}\\s*\\(`);
+        const callRe = new RegExp(`\\b${escapeRegExp(a.after_method)}\\s*\\(`);
         if (!callRe.test(text)) continue;
         any = true;
         const emitRe = new RegExp(
-          `\\.emit\\s*\\(\\s*['"\`]${escapeReg(a.event_key)}['"\`]`,
+          `\\.emit\\s*\\(\\s*['"\`]${escapeRegExp(a.event_key)}['"\`]`,
         );
         if (!emitRe.test(text)) {
           return finding(
@@ -387,7 +436,7 @@ function evaluateAssertion(args: {
         }
         if (a.payload_must_include && a.payload_must_include.length > 0) {
           for (const field of a.payload_must_include) {
-            if (!new RegExp(`\\b${escapeReg(field)}\\b`).test(text)) {
+            if (!new RegExp(`\\b${escapeRegExp(field)}\\b`).test(text)) {
               return finding(
                 "hard",
                 `${ctx.decision_id}/${ctx.assertion_id} event_must_emit payload missing field \`${field}\` in ${path}`,
@@ -412,12 +461,12 @@ function evaluateAssertion(args: {
       for (const path of inScope) {
         const text = args.reader.read(path);
         const methodRe = new RegExp(
-          `\\b${escapeReg(a.in_method)}\\s*\\([^)]*\\)\\s*(?::\\s*[^{]+)?\\{([\\s\\S]*?)\\n\\s*\\}`,
+          `\\b${escapeRegExp(a.in_method)}\\s*\\([^)]*\\)\\s*(?::\\s*[^{]+)?\\{([\\s\\S]*?)\\n\\s*\\}`,
         );
         const m = methodRe.exec(text);
         if (!m) continue;
         const body = m[1] ?? "";
-        const callRe = new RegExp(`\\b${escapeReg(a.must_call)}\\s*\\(`);
+        const callRe = new RegExp(`\\b${escapeRegExp(a.must_call)}\\s*\\(`);
         if (callRe.test(body)) return null;
         const line = lineOf(text, m.index);
         return finding(
@@ -465,10 +514,6 @@ function finding(
   if (ctx.line !== undefined) f.line = ctx.line;
   if (ctx.matched_text !== undefined) f.matched_text = ctx.matched_text;
   return f;
-}
-
-function escapeReg(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function safeRegex(p: string): RegExp | null {

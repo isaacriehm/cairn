@@ -5,9 +5,10 @@
  * leans on a model rather than a hardcoded convention list — there is no
  * `src/components` / `packages/*` assumption baked in. A Sonnet call reads
  * the repo's structural digest (per-directory file-extension histogram,
- * the dirs that hold a `package.json`, and any workspace-manifest files)
+ * the dirs that hold a per-module manifest, and any workspace-manifest files)
  * and returns the `components:` config: which workspaces carry reusable
- * UI, where their component dirs live, the extensions in play, and a
+ * UI — web (React/Vue/Svelte/Astro) or native (SwiftUI/Flutter/Compose/
+ * Razor) — where their component dirs live, the extensions in play, and a
  * taxonomy that fits THAT workspace. A non-UI repo (a backend with no
  * components) returns null and is left untouched.
  *
@@ -48,13 +49,31 @@ const WORKSPACE_MANIFESTS = [
   "nx.json",
   "turbo.json",
   "rush.json",
+  "settings.gradle",
+  "settings.gradle.kts",
 ] as const;
+
+/**
+ * Per-module manifests whose directory is a workspace/module boundary —
+ * language-agnostic, not just `package.json`. A Gradle/Flutter/Swift monorepo
+ * has no package.json, so without this its module roots would be invisible.
+ */
+const MODULE_MANIFESTS = new Set<string>([
+  "package.json",
+  "build.gradle",
+  "build.gradle.kts",
+  "pom.xml",
+  "pubspec.yaml",
+  "Package.swift",
+  "Cargo.toml",
+  "go.mod",
+]);
 
 interface RepoDigest {
   /** `dir: <count><ext> …` per directory containing source files. */
   histogram: string;
-  /** Repo-relative dirs that hold a `package.json` (workspace boundaries). */
-  packageRoots: string[];
+  /** Repo-relative dirs that hold a per-module manifest (workspace boundaries). */
+  moduleRoots: string[];
 }
 
 /**
@@ -65,7 +84,7 @@ interface RepoDigest {
 function buildRepoDigest(repoRoot: string): RepoDigest {
   const skip = new Set<string>([...DEFAULT_EXCLUDE]);
   const perDir = new Map<string, Map<string, number>>();
-  const packageRoots: string[] = [];
+  const moduleRoots: string[] = [];
 
   walkFs({
     dir: repoRoot,
@@ -74,7 +93,7 @@ function buildRepoDigest(repoRoot: string): RepoDigest {
     onFile: (rel, _abs, entry) => {
       const slash = rel.lastIndexOf("/");
       const dir = slash === -1 ? "." : rel.slice(0, slash);
-      if (entry.name === "package.json") packageRoots.push(dir);
+      if (MODULE_MANIFESTS.has(entry.name)) moduleRoots.push(dir);
       const dot = rel.lastIndexOf(".");
       const ext = dot > slash ? rel.slice(dot) : "(noext)";
       let m = perDir.get(dir);
@@ -98,7 +117,7 @@ function buildRepoDigest(repoRoot: string): RepoDigest {
       break;
     }
   }
-  return { histogram: lines.join("\n"), packageRoots: packageRoots.sort() };
+  return { histogram: lines.join("\n"), moduleRoots: moduleRoots.sort() };
 }
 
 function readWorkspaceManifests(repoRoot: string): string {
@@ -130,14 +149,14 @@ const SYSTEM_PROMPT = `You map a repository's reusable-UI-component layout for a
 Return STRICT JSON matching the schema. No prose, no markdown.
 
 Definitions:
-- A "component dir" is a directory whose primary contents are REUSABLE UI components (buttons, cards, modals, layout, navigation, domain widgets). It is NOT a route/page dir, NOT tests, NOT stories, NOT backend/service/data/model code, NOT email templates.
-- A "workspace" is an independently-scoped package. A monorepo has 2+ (each typically rooted at a package.json); a single app has one. Infer workspaces from the manifests / package roots / structure.
+- A "component dir" is a directory whose primary contents are REUSABLE UI units. This is framework-AGNOSTIC: web components (React/Vue/Svelte/Astro buttons, cards, modals, layout, navigation, domain widgets) AND native UI units — SwiftUI views (\`struct X: View\`), Flutter/Jetpack-Compose widgets (\`extends StatelessWidget\`, \`@Composable fun\`), Razor/Blazor components. It is NOT a route/page/screen-entry dir, NOT tests, NOT stories, NOT backend/service/data/model code, NOT email templates.
+- A "workspace" is an independently-scoped package or module. A monorepo has 2+ (each typically rooted at a package.json or a per-module manifest); a single app has one. Infer workspaces from the manifests / package roots / structure.
 
 Hard rules — be convention-agnostic:
-- Do NOT assume any naming. Component dirs are NOT necessarily named "components"; workspaces are NOT necessarily under "packages/" or "apps/". Decide from the actual extension histogram and package roots, wherever they sit (top-level dirs, nested, anywhere).
+- Do NOT assume any naming OR any language. Component dirs are NOT necessarily named "components"; workspaces are NOT necessarily under "packages/" or "apps/"; the UI is NOT necessarily JS/React. Decide from the actual extension histogram and package roots, wherever they sit (top-level dirs, nested, anywhere).
 - componentDirs are repo-relative POSIX paths that appear in the histogram.
-- Include a workspace ONLY if it actually contains reusable UI components. A backend-only or data-only package (e.g. mostly .ts services with no component dir, or only email-template files) is OMITTED ENTIRELY.
-- extensions: the component file extensions actually present in that workspace's component dirs (e.g. ".tsx", ".jsx", ".vue", ".svelte", ".astro").
+- Include a workspace ONLY if it actually contains reusable UI units. A backend-only or data-only package (e.g. mostly .ts/.go/.kt services with no UI dir, or only email-template files) is OMITTED ENTIRELY.
+- extensions: the UI file extensions actually present in that workspace's component dirs — web (".tsx", ".jsx", ".vue", ".svelte", ".astro", ".razor") or native (".swift" for SwiftUI, ".dart" for Flutter, ".kt" for Compose). Use whatever the histogram actually shows.
 - categories: a SHORT taxonomy (5-12 lowercase kebab-case tags) derived from what THIS workspace actually is — a marketing site leans ["layout","navigation","marketing","forms","media","feedback"], an app shell leans ["layout","navigation","shell","domain","forms","overlay","feedback","data-display"]. Do not copy a fixed list; fit the workspace.
 - name: "" for a single-app repo; for monorepo workspaces use the package's directory name (the last path segment of its root).
 - If the repo has NO reusable UI components at all, return {"is_ui_repo": false, "monorepo": false, "workspaces": []}.`;
@@ -185,8 +204,8 @@ function buildPrompt(repoRoot: string): string {
     "WORKSPACE MANIFESTS:",
     manifests.length > 0 ? manifests : "(none)",
     "",
-    "DIRS CONTAINING A package.json (workspace boundaries):",
-    digest.packageRoots.length > 0 ? digest.packageRoots.join("\n") : "(none)",
+    "DIRS CONTAINING A package/module manifest (workspace boundaries):",
+    digest.moduleRoots.length > 0 ? digest.moduleRoots.join("\n") : "(none)",
     "",
     "DIRECTORY EXTENSION HISTOGRAM (path: <count><ext> …):",
     digest.histogram.length > 0 ? digest.histogram : "(no source files found)",

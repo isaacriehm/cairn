@@ -16,6 +16,7 @@ export * from "./walk.js";
 export * from "./topic-index.js";
 export * from "./rejected.js";
 export * from "./quality-grades.js";
+export * from "./languages.js";
 export * from "./components.js";
 export * from "./config.js";
 export * from "./manifest.js";

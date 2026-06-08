@@ -134,7 +134,12 @@ export async function componentsCli(argv: string[]): Promise<void> {
     case "audit": {
       const r = runComponentAudit(repoRoot);
       for (const f of r.findings) {
-        const label = f.kind === "inline-rebuild" ? "INLINE-REBUILD?" : "NAME-COLLISION:";
+        const label =
+          f.kind === "inline-rebuild"
+            ? "INLINE-REBUILD?"
+            : f.kind === "unregistered-component"
+              ? "UNREGISTERED-COMPONENT:"
+              : "NAME-COLLISION:";
         console.log(`${label} ${f.message}`);
         console.log(`  ladder: ${f.recommendation}.`);
       }

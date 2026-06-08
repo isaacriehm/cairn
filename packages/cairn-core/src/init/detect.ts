@@ -6,7 +6,7 @@
  * read filesystem signatures, parse package files, return proposals.
  */
 
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { normalizeProjectName } from "../paths/index.js";
 import type {
@@ -93,20 +93,71 @@ export function detectProjectSlug(args: {
   return normalizeProjectName(dirName || "this-project");
 }
 
+/**
+ * Manifest-file markers → stack id. An OPEN data table: extend the long tail
+ * by adding a row, never by widening branching code. First marker per stack
+ * wins (a python repo with both pyproject + requirements is one signature).
+ */
+const STACK_MARKERS: ReadonlyArray<{ marker: string; stackId: StackKind }> = [
+  { marker: "package.json", stackId: "typescript" },
+  { marker: "pyproject.toml", stackId: "python" },
+  { marker: "requirements.txt", stackId: "python" },
+  { marker: "Pipfile", stackId: "python" },
+  { marker: "Gemfile", stackId: "ruby" },
+  { marker: "go.mod", stackId: "go" },
+  { marker: "Cargo.toml", stackId: "rust" },
+  { marker: "mix.exs", stackId: "elixir" },
+  { marker: "build.gradle.kts", stackId: "kotlin" },
+  { marker: "build.gradle", stackId: "java" },
+  { marker: "pom.xml", stackId: "java" },
+  { marker: "composer.json", stackId: "php" },
+  { marker: "pubspec.yaml", stackId: "dart" },
+  { marker: "Package.swift", stackId: "swift" },
+  { marker: "build.sbt", stackId: "scala" },
+  { marker: "deps.edn", stackId: "clojure" },
+  { marker: "project.clj", stackId: "clojure" },
+  { marker: "stack.yaml", stackId: "haskell" },
+  { marker: "CMakeLists.txt", stackId: "cpp" },
+  { marker: "build.zig", stackId: "zig" },
+];
+
+/** Markers identified by extension in the repo root (project-file globs). */
+const STACK_GLOB_MARKERS: ReadonlyArray<{ suffix: string; stackId: StackKind }> = [
+  { suffix: ".csproj", stackId: "csharp" },
+  { suffix: ".sln", stackId: "csharp" },
+  { suffix: ".fsproj", stackId: "fsharp" },
+  { suffix: ".cabal", stackId: "haskell" },
+];
+
 export function detectStackSignatures(repoRoot: string): StackSignature[] {
   const out: StackSignature[] = [];
+  const seen = new Set<string>();
 
-  const tryAdd = (file: string, kind: StackKind): void => {
-    if (existsSync(join(repoRoot, file))) out.push({ kind, marker: file });
-  };
+  for (const { marker, stackId } of STACK_MARKERS) {
+    if (seen.has(stackId)) continue;
+    if (existsSync(join(repoRoot, marker))) {
+      out.push({ kind: stackId, marker });
+      seen.add(stackId);
+    }
+  }
 
-  tryAdd("package.json", "typescript");
-  tryAdd("requirements.txt", "python");
-  tryAdd("Gemfile", "ruby");
-  tryAdd("go.mod", "go");
-  tryAdd("Cargo.toml", "rust");
-  tryAdd("mix.exs", "elixir");
+  let entries: string[] = [];
+  try {
+    entries = readdirSync(repoRoot);
+  } catch {
+    /* unreadable root — skip glob markers */
+  }
+  for (const { suffix, stackId } of STACK_GLOB_MARKERS) {
+    if (seen.has(stackId)) continue;
+    const hit = entries.find((e) => e.endsWith(suffix));
+    if (hit !== undefined) {
+      out.push({ kind: stackId, marker: hit });
+      seen.add(stackId);
+    }
+  }
 
+  // No coercion to a default: an unrecognized stack stays "unknown" and the
+  // LLM mapper names it, rather than being mislabeled TypeScript.
   if (out.length === 0) out.push({ kind: "unknown", marker: "(none)" });
   return out;
 }
@@ -277,16 +328,30 @@ export function detectStartCommand(args: {
     }
   }
 
-  if (args.signatures.some((s) => s.kind === "go")) {
-    return {
-      command: "go",
-      args: ["run", "."],
-      reason: "go.mod found; standard go run entrypoint",
-    };
+  // Per-stack deterministic baselines for the unambiguous toolchains. Project
+  // overrides come from the LLM mapper; an unrecognized stack returns null and
+  // relies on it entirely (no JS default).
+  for (const { stackId, command, args: cmdArgs, reason } of STACK_START_COMMANDS) {
+    if (args.signatures.some((s) => s.kind === stackId)) {
+      return { command, args: [...cmdArgs], reason };
+    }
   }
 
   return null;
 }
+
+/** Unambiguous per-stack dev/run baselines. TS is handled above (scripts). */
+const STACK_START_COMMANDS: ReadonlyArray<{
+  stackId: StackKind;
+  command: string;
+  args: readonly string[];
+  reason: string;
+}> = [
+  { stackId: "go", command: "go", args: ["run", "."], reason: "go.mod found; standard go run entrypoint" },
+  { stackId: "rust", command: "cargo", args: ["run"], reason: "Cargo.toml found; standard cargo run entrypoint" },
+  { stackId: "elixir", command: "mix", args: ["run", "--no-halt"], reason: "mix.exs found; standard mix run entrypoint" },
+  { stackId: "dart", command: "dart", args: ["run"], reason: "pubspec.yaml found; standard dart run entrypoint" },
+];
 
 export interface HookCapabilityResult {
   can_hook: boolean;
