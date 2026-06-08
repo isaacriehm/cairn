@@ -4,6 +4,44 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.1] — 2026-06-08
+
+Component-store audit accuracy. The export-name check and the
+inline-rebuild detector were both firing on false positives, and
+co-located components were being mislabeled instead of surfaced. All three
+are corrected.
+
+### Fixed
+
+- **Export-name check no longer false-positives on multi-export files.**
+  A component file routinely exports several things (the component plus its
+  hooks, schemas, constant tables). The validator compared the `@cairn`
+  header against a single best-effort "the" export — whichever declaration
+  appeared first — so a file whose hook or constant was declared before the
+  component was wrongly flagged ("`@cairn Foo` does not match exported name
+  `useFoo`") even though the header was correct. The header is now valid if
+  it matches ANY exported name in the file. `extractExportName` also prefers
+  a PascalCase declaration over hooks/SCREAMING_CASE constants for its
+  single-name hint.
+- **Inline-rebuild audit is IDF-weighted — no more generic-utility floods.**
+  The detector matched `className` lists by Tailwind utility-root overlap,
+  so route/page files sharing only ubiquitous layout scaffolding
+  (`flex`/`gap`/`mx`/`px`) matched components at `root-similarity 1.00`. It
+  now weights roots by inverse document frequency over the component
+  corpus: a root nearly every component uses contributes almost nothing, so
+  only overlap on DISTINCTIVE class roots counts. Self-tuning to the
+  project's own CSS; no hardcoded utility list.
+
+### Added
+
+- **`unregistered-component` audit advisory.** A component-shaped file
+  (PascalCase basename, a PascalCase export, JSX markup) living OUTSIDE the
+  declared component dirs — a co-located component the registry can't see —
+  is now surfaced as an offer to relocate or register it, naming the export
+  and the file, rather than being mislabeled an inline rebuild. Framework
+  route entry files (`page.tsx`/`layout.tsx`, lowercase) are excluded by
+  convention, no framework list.
+
 ## [0.19.0] — 2026-06-07
 
 Two adoption-layer changes that lean on the fact Cairn always runs inside

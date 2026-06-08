@@ -187,8 +187,10 @@ export interface ComponentRecord {
   /** Owning workspace name; "" for single-app. */
   workspace: string;
   tags: ComponentTags;
-  /** Best-effort detected export name, or null when undetectable. */
+  /** Best-effort single detected export name, or null when undetectable. */
   exportName: string | null;
+  /** Every top-level export name in the file (header must match one). */
+  exportNames: string[];
 }
 
 const BLOCK_RE = /\/\*\*([\s\S]*?)\*\//;
@@ -244,17 +246,59 @@ export function parseComponentHeader(source: string): ComponentTags | null {
   return null;
 }
 
-/** Best-effort exported-name extraction (JS/TS). Null when undetectable. */
+/**
+ * Every top-level exported name in a JS/TS source (best-effort, no AST):
+ * `export function/class/const/let/var X`, `export default function/class X`,
+ * `export default X;`, and `export { A, B as C }` lists. Order-preserving,
+ * de-duplicated. A component file routinely exports several things (the
+ * component plus its hooks, schemas, constant tables) — the registry header
+ * only needs to match ONE of them, so validation works over this whole set
+ * rather than guessing a single "the" export.
+ */
+export function extractExportNames(source: string): string[] {
+  const names: string[] = [];
+  const push = (n: string | undefined): void => {
+    if (n && !names.includes(n)) names.push(n);
+  };
+
+  // `export default function/class Name`
+  for (const m of source.matchAll(
+    /export\s+default\s+(?:async\s+)?(?:function|class)\s+([A-Za-z0-9_$]+)/g,
+  )) {
+    push(m[1]);
+  }
+  // `export function/class/const/let/var Name`
+  for (const m of source.matchAll(
+    /export\s+(?:async\s+)?(?:function|class|const|let|var)\s+([A-Za-z0-9_$]+)/g,
+  )) {
+    push(m[1]);
+  }
+  // `export default Name;` (bare identifier — not a declaration)
+  for (const m of source.matchAll(/export\s+default\s+([A-Za-z0-9_$]+)\s*;/g)) {
+    push(m[1]);
+  }
+  // `export { A, B as C }` — the exported (post-`as`) name is what counts.
+  for (const block of source.matchAll(/export\s*\{([^}]*)\}/g)) {
+    for (const spec of (block[1] ?? "").split(",")) {
+      const parts = spec.trim().split(/\s+as\s+/);
+      push((parts[parts.length - 1] ?? "").trim() || undefined);
+    }
+  }
+  return names;
+}
+
+/**
+ * Best-effort single exported name — the likely `@cairn` value, used as the
+ * annotator's hint and for display. Prefers a PascalCase declaration (the
+ * component convention) over hooks (`useX`) / SCREAMING_CASE constants that
+ * may be declared earlier in the file. Null when nothing is exported.
+ */
 export function extractExportName(source: string): string | null {
-  let m = source.match(
-    /export\s+default\s+(?:async\s+)?(?:function|class)\s+([A-Za-z0-9_]+)/,
-  );
-  if (m) return m[1] ?? null;
-  m = source.match(/export\s+(?:async\s+)?(?:function|class|const)\s+([A-Za-z0-9_]+)/);
-  if (m) return m[1] ?? null;
-  m = source.match(/export\s+default\s+([A-Za-z0-9_]+)\s*;/);
-  if (m) return m[1] ?? null;
-  return null;
+  const names = extractExportNames(source);
+  if (names.length === 0) return null;
+  // PascalCase = leading uppercase followed by a lowercase letter
+  // (excludes SCREAMING_CASE constants like CAMPAIGN_TYPES_BY_CHANNEL).
+  return names.find((n) => /^[A-Z][a-z]/.test(n)) ?? names[0]!;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -310,6 +354,7 @@ export function collectComponents(
             workspace: ws.name,
             tags,
             exportName: extractExportName(source),
+            exportNames: extractExportNames(source),
           });
         },
       });
@@ -569,12 +614,15 @@ export function validateComponents(
         names.set(key, c.file);
       }
     }
-    if (t.cairn && c.exportName && t.cairn !== c.exportName) {
+    // Flag only when the header names something the file does NOT export at
+    // all — a file with multiple exports (component + hooks/consts/schemas)
+    // is valid as long as the `@cairn` name is one of them.
+    if (t.cairn && c.exportNames.length > 0 && !c.exportNames.includes(t.cairn)) {
       findings.push({
         kind: "export-mismatch",
         severity: "soft",
         file: c.file,
-        message: `${c.file}: @cairn "${t.cairn}" does not match exported name "${c.exportName}" — the registry must not lie about the code; rename the export or fix the header`,
+        message: `${c.file}: @cairn "${t.cairn}" is not an exported name of the file (exports: ${c.exportNames.join(", ")}) — the registry must not lie about the code; rename the export or fix the header`,
       });
     }
   }

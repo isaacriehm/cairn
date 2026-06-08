@@ -97,25 +97,33 @@ function singleApp(): void {
   });
 
   write(root, "src/components/AppNav.tsx", header("AppNav", "navigation", " * @singleton"));
-  write(
-    root,
-    "src/components/Hero.tsx",
+
+  // A realistic corpus: every component shares the GENERIC layout utilities
+  // (mx-auto/flex/gap/px/py) so those roots are non-distinctive (high df →
+  // idf≈0), and each carries its own DISTINCTIVE classes. The IDF-weighted
+  // audit keys inline-rebuild matches off the distinctive roots, not the
+  // ubiquitous scaffolding.
+  const comp = (name: string, cat: string, distinctive: string): string =>
     [
       "/**",
-      " * @cairn Hero",
-      " * @category marketing",
-      " * @purpose Landing hero section.",
-      " * @aliases hero, banner, splash",
+      ` * @cairn ${name}`,
+      ` * @category ${cat}`,
+      ` * @purpose ${name} section.`,
+      ` * @aliases ${name.toLowerCase()}, ${name.toLowerCase()} block`,
       " */",
-      "export function Hero() {",
-      '  return <div className="max-w-2xl mx-auto px-4 py-8 flex flex-col gap-6" />;',
+      `export function ${name}() {`,
+      `  return <div className="mx-auto flex flex-col gap-6 px-4 py-8 ${distinctive}" />;`,
       "}",
       "",
-    ].join("\n"),
-  );
+    ].join("\n");
+  write(root, "src/components/Hero.tsx", comp("Hero", "marketing", "backdrop-blur-xl ring-2 snap-x"));
+  write(root, "src/components/Panel.tsx", comp("Panel", "layout", "divide-y border-dashed"));
+  write(root, "src/components/Toolbar.tsx", comp("Toolbar", "navigation", "sticky top-0 z-50"));
+  write(root, "src/components/Badge.tsx", comp("Badge", "data-display", "uppercase tracking-wide"));
+  write(root, "src/components/Modal.tsx", comp("Modal", "overlay", "fixed inset-0 backdrop-saturate"));
 
   const build = buildComponentIndex(root);
-  assert(build.total === 2, `index counts 2 components (got ${build.total})`);
+  assert(build.total === 6, `index counts 6 components (got ${build.total})`);
   assert(build.missing === 0, "no missing headers yet");
   const index = readFileSync(join(root, ".cairn/ground/components/INDEX.md"), "utf8");
   assert(/AppNav \[S\]/.test(index), "INDEX marks AppNav as a [S] singleton");
@@ -133,27 +141,133 @@ function singleApp(): void {
     "the missing-header finding names Card.tsx",
   );
 
-  // Inline rebuild in a non-component page → audit advisory (exit-0 surface).
+  // Inline rebuild — a lowercase ROUTE file (page.tsx) that copies Hero's
+  // DISTINCTIVE classes is flagged as a rebuild (it is non-component code).
   write(
     root,
-    "src/pages/Landing.tsx",
+    "src/app/promo/page.tsx",
     [
-      "export function Landing() {",
-      '  return <div className="max-w-4xl mx-auto px-6 py-12 flex flex-col gap-8" />;',
+      "export default function Page() {",
+      '  return <div className="mx-auto flex flex-col gap-8 px-6 py-12 backdrop-blur-xl ring-2 snap-x" />;',
       "}",
       "",
     ].join("\n"),
   );
-  // Landing lives outside componentDirs, so it must be scanned for rebuilds —
-  // the audit walks the whole tree. Hero's class roots match Landing's.
+  // True negative — a route file using ONLY generic layout scaffolding shares
+  // no distinctive roots, so the IDF-weighted audit must NOT flag it.
+  write(
+    root,
+    "src/app/plain/page.tsx",
+    [
+      "export default function Page() {",
+      '  return <div className="mx-auto flex flex-col gap-6 px-4 py-8" />;',
+      "}",
+      "",
+    ].join("\n"),
+  );
+  // Unregistered component — a PascalCase-named component file co-located
+  // OUTSIDE the component dirs. Not a rebuild: surfaced as an offer to
+  // relocate/register, naming its export + file.
+  write(
+    root,
+    "src/app/featured/FeaturedShell.tsx",
+    [
+      "export const FEATURED_TABS = ['summary'];",
+      "export function FeaturedShell() {",
+      '  return <div className="mx-auto flex flex-col gap-6 px-4 py-8 backdrop-blur-xl ring-2" />;',
+      "}",
+      "",
+    ].join("\n"),
+  );
   const audit = runComponentAudit(root);
   assert(
     audit.findings.some(
-      (f) => f.kind === "inline-rebuild" && f.file === "src/pages/Landing.tsx",
+      (f) => f.kind === "inline-rebuild" && f.file === "src/app/promo/page.tsx" && f.component === "Hero",
     ),
-    "audit flags the inline rebuild in Landing.tsx against Hero",
+    "audit flags the distinctive-class rebuild in a route file against Hero",
   );
-  console.log("  ✓ single-app: index, gate, advisory audit all behave");
+  assert(
+    !audit.findings.some((f) => f.file === "src/app/plain/page.tsx"),
+    "audit does NOT flag a route file that shares only generic layout utilities",
+  );
+  const unreg = audit.findings.find(
+    (f) => f.kind === "unregistered-component" && f.file === "src/app/featured/FeaturedShell.tsx",
+  );
+  assert(unreg !== undefined, "co-located PascalCase component is flagged as unregistered-component");
+  assert(unreg!.component === "FeaturedShell", "the offer names the actual export (FeaturedShell)");
+  assert(
+    /FeaturedShell/.test(unreg!.message) && /FeaturedShell\.tsx/.test(unreg!.message),
+    "the offer cites the export name and the actual file",
+  );
+  assert(
+    !audit.findings.some(
+      (f) => f.kind === "inline-rebuild" && f.file === "src/app/featured/FeaturedShell.tsx",
+    ),
+    "a misplaced component is NOT also mislabeled an inline-rebuild",
+  );
+  console.log("  ✓ single-app: index, gate, IDF audit, unregistered-component offer behave");
+}
+
+/* -------------------------------------------------------------------------- */
+/* 1b. Export detection — multi-export files must not false-positive          */
+/* -------------------------------------------------------------------------- */
+
+function exportDetection(): void {
+  step("Export detection — header matching any export is valid; a true non-export flags");
+  const root = mkdtempSync(join(tmpdir(), "cairn-smoke-comp-export-"));
+  cleanups.push(root);
+  writeConfig(root, { componentDirs: ["src/components"], extensions: [".tsx"] });
+
+  // Component file that ALSO exports a hook + a constant table, both declared
+  // BEFORE the component. The header names the component — that is valid; the
+  // old detector grabbed the first export (the hook/const) and false-flagged.
+  write(
+    root,
+    "src/components/Foo.tsx",
+    [
+      "/**",
+      " * @cairn Foo",
+      " * @category forms",
+      " * @purpose Foo form fields.",
+      " * @aliases foo, foo form fields",
+      " */",
+      "export const FOO_TABLE = { a: 1 };",
+      "export function useFoo() { return null; }",
+      "export function Foo() { return null; }",
+      "",
+    ].join("\n"),
+  );
+  // True lie: header names something the file does not export at all.
+  write(
+    root,
+    "src/components/Ghost.tsx",
+    [
+      "/**",
+      " * @cairn Ghost",
+      " * @category forms",
+      " * @purpose Ghostly.",
+      " * @aliases ghost, phantom",
+      " */",
+      "export function Real() { return null; }",
+      "",
+    ].join("\n"),
+  );
+
+  const r = runComponentCheck(root);
+  assert(
+    !r.findings.some(
+      (f) => f.path === "src/components/Foo.tsx" && /is not an exported name/.test(f.message),
+    ),
+    "multi-export component (header matches a later export) does NOT false-positive",
+  );
+  assert(
+    r.findings.some(
+      (f) => f.path === "src/components/Ghost.tsx" && /is not an exported name/.test(f.message),
+    ),
+    "header naming a non-exported symbol IS flagged as export-mismatch",
+  );
+  assert(r.hardFailures === 0, `no hard failures expected (got ${r.hardFailures})`);
+  console.log("  ✓ export detection: any-export match valid, genuine non-export flagged");
 }
 
 /* -------------------------------------------------------------------------- */
@@ -394,6 +508,7 @@ async function backfill(): Promise<void> {
 
 async function main(): Promise<void> {
   singleApp();
+  exportDetection();
   monorepo();
   preCommit();
   await adoption();
