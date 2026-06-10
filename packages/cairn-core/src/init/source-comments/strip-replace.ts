@@ -26,6 +26,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import { cairnDir, isGhost } from "@isaacriehm/cairn-state";
 import { logger } from "../../logger.js";
 
 const log = logger("init.source-comments.strip-replace");
@@ -43,7 +44,6 @@ export interface ReplaceItem {
   /**
    * Replacement comment text. Caller composes per spec §15:
    *   - "// §INV-<hash>" for invariant cites
-   *   - "// TODO(TSK-<id>)" for active-task links
    *   - leave undefined (item omitted entirely) to skip stripping a block
    *
    * The replacer prepends the same leading indentation the original block had.
@@ -107,6 +107,22 @@ export interface StripReplaceResult {
 /* -------------------------------------------------------------------------- */
 
 export function applyStripReplace(args: StripReplaceArgs): StripReplaceResult {
+  // Ghost mode: never write `§DEC`/`§INV` cites (or any marker) into client
+  // source. Every cite path — Layer A align, Layer C drain, Layer D fix-align,
+  // attention-resolve, and the init source-comments pass — funnels through this
+  // one function, so a single no-op guard kills them all. Ledger emit is
+  // upstream and still runs: the DEC/INV graduates to ground with no source cite.
+  if (isGhost(args.repoRoot)) {
+    return {
+      files: [],
+      filesModified: 0,
+      filesSkipped: 0,
+      backupsWritten: [],
+      itemsApplied: 0,
+      itemsSkipped: args.items.length,
+    };
+  }
+
   const byFile = groupItemsByFile(args.items);
   const dirtyMap = computeDirtyMap(args.repoRoot, [...byFile.keys()]);
   const outcomes: FileOutcome[] = [];
@@ -351,7 +367,7 @@ function leadingIndent(body: string, offset: number): string {
 
 function backupOriginal(repoRoot: string, relFile: string): string {
   const backupRel = join(".cairn", "backups", "source", `${relFile}.original`);
-  const abs = join(repoRoot, backupRel);
+  const abs = cairnDir(repoRoot, "backups", "source", `${relFile}.original`);
   if (existsSync(abs)) {
     log.debug({ file: relFile, backup: backupRel }, "backup exists — skipping copy");
     return abs;

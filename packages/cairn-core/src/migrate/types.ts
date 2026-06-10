@@ -35,8 +35,17 @@ export interface Migration {
   /** One-line description, surfaced to the operator + linkable from CHANGELOG. */
   describe: string;
   class: MigrationClass;
-  /** Idempotent: true when this repo still needs the migration. */
-  detect(repoRoot: string): boolean;
+  /**
+   * Idempotent: true when this repo still needs the migration. The runner may
+   * pass `doc` — `config.yaml` parsed once for the whole selection phase — so a
+   * config-shape detect can skip re-parsing. Migrations that read other state
+   * ignore it. Never passed during the post-apply re-check (the file may have
+   * changed), so a detect handed no `doc` must read fresh.
+   */
+  detect(repoRoot: string, doc?: ConfigDoc | null): boolean;
   /** Apply. Must be idempotent and atomic per migration. */
   apply(repoRoot: string): MigrationResult;
 }
+
+/** Opaque parsed-`config.yaml` handle threaded through `detect` (yaml Document). */
+export type ConfigDoc = import("yaml").Document;

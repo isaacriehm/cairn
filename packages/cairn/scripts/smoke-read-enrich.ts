@@ -14,7 +14,6 @@ import {
   getFileCandidateCount,
   getInvariantsLedger,
   getScopeIndexEntry,
-  lookupTask,
   scanCitations,
   setTopic,
   writeFileCandidatesMap,
@@ -63,21 +62,19 @@ const x = 1;
       matches.invariants.length === 1 && matches.invariants[0]?.id === "INV-2323232",
       `Step 1: expected one §INV-2323232 match, got ${JSON.stringify(matches.invariants)}`,
     );
-    assert(
-      matches.todos.length === 1 && matches.todos[0]?.id === "TSK-foo",
-      `Step 1: expected one TSK-foo match, got ${JSON.stringify(matches.todos)}`,
-    );
+    // The `// TODO(TSK-foo)` line in the sample is now IGNORED — the dead
+    // source-marker reader was cut, so it must not perturb the §INV/§DEC scan.
     assert(
       matches.decisions.length === 1 && matches.decisions[0]?.id === "DEC-deadbee",
       `Step 1: expected one §DEC-deadbee match, got ${JSON.stringify(matches.decisions)}`,
     );
-    console.log("  ✓ Step 1 — scanCitations (DEC requires § prefix)");
+    console.log("  ✓ Step 1 — scanCitations (DEC requires § prefix; TODO(TSK-) ignored)");
   }
 
   // ── Step 2 — empty content → buildLegend returns null ────────────
   {
     const empty = scanCitations("");
-    const result = buildLegend(empty, null, null, null, () => ({ found: "not_found" }));
+    const result = buildLegend(empty, null, null, null);
     assert(result === null, `Step 2: expected null on empty input, got ${String(result)}`);
     console.log("  ✓ Step 2 — empty content → null legend");
   }
@@ -85,7 +82,7 @@ const x = 1;
   // ── Step 3 — non-empty citations produce a legend block ──────────
   {
     const matches = scanCitations("// §INV-2323232 something");
-    const result = buildLegend(matches, null, null, null, () => ({ found: "not_found" }));
+    const result = buildLegend(matches, null, null, null);
     assert(result !== null, "Step 3: expected non-null legend");
     if (result === null) return;
     assert(
@@ -127,9 +124,7 @@ const x = 1;
       invariants: hit.invariants,
     };
     const ledger = getInvariantsLedger(repoRoot); // null is fine here
-    const legend = buildLegend(matches, ledger, null, hint, (id) =>
-      lookupTask(repoRoot, id),
-    );
+    const legend = buildLegend(matches, ledger, null, hint);
     assert(legend !== null, "Step 4: legend with scope-hint should be non-null");
     if (legend === null) return;
     assert(
@@ -199,14 +194,7 @@ const x = 1;
     // Step 5b — buildLegend with no citations + no scope BUT
     // candidates=N produces a curator-hint-only legend.
     const empty = scanCitations("");
-    const legend = buildLegend(
-      empty,
-      null,
-      null,
-      null,
-      () => ({ found: "not_found" }),
-      authCount,
-    );
+    const legend = buildLegend(empty, null, null, null, authCount);
     assert(legend !== null, "Step 5b: candidate hint alone should produce a legend");
     if (legend === null) return;
     assert(
@@ -223,7 +211,7 @@ const x = 1;
     );
 
     // Step 5c — when count=0, no hint is added (stays silent).
-    const silent = buildLegend(empty, null, null, null, () => ({ found: "not_found" }), 0);
+    const silent = buildLegend(empty, null, null, null, 0);
     assert(
       silent === null,
       `Step 5c: count=0 + no citations + no scope should remain null, got ${silent}`,
@@ -232,14 +220,7 @@ const x = 1;
     // Step 5d — when both candidate hint + citations exist, both
     // appear in the same output, with the curator hint above the box.
     const withCitations = scanCitations("// §INV-2323232 cited");
-    const combined = buildLegend(
-      withCitations,
-      null,
-      null,
-      null,
-      () => ({ found: "not_found" }),
-      authCount,
-    );
+    const combined = buildLegend(withCitations, null, null, null, authCount);
     assert(combined !== null, "Step 5d: candidate hint + citation should combine");
     if (combined === null) return;
     const hintIdx = combined.indexOf("2 unpromoted");

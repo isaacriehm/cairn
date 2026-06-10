@@ -16,7 +16,7 @@
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import {
+import { cairnDir,
   collectComponents,
   extractExportName,
   hasComponentConfig,
@@ -108,7 +108,7 @@ export async function runPhase9dCompWalk(
       };
     });
 
-    const dir = join(state.repoRoot, ".cairn", "init", "components");
+    const dir = cairnDir(state.repoRoot, "init", "components");
     mkdirSync(dir, { recursive: true });
     const body =
       records.length > 0

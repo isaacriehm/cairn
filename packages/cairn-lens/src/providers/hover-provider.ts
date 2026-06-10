@@ -1,9 +1,11 @@
 /**
  * Hover provider for cairn citation tokens.
  *
- * Triggers on §DEC-<hash>, §INV-<hash>, TODO(TSK-<id>), and `@cairn <Name>`
+ * Triggers on §DEC-<hash>, §INV-<hash>, and `@cairn <Name>`
  * component-registry headers. Renders a Markdown card with resolved
- * title, status, and links to the underlying ground file.
+ * title, status, and links to the underlying ground file. In ghost mode
+ * (§3.7) there are no in-source `§` tokens, so a cursor inside a block bound
+ * via the external anchor-map triggers the same DEC/INV card.
  */
 
 import * as vscode from "vscode";
@@ -15,15 +17,14 @@ import { lensLog } from "../debug-log.js";
 // providers/decoration-provider.ts for the rationale.
 const DECISION_TOKEN_RE = /§(DEC-[0-9a-f]{7,})\b/g;
 const INVARIANT_TOKEN_RE = /§(INV-[0-9a-f]{7,})\b/g;
-const TASK_TOKEN_RE = /TODO\(TSK-[A-Za-z0-9_-]+\)/g;
 // `@cairn <ExportName>` registry header — whitespace then an identifier.
 // Deliberately excludes the colon-form `@cairn:decision` / `@cairn:rule`
 // SoT markers (those can never be whitespace-then-identifier).
 const COMPONENT_HEADER_RE = /@cairn[ \t]+([A-Za-z_$][A-Za-z0-9_$]*)/g;
 
 interface TokenMatch {
-  kind: "decision" | "invariant" | "task" | "component";
-  id: string; // "DEC-a3f7b2c", "INV-2323232", "TSK-foo", or "<ComponentName>"
+  kind: "decision" | "invariant" | "component";
+  id: string; // "DEC-a3f7b2c", "INV-2323232", or "<ComponentName>"
   range: vscode.Range;
 }
 
@@ -57,20 +58,6 @@ function findTokenAt(
       };
     }
   }
-  for (const m of line.matchAll(TASK_TOKEN_RE)) {
-    const start = m.index ?? -1;
-    if (start < 0) continue;
-    const end = start + m[0].length;
-    if (position.character >= start && position.character <= end) {
-      // Inner: TODO(TSK-foo) -> "TSK-foo"
-      const inner = m[0].slice(5, -1);
-      return {
-        kind: "task",
-        id: inner,
-        range: new vscode.Range(position.line, start, position.line, end),
-      };
-    }
-  }
   for (const m of line.matchAll(COMPONENT_HEADER_RE)) {
     const start = m.index ?? -1;
     if (start < 0) continue;
@@ -86,6 +73,30 @@ function findTokenAt(
   return null;
 }
 
+/**
+ * Ghost trigger (§3.7): no `§` token exists in source, so a hover fires when the
+ * cursor sits inside a block bound to a DEC/INV via the external anchor-map. The
+ * id resolves through the same DEC/INV hover card as a literal cite would.
+ */
+function ghostTokenAt(
+  resolver: LensResolver,
+  doc: vscode.TextDocument,
+  position: vscode.Position,
+): TokenMatch | null {
+  for (const b of resolver.governedBlocksForFile(doc.uri.fsPath)) {
+    const startIdx = b.startLine - 1;
+    const endIdx = b.endLine - 1;
+    if (position.line < startIdx || position.line > endIdx) continue;
+    const lineLen = doc.lineAt(position.line).text.length;
+    return {
+      kind: b.kind, // "decision" | "invariant"
+      id: b.id, // "DEC-<hash>" / "INV-<hash>"
+      range: new vscode.Range(position.line, 0, position.line, lineLen),
+    };
+  }
+  return null;
+}
+
 export class CitationHoverProvider implements vscode.HoverProvider {
   constructor(private readonly resolver: LensResolver) {}
 
@@ -93,7 +104,13 @@ export class CitationHoverProvider implements vscode.HoverProvider {
     document: vscode.TextDocument,
     position: vscode.Position,
   ): vscode.ProviderResult<vscode.Hover> {
-    const token = findTokenAt(document, position);
+    let token = findTokenAt(document, position);
+    // Ghost (§3.7): no in-source `§` token — fall back to the anchor-map block
+    // under the cursor. `ghostTokenAt` → `governedBlocksForFile` returns null in
+    // committed, so the mode fork lives in the resolver, not here.
+    if (token === null) {
+      token = ghostTokenAt(this.resolver, document, position);
+    }
     if (token === null) {
       lensLog(
         `provideHover ${document.uri.fsPath}:${position.line + 1}:${position.character} → no token`,
@@ -154,16 +171,6 @@ export class CitationHoverProvider implements vscode.HoverProvider {
       md.appendMarkdown(
         `[Open invariants ledger](${vscode.Uri.file(this.resolver.invariantsLedgerFilePath()).toString()})`,
       );
-    } else if (token.kind === "task") {
-      const r = this.resolver.resolveTask(token.id);
-      const stateLabel =
-        r.found === "active"
-          ? "$(circle-large-filled) active"
-          : r.found === "done"
-            ? "$(check-all) done — this TODO can be removed"
-            : "$(circle-slash) not in tasks/{active,done}/";
-      md.appendMarkdown(`**${r.id}** — ${escapeMd(r.title ?? "(no title)")}\n\n`);
-      md.appendMarkdown(`${stateLabel}\n`);
     } else {
       const r = this.resolver.resolveComponent(token.id);
       if (!r.found || r.entry === null) {

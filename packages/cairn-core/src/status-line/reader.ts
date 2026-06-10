@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import {
+import { cairnDir,
   countDonePhases,
   findActiveMission,
   readMissionState,
@@ -117,7 +117,7 @@ function normalizeStatusJson(partial: Partial<StatusJson>): StatusJson {
 export type AdoptionState = "adopted" | "declined" | "deferred" | "fresh";
 
 export function readAdoptionState(repoRoot: string): AdoptionState {
-  if (existsSync(join(repoRoot, ".cairn"))) return "adopted";
+  if (existsSync(cairnDir(repoRoot))) return "adopted";
 
   const dataRoot = join(homedir(), ".claude", "plugins", "data");
   if (!existsSync(dataRoot)) return "fresh";
@@ -202,8 +202,8 @@ function renderUnadoptedBadge(state: AdoptionState, ctx?: CtxMeterInput): string
  * informative even when the session hook hasn't written status yet.
  */
 function groundStateFallback(repoRoot: string, ctx?: CtxMeterInput): string {
-  const cairnDir = join(repoRoot, ".cairn");
-  if (!existsSync(cairnDir)) {
+  const repoHome = cairnDir(repoRoot);
+  if (!existsSync(repoHome)) {
     return renderUnadoptedBadge(readAdoptionState(repoRoot), ctx);
   }
 
@@ -213,7 +213,7 @@ function groundStateFallback(repoRoot: string, ctx?: CtxMeterInput): string {
   }
 
   let drafts = 0;
-  const inboxDir = join(cairnDir, "ground", "decisions", "_inbox");
+  const inboxDir = join(repoHome, "ground", "decisions", "_inbox");
   if (existsSync(inboxDir)) {
     try {
       drafts = readdirSync(inboxDir, { encoding: "utf8" }).filter((f) =>

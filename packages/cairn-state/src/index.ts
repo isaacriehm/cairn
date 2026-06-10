@@ -1,4 +1,5 @@
 export * from "./schemas.js";
+export * from "./home.js";
 export * from "./paths.js";
 export * from "./ledgers.js";
 export * from "./archive.js";
@@ -18,6 +19,7 @@ export * from "./rejected.js";
 export * from "./quality-grades.js";
 export * from "./languages.js";
 export * from "./components.js";
+export * from "./component-registry.js";
 export * from "./config.js";
 export * from "./manifest.js";
 export * from "./file-candidates-map.js";

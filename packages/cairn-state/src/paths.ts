@@ -1,4 +1,38 @@
+import { existsSync } from "node:fs";
 import { join } from "node:path";
+
+import { cairnDir, isGhost } from "./home.js";
+
+/** `.cairn/config.yaml` — the per-repo config + adoption marker. */
+export function configPath(repoRoot: string): string {
+  return cairnDir(repoRoot, "config.yaml");
+}
+
+/** `core.hooksPath` value Cairn writes in committed mode (relative, tracked). */
+export const COMMITTED_HOOKS_PATH = ".cairn/git-hooks";
+
+/**
+ * The `core.hooksPath` value join writes for THIS repo's mode: committed → the
+ * relative `.cairn/git-hooks`; ghost → the absolute out-of-repo
+ * `<cairnHome>/git-hooks` (a relative path can't reach outside the tree). Single
+ * source for the mode fork — the writer (`setGitHooksPath`) and the reader
+ * (`inspectJoinState`) both call this so the expected value can't drift.
+ */
+export function cairnHooksPathForConfig(repoRoot: string): string {
+  return isGhost(repoRoot) ? cairnDir(repoRoot, "git-hooks") : COMMITTED_HOOKS_PATH;
+}
+
+/**
+ * True when the repo is cairn-adopted in EITHER mode. `cairnDir` resolves to
+ * the in-repo `.cairn/` (committed) or the out-of-repo state home (ghost), so a
+ * present `config.yaml` is the single mode-agnostic "adoption finished" signal
+ * — the same one `resolveRepoRoot` uses for its ghost branch. CLI guards use
+ * this instead of a literal `${repoRoot}/.cairn` probe, which is blind to ghost
+ * repos whose state lives out-of-repo.
+ */
+export function isAdopted(repoRoot: string): boolean {
+  return existsSync(configPath(repoRoot));
+}
 
 /**
  * Convert a path to POSIX format (using forward slashes).
@@ -39,7 +73,7 @@ export const CANONICAL_EXCLUDES = [
 ];
 
 export function groundDir(repoRoot: string): string {
-  return join(repoRoot, ".cairn", "ground");
+  return cairnDir(repoRoot, "ground");
 }
 
 export function manifestPath(repoRoot: string): string {
@@ -156,15 +190,15 @@ export function alignmentPendingDir(repoRoot: string): string {
 }
 
 export function sotRenderedCacheDir(repoRoot: string): string {
-  return join(repoRoot, ".cairn", "cache", "sot-rendered");
+  return cairnDir(repoRoot, "cache", "sot-rendered");
 }
 
 export function haikuCacheDir(repoRoot: string): string {
-  return join(repoRoot, ".cairn", "cache", "haiku");
+  return cairnDir(repoRoot, "cache", "haiku");
 }
 
 export function stalenessDir(repoRoot: string): string {
-  return join(repoRoot, ".cairn", "staleness");
+  return cairnDir(repoRoot, "staleness");
 }
 
 export function stalenessLogPath(repoRoot: string): string {
@@ -194,7 +228,7 @@ export function preCommitDeferredLogPath(repoRoot: string): string {
 }
 
 export function runsTerminalDir(repoRoot: string): string {
-  return join(repoRoot, ".cairn", "runs", "terminal");
+  return cairnDir(repoRoot, "runs", "terminal");
 }
 
 /* -------------------------------------------------------------------------- */
@@ -237,7 +271,7 @@ export function missionBriefPath(
 
 /** `.cairn/missions/` — per-clone runtime state root. */
 export function missionsRuntimeRoot(repoRoot: string): string {
-  return join(repoRoot, ".cairn", "missions");
+  return cairnDir(repoRoot, "missions");
 }
 
 /** `.cairn/missions/_done/` — archived per-clone state. */

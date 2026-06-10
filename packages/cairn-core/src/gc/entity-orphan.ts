@@ -36,9 +36,13 @@ import { join } from "node:path";
 import {
   decisionsDir,
   invariantsDir,
+  isGhost,
   knownExtensions,
   parseFrontmatterRecord,
+  readScopeIndex,
+  type ScopeIndex,
 } from "@isaacriehm/cairn-state";
+import { makeGhostBlockResolver, type GhostBlockResolver } from "./ghost-anchor.js";
 import { walkSourceTree } from "./walk-source.js";
 import type { GcFinding } from "./types.js";
 
@@ -88,6 +92,51 @@ function fileExt(path: string): string {
   return idx === -1 ? "" : path.slice(idx).toLowerCase();
 }
 
+/**
+ * Ghost liveness floor (fallback) — there are no in-source `§` cites to grep,
+ * so the binding lives in the out-of-repo scope-index (the SoT in ghost). An
+ * entity is live when SOME still-existing file binds it. Used only for legacy
+ * entities that predate the `sot_content_hash` anchor; current entities use
+ * the sharper block-resolution check (`entityGhostLive`).
+ */
+function entityBoundLive(
+  repoRoot: string,
+  id: string,
+  idx: ScopeIndex | null,
+): boolean {
+  if (idx === null) return false;
+  for (const [file, entry] of Object.entries(idx.files)) {
+    if (entry.decisions.includes(id) || entry.invariants.includes(id)) {
+      if (existsSync(join(repoRoot, file))) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Ghost liveness (§3.5.1/§3.6) — the governing comment block still resolves by
+ * content hash in its source file. Location-independent: survives the block
+ * moving within the file, but a deleted or rewritten comment correctly reads as
+ * dead even when the file itself remains (the bug `entityBoundLive` alone can't
+ * catch). Falls back to the coarse bound-file floor for legacy entities with no
+ * 64-char `sot_content_hash`.
+ */
+function entityGhostLive(
+  repoRoot: string,
+  id: string,
+  fm: Record<string, unknown>,
+  idx: ScopeIndex | null,
+  resolveBlock: GhostBlockResolver,
+): boolean {
+  const sourceFile = typeof fm["source_file"] === "string" ? fm["source_file"] : "";
+  const hash =
+    typeof fm["sot_content_hash"] === "string" ? fm["sot_content_hash"] : "";
+  if (hash.length === 64 && sourceFile.length > 0) {
+    return resolveBlock(sourceFile, hash).found;
+  }
+  return entityBoundLive(repoRoot, id, idx);
+}
+
 /** Set of every DEC/INV id cited by a `§` reference anywhere in the source tree. */
 function collectCitedIds(repoRoot: string): Set<string> {
   const cited = new Set<string>();
@@ -127,7 +176,14 @@ export function runEntityOrphan(opts: EntityOrphanOptions): EntityOrphanResult {
   const now = opts.now ?? new Date();
   const findings: GcFinding[] = [];
   const orphans: OrphanCandidate[] = [];
-  const cited = collectCitedIds(opts.repoRoot);
+  // Ghost: liveness keys on the out-of-repo scope-index binding, NEVER on
+  // in-source `§` cites (there are none — the naive cite scan would orphan the
+  // entire ledger on the first sweep). Skip the source walk entirely.
+  const ghost = isGhost(opts.repoRoot);
+  const cited = ghost ? new Set<string>() : collectCitedIds(opts.repoRoot);
+  const scopeIdx = ghost ? readScopeIndex(opts.repoRoot) : null;
+  // One resolver for the whole sweep — walks each clustered source file once.
+  const resolveBlock = ghost ? makeGhostBlockResolver(opts.repoRoot) : null;
 
   const groups: { kind: "DEC" | "INV"; dir: string; rel: string }[] = [
     { kind: "DEC", dir: decisionsDir(opts.repoRoot), rel: ".cairn/ground/decisions" },
@@ -176,20 +232,30 @@ export function runEntityOrphan(opts: EntityOrphanOptions): EntityOrphanResult {
           };
         }
       } else {
-        // ledger-backed — keyed on live citation presence.
-        if (!cited.has(id)) {
+        // ledger-backed — liveness:
+        //   committed: a live in-source `§` cite for this id
+        //   ghost:     the governing comment block still resolves by content
+        //              hash in its source file (no cites exist — §3.5.1)
+        const live = ghost
+          ? entityGhostLive(opts.repoRoot, id, fm, scopeIdx, resolveBlock!)
+          : cited.has(id);
+        if (!live) {
           const sourceFile =
             typeof fm["source_file"] === "string" ? (fm["source_file"] as string) : "";
           const srcGone =
             sourceFile.length === 0 || !existsSync(join(opts.repoRoot, sourceFile));
+          // Ghost never auto-retires (no `safe`): there are no cites to confirm
+          // removal, so an unbound entity is surfaced for operator review only.
           candidate = {
             id,
             kind: group.kind,
             sotKind,
-            classification: srcGone ? "safe" : "ambiguous",
-            reason: srcGone
-              ? "orphan-by-source: source_file gone and zero live §cites remain"
-              : "orphan-by-source: zero live §cites remain (source_file still present — review)",
+            classification: ghost ? "ambiguous" : srcGone ? "safe" : "ambiguous",
+            reason: ghost
+              ? "ghost: governing comment block no longer resolves by content hash (review — never auto-retired)"
+              : srcGone
+                ? "orphan-by-source: source_file gone and zero live §cites remain"
+                : "orphan-by-source: zero live §cites remain (source_file still present — review)",
             entityPath,
           };
         }

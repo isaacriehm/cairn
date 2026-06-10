@@ -22,9 +22,9 @@ import {
   renameSync,
   writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { logger } from "../logger.js";
+import { userCairnRoot } from "../paths/index.js";
 
 const log = logger("init.eta-calibration");
 
@@ -71,7 +71,7 @@ const ALPHA_STEADY = 0.1;
 const WARMUP_SAMPLES = 5;
 
 function calibrationDir(): string {
-  return join(homedir(), ".cairn", "cache");
+  return join(userCairnRoot(), "cache");
 }
 
 function calibrationPath(): string {

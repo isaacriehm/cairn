@@ -10,3 +10,7 @@ export type {
 } from "./audit.js";
 export { emitComponentStore } from "./emit.js";
 export type { ComponentEmitResult } from "./emit.js";
+export { runComponentFreshness } from "./freshness.js";
+export type { FreshnessAction, FreshnessResult } from "./freshness.js";
+export { runComponentReconfirm } from "./reconfirm.js";
+export type { ReconfirmArgs, ReconfirmResult, ReconfirmVerdict } from "./reconfirm.js";

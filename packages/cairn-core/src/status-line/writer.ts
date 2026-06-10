@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { sessionStateDir } from "../paths/index.js";
 import { emptyEventCounters, type StatusJson } from "./index.js";
+import { cairnDir } from "@isaacriehm/cairn-state";
 
 /**
  * Resolve the absolute path to `status.json` for a session inside the
@@ -32,7 +33,7 @@ export function writeStatusJson(
   sessionId: string,
   patch: Partial<StatusJson>,
 ): void {
-  if (!existsSync(join(repoRoot, ".cairn"))) return;
+  if (!existsSync(cairnDir(repoRoot))) return;
 
   const stateDir = sessionStateDir(repoRoot, sessionId);
   const filePath = join(stateDir, "status.json");

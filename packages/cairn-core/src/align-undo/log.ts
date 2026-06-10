@@ -20,10 +20,11 @@
  */
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { z } from "zod";
 import { withWriteLock } from "../lock.js";
 import { logger } from "../logger.js";
+import { cairnDir } from "@isaacriehm/cairn-state";
 
 const log = logger("align-undo.log");
 
@@ -61,7 +62,7 @@ export const AlignUndoEntry = z.object({
 export type AlignUndoEntry = z.infer<typeof AlignUndoEntry>;
 
 export function alignUndoLogPath(repoRoot: string): string {
-  return join(repoRoot, ".cairn", "state", "align-undo-log.jsonl");
+  return cairnDir(repoRoot, "state", "align-undo-log.jsonl");
 }
 
 export async function appendAlignUndoEntry(

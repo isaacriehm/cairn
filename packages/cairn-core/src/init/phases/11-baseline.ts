@@ -40,7 +40,7 @@ export async function runPhase11Baseline(state: PhaseState): Promise<PhaseResult
     };
     return {
       status: "complete",
-      nextPhase: "12-strip",
+      nextPhase: "13-multidev",
       state: advancePhase(next),
     };
   } catch (err) {

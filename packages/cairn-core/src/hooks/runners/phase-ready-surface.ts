@@ -26,7 +26,8 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
+import { cairnDir } from "@isaacriehm/cairn-state";
 
 export interface PhaseReadyHint {
   mission_id: string;
@@ -43,9 +44,7 @@ interface PendingFile {
 }
 
 function pendingPath(repoRoot: string, sessionId: string): string {
-  return join(
-    repoRoot,
-    ".cairn",
+  return cairnDir(repoRoot,
     "sessions",
     sessionId,
     "phase-ready-pending.json",

@@ -12,7 +12,7 @@
 import { type Dirent, existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import { parseFrontmatter } from "@isaacriehm/cairn-state";
+import { cairnDir, parseFrontmatter } from "@isaacriehm/cairn-state";
 import type { TaskState } from "../status-line/index.js";
 
 import { z } from "zod";
@@ -53,7 +53,7 @@ function mapPhase(phase: string): TaskState {
 }
 
 export function readActiveTaskSummary(repoRoot: string): ActiveTaskSummary | null {
-  const activeDir = join(repoRoot, ".cairn", "tasks", "active");
+  const activeDir = cairnDir(repoRoot, "tasks", "active");
   if (!existsSync(activeDir)) return null;
 
   let dirents: Dirent[];

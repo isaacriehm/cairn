@@ -36,6 +36,8 @@ type Trigger = "pre-commit" | "commit-msg" | "diff";
 function findRepoRoot(start: string): string | null {
   let cur = resolve(start);
   for (let i = 0; i < 80; i++) {
+    // Repo-root discovery probe: physical in-repo `.cairn/` (committed mode).
+    // Literal join is intentional — ghost resolves via the global registry.
     if (existsSync(join(cur, ".cairn"))) return cur;
     const parent = resolve(cur, "..");
     if (parent === cur) return null;

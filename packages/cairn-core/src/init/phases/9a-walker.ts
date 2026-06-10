@@ -12,6 +12,7 @@
  * rounds of 4.
  */
 
+import { cairnDir } from "@isaacriehm/cairn-state";
 import { advancePhase, isSelfAdoptState } from "./orchestrator.js";
 import type { PhaseResult, PhaseState, WalkerOutput } from "./types.js";
 
@@ -35,6 +36,9 @@ export async function runPhase9aWalker(state: PhaseState): Promise<PhaseResult> 
     const out: WalkerOutput = {
       corpus_path: walker.corpus_path,
       shards_path: walker.shards_path,
+      // Absolute curator dir — the skill resolves curator paths under this so
+      // ghost adoption writes final.jsonl out-of-repo where 9b-curate checks.
+      curator_dir: cairnDir(state.repoRoot, "init", "curator"),
       records_total: walker.records_total,
       records_by_kind: walker.records_by_kind,
       dropped: walker.dropped,

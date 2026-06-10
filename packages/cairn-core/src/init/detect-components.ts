@@ -27,7 +27,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { z } from "zod";
-import {
+import { cairnDir,
   DEFAULT_EXCLUDE,
   walkFs,
   type ComponentsConfig,
@@ -337,7 +337,7 @@ export interface EnsureComponentsConfigResult {
 export async function ensureComponentsConfig(
   repoRoot: string,
 ): Promise<EnsureComponentsConfigResult> {
-  const configPath = join(repoRoot, ".cairn", "config.yaml");
+  const configPath = cairnDir(repoRoot, "config.yaml");
   if (!existsSync(configPath)) {
     return { status: "not-adopted", monorepo: false };
   }

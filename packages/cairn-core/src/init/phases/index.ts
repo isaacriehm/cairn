@@ -59,5 +59,4 @@ export { runPhase9eCompAnnotate } from "./9e-comp-annotate.js";
 export { runPhase9fCompEmit } from "./9f-comp-emit.js";
 export { runPhase10RulesMerge } from "./10-rules-merge.js";
 export { runPhase11Baseline } from "./11-baseline.js";
-export { runPhase12Strip } from "./12-strip.js";
 export { runPhase13Multidev } from "./13-multidev.js";

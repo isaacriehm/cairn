@@ -24,6 +24,7 @@ import {
   readTaskJournal,
   type JournalEntry,
 } from "../../tasks/index.js";
+import { cairnDir } from "@isaacriehm/cairn-state";
 
 interface Input {
   task_id?: string;
@@ -76,8 +77,8 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     );
   }
 
-  const activeTaskDir = join(ctx.repoRoot, ".cairn", "tasks", "active", taskId);
-  const doneTaskDir = join(ctx.repoRoot, ".cairn", "tasks", "done", taskId);
+  const activeTaskDir = cairnDir(ctx.repoRoot, "tasks", "active", taskId);
+  const doneTaskDir = cairnDir(ctx.repoRoot, "tasks", "done", taskId);
   let scope: "active" | "done";
   let taskDir: string;
   let completedAt: string | null = null;

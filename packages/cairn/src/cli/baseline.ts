@@ -15,9 +15,9 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
-import {
+import { cairnDir,
   defaultBaselineLanguages,
   detectStackSignatures,
   readMapperOutputFile,
@@ -42,7 +42,7 @@ function ensureAdopted(repoRoot: string): void {
     console.error(`cairn baseline: repo root does not exist: ${repoRoot}`);
     process.exit(2);
   }
-  if (!existsSync(join(repoRoot, ".cairn"))) {
+  if (!existsSync(cairnDir(repoRoot))) {
     console.error(
       `cairn baseline: ${repoRoot} is not cairn-adopted (no .cairn/). Run \`cairn init\` first.`,
     );
@@ -62,7 +62,7 @@ function loadGlobsFromConfig(repoRoot: string): ProjectGlobs {
       off_limits: mapper.output.off_limits_globs,
     };
   }
-  const cfgPath = join(repoRoot, ".cairn", "config.yaml");
+  const cfgPath = cairnDir(repoRoot, "config.yaml");
   if (!existsSync(cfgPath)) return {};
   try {
     const parsed = parseYaml(readFileSync(cfgPath, "utf8")) as

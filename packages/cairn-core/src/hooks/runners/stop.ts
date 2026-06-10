@@ -35,6 +35,7 @@ import {
   type BypassedCommit,
 } from "../bypass-detection.js";
 import { isDeferActive, readDeferState } from "../defer.js";
+import { ghostBackupCommit } from "../ghost-backup.js";
 import { resolveRepoRoot } from "../../session-start/index.js";
 import {
   readEventsMarker,
@@ -46,7 +47,7 @@ import {
   findCurrentActiveTask,
   readTaskAttestationState,
 } from "../../tasks/index.js";
-import {
+import { cairnDir,
   effectivePhaseExitGate,
   findActiveMission,
   readMissionState,
@@ -70,7 +71,7 @@ import {
 
 /** Init in progress means `.cairn/init-state.json` exists at repoRoot. */
 function isInitInProgress(repoRoot: string): boolean {
-  return existsSync(join(repoRoot, ".cairn", "init-state.json"));
+  return existsSync(cairnDir(repoRoot, "init-state.json"));
 }
 
 /**
@@ -87,7 +88,7 @@ function inFirstTurnWarmup(
   windowSeconds: number,
 ): boolean {
   if (sessionId === null || sessionId.length === 0) return false;
-  const dir = join(repoRoot, ".cairn", "sessions", sessionId);
+  const dir = cairnDir(repoRoot, "sessions", sessionId);
   try {
     const st = statSync(dir);
     const ageMs = Date.now() - st.birthtimeMs;
@@ -185,7 +186,7 @@ function lastToolUseAgeMs(transcriptPath: string | null, nowMs: number): number 
 }
 
 function lastSessionStalledCuePath(repoRoot: string, sessionId: string): string {
-  return join(repoRoot, ".cairn", "sessions", sessionId, "last-stalled-cue.iso");
+  return cairnDir(repoRoot, "sessions", sessionId, "last-stalled-cue.iso");
 }
 
 function lastSessionStalledCueMs(repoRoot: string, sessionId: string): number | null {
@@ -216,7 +217,7 @@ interface PriorCueState {
 }
 
 function priorCuePath(repoRoot: string, sessionId: string): string {
-  return join(repoRoot, ".cairn", "sessions", sessionId, "last-stop-cue.json");
+  return cairnDir(repoRoot, "sessions", sessionId, "last-stop-cue.json");
 }
 
 function readPriorCue(repoRoot: string, sessionId: string): PriorCueState | null {
@@ -291,6 +292,19 @@ export async function runStopHook(): Promise<void> {
   const transcriptPath = typeof payload.transcript_path === "string" ? payload.transcript_path : null;
   const repoRoot = resolveRepoRoot(cwdInput);
   const warnings: string[] = [];
+
+  // Ghost backup (§5.4): auto-commit the out-of-repo state dir's own git repo
+  // every turn so the decision memory is versioned + survives a lost machine.
+  // Local commit only (no network in the hot Stop path); the operator pushes to
+  // their private remote. No-op (and no git shell) outside ghost. Best-effort —
+  // a backup hiccup never blocks the turn from ending.
+  if (repoRoot !== null) {
+    try {
+      ghostBackupCommit(repoRoot);
+    } catch {
+      /* best-effort */
+    }
+  }
 
   let drained: InvalidationEvent[] = [];
   let pendingReviews: PendingReview[] = [];
@@ -670,7 +684,7 @@ function readTaskPhase(taskDir: string): string | null {
 }
 
 function scanPendingReviews(repoRoot: string): PendingReview[] {
-  const activeDir = join(repoRoot, ".cairn", "tasks", "active");
+  const activeDir = cairnDir(repoRoot, "tasks", "active");
   if (!existsSync(activeDir)) return [];
   const out: PendingReview[] = [];
   const cutoffMs = Date.now() - 6 * 60 * 60 * 1000;
@@ -722,7 +736,7 @@ function scanPendingReviews(repoRoot: string): PendingReview[] {
 const STALLED_FIRE_WINDOW_MS = 60 * 60 * 1000;
 
 function stalledFireMarkerPath(repoRoot: string, taskId: string): string {
-  return join(repoRoot, ".cairn", ".stalled-warned", `${taskId}.iso`);
+  return cairnDir(repoRoot, ".stalled-warned", `${taskId}.iso`);
 }
 
 function isStalledFireSuppressed(repoRoot: string, taskId: string): boolean {
@@ -754,9 +768,9 @@ function stampStalledFire(repoRoot: string, taskId: string): void {
  * called on every Stop tick.
  */
 function gcStalledWarnedMarkers(repoRoot: string): void {
-  const dir = join(repoRoot, ".cairn", ".stalled-warned");
+  const dir = cairnDir(repoRoot, ".stalled-warned");
   if (!existsSync(dir)) return;
-  const activeDir = join(repoRoot, ".cairn", "tasks", "active");
+  const activeDir = cairnDir(repoRoot, "tasks", "active");
   let entries: import("node:fs").Dirent[] = [];
   try {
     entries = readdirSync(dir, { withFileTypes: true, encoding: "utf8" });
@@ -817,7 +831,7 @@ function scanStalledRunningTasks(
   nowMs: number = Date.now(),
   opts: ScanStalledOpts = { currentSessionId: null },
 ): StalledTask[] {
-  const activeDir = join(repoRoot, ".cairn", "tasks", "active");
+  const activeDir = cairnDir(repoRoot, "tasks", "active");
   if (!existsSync(activeDir)) return [];
   const out: StalledTask[] = [];
   const idleThresholdMs = 2 * 60 * 60 * 1000;
@@ -998,7 +1012,7 @@ function renderStalledTasksHint(stalled: StalledTask[]): string {
 function autoGraduateTasks(
   repoRoot: string,
 ): { completed: string[] } {
-  const activeDir = join(repoRoot, ".cairn", "tasks", "active");
+  const activeDir = cairnDir(repoRoot, "tasks", "active");
   const result = { completed: [] as string[] };
   if (!existsSync(activeDir)) return result;
 
@@ -1083,7 +1097,7 @@ function isMissionPhaseDeferActive(
   missionId: string,
   phaseId: string,
 ): boolean {
-  const path = join(repoRoot, ".cairn", ".mission-phase-deferred-until");
+  const path = cairnDir(repoRoot, ".mission-phase-deferred-until");
   if (!existsSync(path)) return false;
   let raw: string;
   try {

@@ -19,13 +19,15 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { stringify as stringifyYaml } from "yaml";
-import {
+import { cairnDir,
   bodyContentHash,
   collectComponents,
   deriveInvId,
   hasComponentConfig,
   invariantsDir,
+  isGhost,
   loadComponentsConfig,
+  readComponentRegistry,
   writeInvariantsLedger,
 } from "@isaacriehm/cairn-state";
 import { buildComponentIndex } from "./index-build.js";
@@ -175,17 +177,38 @@ function writeComponentBaseline(
     severity: "soft" as const,
     message: `${f.message} — ${f.recommendation}`,
   }));
+  // Ghost forbids the `@cairn` header in client source, so the "missing"
+  // list is an *unregistered units* offer, not a header nag — soft, and
+  // resolved by `cairn_component_register` (writes the out-of-repo store,
+  // never the file). Committed keeps the hard header-debt gate.
+  const ghost = isGhost(repoRoot);
   const missingFindings = missing.map((p) => ({
     path: p,
     line: 0,
-    severity: "hard" as const,
-    message:
-      "missing @cairn header — annotate this component so it joins the registry (the daily-flow check blocks on this)",
+    severity: (ghost ? "soft" : "hard") as "soft" | "hard",
+    message: ghost
+      ? "unregistered unit — register it via cairn_component_register so it joins the store (no source edit)"
+      : "missing @cairn header — annotate this component so it joins the registry (the daily-flow check blocks on this)",
   }));
-  const total = auditFindings.length + missingFindings.length;
+  // Ghost-only: registered components the freshness gate flagged as
+  // identity-changed (§3.8.1 L3). Surfacing them here — at emit / `components
+  // audit`, a quota-expected context — is where the deferred reclassify is
+  // meant to run. Soft offer; resolved by re-confirming the entry.
+  const reconfirmFindings = ghost
+    ? readComponentRegistry(repoRoot)
+        .entries.filter((e) => e.needs_reconfirm === true)
+        .map((e) => ({
+          path: e.file,
+          line: 0,
+          severity: "soft" as const,
+          message: `${e.name} changed shape/exports since registration — re-confirm its category/purpose (no source edit)`,
+        }))
+    : [];
+
+  const total = auditFindings.length + missingFindings.length + reconfirmFindings.length;
   if (total === 0) return null;
 
-  const dir = join(repoRoot, ".cairn", "baseline");
+  const dir = cairnDir(repoRoot, "baseline");
   mkdirSync(dir, { recursive: true });
   const nowIso = new Date().toISOString();
   const filename = `components-${nowIso.replace(/[:.]/g, "-")}.yaml`;
@@ -194,7 +217,13 @@ function writeComponentBaseline(
     total_findings: total,
     sensors: [
       { sensor_id: "component-audit", findings: auditFindings },
-      { sensor_id: "component-missing-header", findings: missingFindings },
+      {
+        sensor_id: ghost ? "component-unregistered" : "component-missing-header",
+        findings: missingFindings,
+      },
+      ...(reconfirmFindings.length > 0
+        ? [{ sensor_id: "component-reconfirm", findings: reconfirmFindings }]
+        : []),
     ],
   };
   writeFileSync(join(dir, filename), stringifyYaml(payload), "utf8");

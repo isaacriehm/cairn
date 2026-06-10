@@ -17,13 +17,14 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import { cairnDir } from "@isaacriehm/cairn-state";
 import { PHASE_IDS, type PhaseState, type PhaseId } from "./types.js";
 
-/** Filename relative to repoRoot. */
+/** Repo-relative display path. State home resolution goes through `cairnDir`. */
 export const INIT_STATE_PATH = join(".cairn", "init-state.json");
 
 export function phaseStateAbsPath(repoRoot: string): string {
-  return join(repoRoot, INIT_STATE_PATH);
+  return cairnDir(repoRoot, "init-state.json");
 }
 
 /** Read the on-disk init state. Returns null if missing or unreadable. */

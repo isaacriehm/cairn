@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { logger } from "../logger.js";
@@ -9,6 +9,7 @@ import { isMcpError, mcpError } from "./errors.js";
 import { asMcpResult } from "./result.js";
 import { recordCall } from "./telemetry.js";
 import { allTools } from "./tools/index.js";
+import { cairnDir } from "@isaacriehm/cairn-state";
 
 const log = logger("mcp.server");
 
@@ -29,8 +30,8 @@ export async function startMcpServer(opts: StartServerOptions): Promise<{
   // Adoption is "complete" if config.yaml exists but init-state.json
   // (the v0.3.5 state machine sentinel) is gone.
   const isAdopted =
-    existsSync(join(ctx.repoRoot, ".cairn", "config.yaml")) &&
-    !existsSync(join(ctx.repoRoot, ".cairn", "init-state.json"));
+    existsSync(cairnDir(ctx.repoRoot, "config.yaml")) &&
+    !existsSync(cairnDir(ctx.repoRoot, "init-state.json"));
 
   for (const tool of allTools) {
     if (isAdopted && tool.name.startsWith("cairn_init_")) {

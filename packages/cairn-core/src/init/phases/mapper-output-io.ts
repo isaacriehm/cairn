@@ -25,13 +25,14 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import { cairnDir } from "@isaacriehm/cairn-state";
 import type { MapperResult, MapperOutput } from "../mapper.js";
 
-/** Filename relative to repoRoot. */
+/** Repo-relative display path. State home resolution goes through `cairnDir`. */
 export const MAPPER_OUTPUT_PATH = join(".cairn", "init", "mapper-output.json");
 
 export function mapperOutputAbsPath(repoRoot: string): string {
-  return join(repoRoot, MAPPER_OUTPUT_PATH);
+  return cairnDir(repoRoot, "init", "mapper-output.json");
 }
 
 /**

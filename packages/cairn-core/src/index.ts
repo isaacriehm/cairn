@@ -46,6 +46,7 @@ export * from "./decision-capture/index.js";
 export * from "./doctor/index.js";
 export * from "./gc/index.js";
 export * from "./state/rebuild-derived.js";
+export * from "./update-check.js";
 export * from "@isaacriehm/cairn-state";
 export {
   clearDeferState,
@@ -60,6 +61,8 @@ export * from "./drain/index.js";
 export * from "./fix-align/index.js";
 export * from "./hooks/post-tool-use/index.js";
 export * from "./hooks/pre-commit/index.js";
+export { ghostBackupCommit } from "./hooks/ghost-backup.js";
+export type { GhostBackupResult } from "./hooks/ghost-backup.js";
 export * from "./init/index.js";
 export * from "./join/index.js";
 export * from "./migrate/index.js";

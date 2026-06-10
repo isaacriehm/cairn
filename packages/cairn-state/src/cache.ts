@@ -10,6 +10,7 @@ import { existsSync, openSync, readFileSync, readSync, closeSync, statSync } fro
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
+import { cairnDir } from "./home.js";
 import { fileCandidatesMapPath } from "./paths.js";
 import { FileCandidatesMap } from "./schemas.js";
 import {
@@ -50,11 +51,6 @@ export interface DecisionsLedgerSnapshot {
   >;
 }
 
-export interface TaskLookupResult {
-  found: "active" | "done" | "not_found";
-  title?: string;
-}
-
 interface InvariantsCacheEntry {
   repoRoot: string;
   mtimeMs: number;
@@ -65,14 +61,6 @@ interface DecisionsCacheEntry {
   repoRoot: string;
   mtimeMs: number;
   snapshot: DecisionsLedgerSnapshot;
-}
-
-interface TasksDirCacheEntry {
-  repoRoot: string;
-  scope: "active" | "done";
-  mtimeMs: number;
-  /** taskId → resolved title (or "" when no title was discoverable). */
-  titles: Map<string, string>;
 }
 
 interface ScopeIndexCacheEntry {
@@ -123,19 +111,11 @@ function hashFilePrefix(path: string, bytes: number): string | null {
 
 let invariantsCache: InvariantsCacheEntry | null = null;
 let decisionsCache: DecisionsCacheEntry | null = null;
-let activeTasksCache: TasksDirCacheEntry | null = null;
-let doneTasksCache: TasksDirCacheEntry | null = null;
 let scopeIndexCache: ScopeIndexCacheEntry | null = null;
 let fileCandidatesCache: FileCandidatesCacheEntry | null = null;
 
 function invariantsLedgerFile(repoRoot: string): string {
-  return join(
-    repoRoot,
-    ".cairn",
-    "ground",
-    "invariants",
-    "invariants.ledger.yaml",
-  );
+  return cairnDir(repoRoot, "ground", "invariants", "invariants.ledger.yaml");
 }
 
 export function getInvariantsLedger(
@@ -189,13 +169,7 @@ export function getInvariantsLedger(
 }
 
 function decisionsLedgerFile(repoRoot: string): string {
-  return join(
-    repoRoot,
-    ".cairn",
-    "ground",
-    "decisions",
-    "decisions.ledger.yaml",
-  );
+  return cairnDir(repoRoot, "ground", "decisions", "decisions.ledger.yaml");
 }
 
 export function getDecisionsLedger(
@@ -246,109 +220,6 @@ export function getDecisionsLedger(
   const snapshot: DecisionsLedgerSnapshot = { decisionsByid: map };
   decisionsCache = { repoRoot, mtimeMs, snapshot };
   return snapshot;
-}
-
-function tasksScopeDir(repoRoot: string, scope: "active" | "done"): string {
-  return join(repoRoot, ".cairn", "tasks", scope);
-}
-
-function readDirMtime(path: string): number | null {
-  if (!existsSync(path)) return null;
-  try {
-    return statSync(path).mtimeMs;
-  } catch {
-    return null;
-  }
-}
-
-function extractTitle(taskDir: string): string {
-  const candidates = [
-    join(taskDir, "spec.tightened.md"),
-    join(taskDir, "spec.md"),
-  ];
-  for (const c of candidates) {
-    if (!existsSync(c)) continue;
-    try {
-      const text = readFileSync(c, "utf8");
-      const m = text.match(/^#\s+(.+)$/m);
-      if (m && typeof m[1] === "string") return m[1].trim();
-    } catch {
-      // ignore — try next candidate
-    }
-  }
-  return "";
-}
-
-function resolveCacheForScope(
-  repoRoot: string,
-  scope: "active" | "done",
-): TasksDirCacheEntry | null {
-  const dir = tasksScopeDir(repoRoot, scope);
-  const mtimeMs = readDirMtime(dir);
-  if (mtimeMs === null) return null;
-  const cache = scope === "active" ? activeTasksCache : doneTasksCache;
-  if (
-    cache !== null &&
-    cache.repoRoot === repoRoot &&
-    cache.scope === scope &&
-    cache.mtimeMs === mtimeMs
-  ) {
-    return cache;
-  }
-  // Lazy: don't pre-walk all task dirs. We populate `titles` on demand
-  // in `lookupTask`. Empty map keyed to current dir mtime is fine.
-  const fresh: TasksDirCacheEntry = {
-    repoRoot,
-    scope,
-    mtimeMs,
-    titles: new Map<string, string>(),
-  };
-  if (scope === "active") activeTasksCache = fresh;
-  else doneTasksCache = fresh;
-  return fresh;
-}
-
-export function lookupTask(
-  repoRoot: string,
-  taskId: string,
-): TaskLookupResult {
-  // Active first.
-  const activeDir = tasksScopeDir(repoRoot, "active");
-  const activeTaskDir = join(activeDir, taskId);
-  if (existsSync(activeTaskDir)) {
-    const cache = resolveCacheForScope(repoRoot, "active");
-    if (cache !== null) {
-      let title = cache.titles.get(taskId);
-      if (title === undefined) {
-        title = extractTitle(activeTaskDir);
-        cache.titles.set(taskId, title);
-      }
-      return title.length > 0
-        ? { found: "active", title }
-        : { found: "active" };
-    }
-    // Couldn't cache, but the dir is present.
-    const title = extractTitle(activeTaskDir);
-    return title.length > 0 ? { found: "active", title } : { found: "active" };
-  }
-
-  const doneDir = tasksScopeDir(repoRoot, "done");
-  const doneTaskDir = join(doneDir, taskId);
-  if (existsSync(doneTaskDir)) {
-    const cache = resolveCacheForScope(repoRoot, "done");
-    if (cache !== null) {
-      let title = cache.titles.get(taskId);
-      if (title === undefined) {
-        title = extractTitle(doneTaskDir);
-        cache.titles.set(taskId, title);
-      }
-      return title.length > 0 ? { found: "done", title } : { found: "done" };
-    }
-    const title = extractTitle(doneTaskDir);
-    return title.length > 0 ? { found: "done", title } : { found: "done" };
-  }
-
-  return { found: "not_found" };
 }
 
 /**

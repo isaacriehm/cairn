@@ -14,8 +14,9 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { z } from "zod";
+import { cairnDir } from "@isaacriehm/cairn-state";
 
 export type DeferKind = "bypass" | "review";
 
@@ -31,7 +32,7 @@ export type DeferState = z.infer<typeof DeferStateSchema>;
 const DEFAULT_DEFER_HOURS = 24;
 
 export function deferStatePath(repoRoot: string, kind: DeferKind): string {
-  return join(repoRoot, ".cairn", `.${kind}-deferred-until`);
+  return cairnDir(repoRoot, `.${kind}-deferred-until`);
 }
 
 export function readDeferState(repoRoot: string, kind: DeferKind): DeferState | null {

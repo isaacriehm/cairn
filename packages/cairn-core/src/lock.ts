@@ -16,7 +16,8 @@
  */
 
 import { mkdir, open, readFile, unlink } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
+import { cairnDir } from "@isaacriehm/cairn-state";
 
 export interface WithLockOptions {
   /** Hard deadline. Default 30000ms. */
@@ -37,7 +38,7 @@ export async function withWriteLock<T>(
   fn: () => Promise<T> | T,
   opts: WithLockOptions = {},
 ): Promise<T> {
-  return withLockAtPath(join(repoRoot, ".cairn", ".write-lock"), fn, opts);
+  return withLockAtPath(cairnDir(repoRoot, ".write-lock"), fn, opts);
 }
 
 /**
@@ -51,7 +52,7 @@ export async function acquireOperationLock<T>(
   lockName: string,
   fn: () => Promise<T> | T,
 ): Promise<T> {
-  const lockPath = join(repoRoot, ".cairn", lockName);
+  const lockPath = cairnDir(repoRoot, lockName);
   await mkdir(dirname(lockPath), { recursive: true });
   const acquired = await tryAcquire(lockPath);
   if (!acquired) {

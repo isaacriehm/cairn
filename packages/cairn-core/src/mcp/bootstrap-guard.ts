@@ -27,6 +27,7 @@ import { join } from "node:path";
 import { inspectJoinState, runJoin } from "../join/index.js";
 import { logger } from "../logger.js";
 import { mcpError, type McpErrorPayload } from "./errors.js";
+import { cairnDir } from "@isaacriehm/cairn-state";
 
 const log = logger("mcp.bootstrap-guard");
 
@@ -47,9 +48,17 @@ const log = logger("mcp.bootstrap-guard");
  */
 export function requireBootstrap(repoRoot: string): McpErrorPayload | null {
   if (!existsSync(join(repoRoot, ".git"))) return null;
-  if (!existsSync(join(repoRoot, ".cairn", "config.yaml"))) return null;
+  if (!existsSync(cairnDir(repoRoot, "config.yaml"))) return null;
   const state = inspectJoinState({ repoRoot });
   if (state.hooksPathSet) return null;
+
+  // A foreign `core.hooksPath` (husky / lefthook / custom) is a terminal
+  // state — Cairn refuses to clobber it (§3.3 seam 5), so re-running join can
+  // never wire the hooks. Don't block MCP writes (decision capture, etc.) or
+  // thrash a full join on every write; Cairn runs in advisory mode, only the
+  // local git-hook sensor sweep is inactive. The SessionStart banner surfaces
+  // the conflict + remediation.
+  if (state.hooksPathConflict) return null;
 
   // Lazy bootstrap: SessionStart's auto-join didn't run for this session
   // (most commonly: teammate installed the plugin mid-session via

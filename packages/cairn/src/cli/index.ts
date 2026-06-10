@@ -24,6 +24,7 @@ import { scopeCli } from "./scope.js";
 import { sensorRunCli } from "./sensor-run.js";
 import { tagCli } from "./tag.js";
 import { traceCli } from "./trace.js";
+import { cairnDir } from "@isaacriehm/cairn-core";
 
 interface StatusLinePayload {
   sessionId: string | null;
@@ -122,9 +123,9 @@ function persistStatuslineDiagnostic(
   sessionId: string,
   payload: StatusLinePayload,
 ): void {
-  if (!existsSync(join(repoRoot, ".cairn"))) return;
+  if (!existsSync(cairnDir(repoRoot))) return;
   try {
-    const dir = join(repoRoot, ".cairn", "sessions", sessionId);
+    const dir = cairnDir(repoRoot, "sessions", sessionId);
     mkdirSync(dir, { recursive: true });
     // Cap raw text to 8 KiB so a runaway CC payload can't blow the
     // file up; statusline payloads are typically <2 KiB in practice.
@@ -166,9 +167,9 @@ function persistCtxSnapshot(
   // Bail on un-adopted projects so we never auto-create `.cairn/`
   // outside of `cairn init`. Statusline runs on every prompt across
   // every project Claude Code has the plugin configured for.
-  if (!existsSync(join(projectRoot, ".cairn"))) return;
+  if (!existsSync(cairnDir(projectRoot))) return;
   try {
-    const dir = join(projectRoot, ".cairn", "sessions", sessionId);
+    const dir = cairnDir(projectRoot, "sessions", sessionId);
     mkdirSync(dir, { recursive: true });
     const snapshot = {
       usedPct: ctx.usedPct,

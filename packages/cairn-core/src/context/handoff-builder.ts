@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { simpleGit } from "simple-git";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
-import { parseFrontmatter } from "@isaacriehm/cairn-state";
+import { cairnDir, parseFrontmatter } from "@isaacriehm/cairn-state";
 
 /** Hard cap on rendered handoff size (chars). ~600 tokens. */
 const MAX_CHARS = 2_400;
@@ -58,7 +58,7 @@ export interface HandoffPayload {
  * task is in flight.
  */
 export async function buildHandoffBlock(repoRoot: string): Promise<string | null> {
-  const activeDir = join(repoRoot, ".cairn", "tasks", "active");
+  const activeDir = cairnDir(repoRoot, "tasks", "active");
   if (!existsSync(activeDir)) return null;
 
   let matched: { taskId: string; runId: string } | null = null;
@@ -89,7 +89,7 @@ export async function buildHandoffBlock(repoRoot: string): Promise<string | null
   if (matched === null) return null;
 
   // Read meta.json for the run's sha_pin.
-  const metaPath = join(repoRoot, ".cairn", "runs", "active", matched.runId, "meta.json");
+  const metaPath = cairnDir(repoRoot, "runs", "active", matched.runId, "meta.json");
   if (!existsSync(metaPath)) return null;
   let shaPin: string | null = null;
   try {

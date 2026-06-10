@@ -7,7 +7,7 @@
  * New adoptions stop emitting them at the source (init/overlay.ts).
  */
 
-import type { Migration, MigrationResult } from "../types.js";
+import type { ConfigDoc, Migration, MigrationResult } from "../types.js";
 import { configHasKeys, deleteConfigKeys } from "../config-io.js";
 
 /** Top-level config keys with no runtime consumer. */
@@ -27,8 +27,8 @@ export const dropDeadConfigFields: Migration = {
   introducedIn: "0.21.0",
   describe: "Remove unconsumed config.yaml keys (detected_sensor_commands, mapper_proposed_sensors, mapper_notes, key_modules, stack_signatures, hook_capability, start_command, origin_url)",
   class: "safe",
-  detect(repoRoot: string): boolean {
-    return configHasKeys(repoRoot, DEAD_CONFIG_KEYS).length > 0;
+  detect(repoRoot: string, doc?: ConfigDoc | null): boolean {
+    return configHasKeys(repoRoot, DEAD_CONFIG_KEYS, doc).length > 0;
   },
   apply(repoRoot: string): MigrationResult {
     const removed = deleteConfigKeys(repoRoot, DEAD_CONFIG_KEYS);

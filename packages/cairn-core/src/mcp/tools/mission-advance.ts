@@ -5,8 +5,8 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
-import {
+import { dirname } from "node:path";
+import { cairnDir,
   appendMissionJournal,
   findActiveMission,
   readMissionState,
@@ -27,7 +27,7 @@ import type { ToolDef } from "./types.js";
  * / `aborted`). Returns "unknown" when the file is missing or unreadable.
  */
 function readGraduatedOutcome(repoRoot: string, taskId: string): string {
-  const statusPath = join(repoRoot, ".cairn", "tasks", "done", taskId, "status.yaml");
+  const statusPath = cairnDir(repoRoot, "tasks", "done", taskId, "status.yaml");
   if (!existsSync(statusPath)) return "unknown";
   try {
     const raw = readFileSync(statusPath, "utf8");
@@ -55,7 +55,7 @@ function writeMissionPhaseDefer(
     deferred_at: now.toISOString(),
     deferred_until: until.toISOString(),
   };
-  const path = join(repoRoot, ".cairn", ".mission-phase-deferred-until");
+  const path = cairnDir(repoRoot, ".mission-phase-deferred-until");
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, JSON.stringify(payload, null, 2), "utf8");
   return until.toISOString();
@@ -75,7 +75,7 @@ export function clearMissionPhaseDeferIfMatches(
   repoRoot: string,
   match: { missionId: string; phaseId?: string },
 ): boolean {
-  const path = join(repoRoot, ".cairn", ".mission-phase-deferred-until");
+  const path = cairnDir(repoRoot, ".mission-phase-deferred-until");
   if (!existsSync(path)) return false;
   try {
     const raw = readFileSync(path, "utf8");

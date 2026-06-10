@@ -35,7 +35,7 @@ bootstrap and debug entrypoint. There is no separate orchestration runtime
 | Explanations       | Concise. Root cause in 1-2 sentences then the fix.                                                                             |
 | UX philosophy      | Design-conscious. UX is equal in importance to functional correctness.                                                         |
 | Vendor choices     | Opinionated. Do not suggest alternative libraries / frameworks unless they avoid a real risk.                                  |
-| Env vars           | The operator hates env vars. Hardcode model IDs and paths in code.                                                             |
+| Env vars           | The operator hates env vars. Hardcode model **aliases** (`haiku`/`sonnet`/`opus`) and paths in code — never a dated ID like `claude-sonnet-4-6`, never an env var. Every LLM call names its tier; never inherit the session model. |
 | Tests              | "Tests are shitware. Only E2E with real DB matters." Sensors + E2E smokes only — no unit-test framing.                         |
 | Backward compat    | The operator hates backward-compat shims. Hard cutovers only.                                                                  |
 | Mobile mode        | When the operator is on mobile, `AskUserQuestion` options get truncated; switch to chat-mode A/B/C with concise option labels. |
@@ -46,7 +46,7 @@ bootstrap and debug entrypoint. There is no separate orchestration runtime
 - All design decisions live in `docs/`. Drift between conversation and `docs/` is a bug.
 - Locked architectural decisions in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (§1 layered model, §3 package contents) and [`docs/PLUGIN_ARCHITECTURE.md`](docs/PLUGIN_ARCHITECTURE.md) (§3 package layout, §17 multi-dev) are not reopened without explicit operator instruction.
 - Never use Claude Code `PreToolUse` hooks — they can brick the session. SessionStart instructions + MCP tools only.
-- Hardcode model IDs in code (no env vars). Hard cutovers only (no transition shims).
+- Hardcode model **aliases** (`haiku`/`sonnet`/`opus`) in code — never a dated ID (`claude-sonnet-4-6`), never an env var. Every LLM call site picks a tier explicitly; no subagent inherits the session model. Hard cutovers only (no transition shims).
 
 ### Operator-private strings: never write to a committed artifact
 

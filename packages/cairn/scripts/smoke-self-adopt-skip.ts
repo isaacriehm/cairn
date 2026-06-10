@@ -46,7 +46,6 @@ import {
   runPhase9bCurate,
   runPhase9cEmit,
   runPhase10RulesMerge,
-  runPhase12Strip,
   type PhaseResult,
   type PhaseState,
 } from "@isaacriehm/cairn-core";
@@ -173,37 +172,6 @@ async function main(): Promise<void> {
     if (out?.skipped !== "self-adopt")
       fail(`Step 3: expected skipped=self-adopt, got ${JSON.stringify(out)}`);
     pass("phase 9c-emit stamped skipped=self-adopt + advanced to 10-rules-merge");
-  }
-
-  header("Step 4 — Phase 12 short-circuits on is_self_adopt");
-  {
-    const repo = mkRepo();
-    const state = selfAdoptState(repo, "12-strip");
-    const result = await runPhase12Strip(state);
-    if (result.status !== "complete") {
-      fail(
-        `Step 4: expected complete, got ${result.status} ${JSON.stringify(result)}`,
-      );
-    }
-    const { state: next, nextPhase } = expectComplete(result, "Step 4");
-    if (nextPhase !== "13-multidev")
-      fail(`Step 4: expected nextPhase=13-multidev, got ${String(nextPhase)}`);
-    const out = next.outputs["12-strip"] as {
-      pending: unknown[];
-      decisions: Record<string, unknown>;
-    };
-    if (out.pending.length !== 0)
-      fail(
-        `Step 4: pending should be empty on skip, got ${JSON.stringify(out.pending)}`,
-      );
-    if (Object.keys(out.decisions).length !== 0) {
-      fail(
-        `Step 4: decisions should be empty on skip, got ${JSON.stringify(out.decisions)}`,
-      );
-    }
-    pass(
-      "phase 12 short-circuited with empty pending + decisions, advanced to 13-multidev",
-    );
   }
 
   header("Step 5 — Phase 8 + 10 stamp merged-into-9-curator regardless of self-adopt");

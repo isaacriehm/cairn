@@ -41,6 +41,30 @@ export const componentGetInput = {
   workspace: z.string().optional(),
 };
 
+export const componentRegisterInput = {
+  /** Repo-relative POSIX path of the component file. */
+  file: z.string().min(1),
+  /** The export symbol being registered — the natural key + identity. */
+  export_name: z.string().min(1),
+  /** The `@cairn <Name>` value (usually === export_name). */
+  name: z.string().min(1),
+  category: z.string().min(1),
+  purpose: z.string().min(1),
+  aliases: z.array(z.string()).default([]),
+  /** Owning workspace; omit / "" for single-app. */
+  workspace: z.string().optional(),
+  singleton: z.boolean().optional(),
+  status: z.string().optional(),
+  uses: z.array(z.string()).optional(),
+};
+
+export const componentReconfirmInput = {
+  /** Reconfirm a single file's component; omit to sweep every flagged unit. */
+  file: z.string().min(1).optional(),
+  /** Hard cap on fresh Haiku calls this run; the rest stay flagged (deferred). */
+  cap: z.number().int().positive().max(50).optional(),
+};
+
 // ── Read tools — 3-layer progressive retrieval ─────────────────────────────
 
 export const searchInput = {

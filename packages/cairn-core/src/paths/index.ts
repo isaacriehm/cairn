@@ -1,21 +1,36 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { cairnDir } from "@isaacriehm/cairn-state";
 
 const CAIRN_HOME_ROOT = ".cairn";
 
 export type ProjectName = string;
 
-export function cairnHome(): string {
+/**
+ * The operator's global Cairn root — `~/.cairn`. Distinct from cairn-state's
+ * per-repo `cairnHome(repoRoot)`: this is the machine-wide home that holds the
+ * model cache and the ghost registry, not a repo's state directory.
+ */
+export function userCairnRoot(): string {
   return resolve(homedir(), CAIRN_HOME_ROOT);
 }
 
 export function modelsRoot(): string {
-  return join(cairnHome(), "models");
+  return join(userCairnRoot(), "models");
+}
+
+/**
+ * `~/.cairn/update-check.json` — machine-global once/day throttle + last-known
+ * published version for the SessionStart "newer Cairn available" notice. Global
+ * (not per-repo) so a dev with many repos hits the registry once/day total.
+ */
+export function updateCheckCachePath(): string {
+  return join(userCairnRoot(), "update-check.json");
 }
 
 /** `.cairn/sessions/` — per-session state root inside an adopted project. */
 export function sessionsDir(repoRoot: string): string {
-  return join(repoRoot, ".cairn", "sessions");
+  return cairnDir(repoRoot, "sessions");
 }
 
 /** `.cairn/sessions/<id>/` — directory owned by one session for the duration of that session. */

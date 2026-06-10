@@ -19,6 +19,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { cairnDir } from "@isaacriehm/cairn-state";
 
 export type SeedAttestedStatus = "ok" | "skipped" | "error";
 
@@ -33,7 +34,7 @@ export function seedAttestedCommits(
   repoRoot: string,
   dryRun = false,
 ): SeedAttestedResult {
-  const path = join(repoRoot, ".cairn", ".attested-commits");
+  const path = cairnDir(repoRoot, ".attested-commits");
   if (existsSync(path)) {
     return {
       status: "skipped",
@@ -79,7 +80,7 @@ export function seedAttestedCommits(
     };
   }
   try {
-    mkdirSync(join(repoRoot, ".cairn"), { recursive: true });
+    mkdirSync(cairnDir(repoRoot), { recursive: true });
     writeFileSync(path, `${shas.join("\n")}\n`, "utf8");
   } catch (err) {
     return {

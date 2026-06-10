@@ -1,6 +1,7 @@
 ---
 name: curator-map
 description: Cairn curator map subagent — one shard in, ≤15 candidate DEC/INV JSONL out. Spawned in parallel rounds of 4 during Phase 9b-curate.
+model: sonnet
 tools:
   - Read
   - Write

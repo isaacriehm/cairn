@@ -17,7 +17,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { walkFs } from "@isaacriehm/cairn-state";
+import { cairnDir, isGhost, walkFs } from "@isaacriehm/cairn-state";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /**
@@ -65,21 +65,68 @@ const SEED_TOP_LEVEL_ALLOWLIST: ReadonlySet<string> = new Set([
   ".github",
 ]);
 
+/**
+ * Ghost mode seeds ONLY `.cairn/*` (redirected out-of-repo via `cairnDir`).
+ * The `.claude/` rule + `.github/` CI workflow templates are client-tree
+ * artifacts — never written in ghost (constraint 1: nothing Cairn-shaped in
+ * the client repo). See ghost-mode design.
+ */
+const GHOST_SEED_ALLOWLIST: ReadonlySet<string> = new Set([".cairn"]);
+
+/**
+ * Resolve a template's repo-relative path to its on-disk destination.
+ * `.cairn/<rest>` routes through `cairnHome` — out-of-repo in ghost,
+ * `<repoRoot>/.cairn/<rest>` in committed (byte-identical to the old
+ * `join(repoRoot, rel)`). `.claude/`/`.github/` stay in the client tree
+ * (committed only — gated out of the ghost allowlist).
+ */
+function seedDstPath(repoRoot: string, rel: string): string {
+  const parts = rel.split("/");
+  if (parts[0] === ".cairn") {
+    return cairnDir(repoRoot, ...parts.slice(1));
+  }
+  return join(repoRoot, rel);
+}
+
+/**
+ * Belt-and-suspenders for ghost: add `/.cairn/` to `.git/info/exclude` (local,
+ * untracked — never committed). Ghost writes nothing under the client tree, but
+ * a missed code path that emitted a stray `.cairn/` would still be git-invisible.
+ * Never touches the tracked `.gitignore`. Best-effort.
+ */
+function addGitInfoExclude(repoRoot: string): void {
+  try {
+    const gitDir = join(repoRoot, ".git");
+    if (!existsSync(gitDir) || !statSync(gitDir).isDirectory()) return;
+    const infoDir = join(gitDir, "info");
+    mkdirSync(infoDir, { recursive: true });
+    const excludePath = join(infoDir, "exclude");
+    const existing = existsSync(excludePath) ? readFileSync(excludePath, "utf8") : "";
+    if (/^\s*\/?\.cairn\/?\s*$/m.test(existing)) return; // already excluded
+    const sep = existing.length > 0 && !existing.endsWith("\n") ? "\n" : "";
+    writeFileSync(excludePath, `${existing}${sep}/.cairn/\n`, "utf8");
+  } catch {
+    // best-effort; a missing/locked .git/info never blocks adoption
+  }
+}
+
 export function seedCairnLayout(opts: SeedOptions): SeedResult {
   const written: string[] = [];
   const collisions: string[] = [];
+  const ghost = isGhost(opts.repoRoot);
+  const allowlist = ghost ? GHOST_SEED_ALLOWLIST : SEED_TOP_LEVEL_ALLOWLIST;
   walkFs({
     dir: TEMPLATES_ROOT,
     onDir: (rel) => {
       if (rel === ".") return true;
       const top = rel.split("/")[0]!;
-      return SEED_TOP_LEVEL_ALLOWLIST.has(top);
+      return allowlist.has(top);
     },
     onFile: (rel, absSrc) => {
       const top = rel.split("/")[0]!;
-      if (!SEED_TOP_LEVEL_ALLOWLIST.has(top)) return;
+      if (!allowlist.has(top)) return;
 
-      const absDst = join(opts.repoRoot, rel);
+      const absDst = seedDstPath(opts.repoRoot, rel);
       if (existsSync(absDst) && opts.force !== true) {
         collisions.push(rel);
         return;
@@ -100,6 +147,7 @@ export function seedCairnLayout(opts: SeedOptions): SeedResult {
       written.push(rel);
     },
   });
+  if (ghost) addGitInfoExclude(opts.repoRoot);
   return { written_files: written, collisions };
 }
 

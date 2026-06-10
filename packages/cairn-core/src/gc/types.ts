@@ -35,6 +35,7 @@ export type GcPassId =
   | "attested-commits-pruning"
   | "doc-claims-vs-runtime"
   | "doc-source-drift"
+  | "ghost-reanchor"
   | "entity-orphan";
 
 export type GcFindingKind =

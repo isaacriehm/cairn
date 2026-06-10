@@ -8,24 +8,32 @@
  */
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { parseDocument } from "yaml";
 
-function configPath(repoRoot: string): string {
-  return join(repoRoot, ".cairn", "config.yaml");
-}
+import { parseDocument, type Document } from "yaml";
+import { configPath } from "@isaacriehm/cairn-state";
 
-/** Read the `cairn_version` pin, or null when absent / unreadable. */
-export function readConfigPin(repoRoot: string): string | null {
+/**
+ * Parse `config.yaml` once. Returns null when absent / unreadable. Pass the
+ * result to `readConfigPin` / `configHasKeys` to share a single parse across
+ * the runner's read-only selection phase (the apply phase re-reads fresh, since
+ * each migration may mutate the file).
+ */
+export function loadConfigDoc(repoRoot: string): Document | null {
   const p = configPath(repoRoot);
   if (!existsSync(p)) return null;
   try {
-    const doc = parseDocument(readFileSync(p, "utf8"));
-    const v = doc.get("cairn_version");
-    return typeof v === "string" && v.length > 0 ? v : null;
+    return parseDocument(readFileSync(p, "utf8"));
   } catch {
     return null;
   }
+}
+
+/** Read the `cairn_version` pin, or null when absent / unreadable. */
+export function readConfigPin(repoRoot: string, doc?: Document | null): string | null {
+  const d = doc !== undefined ? doc : loadConfigDoc(repoRoot);
+  if (d === null) return null;
+  const v = d.get("cairn_version");
+  return typeof v === "string" && v.length > 0 ? v : null;
 }
 
 /** Set the `cairn_version` pin. No-op (returns false) when already equal. */
@@ -40,15 +48,14 @@ export function writeConfigPin(repoRoot: string, version: string): boolean {
 }
 
 /** Which of `keys` are present as top-level config keys. */
-export function configHasKeys(repoRoot: string, keys: readonly string[]): string[] {
-  const p = configPath(repoRoot);
-  if (!existsSync(p)) return [];
-  try {
-    const doc = parseDocument(readFileSync(p, "utf8"));
-    return keys.filter((k) => doc.has(k));
-  } catch {
-    return [];
-  }
+export function configHasKeys(
+  repoRoot: string,
+  keys: readonly string[],
+  doc?: Document | null,
+): string[] {
+  const d = doc !== undefined ? doc : loadConfigDoc(repoRoot);
+  if (d === null) return [];
+  return keys.filter((k) => d.has(k));
 }
 
 /** Delete top-level `keys`; returns the keys actually removed. */

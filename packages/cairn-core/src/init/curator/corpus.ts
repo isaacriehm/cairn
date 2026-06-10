@@ -21,10 +21,15 @@
 
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { cairnDir } from "@isaacriehm/cairn-state";
 
+/** Repo-relative display paths. State home resolution goes through `cairnDir`. */
 export const CORPUS_DIR = join(".cairn", "init", "curator");
 export const CORPUS_JSONL_PATH = join(CORPUS_DIR, "corpus.jsonl");
 export const SHARDS_JSON_PATH = join(CORPUS_DIR, "shards.json");
+
+/** Under-cairn segments (no `.cairn` prefix) for `cairnDir` resolution. */
+const CURATOR_SEGS = ["init", "curator"] as const;
 
 /** Cap per shard. 80k headroom in 200k Sonnet for system prompt + tools. */
 export const MAX_INPUT_TOKENS_PER_SHARD = 120_000;
@@ -68,7 +73,7 @@ export function writeCorpus(
   repoRoot: string,
   records: CorpusRecord[],
 ): CorpusWriteResult {
-  const corpusAbs = join(repoRoot, CORPUS_JSONL_PATH);
+  const corpusAbs = cairnDir(repoRoot, ...CURATOR_SEGS, "corpus.jsonl");
   mkdirSync(dirname(corpusAbs), { recursive: true });
   const tmp = `${corpusAbs}.tmp`;
   const lines = records.map((r) => JSON.stringify(r)).join("\n");
@@ -170,7 +175,7 @@ export function writeShards(
   repoRoot: string,
   plan: ShardPlan,
 ): string {
-  const shardsAbs = join(repoRoot, SHARDS_JSON_PATH);
+  const shardsAbs = cairnDir(repoRoot, ...CURATOR_SEGS, "shards.json");
   mkdirSync(dirname(shardsAbs), { recursive: true });
   const tmp = `${shardsAbs}.tmp`;
   writeFileSync(tmp, JSON.stringify(plan, null, 2), "utf8");

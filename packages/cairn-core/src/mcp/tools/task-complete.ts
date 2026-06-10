@@ -15,7 +15,6 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 
 import type { McpContext } from "../context.js";
 import { requireBootstrap } from "../bootstrap-guard.js";
@@ -27,7 +26,7 @@ import {
   findCurrentActiveTask,
   readTaskSessionAffinity,
 } from "../../tasks/index.js";
-import {
+import { cairnDir,
   findActiveMission,
   readMissionState,
   readRoadmap,
@@ -84,7 +83,7 @@ function readGraduatedTaskSummary(
   repoRoot: string,
   taskId: string,
 ): GraduatedTaskSummary {
-  const statusPath = join(repoRoot, ".cairn", "tasks", "done", taskId, "status.yaml");
+  const statusPath = cairnDir(repoRoot, "tasks", "done", taskId, "status.yaml");
   const fallback: GraduatedTaskSummary = {
     task_id: taskId,
     title: taskId,

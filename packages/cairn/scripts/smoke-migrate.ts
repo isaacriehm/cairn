@@ -21,10 +21,20 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import { runMigrations, readConfigPin, VERSION } from "@isaacriehm/cairn-core";
+import {
+  runMigrations,
+  readConfigPin,
+  remediateGitignore,
+  VERSION,
+} from "@isaacriehm/cairn-core";
+
+function git(repoRoot: string, args: string[]): string {
+  return execFileSync("git", args, { cwd: repoRoot, encoding: "utf8" });
+}
 
 const cleanups: string[] = [];
 
@@ -184,6 +194,48 @@ async function runSmoke(): Promise<void> {
     assert(result.ran === true && result.outcomes.length === 0, "Step 6: unadopted no-op");
     assert(!existsSync(join(repoRoot, ".cairn")), "Step 6: must NOT create .cairn/ on unadopted repo");
     console.log("  ✓ Step 6 — unadopted repo untouched");
+  }
+
+  // ── Step 7 — 0002 backfills .cairn/.gitignore + untracks committed state ──
+  {
+    const repoRoot = mkRepo("version: 1\ncairn_version: 0.14.0\nslug: gi\n");
+    git(repoRoot, ["init", "-q"]);
+    // Stale gitignore (only sessions/) + a COMMITTED derived file the current
+    // template ignores — the pre-v0.15 adopter shape.
+    writeFileSync(join(repoRoot, ".cairn", ".gitignore"), "sessions/\n", "utf8");
+    mkdirSync(join(repoRoot, ".cairn", "ground"), { recursive: true });
+    writeFileSync(join(repoRoot, ".cairn", "ground", "manifest.yaml"), "files: {}\n", "utf8");
+    git(repoRoot, ["add", "-A"]);
+    git(repoRoot, ["-c", "user.email=s@s", "-c", "user.name=s", "commit", "-q", "-m", "seed"]);
+
+    const preview = remediateGitignore(repoRoot, { apply: false });
+    assert(preview.changed, "Step 7: detect should report changes");
+    assert(
+      preview.addedEntries.includes("ground/manifest.yaml"),
+      `Step 7: manifest ignore-entry missing, got ${preview.addedEntries.join(",")}`,
+    );
+    assert(
+      preview.untracked.some((p) => p.endsWith("ground/manifest.yaml")),
+      `Step 7: should see tracked manifest, got ${preview.untracked.join(",")}`,
+    );
+    assert(
+      readFileSync(join(repoRoot, ".cairn", ".gitignore"), "utf8") === "sessions/\n",
+      "Step 7: preview (apply:false) must not write",
+    );
+
+    const applied = remediateGitignore(repoRoot, { apply: true });
+    assert(applied.changed, "Step 7: apply should report changed");
+    const gi = readFileSync(join(repoRoot, ".cairn", ".gitignore"), "utf8");
+    assert(gi.startsWith("sessions/"), "Step 7: existing operator line preserved");
+    assert(gi.includes("ground/manifest.yaml"), "Step 7: missing entry appended");
+    assert(
+      git(repoRoot, ["ls-files", "--", ".cairn/ground/manifest.yaml"]).trim() === "",
+      "Step 7: committed manifest should be untracked",
+    );
+
+    const again = remediateGitignore(repoRoot, { apply: false });
+    assert(!again.changed, "Step 7: second detect is an idempotent no-op");
+    console.log("  ✓ Step 7 — 0002 backfills gitignore + untracks committed derived state");
   }
 
   console.log("smoke-migrate — pass");

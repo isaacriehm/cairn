@@ -4,8 +4,13 @@
 # Spec: PLUGIN_ARCHITECTURE §17 Layer 1 (bypass tracking).
 #
 # Records the SHA of the commit that just succeeded into
-# `.cairn/.attested-commits`. The Stop hook uses this list to detect
+# `<cairnHome>/.attested-commits`. The Stop hook uses this list to detect
 # `--no-verify` bypasses and surface them inline.
+#
+# State home is derived from THIS hook's own location: core.hooksPath points at
+# <cairnHome>/git-hooks in both modes — in-repo `.cairn/` for committed,
+# out-of-repo `~/.cairn/state/<id>/` for ghost. So the attested log lands beside
+# the rest of the state in either mode, never as a stray file in a ghost repo.
 
 set -e
 
@@ -18,11 +23,16 @@ if [ -z "$REPO_ROOT" ]; then
   exit 0
 fi
 
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+CAIRN_HOME="$(dirname "$HOOK_DIR")"
+if [ ! -d "$CAIRN_HOME" ]; then
+  exit 0
+fi
+
 SHA="$(git rev-parse --verify HEAD 2> /dev/null || true)"
 if [ -z "$SHA" ]; then
   exit 0
 fi
 
-mkdir -p "$REPO_ROOT/.cairn"
-echo "$SHA" >> "$REPO_ROOT/.cairn/.attested-commits"
+echo "$SHA" >> "$CAIRN_HOME/.attested-commits"
 exit 0

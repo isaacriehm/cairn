@@ -10,9 +10,9 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+
 import { parse as parseYaml } from "yaml";
-import { writeManifest } from "@isaacriehm/cairn-state";
+import { cairnDir, writeManifest } from "@isaacriehm/cairn-state";
 
 export interface GcCanaryOptions {
   repoRoot: string;
@@ -44,7 +44,7 @@ export function runGcCanary(opts: GcCanaryOptions): GcCanaryResult {
   }
 
   // 2. workflow.md sanity — file present, readable, frontmatter parseable.
-  const workflowPath = join(opts.repoRoot, ".cairn", "config", "workflow.md");
+  const workflowPath = cairnDir(opts.repoRoot, "config", "workflow.md");
   if (!existsSync(workflowPath)) {
     failures.push("workflow.md not found at .cairn/config/workflow.md");
   } else {

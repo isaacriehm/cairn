@@ -2,10 +2,10 @@
  * Lens resolver — thin wrapper over `cairn-core` ledger readers.
  *
  * The Lens reuses the same on-disk sources as the PostToolUse hooks: the
- * invariants ledger, the decisions ledger, the scope-index, and the per-task
- * directories under `.cairn/tasks/{active,done}/`. This module exposes a
- * single `LensResolver` that accepts a workspace folder root and answers
- * citation queries directly from disk — no MCP, no subprocess.
+ * invariants ledger, the decisions ledger, the scope-index, and the component
+ * registry. This module exposes a single `LensResolver` that accepts a
+ * workspace folder root and answers citation queries directly from disk — no
+ * MCP, no subprocess.
  *
  * Spec: docs/LENS_SPEC.md.
  */
@@ -17,20 +17,24 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { execFileSync } from "node:child_process";
+import { dirname, join, relative, resolve } from "node:path";
 import {
   buildDecisionsLedger,
   buildInvariantsLedger,
   componentsIndexPath,
   decisionsDir,
+  decisionsLedgerPath,
   getComponent,
   getInvariantsLedger,
   getScopeIndexEntry,
   invariantsDir,
-  lookupTask,
+  invariantsLedgerPath,
+  isGhost,
   readAnchorMap,
   readScopeIndex,
   readSotBindings,
+  readTopicIndex,
   scopeIndexPath,
   sotRenderedCacheDir,
   type AnchorMapEntry,
@@ -91,12 +95,6 @@ interface InvariantResolution {
   sourceDecision: string | null;
 }
 
-interface TaskResolution {
-  id: string;
-  found: "active" | "done" | "not_found";
-  title: string | null;
-}
-
 /**
  * Resolution of a `@cairn <Name>` registry header. `entry` is the
  * derived ledger projection; `exportName` is the detected export so the
@@ -114,12 +112,55 @@ interface ScopeRulesForFile {
   unscoped: boolean;
 }
 
+/**
+ * A source block bound to a DEC/INV via the external anchor-map (§3.7) — the
+ * ghost analog of an in-source `§` cite. `startLine`/`endLine` are 1-indexed
+ * source lines (as stored in the anchor-map).
+ */
+export interface GovernedBlock {
+  id: string;
+  kind: "decision" | "invariant";
+  startLine: number;
+  endLine: number;
+  title: string;
+  status: string;
+}
+
+/**
+ * Ghost resolution (§3.7): when no in-tree `.cairn/` exists, the repo may be
+ * ghost-adopted with state out-of-repo. Resolve the git toplevel and return it
+ * only when the global registry has it ghost-registered (keyed on root-commit
+ * inside `isGhost`). Returns null for a non-adopted repo. vscode-free so the
+ * smoke harness can exercise it directly.
+ */
+function resolveGhostRepoRoot(cwd: string): string | null {
+  let top: string;
+  try {
+    top = execFileSync("git", ["-C", cwd, "rev-parse", "--show-toplevel"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return null;
+  }
+  if (top.length === 0) return null;
+  try {
+    return isGhost(top) ? top : null;
+  } catch {
+    return null;
+  }
+}
+
 export class LensResolver {
   constructor(public readonly repoRoot: string) {}
 
   /**
-   * Walks up from `cwd` looking for `.cairn/`. Returns the dir containing
-   * it, or null when the file is not under a cairn-adopted repo.
+   * Resolve the cairn repo root for a file. **Committed:** walk up looking for
+   * an in-tree `.cairn/` and return the dir containing it (byte-identical to the
+   * original behavior). **Ghost (§3.7):** there is no in-tree `.cairn/` — the
+   * state lives out-of-repo — so fall back to the git toplevel and accept it
+   * only when the global registry has it ghost-registered. Without this the lens
+   * finds nothing in a ghost repo and the whole extension stays inert.
    */
   static resolveRepoRoot(cwd: string): string | null {
     let dir = resolve(cwd);
@@ -133,10 +174,10 @@ export class LensResolver {
         }
       }
       const parent = dirname(dir);
-      if (parent === dir) return null;
+      if (parent === dir) break;
       dir = parent;
     }
-    return null;
+    return resolveGhostRepoRoot(cwd);
   }
 
   /**
@@ -373,16 +414,6 @@ export class LensResolver {
     };
   }
 
-  /** Resolve a TODO(TSK-<id>) citation against the active+done task dirs. */
-  resolveTask(id: string): TaskResolution {
-    const result = lookupTask(this.repoRoot, id);
-    return {
-      id,
-      found: result.found,
-      title: result.title ?? null,
-    };
-  }
-
   /**
    * Resolve a `@cairn <Name>` registry header to its component ledger
    * entry. Collects the registry from the live `@cairn` headers (the
@@ -458,6 +489,62 @@ export class LensResolver {
     return { decisions, invariants, unscoped: false };
   }
 
+  /**
+   * Governed blocks for a file, sourced from the external anchor-map +
+   * topic-index instead of in-source `§` tokens (ghost-mode design).
+   *
+   * In committed mode the `§DEC`/`§INV` cite in the source is the decoration
+   * trigger; ghost writes no cite, so the binding lives out-of-repo: the
+   * anchor-map records each governed block's `{ file, line_range }` (keyed by
+   * topic slug) and the topic-index maps that slug → the DEC/INV id. Joining
+   * them yields the same `(id, range, title, status)` a token scan would, with
+   * no literal marker in the source. vscode-free so the smoke can exercise it.
+   * Returns [] off the happy path (missing stores, no anchors for the file).
+   */
+  ghostGovernedBlocks(relPath: string): GovernedBlock[] {
+    const out: GovernedBlock[] = [];
+    let anchors: ReturnType<typeof readAnchorMap>;
+    let topics: ReturnType<typeof readTopicIndex>;
+    try {
+      anchors = readAnchorMap(this.repoRoot);
+      topics = readTopicIndex(this.repoRoot);
+    } catch {
+      return out;
+    }
+    for (const [slug, entry] of Object.entries(anchors.anchors)) {
+      if (entry.file !== relPath) continue;
+      const range = entry.line_range;
+      if (range === undefined) continue;
+      const id = topics.topics[slug]?.dec_id;
+      if (id === undefined || id.length === 0) continue;
+      const isInv = id.startsWith("INV-");
+      const res = isInv ? this.resolveInvariant(id) : this.resolveDecision(id);
+      out.push({
+        id,
+        kind: isInv ? "invariant" : "decision",
+        startLine: range[0],
+        endLine: range[1],
+        title: res.title,
+        status: res.status,
+      });
+    }
+    out.sort((a, b) => a.startLine - b.startLine);
+    return out;
+  }
+
+  /**
+   * Mode-agnostic governed-block lookup for an absolute file path — the single
+   * selection point for the ghost fork the lens providers share. Ghost: the
+   * anchor-map blocks for the file. Committed: `[]` (the `§`-token scan in the
+   * provider is the trigger). Each provider calls this instead of repeating
+   * `isGhost(...)` + `relative(...)` + `ghostGovernedBlocks(...)`, so the mode
+   * decision lives here, not scattered across three providers (§3.0).
+   */
+  governedBlocksForFile(fsPath: string): GovernedBlock[] {
+    if (!isGhost(this.repoRoot)) return [];
+    return this.ghostGovernedBlocks(relative(this.repoRoot, fsPath));
+  }
+
   /** Returns the absolute on-disk path of the scope-index file. */
   scopeIndexFilePath(): string {
     return scopeIndexPath(this.repoRoot);
@@ -465,24 +552,13 @@ export class LensResolver {
 
   /** Returns the absolute on-disk path of the invariants ledger. */
   invariantsLedgerFilePath(): string {
-    return join(
-      this.repoRoot,
-      ".cairn",
-      "ground",
-      "invariants",
-      "invariants.ledger.yaml",
-    );
+    // Through cairn-state so it resolves out-of-repo in ghost (§3.7).
+    return invariantsLedgerPath(this.repoRoot);
   }
 
   /** Returns the absolute on-disk path of the decisions ledger. */
   decisionsLedgerFilePath(): string {
-    return join(
-      this.repoRoot,
-      ".cairn",
-      "ground",
-      "decisions",
-      "decisions.ledger.yaml",
-    );
+    return decisionsLedgerPath(this.repoRoot);
   }
 
   /**

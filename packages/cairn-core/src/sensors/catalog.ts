@@ -10,7 +10,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
-import { isSensorLang } from "@isaacriehm/cairn-state";
+import { cairnDir, isSensorLang } from "@isaacriehm/cairn-state";
 import type { StubCatalog, StubPattern, SensorLanguage } from "./types.js";
 import { z } from "zod";
 
@@ -80,7 +80,7 @@ const PKG_TEMPLATE_SENSORS =
 export function loadStubCatalog(repoRoot?: string): StubCatalog {
   const candidates: string[] = [];
   if (repoRoot !== undefined) {
-    candidates.push(join(repoRoot, ".cairn", "config", "stub-patterns.yaml"));
+    candidates.push(cairnDir(repoRoot, "config", "stub-patterns.yaml"));
   }
   candidates.push(PKG_TEMPLATE_STUB_CATALOG);
 
@@ -125,7 +125,7 @@ function isKnownLanguageOrAll(s: unknown): s is SensorLanguage | "all" {
 export function loadSensorRegistry(repoRoot?: string): SensorRegistry {
   const candidates: string[] = [];
   if (repoRoot !== undefined) {
-    candidates.push(join(repoRoot, ".cairn", "config", "sensors.yaml"));
+    candidates.push(cairnDir(repoRoot, "config", "sensors.yaml"));
   }
   candidates.push(PKG_TEMPLATE_SENSORS);
   for (const p of candidates) {

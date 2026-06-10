@@ -9,9 +9,10 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
+import { cairnDir } from "@isaacriehm/cairn-state";
 
 export interface CopySafetyConfig {
   enabled: boolean;
@@ -66,7 +67,7 @@ const DEFAULT: CopySafetyConfig = {
 };
 
 export function readCopySafetyConfig(repoRoot: string): CopySafetyConfig {
-  const path = join(repoRoot, ".cairn", "config", "sensors.yaml");
+  const path = cairnDir(repoRoot, "config", "sensors.yaml");
   if (!existsSync(path)) return defaultsCopy();
 
   let parsed: unknown;

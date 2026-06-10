@@ -16,9 +16,8 @@
  */
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 import { stringify as stringifyYaml } from "yaml";
-import {
+import { cairnDir,
   scopeIndexPath,
   writeScopeIndex,
   type ScopeIndexEntry,
@@ -64,7 +63,10 @@ export async function runPhase4Seed(state: PhaseState): Promise<PhaseResult> {
     if (mapperOutput !== undefined && wfWasSeeded) {
       try {
         updateWorkflowSlugBlock({
-          workflowMdPath: join(state.repoRoot, wfRel),
+          // Resolve through cairnHome — the seed wrote workflow.md out-of-repo
+          // in ghost, so an in-repo `join(repoRoot, …)` would patch a file that
+          // doesn't exist (silent soft-fail, unpatched slug block).
+          workflowMdPath: cairnDir(state.repoRoot, "config", "workflow.md"),
           slug: projectSlug,
           update: {
             route_handler_globs: mapperOutput.route_handler_globs,
@@ -85,8 +87,8 @@ export async function runPhase4Seed(state: PhaseState): Promise<PhaseResult> {
     }
 
     // Step 3 — write .cairn/config.yaml.
-    const configPath = join(state.repoRoot, ".cairn", "config.yaml");
-    mkdirSync(join(state.repoRoot, ".cairn"), { recursive: true });
+    const configPath = cairnDir(state.repoRoot, "config.yaml");
+    mkdirSync(cairnDir(state.repoRoot), { recursive: true });
     if (!existsSync(configPath)) {
       const config = buildProjectOverlay({
         detection,

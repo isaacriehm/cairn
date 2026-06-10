@@ -12,6 +12,7 @@ import {
   bodyContentHash,
   decisionsDir,
   deriveDecId,
+  isGhost,
   readAnchorMap,
   readRejectedYaml,
   readTopicIndex,
@@ -179,8 +180,9 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     // ── Auto-accept gate ──────────────────────────────────────────────
     // When auto-accept is on (the default) and the caller did NOT pin a
     // target, an AI-proposed decision lands straight in the ledger instead
-    // of the triage inbox — the human review checkpoint shifts to the
-    // committed-ground-state PR diff. Verify-then-accept: assertions
+    // of the triage inbox — the human review checkpoint shifts to the diff
+    // (the committed-ground-state PR diff in committed mode; the operator's
+    // local working/commit diff in ghost, which has no PR). Verify-then-accept: assertions
     // already passed schema validation above; here we dedup against the
     // accepted ledger so a restatement of an existing decision still queues
     // as a draft for human eyes rather than silently re-landing.
@@ -262,13 +264,21 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
       /* ignore */
     }
 
+    // Ghost has no committed PR for the auto-accepted DEC to ride — surface
+    // that review rides the operator's local diff instead (§3.3 seam 6).
+    const note =
+      dedupNote ??
+      (autoAccepted && isGhost(ctx.repoRoot)
+        ? "auto-accepted to local ground — review rides your local diff (ghost has no committed PR)"
+        : undefined);
+
     return {
       ok: true,
       id,
       target,
       path: relPath,
       auto_accepted: autoAccepted,
-      ...(dedupNote !== undefined ? { note: dedupNote } : {}),
+      ...(note !== undefined ? { note } : {}),
     };
   });
 }

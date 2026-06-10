@@ -16,14 +16,15 @@
  */
 
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+
 import { VERSION } from "../index.js";
 import { logger } from "../logger.js";
 import { acquireOperationLock, OperationLockHeldError } from "../lock.js";
-import { readConfigPin, writeConfigPin } from "./config-io.js";
+import { loadConfigDoc, readConfigPin, writeConfigPin } from "./config-io.js";
 import { MIGRATIONS } from "./registry.js";
 import { semverCmp, semverGt, semverLte } from "./semver.js";
-import type { Migration, MigrationClass } from "./types.js";
+import type { ConfigDoc, Migration, MigrationClass } from "./types.js";
+import { cairnDir } from "@isaacriehm/cairn-state";
 
 const log = logger("migrate.runner");
 
@@ -64,9 +65,9 @@ export interface RunMigrationsResult {
   pendingReview: string[];
 }
 
-function needs(m: Migration, repoRoot: string): boolean {
+function needs(m: Migration, repoRoot: string, doc?: ConfigDoc | null): boolean {
   try {
-    return m.detect(repoRoot);
+    return m.detect(repoRoot, doc);
   } catch (err) {
     log.warn(
       { migration: m.id, err: err instanceof Error ? err.message : String(err) },
@@ -76,12 +77,20 @@ function needs(m: Migration, repoRoot: string): boolean {
   }
 }
 
-/** Migrations introduced in `(pin, current]` that still report needed. */
-function selectCandidates(repoRoot: string, pin: string, current: string): Migration[] {
+/**
+ * Migrations introduced in `(pin, current]` that still report needed. `doc` is
+ * the once-parsed `config.yaml` shared across this read-only selection pass.
+ */
+function selectCandidates(
+  repoRoot: string,
+  pin: string,
+  current: string,
+  doc?: ConfigDoc | null,
+): Migration[] {
   return MIGRATIONS.filter(
     (m) => semverGt(m.introducedIn, pin) && semverLte(m.introducedIn, current),
   )
-    .filter((m) => needs(m, repoRoot))
+    .filter((m) => needs(m, repoRoot, doc))
     .slice()
     .sort(
       (a, b) =>
@@ -99,13 +108,17 @@ export async function runMigrations(
 
   // Never act on an unadopted repo — guards against any caller (notably the
   // defensive MCP-boot run) creating `.cairn/` via the lock's mkdir.
-  if (!existsSync(join(repoRoot, ".cairn", "config.yaml"))) {
+  if (!existsSync(cairnDir(repoRoot, "config.yaml"))) {
     return { ran: true, pin: "0.0.0", current, newPin: null, outcomes: [], pendingReview: [] };
   }
 
-  const pin = readConfigPin(repoRoot) ?? "0.0.0";
+  // Parse config.yaml once for the whole read-only selection phase (pin read +
+  // each candidate's detect). The apply phase re-reads fresh, since a migration
+  // may mutate the file mid-run.
+  const doc = loadConfigDoc(repoRoot);
+  const pin = readConfigPin(repoRoot, doc) ?? "0.0.0";
 
-  const candidates = selectCandidates(repoRoot, pin, current);
+  const candidates = selectCandidates(repoRoot, pin, current, doc);
 
   // Nothing pending: make the pin live if it's merely stale, else no-op.
   if (candidates.length === 0) {

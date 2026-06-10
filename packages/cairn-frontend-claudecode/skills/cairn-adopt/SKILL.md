@@ -7,7 +7,7 @@ when_to_use: |
   cairn_init_run MCP tool as state machine — each phase returns
   complete (advance) or needs_input (AskUserQuestion, thread answer,
   re-invoke). Skip when `.cairn/` exists or operator picked "never".
-allowed-tools: Skill(cairn:cairn-attention), Task(curator-map), Task(curator-reduce), Task(component-annotator)
+allowed-tools: Skill(cairn:cairn-attention), Task(curator-map), Task(curator-reduce), Task(component-annotator), Task(component-registrar)
 ---
 
 # Skill: cairn-adopt
@@ -40,17 +40,33 @@ because Phase 4-seed writes `.cairn/config.yaml` very early. A simple
 `ls .cairn` check can't distinguish "operator quit during Phase 7" from
 "adoption finished cleanly N sessions ago."
 
-Run this single shell probe to classify:
+Run this single shell probe to classify. It is **ghost-aware**: a
+ghost-adopted repo has no in-repo `.cairn/` — its state lives out-of-repo
+at `~/.cairn/state/<root-commit>/`. The probe resolves the effective state
+home (in-repo when present, else the out-of-repo ghost dir keyed on the
+repo's root-commit) before classifying, so a previously-adopted ghost repo
+is recognized as `adopted` / `mid-adoption` instead of re-triggering `fresh`
+and re-prompting consent:
 
 ```bash
 node -e '
   const fs=require("node:fs");
+  const os=require("node:os");
   const path=require("node:path");
+  const cp=require("node:child_process");
   const root=process.cwd();
-  const cairnDir=path.join(root,".cairn");
-  const initState=path.join(cairnDir,"init-state.json");
-  const config=path.join(cairnDir,"config.yaml");
-  if(!fs.existsSync(cairnDir)){console.log("fresh");process.exit(0);}
+  let home=path.join(root,".cairn");
+  if(!fs.existsSync(home)){
+    // No in-repo .cairn — this repo may be ghost-adopted. Ghost state lives
+    // at ~/.cairn/state/<repo-id>; repo-id is the move-stable root-commit SHA
+    // (matches registerGhostRepo). Resolve it and probe there instead.
+    let rc="";
+    try{rc=cp.execFileSync("git",["-C",root,"rev-list","--max-parents=0","HEAD"],{encoding:"utf8",stdio:["ignore","pipe","ignore"]}).trim().split(/\s+/)[0]||"";}catch{}
+    if(rc){const g=path.join(os.homedir(),".cairn","state",rc);if(fs.existsSync(g))home=g;}
+  }
+  const initState=path.join(home,"init-state.json");
+  const config=path.join(home,"config.yaml");
+  if(!fs.existsSync(home)){console.log("fresh");process.exit(0);}
   if(fs.existsSync(initState)){
     try{
       const s=JSON.parse(fs.readFileSync(initState,"utf8"));
@@ -180,7 +196,45 @@ On `a) wire and reopen`, also surface:
 End the turn — the operator restarts and the next session resumes
 adoption with the statusline live.
 
-On `b) wire and continue` or `c) skip`, fall through to Step 2.
+On `b) wire and continue` or `c) skip`, fall through to Step 1.6.
+
+## Step 1.6 — adoption mode (committed | ghost)
+
+**Fresh adoptions only.** This step runs once, on the `fresh` branch,
+**before** the pipeline writes its first byte. Skip it entirely on
+`mid-adoption` / `adopted` — the mode was already chosen and recorded in
+the global registry; re-asking would imply a mid-life mode flip, which is
+not supported.
+
+The choice is **never** auto-defaulted and **never** inferred from the
+path. Ask it explicitly via `AskUserQuestion`:
+
+- **`committed`** (the normal mode) — Cairn state lives in `.cairn/` inside
+  this repo and is committed alongside your code. Teammates who clone the
+  repo and run Cairn share the same ground state. CI can enforce it.
+- **`ghost`** — private, local-only. **Nothing about Cairn touches this
+  repo or its history**: no in-repo `.cairn/`, no `§DEC`/`§INV` source
+  cites, no `@cairn` component headers, no edits to `CLAUDE.md`/`.gitignore`,
+  no `.github/` CI workflow. State lives entirely outside the repo at
+  `~/.cairn/state/`. Enforcement is advisory (the pre-commit sensor sweep
+  warns, never blocks). For consultant / client work where the repo must
+  stay byte-identical to un-adopted.
+
+Render the one-line explanation as each option's `description`. Do not
+preamble; the `AskUserQuestion` widget is the canonical render path.
+
+Record the answer for Step 3:
+
+- **`committed`** → the implicit default. The pipeline writes in-repo as
+  today. Pass **no** `ghost` argument to `cairn_init_resume`.
+- **`ghost`** → on the **first** `cairn_init_resume` call in Step 3, pass
+  `{ ghost: true }`. That registers the repo as ghost in the global
+  registry **before** any state is written, so the fresh init-state, the
+  Phase 4 seed, and every later writer resolve to the out-of-repo home.
+  Pass `ghost: true` only on that first call; subsequent `cairn_init_run`
+  calls and any resume re-entry need no flag (the registry entry persists).
+
+Fall through to Step 2.
 
 ## Step 2 — preflight
 
@@ -226,11 +280,14 @@ needs_input phases. Tool responses are skinny: `{status, nextPhase}`,
 on-disk state until the loop has terminated; until then the phase
 tools own all writes to it.
 
-**Init the pipeline** by calling `cairn_init_resume` (no args). It
-returns `{ status: "ready" | "done", nextPhase: <PhaseId> | null,
-repoRoot }`. If `status === "done"` the project is already mid-init or
-fully adopted — abort and tell the operator to check
-`.cairn/init-state.json`.
+**Init the pipeline** by calling `cairn_init_resume`. Pass **no args**
+for committed mode (the default); pass `{ ghost: true }` on this first
+call **only** when the operator chose `ghost` in Step 1.6 — that registers
+the repo as ghost before any state is written, so the whole pipeline
+resolves to the out-of-repo home. It returns `{ status: "ready" | "done",
+nextPhase: <PhaseId> | null, repoRoot }`. If `status === "done"` the
+project is already mid-init or fully adopted — abort and tell the operator
+to check `.cairn/init-state.json`.
 
 **Loop until done**:
 
@@ -304,7 +361,6 @@ descriptions:
 | `9d-comp-walk` | list component files missing a `@cairn` header | <5s |
 | `9f-comp-emit` | build component index + draft singleton §INVs + audit | <5s |
 | `11-baseline` | first sensor sweep | <1s / ~5s |
-| `12-strip` | per-module strip-replace consent | operator |
 | `13-multidev` | per-host package manager hints | <1s |
 
 `8-docs-ingest`, `9b-curate`, `9e-comp-annotate`, and `10-rules-merge`
@@ -376,8 +432,18 @@ pipeline driver, just one phase's parallel work.)
 
 When the loop hits `nextPhase === "9b-curate"`, run this orchestration
 **before** invoking `cairn_init_run` for that phase. The MCP runner
-for 9b-curate just confirms `.cairn/init/curator/final.jsonl` exists
+for 9b-curate just confirms `final.jsonl` exists under the curator dir
 + counts entries; the actual map / reduce work happens here.
+
+> **Path resolution (ghost-aware).** The `9a-walker` result returns an
+> absolute `curator_dir`. In **committed** mode it equals
+> `.cairn/init/curator`, so the repo-relative paths in the steps below work
+> as-is. In **ghost** mode the repo has no in-repo `.cairn/` — `curator_dir`
+> points out-of-repo under the state home. There, substitute `curator_dir`
+> for every `.cairn/init/curator` path below, and give the `curator-map` /
+> `curator-reduce` subagents ABSOLUTE paths under it. `9b-curate` validates
+> `final.jsonl` at that absolute `curator_dir`; a repo-relative write lands in
+> the client tree and fails `9b-curate-missing-final`.
 
 Render a status banner before dispatch:
 
@@ -464,6 +530,27 @@ files now carry a header and advances — it never blocks, so annotation
 is opportunistic (anything not headered here surfaces as missing-header
 debt in the attention queue after adoption).
 
+**Ghost mode — register, do NOT annotate.** If this adoption is ghost
+(the operator picked `ghost` in Step 1.6, or the repo is registered
+ghost), you MUST NOT dispatch the `component-annotator` — it writes
+`@cairn` headers into client source, which ghost forbids (constraint 2).
+Instead dispatch the **`component-registrar`** subagent: same
+classification, but it calls `cairn_component_register` (out-of-repo, no
+source edit) for each unit. Use the same per-batch consent + rounds-of-4
+dispatch as Step 3.6.2, with these ghost differences:
+
+- The banner says "registering" not "annotating", and notes that
+  **nothing is written to source** — the classification lands in the
+  out-of-repo registry.
+- Spawn `component-registrar` (not `component-annotator`). Its brief
+  inlines the same `file` / `export_name` / `workspace` / `categories`
+  fields; it registers via the MCP tool and returns a one-line receipt.
+- Anything the operator declines stays unregistered and surfaces as a
+  soft `unregistered-unit` offer in the post-adoption attention queue.
+- The `9e-comp-annotate` runner then counts `registered` /
+  `still_unregistered` across the corpus (it never reads a header in
+  ghost). Always advances.
+
 **This whole step is OPTIONAL and gated on operator consent.** Writing
 headers mutates source files. If the operator declines, skip straight
 to Step 3.6.4 — the deterministic emit phase still indexes whatever
@@ -521,10 +608,12 @@ ride the brief, not buried prose.
 ### Step 3.6.4 — advance the state machine
 
 Call `cairn_init_run({ phase: "9e-comp-annotate" })`. The runner counts
-`annotated` / `still_missing` across the corpus and advances to
+`annotated` / `still_missing` (committed) or `registered` /
+`still_unregistered` (ghost) across the corpus and advances to
 `9f-comp-emit`, which builds the index, drafts singleton §INVs, and
-queues any still-missing headers + audit findings to the attention
-baseline. No error path — annotation is best-effort by design.
+queues any still-missing headers / unregistered units + audit findings to
+the attention baseline. No error path — annotation/registration is
+best-effort by design.
 
 ## Step 4 — auto-bootstrap the just-adopted clone
 

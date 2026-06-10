@@ -28,6 +28,7 @@ import { join } from "node:path";
 import { stringify as stringifyYaml } from "yaml";
 import {
   bodyContentHash,
+  cairnDir,
   decisionsDir,
   invariantsDir,
   writeDecisionsLedger,
@@ -71,7 +72,7 @@ export async function runCuratorEmit(
   args: RunCuratorEmitArgs,
 ): Promise<RunCuratorEmitResult> {
   const { repoRoot } = args;
-  const finalAbs = join(repoRoot, CURATOR_FINAL_PATH);
+  const finalAbs = cairnDir(repoRoot, "init", "curator", "final.jsonl");
   if (!existsSync(finalAbs)) {
     return {
       decsWritten: [],

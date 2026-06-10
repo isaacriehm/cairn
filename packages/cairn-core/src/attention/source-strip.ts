@@ -29,6 +29,7 @@ import {
   type StripReplaceResult,
 } from "../init/source-comments/strip-replace.js";
 import { logger } from "../logger.js";
+import { cairnDir } from "@isaacriehm/cairn-state";
 
 const DraftMetaSchema = z.object({
   blockId: z.string().nullable().optional(),
@@ -143,7 +144,7 @@ function extractAuditBlocks(body: unknown): AuditBlock[] {
 }
 
 export function findLatestSourceCommentsAudit(repoRoot: string): string | null {
-  const dir = join(repoRoot, ".cairn", "baseline");
+  const dir = cairnDir(repoRoot, "baseline");
   if (!existsSync(dir)) return null;
   let entries: string[];
   try {

@@ -1,39 +1,56 @@
 #!/usr/bin/env bash
 # Cairn pre-commit hook (versioned, per-clone activation via core.hooksPath).
 #
-# Runs two passes against the staged tree:
+# Two passes over the staged tree:
+#   1. `cairn sensor-run --staged`   — sensor sweep. Blocks the commit on a
+#                                      hard finding in committed mode; ADVISORY
+#                                      (warns, never blocks) in ghost mode.
+#   2. `cairn hook pre-commit-align` — Layer B detection-only SoT drift log.
+#                                      Never blocks. Always exits 0.
 #
-#   1. `cairn sensor-run --staged`      — component-registry check + the
-#                                         sensor sweep (Layer A stub
-#                                         catalog, Layer C structural,
-#                                         decision-assertions) over the
-#                                         staged tree. Exits non-zero,
-#                                         blocking the commit, on any hard
-#                                         finding.
+# State home is derived from THIS hook's own location: core.hooksPath points at
+# <cairnHome>/git-hooks in BOTH modes — in-repo `.cairn/` for committed,
+# out-of-repo `~/.cairn/state/<id>/` for ghost — so the hook resolves its
+# state, `.cli-path`, and mode without a registry lookup. Ghost = the home
+# lives OUTSIDE the repo tree.
 #
-#   2. `cairn hook pre-commit-align`    — Layer B (plan §4.2)
-#                                         detection-only SoT drift log.
-#                                         NEVER blocks the commit.
-#                                         Always exits 0; failures
-#                                         degrade silently.
-#
-# Resolution order for the cairn binary:
-#   1. .cairn/.cli-path (written by `cairn join`; points at the bundled
-#      cli.mjs for plugin users, the global cairn shim for CLI users).
-#   2. global `cairn` binary on PATH.
-#   3. exit 0 — no enforcement available; SessionStart bootstrap banner
-#      will surface on next Claude Code session and re-run join.
+# cairn binary resolution: <cairnHome>/.cli-path, then a global `cairn`, else
+# exit 0 (SessionStart re-runs join next session).
 
 set -e
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2> /dev/null || true)"
-if [ -z "$REPO_ROOT" ] || [ ! -d "$REPO_ROOT/.cairn" ]; then
+if [ -z "$REPO_ROOT" ]; then
   exit 0
 fi
 
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+CAIRN_HOME="$(dirname "$HOOK_DIR")"
+if [ ! -d "$CAIRN_HOME" ]; then
+  exit 0
+fi
+
+# Ghost = state home is OUTSIDE the repo tree → advisory. Committed = the home
+# is <repo>/.cairn → enforcing.
+GHOST=1
+case "$CAIRN_HOME/" in
+  "$REPO_ROOT"/*) GHOST=0 ;;
+esac
+
 CAIRN_CMD=""
-if [ -f "$REPO_ROOT/.cairn/.cli-path" ]; then
-  CAIRN_CMD="$(head -n1 "$REPO_ROOT/.cairn/.cli-path")"
+if [ -f "$CAIRN_HOME/.cli-path" ]; then
+  CAIRN_CMD="$(head -n1 "$CAIRN_HOME/.cli-path")"
+  # Self-heal a stale path. A plugin upgrade rotates the marketplace cache
+  # dir, so a .cli-path written by an older version points at a now-deleted
+  # cli.mjs. Verify the target exists; if not, blank CAIRN_CMD so resolution
+  # falls through to a global `cairn` rather than eval-ing a dead path (which,
+  # under `set -e`, hard-fails the commit instead of degrading silently).
+  CAIRN_BIN="${CAIRN_CMD#node }"
+  CAIRN_BIN="${CAIRN_BIN#\"}"
+  CAIRN_BIN="${CAIRN_BIN%\"}"
+  if [ -n "$CAIRN_BIN" ] && [ ! -f "$CAIRN_BIN" ]; then
+    CAIRN_CMD=""
+  fi
 fi
 if [ -z "$CAIRN_CMD" ] && command -v cairn > /dev/null 2>&1; then
   CAIRN_CMD="cairn"
@@ -42,8 +59,14 @@ if [ -z "$CAIRN_CMD" ]; then
   exit 0
 fi
 
-# Pass 1 — sensor-run (may block).
-eval "$CAIRN_CMD sensor-run --staged"
+# Pass 1 — sensor-run. Blocks on hard findings in committed mode; advisory in
+# ghost (Cairn is private memory, never a delivery gate).
+if [ "$GHOST" = "1" ]; then
+  eval "$CAIRN_CMD sensor-run --staged" \
+    || echo "cairn (ghost): sensor findings above are advisory — commit not blocked" >&2
+else
+  eval "$CAIRN_CMD sensor-run --staged"
+fi
 
 # Pass 2 — Layer B alignment log (never blocks).
 eval "$CAIRN_CMD hook pre-commit-align" || true

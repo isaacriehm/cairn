@@ -16,6 +16,7 @@
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { isGhost } from "@isaacriehm/cairn-state";
 import { installCairnRuleAndImport } from "../claude-rule.js";
 
 const PREPARE_SCRIPT_FRAGMENT = "cairn join || true";
@@ -51,6 +52,31 @@ export interface InstallMultiDevArgs {
 
 export function installMultiDev(args: InstallMultiDevArgs): MultiDevInstallResult {
   const repoRoot = args.repoRoot;
+
+  // Ghost is single-operator by design (§3.4, §9): there are no teammates, and
+  // JOIN.md / the `.claude/rules/cairn.md` import are never written (they'd be
+  // a tracked-source leak). So the whole multi-dev onboarding surface — per-host
+  // hints ("rely on .cairn/JOIN.md for new contributors"), the package-manager
+  // detection, and the rule-import wiring — is suppressed. (The rule import is
+  // also guarded inside `installCairnRuleAndImport`; this is the belt over that
+  // suspenders, and it kills the misleading hints too.)
+  if (isGhost(repoRoot)) {
+    return {
+      hostKinds: ["none"],
+      preparePatched: false,
+      manualHints: [
+        "ghost mode — single-operator; multi-dev onboarding (JOIN.md, per-host hints, teammate rule import) is suppressed by design",
+      ],
+      steps: [
+        {
+          step: "multi-dev-suppressed-ghost",
+          status: "skipped",
+          detail: "ghost is single-operator — no teammate onboarding artifacts",
+        },
+      ],
+    };
+  }
+
   const hostKinds: MultiDevHostKind[] = [];
   const manualHints: string[] = [];
   const steps: MultiDevInstallStep[] = [];

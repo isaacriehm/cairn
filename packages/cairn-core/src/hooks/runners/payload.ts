@@ -8,6 +8,7 @@
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { z } from "zod";
+import { cairnDir } from "@isaacriehm/cairn-state";
 
 export const CAIRN_HOOK_VERSION = "0.2.0";
 
@@ -104,7 +105,7 @@ export function appendTelemetry(row: {
   warnings: string[];
   extra?: Record<string, unknown>;
 }): void {
-  const dir = join(row.repoRoot, ".cairn", "state", "telemetry");
+  const dir = cairnDir(row.repoRoot, "state", "telemetry");
   if (!existsSync(dir)) {
     try {
       mkdirSync(dir, { recursive: true });

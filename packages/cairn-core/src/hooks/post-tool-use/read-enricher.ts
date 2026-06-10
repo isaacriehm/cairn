@@ -2,8 +2,8 @@
  * `cairn hook read-enrich` — PostToolUse hook on the Read tool.
  *
  * Scans the file content the agent just read for cairn citation
- * patterns (`§INV-<hash>`, `TODO(TSK-<id>)`, banned `DEC-<N>`) and prepends a
- * legend block to Shape-B `additionalContext`.
+ * patterns (`§INV-<hash>`, `§DEC-<hash>`) and prepends a legend block to
+ * Shape-B `additionalContext`.
  *
  * This hook is critical for "Honest Agent" context continuity — it
  * ensures that if an agent reads a file carrying a bare cite, it
@@ -20,12 +20,10 @@ import {
   getDecisionsLedger,
   getInvariantsLedger,
   getScopeIndexEntry,
-  lookupTask,
 } from "@isaacriehm/cairn-state";
 import type {
   LedgerSnapshot,
   ScopeIndexEntry,
-  TaskLookupResult,
 } from "@isaacriehm/cairn-state";
 import {
   readHookStdin,
@@ -126,15 +124,11 @@ export async function runReadEnricher(): Promise<void> {
     const decisionsLedger = getDecisionsLedger(repoRoot);
     const invariantsLedger = getInvariantsLedger(repoRoot);
 
-    const resolveTaskFn = (id: string): TaskLookupResult =>
-      lookupTask(repoRoot, id);
-
     const legend = buildLegend(
       citations,
       invariantsLedger,
       decisionsLedger,
       scopeEntry,
-      resolveTaskFn,
     );
 
     outcome = {
@@ -143,7 +137,6 @@ export async function runReadEnricher(): Promise<void> {
       citations: {
         invariants: citations.invariants.length,
         decisions: citations.decisions.length,
-        todos: citations.todos.length,
       },
       legend_chars: legend?.length ?? 0,
     };

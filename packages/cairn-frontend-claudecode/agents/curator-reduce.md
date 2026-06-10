@@ -1,6 +1,7 @@
 ---
 name: curator-reduce
 description: Cairn curator reduce subagent — clusters all curator-map output, synthesizes the final 30-80 DEC/INV set, writes final.jsonl. Spawned once after every map subagent finishes.
+model: sonnet
 tools:
   - Read
   - Write

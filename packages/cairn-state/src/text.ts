@@ -45,15 +45,12 @@ export function splitCsv(value: string | undefined | null): string[] {
  * Deliberately excludes SCREAMING_CASE constants (`FEATURED_TABS`) and bare
  * single-letter / acronym idents. The component convention for a unit name.
  */
-export const PASCAL_CASE_RE = /^[A-Z][a-z]/;
+const PASCAL_CASE_RE = /^[A-Z][a-z]/;
 
 /** True when `name` is PascalCase by the {@link PASCAL_CASE_RE} signal. */
 export function isPascalCase(name: string): boolean {
   return PASCAL_CASE_RE.test(name);
 }
-
-/** A JS/TS identifier character-class fragment, for composing regexes. */
-export const JS_IDENT_CHARS = "A-Za-z0-9_$";
 
 /**
  * The `@cairn` registry-header signal: `@cairn` then whitespace then an

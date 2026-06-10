@@ -61,7 +61,7 @@ import { z } from "zod";
 import { readHookStdin } from "../runners/payload.js";
 import { resolveRepoRoot } from "../../session-start/index.js";
 import { runClaude } from "../../claude/index.js";
-import {
+import { cairnDir,
   anchorMapPath,
   bindDec,
   bodyContentHash,
@@ -71,7 +71,9 @@ import {
   deriveLedgerInvId,
   emptyAnchorMap,
   invariantsDir,
+  isGhost,
   readAnchorMap,
+  readScopeIndex,
   readSotBindings,
   readSotCache,
   readTopicIndex,
@@ -82,6 +84,7 @@ import {
   topicSlug,
   writeAlignmentPending,
   writeAnchorMap,
+  writeScopeIndex,
   writeSotBindings,
   writeSotCache,
   writeTopicIndex,
@@ -1250,6 +1253,32 @@ interface EmitResult {
   kind: "DEC" | "INV";
 }
 
+/**
+ * Ghost: record the `file → entity` binding in the out-of-repo scope-index at
+ * emit time. Committed mode derives this binding later from the in-source `§`
+ * cite, but ghost writes no cite (applyStripReplace no-ops), so emit is the only
+ * chance to record it — GC liveness (entity-orphan) and read-enricher recall
+ * both read this binding. No-op outside ghost. Caller holds the write lock.
+ */
+function bindGhostScope(
+  repoRoot: string,
+  file: string,
+  id: string,
+  isDec: boolean,
+): void {
+  if (!isGhost(repoRoot)) return;
+  const idx = readScopeIndex(repoRoot) ?? {
+    generated: new Date().toISOString(),
+    files: {},
+  };
+  const entry = idx.files[file] ?? { decisions: [], invariants: [] };
+  const list = isDec ? entry.decisions : entry.invariants;
+  if (!list.includes(id)) list.push(id);
+  idx.files[file] = entry;
+  idx.generated = new Date().toISOString();
+  writeScopeIndex(repoRoot, idx);
+}
+
 async function emitLedgerEntity(args: {
   repoRoot: string;
   block: CommentBlock;
@@ -1342,6 +1371,9 @@ async function emitLedgerEntity(args: {
       updatedAm.generated = now;
       writeAnchorMap(repoRoot, updatedAm);
 
+      // Ghost: no `§` cite will ever bind this file → id, so record it now.
+      bindGhostScope(repoRoot, block.file, id, isDec);
+
       try {
         if (isDec) writeDecisionsLedger({ repoRoot });
         else writeInvariantsLedger({ repoRoot });
@@ -1423,7 +1455,7 @@ function verdictCachePath(
   scopeKey: string,
 ): string {
   const blockHash = createHash("sha256").update(blockBody, "utf8").digest("hex").slice(0, 12);
-  return join(repoRoot, ".cairn", "cache", "haiku", scope, `${blockHash}-${scopeKey}.json`);
+  return cairnDir(repoRoot, "cache", "haiku", scope, `${blockHash}-${scopeKey}.json`);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1445,7 +1477,7 @@ function deferToStaleness(
     });
     // Append the verbatim block + reason to a Layer-A-specific JSONL so
     // Layer C can pick it up without re-walking the file.
-    const path = join(repoRoot, ".cairn", "staleness", "layer-a-deferred.jsonl");
+    const path = cairnDir(repoRoot, "staleness", "layer-a-deferred.jsonl");
     mkdirSync(dirname(path), { recursive: true });
     appendFileSync(
       path,
@@ -1737,6 +1769,9 @@ async function emitAugmentSibling(args: {
       });
       updatedAm.generated = now;
       writeAnchorMap(repoRoot, updatedAm);
+
+      // Ghost: bind file → id at emit (augment path) — no cite will record it.
+      bindGhostScope(repoRoot, block.file, id, !isInv);
 
       try {
         if (isInv) writeInvariantsLedger({ repoRoot });

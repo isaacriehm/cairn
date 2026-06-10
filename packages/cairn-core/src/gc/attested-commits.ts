@@ -7,8 +7,9 @@
  */
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+
 import type { GcFinding, GcCommitProposal } from "./types.js";
+import { cairnDir } from "@isaacriehm/cairn-state";
 
 export interface AttestedCommitsGcOptions {
   repoRoot: string;
@@ -28,7 +29,7 @@ export function runAttestedCommitsGc(
   opts: AttestedCommitsGcOptions,
 ): AttestedCommitsGcResult {
   const keep = opts.keepCount ?? DEFAULT_KEEP;
-  const path = join(opts.repoRoot, ".cairn", ".attested-commits");
+  const path = cairnDir(opts.repoRoot, ".attested-commits");
   if (!existsSync(path)) {
     return { findings: [], proposals: [] };
   }

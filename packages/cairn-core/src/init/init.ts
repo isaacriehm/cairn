@@ -28,7 +28,8 @@ import { join, relative } from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { z } from "zod";
 import { VERSION } from "../index.js";
-import {
+import { cairnDir,
+  registerGhostRepo,
   scopeIndexPath,
   writeScopeIndex,
   type ScopeIndex,
@@ -228,6 +229,14 @@ export interface RunInitArgs {
     entry: TopicIndexEntry,
     body: string,
   ) => DocClassification;
+  /**
+   * Ghost adoption — register this repo as ghost (state lives out-of-repo
+   * under `~/.cairn/state/<repo-id>/`, nothing Cairn-shaped touches the client
+   * tree or its history). Registered before the Phase 4 seed so every writer
+   * resolves to the out-of-repo home. CLI: `cairn init --ghost`.
+   * See ghost-mode design
+   */
+  ghost?: boolean;
 }
 
 export interface InitResult {
@@ -298,6 +307,15 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
       info("");
       process.exit(1);
     }
+  }
+
+  // ── Ghost registration ─────────────────────────────────────────────
+  // Register BEFORE any `.cairn` write (init logs, seed, config) so every
+  // writer resolves to the out-of-repo state home for the rest of this run.
+  // The global registry flips `isGhost(repoRoot)` true; the seed, the rule-
+  // import guard, and applyStripReplace all branch off it from here on.
+  if (args.ghost === true) {
+    registerGhostRepo(repoRoot);
   }
 
   // ── Phase 0: install cancel handlers + redirect pino logs to a file.
@@ -434,7 +452,9 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   const wfWasSeeded = seed.written_files.includes(wfRelPath);
   let mapperAppliedToWorkflow = false;
   if (mapperOutput !== null && wfWasSeeded) {
-    const wfPath = join(repoRoot, wfRelPath);
+    // Resolve through cairnHome — out-of-repo in ghost, where the seed wrote
+    // workflow.md. An in-repo `join(repoRoot, …)` would patch a missing file.
+    const wfPath = cairnDir(repoRoot, "config", "workflow.md");
     try {
       const r = updateWorkflowSlugBlock({
         workflowMdPath: wfPath,
@@ -462,8 +482,8 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
 
   // ── Step 3: write project-overlay config.yaml ──────────────────────
   header("Writing .cairn/config.yaml");
-  const configPath = join(repoRoot, ".cairn", "config.yaml");
-  mkdirSync(join(repoRoot, ".cairn"), { recursive: true });
+  const configPath = cairnDir(repoRoot, "config.yaml");
+  mkdirSync(cairnDir(repoRoot), { recursive: true });
   let mapperAppliedToConfig = false;
   if (existsSync(configPath) && args.force !== true) {
     warnings.push(`.cairn/config.yaml already exists — kept existing (use --force to overwrite)`);
@@ -1148,7 +1168,7 @@ function describeActiveRulesVerified(audit: BaselineAuditResult | null): number 
 }
 
 function countInboxDrafts(repoRoot: string): number {
-  const inbox = join(repoRoot, ".cairn", "ground", "decisions", "_inbox");
+  const inbox = cairnDir(repoRoot, "ground", "decisions", "_inbox");
   if (!existsSync(inbox)) return 0;
   let entries: Dirent[];
   try {
@@ -1171,7 +1191,7 @@ const TopicIndexSchema = z.object({
 }).passthrough();
 
 function countUnpromotedCandidates(repoRoot: string): number {
-  const path = join(repoRoot, ".cairn", "ground", "topic-index.yaml");
+  const path = cairnDir(repoRoot, "ground", "topic-index.yaml");
   if (!existsSync(path)) return 0;
   try {
     const raw = readFileSync(path, "utf8");

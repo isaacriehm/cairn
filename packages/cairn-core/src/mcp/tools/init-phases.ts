@@ -36,6 +36,7 @@
  */
 
 import { z } from "zod";
+import { registerGhostRepo } from "@isaacriehm/cairn-state";
 import {
   PHASE_IDS,
   clearPhaseState,
@@ -59,7 +60,6 @@ import {
   runPhase9fCompEmit,
   runPhase10RulesMerge,
   runPhase11Baseline,
-  runPhase12Strip,
   runPhase13Multidev,
   writePhaseState,
   writeProgress,
@@ -96,7 +96,16 @@ const phaseRunInput = {
   answer: z.string().optional(),
 };
 
-const initResumeInput = {};
+const initResumeInput = {
+  // Ghost adoption — register this repo as ghost BEFORE the pipeline writes
+  // its first byte. The cairn-adopt skill passes this on the very first
+  // resume call (after the operator picks `ghost` at the top of adoption) so
+  // the fresh init-state, the Phase 4 seed, and every later writer resolve to
+  // the out-of-repo home. Idempotent on a mid-adoption resume (the registry
+  // entry persists; re-registering rewrites the same record). Mirrors the CLI
+  // `cairn init --ghost` → `RunInitArgs.ghost`. See ghost-mode design
+  ghost: z.boolean().optional(),
+};
 
 const RUNNERS: Record<PhaseId, (s: PhaseState) => Promise<PhaseResult>> = {
   "1-detect": runPhase1Detect,
@@ -115,7 +124,6 @@ const RUNNERS: Record<PhaseId, (s: PhaseState) => Promise<PhaseResult>> = {
   "9f-comp-emit": runPhase9fCompEmit,
   "10-rules-merge": runPhase10RulesMerge,
   "11-baseline": runPhase11Baseline,
-  "12-strip": runPhase12Strip,
   "13-multidev": runPhase13Multidev,
 };
 
@@ -126,7 +134,8 @@ interface PhaseRunInput {
 }
 
 interface ResumeToolInput {
-  // empty
+  /** When true, register the repo ghost before resolving the next phase. */
+  ghost?: boolean;
 }
 
 /**
@@ -263,9 +272,16 @@ function makeResumeTool(): ToolDef<ResumeToolInput> {
   return {
     name: "cairn_init_resume",
     description:
-      "Read the on-disk init state for the current repo and return the next phase to invoke. The cairn-adopt skill calls this once at the start of the pipeline (and after any operator interruption) to find where to pick up. Returns { status: 'ready' | 'done', nextPhase: PhaseId | null, repoRoot }. For a fresh start (no `.cairn/init-state.json`), the tool persists a fresh PhaseState to disk so the very next `cairn_init_run` call can read it back without the skill having to thread state through tool arguments.",
+      "Read the on-disk init state for the current repo and return the next phase to invoke. The cairn-adopt skill calls this once at the start of the pipeline (and after any operator interruption) to find where to pick up. Returns { status: 'ready' | 'done', nextPhase: PhaseId | null, repoRoot }. For a fresh start (no `.cairn/init-state.json`), the tool persists a fresh PhaseState to disk so the very next `cairn_init_run` call can read it back without the skill having to thread state through tool arguments. Pass `ghost: true` ONLY on the first call of a fresh adoption when the operator chose ghost mode — it registers the repo as ghost before any state is written, so the whole pipeline (state file, Phase 4 seed, git hooks) resolves to the out-of-repo home and nothing Cairn-shaped touches the client tree.",
     inputSchema: initResumeInput,
-    handler: async (ctx) => {
+    handler: async (ctx, input) => {
+      // Ghost registration must precede resumePhases: resume seeds a fresh
+      // PhaseState to disk via `cairnDir`, which only relocates out-of-repo
+      // once the registry entry exists. Register first → fresh state lands
+      // out-of-repo. Idempotent if already ghost-registered.
+      if (input.ghost === true) {
+        registerGhostRepo(ctx.repoRoot);
+      }
       const report = resumePhases(ctx.repoRoot);
       // For a fresh start, ensure state.repoRoot matches ctx.repoRoot
       // (resumePhases uses freshPhaseState(ctx.repoRoot) for this case).

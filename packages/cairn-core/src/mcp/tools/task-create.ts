@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { stringify as stringifyYaml } from "yaml";
-import {
+import { cairnDir,
   findActiveMission,
   readMissionState,
   readRoadmap,
@@ -87,7 +87,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
   const title = titleResult.value;
 
   const taskId = generateTaskId(input.slug);
-  const taskDir = join(ctx.repoRoot, ".cairn", "tasks", "active", taskId);
+  const taskDir = cairnDir(ctx.repoRoot, "tasks", "active", taskId);
   if (existsSync(taskDir)) {
     return mcpError(
       "TASK_DIR_EXISTS",

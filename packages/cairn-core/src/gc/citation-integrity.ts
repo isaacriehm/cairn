@@ -2,12 +2,11 @@
  * GC pass — citation integrity.
  *
  * Walks every source file in the repo and scans for cairn citations
- * (§INV invariants, §DEC decisions, TODO(TSK-...) linked todos). Each
- * citation is resolved against the appropriate source of truth:
+ * (§INV invariants, §DEC decisions). Each citation is resolved against the
+ * appropriate source of truth:
  *
  *   - §INV-<hash>  resolved against `invariants.ledger.yaml` (Active/Superseded)
  *   - §DEC-<hash>  resolved against `decisions.ledger.yaml` (Accepted/Superseded)
- *   - TODO(TSK-) resolved against `tasks/{active,done}/`
  *
  * Findings surface orphaned citations (target missing) or stale citations
  * (target superseded by a newer version).
@@ -109,9 +108,6 @@ const SOURCE_EXTENSIONS = new Set<string>([
 
 const INV_RE = /§INV-([0-9a-f]{7,})\b/g;
 const DEC_RE = /§DEC-([0-9a-f]{7,})\b/g;
-// Format: `TSK-<slug>-<7-hex>`. The directory lookup is the source
-// of truth; the regex is just a "looks like a task id" gate.
-const TSK_RE = /TODO\((TSK-[a-z0-9-]+-[0-9a-f]{7})\)/g;
 
 /** Run citation-integrity against all source files in repoRoot. */
 export async function runCitationIntegrity(opts: {
@@ -188,24 +184,6 @@ export async function runCitationIntegrity(opts: {
             line: lineNumber,
           });
         }
-      }
-
-      // 3. Task todos
-      for (const m of lineText.matchAll(TSK_RE)) {
-        const taskId = m[1];
-        if (taskId === undefined) continue;
-        const activeDir = join(opts.repoRoot, ".cairn", "tasks", "active", taskId);
-        const doneDir = join(opts.repoRoot, ".cairn", "tasks", "done", taskId);
-        if (existsSync(activeDir)) continue;
-        if (existsSync(doneDir)) continue;
-        findings.push({
-          pass: PASS_ID,
-          kind: "orphaned_citation",
-          path: rel,
-          detail: `${rel}:${lineNumber} references ${taskId}, which is not in tasks/{active,done}/`,
-          severity: "warn",
-          line: lineNumber,
-        });
       }
     }
   }

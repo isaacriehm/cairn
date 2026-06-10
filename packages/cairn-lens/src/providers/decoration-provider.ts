@@ -428,6 +428,39 @@ export class CitationDecorationManager implements vscode.Disposable {
       }
     }
 
+    // Ghost adoption (§3.7): source carries no `§` token, so the scans above
+    // find nothing. `governedBlocksForFile` returns the external anchor-map
+    // blocks for the file in ghost (and `[]` in committed, where the token scan
+    // above is the trigger) — the same signal a cite would give, with no marker
+    // in the source. The mode fork lives in the resolver, not here.
+    for (const b of this.resolver.governedBlocksForFile(doc.uri.fsPath)) {
+      const lineIdx = b.startLine - 1;
+      if (lineIdx < 0 || lineIdx >= doc.lineCount) continue;
+      const endCol = doc.lineAt(lineIdx).text.length;
+      const lineRange = new vscode.Range(lineIdx, 0, lineIdx, endCol);
+      flagIfPending(lineIdx, 0, endCol, b.id);
+      const accepted = b.status === "accepted" || b.status === "active";
+      if (gutterEnabled) {
+        if (accepted) gutterActive.push(lineRange);
+        else if (b.status === "superseded") gutterSuperseded.push(lineRange);
+        else gutterUnknown.push(lineRange);
+      }
+      if (shouldRenderGhost) {
+        const trailer = accepted ? `✓ ${truncate(b.title, 60)}` : "(unresolved)";
+        const opt: vscode.DecorationOptions = {
+          range: new vscode.Range(lineIdx, endCol, lineIdx, endCol),
+          hoverMessage: buildHover(b.id, b.title, b.status),
+          renderOptions: { after: { contentText: trailer } },
+        };
+        if (b.kind === "invariant") {
+          if (accepted) inlineActive.push(opt);
+          else if (b.status === "superseded") inlineSuperseded.push(opt);
+          else inlineUnknown.push(opt);
+        } else if (accepted) inlineDecAccepted.push(opt);
+        else inlineDecUnknown.push(opt);
+      }
+    }
+
     editor.setDecorations(this.kit.inlineActive, inlineActive);
     editor.setDecorations(this.kit.inlineSuperseded, inlineSuperseded);
     editor.setDecorations(this.kit.inlineUnknown, inlineUnknown);

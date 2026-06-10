@@ -7,12 +7,12 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
+import { cairnDir } from "./home.js";
 
 /** Parse `.cairn/config.yaml` into a plain object ({} when absent/broken). */
 export function loadCairnConfig(repoRoot: string): Record<string, unknown> {
-  const p = join(repoRoot, ".cairn", "config.yaml");
+  const p = cairnDir(repoRoot, "config.yaml");
   if (!existsSync(p)) return {};
   try {
     const doc = parseYaml(readFileSync(p, "utf8"));

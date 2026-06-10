@@ -23,7 +23,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { basename, dirname, join } from "node:path";
-import { getLogger } from "@isaacriehm/cairn-state";
+import { getLogger, isGhost } from "@isaacriehm/cairn-state";
 
 const log = getLogger();
 
@@ -50,6 +50,13 @@ export interface EnsureImportResult {
  * Idempotent.
  */
 export function ensureCairnRuleImport(repoRoot: string): EnsureImportResult {
+  // Ghost mode: never mutate the client's tracked CLAUDE.md / AGENTS.md. The
+  // guard lives in the function (not the caller) so all four call sites —
+  // Phase 13, the CLI runInit path, and `cairn fix` re-injection — are covered.
+  if (isGhost(repoRoot)) {
+    return { changed: false, file: "CLAUDE.md", created: false };
+  }
+
   const claudeAbs = join(repoRoot, "CLAUDE.md");
   const agentsAbs = join(repoRoot, "AGENTS.md");
 
@@ -109,6 +116,13 @@ export interface InstallRuleResult extends EnsureImportResult {
  * import is still ensured.
  */
 export function installCairnRuleAndImport(repoRoot: string): InstallRuleResult {
+  // Ghost mode: never write `.claude/rules/cairn.md` into the client tree, and
+  // never touch its memory file. ensureCairnRuleImport is guarded too, but stop
+  // here first so the rule template is never written either.
+  if (isGhost(repoRoot)) {
+    return { changed: false, file: "CLAUDE.md", created: false, ruleWritten: false };
+  }
+
   let ruleWritten = false;
   const targetAbs = join(repoRoot, RULE_REL);
   const template = findRuleTemplate();

@@ -17,7 +17,8 @@ import {
 } from "node:fs";
 import { join, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
-import {
+import { cairnDir,
+  isAdopted,
   parseFrontmatterRecord,
   restoreDec,
   runAttentionUndo,
@@ -67,9 +68,9 @@ function ensureAdopted(repoRoot: string): void {
     console.error(`cairn attention: repo root does not exist: ${repoRoot}`);
     process.exit(2);
   }
-  if (!existsSync(`${repoRoot}/.cairn`)) {
+  if (!isAdopted(repoRoot)) {
     console.error(
-      `cairn attention: ${repoRoot} is not cairn-adopted (no .cairn/). Run \`cairn init\` first.`,
+      `cairn attention: ${repoRoot} is not cairn-adopted (no config.yaml). Run \`cairn init\` first.`,
     );
     process.exit(2);
   }
@@ -82,7 +83,7 @@ function readFrontmatter(text: string): Record<string, unknown> {
 }
 
 function listDrafts(repoRoot: string): DraftEntry[] {
-  const dir = join(repoRoot, ".cairn", "ground", "decisions", "_inbox");
+  const dir = cairnDir(repoRoot, "ground", "decisions", "_inbox");
   if (!existsSync(dir)) return [];
   let entries: Dirent[];
   try {
@@ -147,7 +148,7 @@ const BaselineAuditSchema = z.object({
 }).passthrough();
 
 function readLatestBaseline(repoRoot: string): BaselineSummary | null {
-  const dir = join(repoRoot, ".cairn", "baseline");
+  const dir = cairnDir(repoRoot, "baseline");
   if (!existsSync(dir)) return null;
   let entries: string[];
   try {

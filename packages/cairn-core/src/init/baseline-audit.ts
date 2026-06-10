@@ -12,7 +12,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import { writeFileSafe } from "@isaacriehm/cairn-state";
+import { cairnDir, writeFileSafe } from "@isaacriehm/cairn-state";
 import {
   runStubCatalog,
   runRouteHandlerNonEmpty,
@@ -72,7 +72,7 @@ export async function runBaselineAudit(
   args: RunBaselineAuditArgs,
 ): Promise<BaselineAuditResult> {
   const startedAt = Date.now();
-  const dir = join(args.repoRoot, ".cairn", "baseline");
+  const dir = cairnDir(args.repoRoot, "baseline");
   mkdirSync(dir, { recursive: true });
 
   // 1. Build synthetic "add all" diff.
@@ -165,7 +165,7 @@ export function findLatestBaselineAudit(repoRoot: string): {
   path: string;
   runAt: string | null;
 } | null {
-  const dir = join(repoRoot, ".cairn", "baseline");
+  const dir = cairnDir(repoRoot, "baseline");
   if (!existsSync(dir)) return null;
   let entries: string[];
   try {

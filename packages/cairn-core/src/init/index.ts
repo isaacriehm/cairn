@@ -223,7 +223,6 @@ export {
   runPhase9fCompEmit,
   runPhase10RulesMerge,
   runPhase11Baseline,
-  runPhase12Strip,
   runPhase13Multidev,
 } from "./phases/index.js";
 export type {

@@ -12,6 +12,7 @@ import { resolveRepoRoot } from "../../session-start/index.js";
 import { readHookStdin } from "../runners/payload.js";
 import { executeSotAlign } from "./sot-align.js";
 import { executeWriteGuardian } from "./write-guardian.js";
+import { runComponentFreshness } from "../../components/freshness.js";
 import { logger } from "../../logger.js";
 
 const log = logger("hooks.post-tool-use.post-write");
@@ -131,10 +132,27 @@ export async function runPostWriteHook(): Promise<void> {
     // 2. Run SoT Align (hint only)
     const alignSummary = await executeSotAlign(payload, repoRoot);
 
-    // 3. Merge and Emit
+    // 3. Ghost component freshness gate (§3.8.1). Deterministic, NO LLM —
+    //    detects an identity-relevant change to a registered headerless
+    //    component and flags it for a (deferred) re-confirm. `isGhost`-gated
+    //    inside, so committed repos pay nothing. Best-effort: a failure here
+    //    must never affect the Write.
+    let freshnessHint = "";
+    try {
+      const fr = runComponentFreshness(repoRoot, relPath);
+      if (fr.hint) freshnessHint = fr.hint;
+    } catch (err) {
+      log.warn(
+        { err: err instanceof Error ? err.message : String(err) },
+        "component freshness gate threw; ignoring",
+      );
+    }
+
+    // 4. Merge and Emit
     const sections: string[] = [];
     if (guard.message) sections.push(guard.message);
     if (alignSummary.length > 0) sections.push(alignSummary);
+    if (freshnessHint.length > 0) sections.push(freshnessHint);
 
     emitShapeB(sections.join("\n\n"));
   } catch (err) {

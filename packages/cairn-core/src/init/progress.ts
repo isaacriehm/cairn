@@ -23,7 +23,9 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import { cairnDir } from "@isaacriehm/cairn-state";
 
+/** Repo-relative display path. State home resolution goes through `cairnDir`. */
 export const PROGRESS_PATH = join(".cairn", "init", "progress.json");
 
 export interface ProgressSnapshot {
@@ -42,7 +44,7 @@ export interface ProgressSnapshot {
 }
 
 export function progressAbsPath(repoRoot: string): string {
-  return join(repoRoot, PROGRESS_PATH);
+  return cairnDir(repoRoot, "init", "progress.json");
 }
 
 export function writeProgress(repoRoot: string, snap: ProgressSnapshot): void {

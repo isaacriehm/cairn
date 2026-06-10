@@ -18,8 +18,10 @@ import {
   buildSessionStartContext,
 } from "../../session-start/index.js";
 import { rebuildDerived } from "../../state/rebuild-derived.js";
-import { inspectJoinState, runJoin } from "../../join/index.js";
+import { inspectJoinState, runJoin, writeCliPathFile } from "../../join/index.js";
 import { runMigrations, type RunMigrationsResult } from "../../migrate/index.js";
+import { runUpdateCheck } from "../../update-check.js";
+import { VERSION } from "../../index.js";
 import { findCurrentActiveTask, readTaskJournal } from "../../tasks/index.js";
 import {
   resolveSessionId,
@@ -43,6 +45,7 @@ import {
   appendTelemetry,
 } from "./payload.js";
 import { spawn } from "node:child_process";
+import { cairnDir } from "@isaacriehm/cairn-state";
 
 /**
  * Sync the bundle entry point into the homedir shim so `cairn-lens`
@@ -181,6 +184,14 @@ export async function runSessionStartHook(): Promise<void> {
     return;
   }
 
+  // Keep `.cli-path` current every session. A plugin upgrade rotates the
+  // bundled `cli.mjs` path, but the bootstrap-only runJoin (gated on
+  // hooksPathSet) never re-fires once hooks are wired — so a stale path would
+  // persist and the git hooks, which `eval` it, would hard-fail commits.
+  // repoRoot non-null here ⇒ adopted (resolveRepoRoot requires config.yaml).
+  // Best-effort: writeCliPathFile try/catches internally and never throws.
+  writeCliPathFile(repoRoot);
+
   const sessionWarnings: string[] = [...shimWarnings];
   const sessionId = resolveSessionId({ session_id: payloadSessionId ?? undefined });
   try {
@@ -248,6 +259,16 @@ export async function runSessionStartHook(): Promise<void> {
     sessionWarnings.push(`migrations_failed: ${message}`);
   }
 
+  // Best-effort "newer Cairn available" notice. Throttled to one network hit
+  // per day per machine; a cache hit is pure FS. Never blocks past its tight
+  // timeout, never throws. Surfaced as a banner below.
+  let updateBanner: string | null = null;
+  try {
+    updateBanner = await runUpdateCheck(VERSION, Date.now());
+  } catch {
+    /* never blocks session start */
+  }
+
   const isResume = source === "resume";
   const buildArgs: Parameters<typeof buildSessionStartContext>[0] = { repoRoot };
   if (isResume) buildArgs.maxChars = 4_000;
@@ -290,6 +311,7 @@ export async function runSessionStartHook(): Promise<void> {
     resumeBanner,
     midAdoptionBanner,
     migrationBanner,
+    updateBanner,
   ].filter((b): b is string => b !== null);
   const additionalContext =
     banners.length === 0
@@ -348,9 +370,28 @@ function spawnDetachedDrain(repoRoot: string, sessionId: string): void {
 
 function renderBootstrapBanner(repoRoot: string): string | null {
   if (!existsSync(join(repoRoot, ".git"))) return null;
-  if (!existsSync(join(repoRoot, ".cairn", "config.yaml"))) return null;
+  if (!existsSync(cairnDir(repoRoot, "config.yaml"))) return null;
   const state = inspectJoinState({ repoRoot });
   if (state.hooksPathSet) return null;
+
+  // Foreign `core.hooksPath` (husky / lefthook / custom): Cairn won't clobber
+  // it (§3.3 seam 5). Re-running join can't wire the hooks, so surface a calm,
+  // honest conflict notice instead of attempting bootstrap (which would report
+  // a false "hooks wired" success every session).
+  if (state.hooksPathConflict) {
+    return [
+      "## Cairn — git hooks not wired (core.hooksPath conflict)",
+      "",
+      `This repo's \`core.hooksPath\` is held by \`${state.hooksPathValue}\` ` +
+        "(husky / lefthook / a custom hooks dir), so Cairn did **not** override " +
+        "it — your existing hooks stay intact.",
+      "",
+      "Cairn still runs via SessionStart + MCP and ground state is loaded; only " +
+        "the **local pre-commit sensor sweep** is inactive. To enable it, chain " +
+        "Cairn's hooks (run `<cairn-home>/git-hooks/<hook>` from your existing " +
+        "hook), or clear `core.hooksPath` and re-run join.",
+    ].join("\n");
+  }
 
   const result = runJoin({ repoRoot });
   if (result.bootstrapped) {
@@ -506,7 +547,7 @@ function renderResumeBanner(
  * instead of re-running consent.
  */
 function renderMidAdoptionBanner(repoRoot: string): string | null {
-  const initStatePath = join(repoRoot, ".cairn", "init-state.json");
+  const initStatePath = cairnDir(repoRoot, "init-state.json");
   if (!existsSync(initStatePath)) return null;
   let phaseLabel = "an in-progress phase";
   try {

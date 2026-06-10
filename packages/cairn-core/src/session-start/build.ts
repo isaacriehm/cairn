@@ -9,7 +9,8 @@ import { type Dirent, existsSync, readFileSync, readdirSync, statSync } from "no
 import { basename, dirname, join, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { buildHandoffBlock } from "../context/index.js";
-import {
+import { cairnDir,
+  isGhost,
   buildDecisionsLedger,
   buildInvariantsLedger,
   countDonePhases,
@@ -128,18 +129,35 @@ export function resolveRepoRoot(cwd: string): string | null {
   for (let i = 0; i < 12; i++) {
     if (isAdoptedCairnDir(dir)) return dir;
     const parent = dirname(dir);
-    if (parent === dir) return null;
+    if (parent === dir) break;
     dir = parent;
+  }
+  // Ghost adoption leaves NO in-repo `.cairn/`, so the committed walk above
+  // never matches. The repo is still adopted — its state lives out-of-repo,
+  // keyed in the global registry on the repo's root-commit. Recognize it here
+  // so SessionStart loads ground state instead of re-nagging adoption every
+  // session. `isGhost` is the registry lookup (fast no-op when the registry is
+  // absent — the committed fast path); the out-of-repo `config.yaml` confirms
+  // adoption actually finished. ghost-mode design
+  if (
+    gitMain !== null &&
+    isGhost(gitMain) &&
+    existsSync(cairnDir(gitMain, "config.yaml"))
+  ) {
+    return gitMain;
   }
   return null;
 }
 
 function isAdoptedCairnDir(dir: string): boolean {
-  const cairnDir = join(dir, ".cairn");
+  // Repo-root discovery probe: looks for the *physical* in-repo `.cairn/`.
+  // Intentionally a literal join, not cairnHome — this walk identifies the
+  // committed-mode repo root; ghost resolution happens via the registry.
+  const probeDir = join(dir, ".cairn");
   return (
-    existsSync(cairnDir) &&
-    statSync(cairnDir).isDirectory() &&
-    existsSync(join(cairnDir, "config.yaml"))
+    existsSync(probeDir) &&
+    statSync(probeDir).isDirectory() &&
+    existsSync(join(probeDir, "config.yaml"))
   );
 }
 
@@ -453,7 +471,7 @@ function renderActiveMissionSection(repoRoot: string, warnings: string[]): strin
     const phaseProg = state.phase_progress[cursorPhase.id];
     const taskIds = phaseProg?.task_ids ?? [];
     const doneTaskIds = taskIds.filter((id) =>
-      existsSync(join(repoRoot, ".cairn", "tasks", "done", id)),
+      existsSync(cairnDir(repoRoot, "tasks", "done", id)),
     );
     if (taskIds.length > 0) {
       lines.push(
@@ -469,7 +487,7 @@ function renderActiveMissionSection(repoRoot: string, warnings: string[]): strin
     const tasksDone =
       taskIds.length > 0 &&
       allPhaseTasksDone(state, cursorPhase.id, (id) =>
-        existsSync(join(repoRoot, ".cairn", "tasks", "done", id)),
+        existsSync(cairnDir(repoRoot, "tasks", "done", id)),
       );
     // PR-slug cross-check: if exit_criteria enumerates PR refs, every
     // ref must have a graduated task before phase-ready fires. Falls
@@ -575,7 +593,7 @@ function isMissionPhaseDeferActive(
   missionId: string,
   phaseId: string,
 ): boolean {
-  const path = join(repoRoot, ".cairn", ".mission-phase-deferred-until");
+  const path = cairnDir(repoRoot, ".mission-phase-deferred-until");
   if (!existsSync(path)) return false;
   let raw: string;
   try {
@@ -598,8 +616,8 @@ function isMissionPhaseDeferActive(
 }
 
 function readBrandAndPositioning(repoRoot: string, warnings: string[]): string | null {
-  const brandPath = join(repoRoot, ".cairn", "ground", "brand", "overview.md");
-  const positioningPath = join(repoRoot, ".cairn", "ground", "product", "positioning.md");
+  const brandPath = cairnDir(repoRoot, "ground", "brand", "overview.md");
+  const positioningPath = cairnDir(repoRoot, "ground", "product", "positioning.md");
 
   // Read both files first, then dedupe.
   //
@@ -827,7 +845,7 @@ interface ActiveTask {
 }
 
 function listActiveTasks(repoRoot: string): ActiveTask[] {
-  const dir = join(repoRoot, ".cairn", "tasks", "active");
+  const dir = cairnDir(repoRoot, "tasks", "active");
   if (!existsSync(dir)) return [];
   let entries: Dirent[];
   try {
@@ -914,7 +932,7 @@ interface QualityGrade {
 }
 
 function readQualityGrades(repoRoot: string, warnings: string[]): QualityGrade[] {
-  const path = join(repoRoot, ".cairn", "ground", "quality-grades.yaml");
+  const path = cairnDir(repoRoot, "ground", "quality-grades.yaml");
   if (!existsSync(path)) return [];
   let parsed: unknown;
   try {
@@ -965,7 +983,7 @@ interface DraftEntry {
 }
 
 function listPendingDrafts(repoRoot: string, warnings: string[]): DraftEntry[] {
-  const dir = join(repoRoot, ".cairn", "ground", "decisions", "_inbox");
+  const dir = cairnDir(repoRoot, "ground", "decisions", "_inbox");
   if (!existsSync(dir)) return [];
   let entries: Dirent[];
   try {
@@ -1096,7 +1114,7 @@ function readLatestBaselineAudit(
   repoRoot: string,
   warnings: string[],
 ): BaselineSummary | null {
-  const dir = join(repoRoot, ".cairn", "baseline");
+  const dir = cairnDir(repoRoot, "baseline");
   if (!existsSync(dir)) return null;
   let entries: string[];
   try {
@@ -1175,7 +1193,7 @@ function readActiveSensorIds(repoRoot: string, warnings: string[]): string[] {
 }
 
 function readProjectSlug(repoRoot: string): string | null {
-  const path = join(repoRoot, ".cairn", "config.yaml");
+  const path = cairnDir(repoRoot, "config.yaml");
   if (!existsSync(path)) return null;
   try {
     const parsed = parseYaml(readFileSync(path, "utf8")) as Record<string, unknown>;

@@ -24,8 +24,8 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { writeFileSafe } from "@isaacriehm/cairn-state";
+
+import { cairnDir, writeFileSafe } from "@isaacriehm/cairn-state";
 import { matchAnyGlob } from "@isaacriehm/cairn-state";
 import { logger } from "../logger.js";
 
@@ -35,7 +35,7 @@ const log = logger("fix-align.sentinel");
 const SENTINEL_TTL_MS = 30 * 60 * 1000;
 
 export function fixAlignSentinelPath(repoRoot: string): string {
-  return join(repoRoot, ".cairn", "state", "fix-align-dryrun.json");
+  return cairnDir(repoRoot, "state", "fix-align-dryrun.json");
 }
 
 export interface FixAlignSentinelArgs {

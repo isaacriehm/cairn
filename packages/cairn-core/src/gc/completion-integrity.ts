@@ -17,6 +17,7 @@ import { simpleGit } from "simple-git";
 import { parse as parseYaml } from "yaml";
 import type { GcFinding } from "./types.js";
 import { z } from "zod";
+import { cairnDir } from "@isaacriehm/cairn-state";
 
 const PASS_ID = "completion-integrity" as const;
 
@@ -52,7 +53,7 @@ function ensureGit(repoRoot: string): ReturnType<typeof simpleGit> {
 export async function runCompletionIntegrity(
   opts: CompletionIntegrityOptions,
 ): Promise<CompletionIntegrityResult> {
-  const doneDir = join(opts.repoRoot, ".cairn", "tasks", "done");
+  const doneDir = cairnDir(opts.repoRoot, "tasks", "done");
   const findings: GcFinding[] = [];
   if (!existsSync(doneDir)) return { findings };
 
@@ -96,8 +97,8 @@ export async function runCompletionIntegrity(
       continue;
     }
 
-    const terminalDir = join(opts.repoRoot, ".cairn", "runs", "terminal", runId);
-    const activeDir = join(opts.repoRoot, ".cairn", "runs", "active", runId);
+    const terminalDir = cairnDir(opts.repoRoot, "runs", "terminal", runId);
+    const activeDir = cairnDir(opts.repoRoot, "runs", "active", runId);
     let runDir: string | null = null;
     if (existsSync(terminalDir)) runDir = terminalDir;
     else if (existsSync(activeDir)) runDir = activeDir;

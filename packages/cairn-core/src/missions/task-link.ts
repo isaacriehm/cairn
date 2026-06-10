@@ -14,7 +14,7 @@
  */
 
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+
 import { parse as parseYaml } from "yaml";
 
 /**
@@ -25,7 +25,7 @@ import { parse as parseYaml } from "yaml";
  * means a sibling already graduated successfully.
  */
 function taskIsCompletedOnDisk(repoRoot: string, taskId: string): boolean {
-  const dir = join(repoRoot, ".cairn", "tasks", "done", taskId);
+  const dir = cairnDir(repoRoot, "tasks", "done", taskId);
   if (!existsSync(dir)) return false;
   try {
     return statSync(dir).isDirectory();
@@ -77,7 +77,7 @@ function graduatedIdsCoverPrSlug(taskIds: string[], prSlug: string): boolean {
   }
   return false;
 }
-import {
+import { cairnDir,
   appendMissionJournal,
   effectivePhaseExitGate,
   readMissionState,
@@ -98,8 +98,8 @@ export function readTaskMissionAnchor(
   taskId: string,
 ): TaskMissionAnchor | null {
   const candidates = [
-    join(repoRoot, ".cairn", "tasks", "active", taskId, "status.yaml"),
-    join(repoRoot, ".cairn", "tasks", "done", taskId, "status.yaml"),
+    cairnDir(repoRoot, "tasks", "active", taskId, "status.yaml"),
+    cairnDir(repoRoot, "tasks", "done", taskId, "status.yaml"),
   ];
   for (const path of candidates) {
     if (!existsSync(path)) continue;

@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import type { McpContext } from "../context.js";
-import {
+import { cairnDir,
   decisionsDir,
   invariantsDir,
   manifestPath,
@@ -87,7 +87,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
   }
 
   if (wantKinds.has("task")) {
-    const tasksDir = join(ctx.repoRoot, ".cairn", "tasks", "active");
+    const tasksDir = cairnDir(ctx.repoRoot, "tasks", "active");
     if (existsSync(tasksDir)) {
       for (const e of readdirSync(tasksDir, { withFileTypes: true, encoding: "utf8" })) {
         if (!e.isDirectory()) continue;

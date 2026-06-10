@@ -38,7 +38,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { stringify as stringifyYaml } from "yaml";
 import { runClaude } from "../../claude/index.js";
-import {
+import { cairnDir,
   bodyContentHash,
   conflictsDir,
   emptyAnchorMap,
@@ -786,8 +786,8 @@ function writeConflictFile(args: WriteConflictArgs): string {
 function readEmittedBody(repoRoot: string, id: string): string | null {
   const isDec = id.startsWith("DEC-");
   const dir = isDec
-    ? join(repoRoot, ".cairn", "ground", "decisions")
-    : join(repoRoot, ".cairn", "ground", "invariants");
+    ? cairnDir(repoRoot, "ground", "decisions")
+    : cairnDir(repoRoot, "ground", "invariants");
   const abs = join(dir, `${id}.md`);
   if (!existsSync(abs)) return null;
   let raw: string;

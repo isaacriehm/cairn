@@ -5,18 +5,41 @@
 #
 # Validates DEC/TSK/§INV citations in the commit message body when the
 # project's commit policy requires them. The Cairn CLI owns the policy
-# (sensors.yaml `commit_msg_policy`) so the hook stays a thin shim.
+# (sensors.yaml `commit_msg_policy`) so the hook stays a thin shim. Advisory
+# (never blocks) in ghost mode.
+#
+# State home is derived from THIS hook's own location (committed in-repo /
+# ghost out-of-repo) — see pre-commit for the rationale.
 
 set -e
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2> /dev/null || true)"
-if [ -z "$REPO_ROOT" ] || [ ! -d "$REPO_ROOT/.cairn" ]; then
+if [ -z "$REPO_ROOT" ]; then
   exit 0
 fi
 
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+CAIRN_HOME="$(dirname "$HOOK_DIR")"
+if [ ! -d "$CAIRN_HOME" ]; then
+  exit 0
+fi
+
+# Ghost = state home is OUTSIDE the repo tree → advisory.
+GHOST=1
+case "$CAIRN_HOME/" in
+  "$REPO_ROOT"/*) GHOST=0 ;;
+esac
+
 CAIRN_CMD=""
-if [ -f "$REPO_ROOT/.cairn/.cli-path" ]; then
-  CAIRN_CMD="$(head -n1 "$REPO_ROOT/.cairn/.cli-path")"
+if [ -f "$CAIRN_HOME/.cli-path" ]; then
+  CAIRN_CMD="$(head -n1 "$CAIRN_HOME/.cli-path")"
+  # Self-heal a stale path (plugin upgrade rotates the cache dir).
+  CAIRN_BIN="${CAIRN_CMD#node }"
+  CAIRN_BIN="${CAIRN_BIN#\"}"
+  CAIRN_BIN="${CAIRN_BIN%\"}"
+  if [ -n "$CAIRN_BIN" ] && [ ! -f "$CAIRN_BIN" ]; then
+    CAIRN_CMD=""
+  fi
 fi
 if [ -z "$CAIRN_CMD" ] && command -v cairn > /dev/null 2>&1; then
   CAIRN_CMD="cairn"
@@ -25,4 +48,9 @@ if [ -z "$CAIRN_CMD" ]; then
   exit 0
 fi
 
-eval "$CAIRN_CMD sensor-run --commit-msg \"$1\""
+if [ "$GHOST" = "1" ]; then
+  eval "$CAIRN_CMD sensor-run --commit-msg \"$1\"" \
+    || echo "cairn (ghost): commit-msg findings above are advisory — commit not blocked" >&2
+else
+  eval "$CAIRN_CMD sensor-run --commit-msg \"$1\""
+fi

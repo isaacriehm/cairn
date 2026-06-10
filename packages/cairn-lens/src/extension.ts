@@ -6,7 +6,7 @@
  *   - Status-bar item (always visible after activate)
  *   - Palette commands: showLog, diagnose, refresh, openDecisionsLedger,
  *     openInvariantsLedger
- *   - Hover provider for §DEC-<hash>, §INV-<hash>, TSK-* tokens
+ *   - Hover provider for §DEC-<hash>, §INV-<hash>, @cairn header tokens
  *   - Decoration manager (inlay ghost text + gutter health icons)
  *   - Code Lens provider (decisions in scope above functions)
  *   - DEC Explorer tree view (optional, behind config flag)
@@ -23,7 +23,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import * as vscode from "vscode";
-import { setStateLogger } from "@isaacriehm/cairn-state";
+import { cairnHome, isGhost, setStateLogger } from "@isaacriehm/cairn-state";
 import { DecExplorerProvider } from "./panel/dec-explorer.js";
 import { CitationCodeLensProvider } from "./providers/citation-lens-provider.js";
 import { CitationDecorationManager } from "./providers/decoration-provider.js";
@@ -265,12 +265,16 @@ function wireProviders(
     }),
   );
 
-  const watcher = vscode.workspace.createFileSystemWatcher(
-    new vscode.RelativePattern(
-      folder,
-      ".cairn/{ground/invariants/invariants.ledger.yaml,ground/decisions/decisions.ledger.yaml,ground/scope-index.yaml,staleness/log.jsonl}",
-    ),
-  );
+  // Ghost (§3.7): ground state lives out-of-repo, so the watcher base is the
+  // out-of-repo `cairnHome` (an absolute Uri) and the glob drops the `.cairn/`
+  // prefix. Committed watches the in-tree `.cairn/` exactly as before. Without
+  // this a ghost session never refreshes the lens on a ground-state change.
+  const GROUND_GLOB =
+    "{ground/invariants/invariants.ledger.yaml,ground/decisions/decisions.ledger.yaml,ground/scope-index.yaml,staleness/log.jsonl}";
+  const ledgerPattern = isGhost(repoRoot)
+    ? new vscode.RelativePattern(vscode.Uri.file(cairnHome(repoRoot)), GROUND_GLOB)
+    : new vscode.RelativePattern(folder, `.cairn/${GROUND_GLOB}`);
+  const watcher = vscode.workspace.createFileSystemWatcher(ledgerPattern);
   const onLedgerChange = (uri: vscode.Uri): void => {
     lensLog(`ledger change: ${uri.fsPath} → refresh`);
     if (runtime !== null) runtime.watcherFired = true;
@@ -285,7 +289,9 @@ function wireProviders(
     watcher.onDidDelete(onLedgerChange),
     watcher,
   );
-  lensLog("ledger file watcher armed (.cairn/ground/...)");
+  lensLog(
+    `ledger file watcher armed (${isGhost(repoRoot) ? `ghost: ${cairnHome(repoRoot)}` : ".cairn/"}/ground/...)`,
+  );
 
   const refreshTimers = new Map<string, NodeJS.Timeout>();
   const REFRESH_DEBOUNCE_MS = 150;

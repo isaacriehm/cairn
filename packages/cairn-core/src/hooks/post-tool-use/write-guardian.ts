@@ -18,7 +18,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, relative, resolve, dirname, join } from "node:path";
 import { z } from "zod";
-import {
+import { cairnDir,
   getScopeIndexEntry,
   matchAnyGlob,
 } from "@isaacriehm/cairn-state";
@@ -270,7 +270,7 @@ import { spawnSync } from "node:child_process";
 import { type Dirent, readdirSync } from "node:fs";
 
 function hasTightenedActiveTask(repoRoot: string): boolean {
-  const tasksDir = join(repoRoot, ".cairn", "tasks", "active");
+  const tasksDir = cairnDir(repoRoot, "tasks", "active");
   if (!existsSync(tasksDir)) return false;
   let entries: Dirent[];
   try {
@@ -295,13 +295,13 @@ function isProjectTrackedFile(repoRoot: string, relPath: string): boolean {
 
 function bypassAlreadyWarned(repoRoot: string, sessionId: string | null): boolean {
   if (sessionId === null) return false;
-  const path = join(repoRoot, ".cairn", "cache", `bypass-warned-${sessionId}`);
+  const path = cairnDir(repoRoot, "cache", `bypass-warned-${sessionId}`);
   return existsSync(path);
 }
 
 function markBypassWarned(repoRoot: string, sessionId: string | null): void {
   if (sessionId === null) return;
-  const path = join(repoRoot, ".cairn", "cache", `bypass-warned-${sessionId}`);
+  const path = cairnDir(repoRoot, "cache", `bypass-warned-${sessionId}`);
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, "true", "utf8");
 }

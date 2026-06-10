@@ -17,7 +17,6 @@
  *     validators and verifies survivors land in `.cairn/ground/`
  *   - Phase 10-rules-merge: stamps `skipped: "merged-into-9-curator"`
  *     and advances to 11-baseline (v0.9.0 no-op)
- *   - Phase 12-strip: completes silently when no flagged modules
  *   - Phases 3-mapper, 11-baseline, 13-multidev: prereq error
  *     path / export surface verified
  */
@@ -36,7 +35,6 @@ import { join } from "node:path";
 import {
   CURATOR_FINAL_PATH,
   freshPhaseState,
-  runPhase12Strip,
   runPhase13Multidev,
   runPhase1Detect,
   runPhase2Walker,
@@ -173,16 +171,6 @@ async function runSmoke(): Promise<void> {
       `Step 4: nextPhase should be 7-topic-index`,
     );
     console.log("  ✓ Step 4 — phase 6-brand → skip path");
-  }
-
-  // ── Step 5 — phase 12-strip silent-complete with empty queue ────
-  {
-    const repo = mkRepo();
-    const r = await runPhase12Strip({ ...freshPhaseState(repo), currentPhase: "12-strip" });
-    assert(r.status === "complete", `Step 5: expected complete, got ${r.status}`);
-    if (r.status !== "complete") return;
-    assert(r.nextPhase === "13-multidev", `Step 5: nextPhase should be 13-multidev`);
-    console.log("  ✓ Step 5 — phase 12-strip → complete (no flagged modules)");
   }
 
   // ── Step 6 — prereq-missing error path for downstream phases ────

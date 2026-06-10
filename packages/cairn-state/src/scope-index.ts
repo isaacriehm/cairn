@@ -13,6 +13,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { cairnDir, isGhost } from "./home.js";
 import { writeFileSafe } from "./fs.js";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { getLogger } from "./logger.js";
@@ -62,7 +63,7 @@ export interface ScopeIndex {
 }
 
 export function scopeIndexPath(repoRoot: string): string {
-  return join(repoRoot, ".cairn", "ground", "scope-index.yaml");
+  return cairnDir(repoRoot, "ground", "scope-index.yaml");
 }
 
 export function readScopeIndex(repoRoot: string): ScopeIndex | null {
@@ -154,6 +155,14 @@ export interface RescanScopeIndexResult {
  * current set.
  */
 export function rescanScopeIndex(repoRoot: string): RescanScopeIndexResult {
+  // Ghost: scope-index is the SoT (written at Layer A emit), NOT a cache
+  // derived from in-source cites. There are no cites to rescan — and a rescan
+  // would rewrite every bound file's entry to the empty cite-set, wiping the
+  // SoT. No-op so the bindings the GC + recall depend on survive SessionStart
+  // and `cairn join`. (Maintenance happens via anchor-map re-anchoring, §3.6.)
+  if (isGhost(repoRoot)) {
+    return { filesScanned: 0, entriesAdded: 0, entriesUpdated: 0, entriesUnchanged: 0, dirty: false };
+  }
   const sourceFiles = listGitTrackedSourceFiles(repoRoot);
   const existing = readScopeIndex(repoRoot) ?? {
     generated: new Date().toISOString(),

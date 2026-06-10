@@ -68,6 +68,11 @@ export type {
   OrphanCandidate,
   OrphanClassification,
 } from "./entity-orphan.js";
+export { resolveGhostBlock, runGhostReanchor } from "./ghost-anchor.js";
+export type {
+  GhostBlockResolution,
+  GhostReanchorResult,
+} from "./ghost-anchor.js";
 export { runEntityRetire } from "./retire.js";
 export type {
   EntityRetireOptions,

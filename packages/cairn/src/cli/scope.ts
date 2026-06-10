@@ -6,7 +6,7 @@
 
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { rebuildScopeIndex } from "@isaacriehm/cairn-core";
+import { isAdopted, rebuildScopeIndex } from "@isaacriehm/cairn-core";
 
 function usage(): never {
   console.error(
@@ -34,9 +34,9 @@ async function rebuildHandler(argv: string[]): Promise<void> {
     console.error(`cairn scope rebuild: repo root does not exist: ${repoRoot}`);
     process.exit(2);
   }
-  if (!existsSync(`${repoRoot}/.cairn`)) {
+  if (!isAdopted(repoRoot)) {
     console.error(
-      `cairn scope rebuild: ${repoRoot} is not cairn-adopted (no .cairn/). Run \`cairn init\` first.`,
+      `cairn scope rebuild: ${repoRoot} is not cairn-adopted (no config.yaml). Run \`cairn init\` first.`,
     );
     process.exit(2);
   }

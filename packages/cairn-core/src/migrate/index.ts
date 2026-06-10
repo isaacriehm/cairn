@@ -8,4 +8,5 @@ export {
   type MigrationStatus,
 } from "./runner.js";
 export { readConfigPin } from "./config-io.js";
+export { remediateGitignore, type GitignoreRemediation } from "./gitignore.js";
 export { semverCmp, semverGt, semverLte } from "./semver.js";

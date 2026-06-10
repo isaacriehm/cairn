@@ -24,6 +24,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { cairnDir } from "@isaacriehm/cairn-state";
 
 export interface BypassedCommit {
   sha: string;
@@ -59,7 +60,7 @@ export function scanBypassedCommits(repoRoot: string): ScanBypassResult {
   return {
     bypassed,
     inspected: recent.length,
-    attestedFileExists: existsSync(join(repoRoot, ".cairn", ".attested-commits")),
+    attestedFileExists: existsSync(cairnDir(repoRoot, ".attested-commits")),
   };
 }
 
@@ -132,7 +133,7 @@ function readRecentHead(repoRoot: string): BypassedCommit[] {
 }
 
 function readAttestedCommits(repoRoot: string): Set<string> {
-  const path = join(repoRoot, ".cairn", ".attested-commits");
+  const path = cairnDir(repoRoot, ".attested-commits");
   if (!existsSync(path)) return new Set();
   try {
     const body = readFileSync(path, "utf8");

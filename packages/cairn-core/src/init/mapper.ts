@@ -27,7 +27,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { logger } from "../logger.js";
-import {
+import { cairnDir,
   buildDecisionsLedger,
   buildInvariantsLedger,
 } from "@isaacriehm/cairn-state";
@@ -276,7 +276,7 @@ function readLedgerSafely(
   // Ground state may not exist on first-run adopters. Empty list is fine —
   // mapper just gets no in-scope ledger context to classify against.
   try {
-    const groundDir = join(repoRoot, ".cairn", "ground");
+    const groundDir = cairnDir(repoRoot, "ground");
     if (!existsSync(groundDir)) return [];
     return kind === "decisions"
       ? buildDecisionsLedger({ repoRoot })

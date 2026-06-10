@@ -13,8 +13,8 @@
  */
 
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { userCairnRoot } from "../paths/index.js";
 
 export type TraceSource = "hook" | "mcp" | "claude" | "init-phase" | "subagent";
 
@@ -38,7 +38,7 @@ export interface TraceEvent {
 }
 
 export function traceDir(): string {
-  return join(homedir(), ".cairn", "trace");
+  return join(userCairnRoot(), "trace");
 }
 
 function todayFilename(now: Date): string {

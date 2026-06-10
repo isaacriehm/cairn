@@ -4,6 +4,78 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.0] — 2026-06-09
+
+Ghost Mode — a zero-footprint adoption mode for client work — plus update
+discoverability, a migration backfill, and a correctness sweep of the new
+ghost edges surfaced by a full-branch review.
+
+### Added
+
+- **Ghost Mode — `.cairn/` that never touches the client repo.** A new adoption
+  mode where Cairn writes nothing into the client's tracked tree or history: no
+  in-repo `.cairn/`, no `.claude/`/`.github/` templates, no mutated
+  `CLAUDE.md`, no `§DEC`/`§INV` source cites, no `@cairn` component headers.
+  State lives out-of-repo at `~/.cairn/state/<repo-id>/`, keyed in
+  `~/.cairn/registry.yaml` on the git root-commit SHA (move-stable). It is
+  **configuration over one code path** — every `.cairn` path resolves through
+  `cairnHome(repoRoot)`/`cairnDir`, gated on `isGhost(repoRoot)`; committed mode
+  stays byte-identical (registry-absent fast path, no git shell). Bindings that
+  a source cite would carry live in the out-of-repo anchor-map/scope-index,
+  content-hash re-anchored on read; `cairn-lens` renders governed blocks from
+  that map; the pre-commit sweep warns (advisory), never blocks. A grep-gate
+  (`smoke:cairn-home`) keeps both `.cairn` path construction and the `isGhost`
+  forks centralized to documented selection points.
+- **SessionStart "newer Cairn available" notice.** Cairn ships as a
+  third-party Claude Code plugin, where marketplace auto-update is OFF by
+  default — so a user could sit on an old plugin (and its bundled `cli.mjs`)
+  with no signal. SessionStart now makes one throttled (once/day/machine),
+  best-effort check against the npm registry and surfaces a one-line banner
+  when a newer version is published. Cached in `~/.cairn/update-check.json`;
+  a cache hit is pure filesystem (no network), and the check never blocks the
+  session past a tight timeout or throws. Plugin-side analog of the existing
+  `cairn-lens` update check.
+- **`0002-backfill-gitignore` migration.** Repos adopted before the derived
+  ground state (v0.15.0) and component index (v0.18.0) were gitignored lack the
+  ignore lines and may have COMMITTED that per-clone state. This `review`-class
+  migration merges the missing `.cairn/.gitignore` entries (never clobbering
+  operator lines) and `git rm --cached`s the now-ignored tracked paths. Detect
+  and apply share one `remediateGitignore` core with the `cairn fix gitignore`
+  CLI; both are idempotent. Surfaced at SessionStart, applied on
+  `cairn migrate --all`.
+
+### Fixed
+
+- **Ghost conflict-merge wrote into the client repo.** Resolving a DEC/INV
+  conflict via "merge" wrote the merged entity to an in-repo `<repo>/.cairn/…`
+  path (a `join(repoRoot, ".cairn/…")` that bypassed `cairnDir`), violating
+  ghost's zero-footprint guarantee and split-braining against the out-of-repo
+  ledger/anchor writers. Now routed through `decisionsDir`/`invariantsDir`.
+- **Ghost adoption aborted at the curator phase.** The curator subagents wrote
+  `final.jsonl` to an in-repo path while `9b-curate` checked the out-of-repo
+  `cairnDir` path, failing `9b-curate-missing-final`. `9a-walker` now surfaces
+  an absolute `curator_dir` and the adoption skill resolves curator paths under
+  it in ghost.
+- **CLI commands locked out ghost repos.** `cairn migrate` / `attention` /
+  `doctor` / `scope` gated on a literal `${repoRoot}/.cairn` probe, blind to
+  ghost repos whose state lives out-of-repo. They now share a ghost-aware
+  `isAdopted(repoRoot)` (present `config.yaml` via `cairnDir`).
+- **`cairn_resolve_attention` accepted a malformed choice.** The `drift` and
+  `invalidation` handlers indexed a 3-key map with the schema-permitted
+  `choice:"d"`, returning a `*_undefined` success instead of a validation error.
+
+### Changed
+
+- Internal consolidation + hot-path trims from the review: one `cairn_version`
+  pin reader shared by the runner/join, one config-`Document` parsed per
+  migration selection pass, one `cairnHooksPathForConfig` helper for the git
+  hooks-path fork, the three lens providers unified behind
+  `resolver.governedBlocksForFile`, the ghost GC orphan/re-anchor passes walking
+  each source file once, the component-freshness hot path reusing its already
+  parsed registry, and `.cli-path` written only when it changes. Plus a
+  grep-gate (`smoke:cairn-home`) that pins `isGhost` to a documented allowlist
+  of selection points, and removal of the orphaned `lookupTask` cluster.
+
 ## [0.21.0] — 2026-06-08
 
 Enforcement that's real, not theatre. The advertised sensor sweep now runs

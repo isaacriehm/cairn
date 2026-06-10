@@ -1,9 +1,12 @@
 /**
  * Scans the visible body of a Read tool's content for cairn citation
- * patterns: §INV invariants, §DEC decisions, and TODO(TSK-...) linked
- * todos. Both `§INV-<hash>` and `§DEC-<hash>` are the canonical bare-symbol
- * citation forms produced by the strip-replace phase and resolved by
- * the read-enricher into the legend.
+ * patterns: §INV invariants and §DEC decisions. Both `§INV-<hash>` and
+ * `§DEC-<hash>` are the canonical bare-symbol citation forms produced by the
+ * strip-replace phase and resolved by the read-enricher into the legend.
+ *
+ * (`TODO(TSK-…)` source markers used to be a third pattern, but nothing ever
+ * emitted them once the Phase-12 strip stub was removed, so the dead reader was
+ * cut — task↔source links can return later as a `MarkerProjection` output.)
  *
  * Per READ_ENRICHER_SPEC §3 — line numbers in the legend should reflect
  * the original source line, so when content is `cat -n`-prefixed
@@ -12,7 +15,7 @@
  */
 
 export interface CitationMatch {
-  /** Citation id, e.g. "INV-2323232" or "TSK-auth-refactor" or "DEC-a3f7b2c". */
+  /** Citation id, e.g. "INV-2323232" or "DEC-a3f7b2c". */
   id: string;
   /** 1-indexed line number from cat -n prefix, or iteration index. */
   line: number;
@@ -20,13 +23,11 @@ export interface CitationMatch {
 
 export interface ScannedCitations {
   invariants: CitationMatch[];
-  todos: CitationMatch[];
   /** §DEC-<hash> citations resolved against the decisions ledger. */
   decisions: CitationMatch[];
 }
 
 const INVARIANT_RE = /§INV-([0-9a-f]{7,})/g;
-const TODO_RE = /TODO\(TSK-([^)]+)\)/g;
 // Require `§` prefix so plain `DEC-<hash>` strings (URL fragments, prose
 // citations in markdown bodies, GitHub-style refs) don't false-match.
 // The strip-replace phase ALWAYS emits the `§` prefix on accepted
@@ -36,11 +37,10 @@ const CAT_N_PREFIX_RE = /^(\d+)\t/;
 
 export function scanCitations(content: string): ScannedCitations {
   const invariants: CitationMatch[] = [];
-  const todos: CitationMatch[] = [];
   const decisions: CitationMatch[] = [];
 
   if (content.length === 0) {
-    return { invariants, todos, decisions };
+    return { invariants, decisions };
   }
 
   const lines = content.split(/\r?\n/);
@@ -64,11 +64,6 @@ export function scanCitations(content: string): ScannedCitations {
       if (digits === undefined) continue;
       invariants.push({ id: `INV-${digits}`, line: lineNumber });
     }
-    for (const m of lineText.matchAll(TODO_RE)) {
-      const tail = m[1];
-      if (tail === undefined) continue;
-      todos.push({ id: `TSK-${tail}`, line: lineNumber });
-    }
     for (const m of lineText.matchAll(DEC_RE)) {
       const digits = m[1];
       if (digits === undefined) continue;
@@ -76,5 +71,5 @@ export function scanCitations(content: string): ScannedCitations {
     }
   }
 
-  return { invariants, todos, decisions };
+  return { invariants, decisions };
 }

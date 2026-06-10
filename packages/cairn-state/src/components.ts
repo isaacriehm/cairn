@@ -26,6 +26,12 @@ import { existsSync, readFileSync } from "node:fs";
 import { extname, join } from "node:path";
 import { z } from "zod";
 import { parse as parseYaml } from "yaml";
+import { cairnDir, isGhost } from "./home.js";
+import {
+  lookupComponentEntry,
+  readComponentRegistry,
+  type ComponentRegistryEntry,
+} from "./component-registry.js";
 import { walkFs } from "./fs.js";
 import { escapeRegExp, splitCsv, HEADER_SIGNAL_RE } from "./text.js";
 import {
@@ -151,7 +157,7 @@ export function normalizeComponentsConfig(
 
 /** Read + normalize the `components:` config from `.cairn/config.yaml`. */
 export function loadComponentsConfig(repoRoot: string): NormalizedComponentsConfig {
-  const p = join(repoRoot, ".cairn", "config.yaml");
+  const p = cairnDir(repoRoot, "config.yaml");
   let rawDoc: unknown = {};
   if (existsSync(p)) {
     try {
@@ -300,8 +306,33 @@ export function parseComponentHeader(source: string): ComponentTags | null {
 
 export interface CollectResult {
   components: ComponentRecord[];
-  /** Repo-relative paths of scanned files with no header. */
+  /**
+   * Repo-relative paths of unit-shaped files that are not yet in the store —
+   * committed: no `@cairn` header; ghost: not in the external registry. The
+   * `ghost` flag below tells `validateComponents` how to phrase the finding.
+   */
   missing: string[];
+  /** True when the tag source was the out-of-repo registry (ghost). */
+  ghost: boolean;
+}
+
+/**
+ * Project a headerless registry entry into the same `ComponentTags` shape the
+ * in-file `@cairn` header parses to, so everything downstream of
+ * `collectComponents` (index render, validation, ledger, in-scope, get) is
+ * byte-for-byte mode-agnostic.
+ */
+function entryToTags(entry: ComponentRegistryEntry): ComponentTags {
+  const tags: ComponentTags = {
+    cairn: entry.name,
+    category: entry.category,
+    purpose: entry.purpose,
+    aliases: entry.aliases.join(", "),
+  };
+  if (entry.uses.length > 0) tags.uses = entry.uses.join(", ");
+  if (entry.singleton === true) tags.singleton = "true";
+  if (entry.status) tags.status = entry.status;
+  return tags;
 }
 
 /**
@@ -316,6 +347,14 @@ export function collectComponents(
   const components: ComponentRecord[] = [];
   const missing: string[] = [];
   const seen = new Set<string>();
+
+  // Mode-aware tag source (§3.8.1). Committed: the in-file `@cairn` header is
+  // the SoT (`parseComponentHeader`). Ghost: the out-of-repo registry, keyed
+  // (workspace, file, export) — source is never read for tags. The
+  // `ComponentRecord` shape is identical either way, so nothing downstream
+  // branches.
+  const ghost = isGhost(repoRoot);
+  const registry = ghost ? readComponentRegistry(repoRoot) : null;
 
   for (const ws of config.workspaces) {
     const skipDirs = new Set(ws.exclude);
@@ -337,13 +376,20 @@ export function collectComponents(
           } catch {
             return;
           }
-          const tags = parseComponentHeader(source);
+          const exportNames = extractExportNames(source, rel);
+          const tags =
+            ghost && registry !== null
+              ? ((entry) => (entry === null ? null : entryToTags(entry)))(
+                  lookupComponentEntry(registry, ws.name, rel, exportNames),
+                )
+              : parseComponentHeader(source);
           if (tags === null) {
             // Only a unit-shaped file (a real component/widget/view) is
-            // "missing a header". Non-unit files co-located in a component
-            // dir — route/entry files like page.tsx / layout.tsx (lowercase,
-            // not unit-shaped) — are skipped, so a mixed dir (e.g. app/) can
-            // be added to componentDirs without flooding the gate with debt.
+            // "missing". Committed: no `@cairn` header. Ghost: not in the
+            // registry (an *unregistered unit*). Non-unit files co-located in a
+            // component dir — route/entry files like page.tsx / layout.tsx
+            // (lowercase, not unit-shaped) — are skipped, so a mixed dir (e.g.
+            // app/) can be added to componentDirs without flooding the gate.
             if (profileForFile(rel)?.isUnitShaped(source, rel)) missing.push(rel);
             return;
           }
@@ -352,7 +398,7 @@ export function collectComponents(
             workspace: ws.name,
             tags,
             exportName: extractExportName(source, rel),
-            exportNames: extractExportNames(source, rel),
+            exportNames,
           });
         },
       });
@@ -365,7 +411,7 @@ export function collectComponents(
       (a.tags.cairn || "").localeCompare(b.tags.cairn || ""),
   );
   missing.sort();
-  return { components, missing };
+  return { components, missing, ghost };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -541,6 +587,7 @@ export function renderComponentsIndex(
 
 export type ComponentFindingKind =
   | "missing-header"
+  | "unregistered-unit"
   | "missing-tag"
   | "invalid-category"
   | "duplicate-name"
@@ -572,12 +619,25 @@ export function validateComponents(
   const wsCategories = new Map(config.workspaces.map((w) => [w.name, w.categories]));
 
   for (const f of result.missing) {
-    findings.push({
-      kind: "missing-header",
-      severity: "hard",
-      file: f,
-      message: `missing @cairn header: ${f}`,
-    });
+    // Committed: a unit-shaped file with no `@cairn` header is hard debt.
+    // Ghost: the header is forbidden in client source, so the same file is an
+    // *unregistered unit* — a soft offer to register it in the out-of-repo
+    // store (never a nag to mutate source). Same detection, inverted finding.
+    findings.push(
+      result.ghost
+        ? {
+            kind: "unregistered-unit",
+            severity: "soft",
+            file: f,
+            message: `unregistered unit: ${f} — register it via cairn_component_register (no source edit)`,
+          }
+        : {
+            kind: "missing-header",
+            severity: "hard",
+            file: f,
+            message: `missing @cairn header: ${f}`,
+          },
+    );
   }
 
   const names = new Map<string, string>();

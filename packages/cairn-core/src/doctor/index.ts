@@ -12,7 +12,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { which } from "../sensors/shell.js";
 import { parse as parseYaml } from "yaml";
-import {
+import { cairnDir,
   buildDecisionsLedger,
   buildInvariantsLedger,
   hasComponentConfig,
@@ -97,7 +97,7 @@ export function runDoctor(opts: { repoRoot: string }): DoctorReport {
 // ── Checks ───────────────────────────────────────────────────────────
 
 function checkCairnDir(repoRoot: string): DoctorCheck {
-  const path = join(repoRoot, ".cairn");
+  const path = cairnDir(repoRoot);
   if (!existsSync(path)) {
     return {
       group: "core",
@@ -116,7 +116,7 @@ function checkCairnDir(repoRoot: string): DoctorCheck {
 }
 
 function checkCairnVersion(repoRoot: string): DoctorCheck {
-  const path = join(repoRoot, ".cairn", "config.yaml");
+  const path = cairnDir(repoRoot, "config.yaml");
   if (!existsSync(path)) {
     return {
       group: "core",
@@ -178,7 +178,7 @@ function checkCairnVersion(repoRoot: string): DoctorCheck {
 }
 
 function checkWorkflowMd(repoRoot: string): DoctorCheck {
-  const path = join(repoRoot, ".cairn", "config", "workflow.md");
+  const path = cairnDir(repoRoot, "config", "workflow.md");
   if (!existsSync(path)) {
     return {
       group: "core",
@@ -197,7 +197,7 @@ function checkWorkflowMd(repoRoot: string): DoctorCheck {
 }
 
 function checkScopeIndex(repoRoot: string): DoctorCheck {
-  const path = join(repoRoot, ".cairn", "ground", "scope-index.yaml");
+  const path = cairnDir(repoRoot, "ground", "scope-index.yaml");
   if (!existsSync(path)) {
     return {
       group: "ground",
@@ -338,7 +338,7 @@ function checkLedger(
   repoRoot: string,
   kind: "decisions" | "invariants",
 ): DoctorCheck {
-  const path = join(repoRoot, ".cairn", "ground", kind, `${kind}.ledger.yaml`);
+  const path = cairnDir(repoRoot, "ground", kind, `${kind}.ledger.yaml`);
   if (!existsSync(path)) {
     return {
       group: "ground",
@@ -374,7 +374,7 @@ function checkLedger(
 }
 
 function checkSensorAvailability(repoRoot: string): DoctorCheck[] {
-  const path = join(repoRoot, ".cairn", "config", "sensors.yaml");
+  const path = cairnDir(repoRoot, "config", "sensors.yaml");
   if (!existsSync(path)) {
     return [
       {

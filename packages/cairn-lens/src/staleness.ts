@@ -10,15 +10,15 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { cairnDir } from "@isaacriehm/cairn-state";
 
 /**
- * Return the set of `dec_id` values referenced by any drift entry in
- * `<repoRoot>/.cairn/staleness/log.jsonl`. Returns an empty set when
- * the log is missing or unreadable.
+ * Return the set of `dec_id` values referenced by any drift entry in the
+ * staleness log. Resolves through `cairnDir`, so it reads the out-of-repo state
+ * home in ghost (§3.7). Returns an empty set when the log is missing/unreadable.
  */
 export function readPendingStalenessIds(repoRoot: string): Set<string> {
-  const path = join(repoRoot, ".cairn", "staleness", "log.jsonl");
+  const path = cairnDir(repoRoot, "staleness", "log.jsonl");
   if (!existsSync(path)) return new Set();
   let text: string;
   try {

@@ -5,8 +5,8 @@
  * prompt directly, BYPASSING the Read tool — so the
  * PostToolUse(Read) read-enricher hook never fires for those files.
  * This hook fills the gap: it parses `@<path>` patterns from the
- * raw prompt, reads each file, scans for §INV-/§DEC-/TODO(TSK-)
- * citations, builds the same legend the read-enricher would have,
+ * raw prompt, reads each file, scans for §INV-/§DEC- citations,
+ * builds the same legend the read-enricher would have,
  * and emits it as `additionalContext`. Result: the model sees
  * the resolved citations alongside the attached file content,
  * matching the documented "bare symbols always resolve on Read"
@@ -21,8 +21,6 @@ import {
   getDecisionsLedger,
   getInvariantsLedger,
   getScopeIndexEntry,
-  lookupTask,
-  type TaskLookupResult,
 } from "@isaacriehm/cairn-state";
 import { buildLegend, type ScopeIndexHint } from "../post-tool-use/legend-builder.js";
 import { readHookStdin } from "./payload.js";
@@ -146,7 +144,6 @@ export async function runUserPromptSubmitHook(): Promise<void> {
     // files — non-existent `@`-mentions are typically not file refs.
     const aggregated: ScannedCitations = {
       invariants: [],
-      todos: [],
       decisions: [],
     };
     let firstHitRel: string | null = null;
@@ -157,7 +154,6 @@ export async function runUserPromptSubmitHook(): Promise<void> {
       const matches = scanCitations(content);
       const hit =
         matches.invariants.length > 0 ||
-        matches.todos.length > 0 ||
         matches.decisions.length > 0;
       if (!hit) continue;
       if (firstHitRel === null) {
@@ -167,13 +163,11 @@ export async function runUserPromptSubmitHook(): Promise<void> {
         }
       }
       aggregated.invariants.push(...matches.invariants);
-      aggregated.todos.push(...matches.todos);
       aggregated.decisions.push(...matches.decisions);
     }
 
     if (
       aggregated.invariants.length === 0 &&
-      aggregated.todos.length === 0 &&
       aggregated.decisions.length === 0
     ) {
       emitShapeB(phaseReadyContext);
@@ -192,15 +186,12 @@ export async function runUserPromptSubmitHook(): Promise<void> {
 
     const invariantsLedger = getInvariantsLedger(repoRoot);
     const decisionsLedger = getDecisionsLedger(repoRoot);
-    const resolveTaskFn = (taskId: string): TaskLookupResult =>
-      lookupTask(repoRoot, taskId);
 
     const legend = buildLegend(
       aggregated,
       invariantsLedger,
       decisionsLedger,
       scopeHint,
-      resolveTaskFn,
     );
 
     // Stitch phase-ready (if any) ahead of the legend so the operator

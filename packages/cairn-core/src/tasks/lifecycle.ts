@@ -31,6 +31,7 @@ import { join } from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { writeInvalidationEvent } from "../events/index.js";
 import { onTaskCompleted } from "../missions/task-link.js";
+import { cairnDir } from "@isaacriehm/cairn-state";
 
 export type TaskOutcome = "succeeded" | "failed" | "aborted";
 
@@ -109,8 +110,8 @@ export interface CompleteTaskError {
 export function completeTask(
   args: CompleteTaskArgs,
 ): CompleteTaskResult | CompleteTaskError {
-  const activeDir = join(args.repoRoot, ".cairn", "tasks", "active", args.taskId);
-  const doneRoot = join(args.repoRoot, ".cairn", "tasks", "done");
+  const activeDir = cairnDir(args.repoRoot, "tasks", "active", args.taskId);
+  const doneRoot = cairnDir(args.repoRoot, "tasks", "done");
   const doneDir = join(doneRoot, args.taskId);
 
   if (!existsSync(activeDir)) {
@@ -238,8 +239,8 @@ export interface ReopenTaskError {
 export function reopenTask(
   args: ReopenTaskArgs,
 ): ReopenTaskResult | ReopenTaskError {
-  const activeDir = join(args.repoRoot, ".cairn", "tasks", "active", args.taskId);
-  const doneDir = join(args.repoRoot, ".cairn", "tasks", "done", args.taskId);
+  const activeDir = cairnDir(args.repoRoot, "tasks", "active", args.taskId);
+  const doneDir = cairnDir(args.repoRoot, "tasks", "done", args.taskId);
 
   if (!existsSync(doneDir)) {
     if (existsSync(activeDir)) {
@@ -336,7 +337,7 @@ export function readTaskAttestationState(
   repoRoot: string,
   taskId: string,
 ): TaskAttestationState | null {
-  const taskDir = join(repoRoot, ".cairn", "tasks", "active", taskId);
+  const taskDir = cairnDir(repoRoot, "tasks", "active", taskId);
   if (!existsSync(taskDir)) return null;
 
   const rootAttestation = existsSync(join(taskDir, "attestation.yaml"));
@@ -402,9 +403,7 @@ export interface AppendJournalArgs {
  * inside the Stop hook).
  */
 export function appendTaskJournal(args: AppendJournalArgs): boolean {
-  const taskDir = join(
-    args.repoRoot,
-    ".cairn",
+  const taskDir = cairnDir(args.repoRoot,
     "tasks",
     "active",
     args.taskId,
@@ -472,7 +471,7 @@ export function readTaskSessionAffinity(
   repoRoot: string,
   taskId: string,
 ): { createdBySession: string | null; lastJournalSession: string | null } {
-  const statusPath = join(repoRoot, ".cairn", "tasks", "active", taskId, "status.yaml");
+  const statusPath = cairnDir(repoRoot, "tasks", "active", taskId, "status.yaml");
   if (!existsSync(statusPath)) {
     return { createdBySession: null, lastJournalSession: null };
   }
@@ -498,7 +497,7 @@ export function readTaskJournal(
   taskId: string,
   scope: "active" | "done" = "active",
 ): JournalEntry[] {
-  const taskDir = join(repoRoot, ".cairn", "tasks", scope, taskId);
+  const taskDir = cairnDir(repoRoot, "tasks", scope, taskId);
   const path = join(taskDir, "journal.jsonl");
   if (!existsSync(path)) return [];
   let raw: string;
@@ -534,7 +533,7 @@ export function readTaskJournal(
  * active set. Returns null when no active task exists.
  */
 export function findCurrentActiveTask(repoRoot: string): string | null {
-  const activeDir = join(repoRoot, ".cairn", "tasks", "active");
+  const activeDir = cairnDir(repoRoot, "tasks", "active");
   if (!existsSync(activeDir)) return null;
   let entries: import("node:fs").Dirent[] = [];
   try {

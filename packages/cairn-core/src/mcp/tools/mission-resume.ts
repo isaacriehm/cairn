@@ -11,7 +11,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import {
+import { cairnDir,
   countDonePhases,
   findActiveMission,
   locateMission,
@@ -218,7 +218,7 @@ function collectRecentGraduatedTasks(
   missionId: string,
   cap: number,
 ): RecentTask[] {
-  const doneDir = join(repoRoot, ".cairn", "tasks", "done");
+  const doneDir = cairnDir(repoRoot, "tasks", "done");
   if (!existsSync(doneDir)) return [];
   let entries;
   try {
@@ -260,7 +260,7 @@ interface InFlightTask {
 }
 
 function collectInFlightTasks(repoRoot: string, missionId: string): InFlightTask[] {
-  const activeDir = join(repoRoot, ".cairn", "tasks", "active");
+  const activeDir = cairnDir(repoRoot, "tasks", "active");
   if (!existsSync(activeDir)) return [];
   let entries;
   try {

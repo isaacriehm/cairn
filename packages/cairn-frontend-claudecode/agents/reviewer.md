@@ -1,6 +1,7 @@
 ---
 name: reviewer
 description: Optional. Use only when the operator explicitly asks for a diff review or a DEC-drafting sweep. The default close path is the AI calling cairn_task_complete with a summary.
+model: sonnet
 tools:
   - Bash
   - Read

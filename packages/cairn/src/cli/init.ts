@@ -36,6 +36,8 @@ function usage(): never {
       "  --force           overwrite existing .cairn/ files\n" +
       "  --skip-mirror     do not clone the parallel mirror checkout\n" +
       "  --skip-mapper     skip the Tier-2 mapper (project_globs left empty)\n" +
+      "  --ghost           private, local-only adoption — nothing Cairn-shaped\n" +
+      "                    touches this repo or its history (state lives out-of-repo)\n" +
       "  --no-prompt       run non-interactively (uses defaults; mapper skipped)\n" +
       "  --auto-e2e <v>    when --no-prompt, pick E2E setup answer (now|defer|skip)\n" +
       "\n" +
@@ -62,6 +64,7 @@ export async function initCli(argv: string[]): Promise<void> {
     typeof parsed.flags["slug"] === "string" ? parsed.flags["slug"] : undefined;
   const force = parsed.flags["force"] === true;
   const skipMapper = parsed.flags["skip-mapper"] === true;
+  const ghost = parsed.flags["ghost"] === true;
   const noPrompt = parsed.flags["no-prompt"] === true;
   const autoE2eRaw =
     typeof parsed.flags["auto-e2e"] === "string"
@@ -92,6 +95,7 @@ export async function initCli(argv: string[]): Promise<void> {
     mode: noPrompt ? "auto" : "interactive",
     force,
     skipMapper,
+    ghost,
     ...(autoE2e !== undefined ? { autoE2e } : {}),
     ...(noPrompt ? { autoProceed: "a" as const } : {}),
   });

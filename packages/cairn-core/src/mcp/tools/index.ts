@@ -3,6 +3,8 @@ import { attentionDedupTool } from "./attention-dedup.js";
 import { bootstrapRetryTool } from "./bootstrap-retry.js";
 import { canonicalForTopicTool } from "./canonical-for-topic.js";
 import { componentGetTool } from "./component-get.js";
+import { componentRegisterTool } from "./component-register.js";
+import { componentReconfirmTool } from "./component-reconfirm.js";
 import { componentsInScopeTool } from "./components-in-scope.js";
 import { decisionGetTool } from "./decision-get.js";
 import { inScopeTool } from "./in-scope.js";
@@ -46,6 +48,9 @@ export const allTools: ToolDef<never>[] = [
   // Write — entity retirement (the OUT path)
   retireDecisionTool,
   retireInvariantTool,
+  // Write — headerless component registry (ghost §3.8.1)
+  componentRegisterTool,
+  componentReconfirmTool,
   taskCreateTool,
   taskCompleteTool,
   taskReopenTool,

@@ -9,7 +9,6 @@ import type { ScannedCitations } from "./citation-scanner.js";
 import type {
   DecisionsLedgerSnapshot,
   LedgerSnapshot,
-  TaskLookupResult,
 } from "@isaacriehm/cairn-state";
 
 export interface ScopeIndexHint {
@@ -41,7 +40,6 @@ export function buildLegend(
   invariantsLedger: LedgerSnapshot | null,
   decisionsLedger: DecisionsLedgerSnapshot | null,
   scopeHint: ScopeIndexHint | null,
-  resolveTask: (taskId: string) => TaskLookupResult,
   unpromotedCandidates = 0,
 ): string | null {
   const hasScopeHint =
@@ -49,7 +47,6 @@ export function buildLegend(
     (scopeHint.decisions.length > 0 || scopeHint.invariants.length > 0);
   const hasCitations =
     matches.invariants.length > 0 ||
-    matches.todos.length > 0 ||
     matches.decisions.length > 0;
   const hasCandidates = unpromotedCandidates >= 1;
 
@@ -107,9 +104,6 @@ export function buildLegend(
   for (const inv of matches.invariants) {
     lines.push(row(renderInvariant(inv.id, invariantsLedger)));
   }
-  for (const todo of matches.todos) {
-    lines.push(row(renderTodo(todo.id, resolveTask(todo.id))));
-  }
 
   lines.push(BOTTOM_BORDER);
   return lines.join("\n");
@@ -161,21 +155,5 @@ function renderInvariant(id: string, ledger: LedgerSnapshot | null): string {
     return `${label} → [SUPERSEDED — update this citation]`;
   }
   const title = entry.title.length > 0 ? entry.title : "(no title)";
-  return `${label} → ${title}  [active]`;
-}
-
-function renderTodo(id: string, result: TaskLookupResult): string {
-  // id arrives as "TSK-<id>" — display in the TODO(...) form.
-  const label = `TODO(${id})`;
-  if (result.found === "not_found") {
-    return `${label} → [NOT FOUND]`;
-  }
-  const title =
-    result.title !== undefined && result.title.length > 0
-      ? result.title
-      : id;
-  if (result.found === "done") {
-    return `${label} → ${title}  [DONE — this TODO can be removed]`;
-  }
   return `${label} → ${title}  [active]`;
 }

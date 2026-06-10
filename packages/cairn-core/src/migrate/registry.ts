@@ -8,5 +8,6 @@
 
 import type { Migration } from "./types.js";
 import { dropDeadConfigFields } from "./migrations/0001-drop-dead-config-fields.js";
+import { backfillGitignore } from "./migrations/0002-backfill-gitignore.js";
 
-export const MIGRATIONS: readonly Migration[] = [dropDeadConfigFields];
+export const MIGRATIONS: readonly Migration[] = [dropDeadConfigFields, backfillGitignore];

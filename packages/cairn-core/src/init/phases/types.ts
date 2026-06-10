@@ -39,7 +39,6 @@ export const PHASE_IDS = [
   "9f-comp-emit",
   "10-rules-merge",
   "11-baseline",
-  "12-strip",
   "13-multidev",
 ] as const;
 
@@ -102,11 +101,6 @@ export interface BrandOutput {
   applied: { updated: string[]; warnings: string[] } | null;
 }
 
-export interface StripState {
-  pending: string[];
-  decisions: Record<string, "strip" | "keep" | "skip">;
-}
-
 /**
  * Output of phases collapsed to no-ops by the curator pipeline merge
  * (Phase 8 docs-ingest + Phase 10 rules-merge in v0.9.0). The runners
@@ -128,6 +122,15 @@ export interface WalkerOutput {
   corpus_path?: string;
   /** Repo-relative path to the spilled shards.json. */
   shards_path?: string;
+  /**
+   * ABSOLUTE curator working dir (`cairnDir(repoRoot,"init","curator")`). In
+   * committed mode this resolves to `<repo>/.cairn/init/curator`; in ghost it
+   * points at the out-of-repo state home. The skill's Step 3.5 orchestration
+   * MUST resolve curator paths (corpus / shards / candidates / final.jsonl)
+   * under this — writing them repo-relative breaks ghost, where 9b-curate then
+   * checks the out-of-repo path and aborts `9b-curate-missing-final`.
+   */
+  curator_dir?: string;
   /** Total surviving records across all sub-walkers. */
   records_total?: number;
   /** Per-source-kind count. */
@@ -187,10 +190,18 @@ export interface CompWalkOutput {
  */
 export interface CompAnnotateOutput {
   skipped?: "self-adopt" | "no-components" | "nothing-missing";
-  /** Files from the walk corpus that now carry a `@cairn` header. */
+  /** Committed: corpus files that now carry a `@cairn` header. */
   annotated?: number;
-  /** Files still missing a header (surface as debt in 9f). */
+  /** Committed: files still missing a header (surface as debt in 9f). */
   still_missing?: number;
+  /**
+   * Ghost: corpus units now present in the out-of-repo registry — the
+   * register-during-adoption flow registers them via `cairn_component_register`
+   * instead of editing a header into source (§3.8.1).
+   */
+  registered?: number;
+  /** Ghost: units the operator left unregistered (surface as offers in 9f). */
+  still_unregistered?: number;
 }
 
 /**
@@ -230,7 +241,6 @@ export interface PhaseOutputs {
   "9f-comp-emit"?: ComponentsPhaseOutput;
   "10-rules-merge"?: NoopPhaseOutput;
   "11-baseline"?: BaselineAuditResult;
-  "12-strip"?: StripState;
   "13-multidev"?: MultiDevInstallResult & {
     /** Number of files in the manifest after the phase 13 finalize rebuild. */
     manifest_files?: number;

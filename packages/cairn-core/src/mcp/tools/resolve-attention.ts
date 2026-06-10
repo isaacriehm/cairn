@@ -22,7 +22,7 @@ import { dirname, join } from "node:path";
 import { stringify as stringifyYaml } from "yaml";
 import { z } from "zod";
 import type { McpContext } from "../context.js";
-import {
+import { cairnDir,
   anchorMapPath,
   bindDec,
   bodyContentHash,
@@ -229,7 +229,7 @@ function appendAttestedShas(repoRoot: string, flagged: string[]): number {
   }
   if (matchingFull.length === 0) return 0;
 
-  const path = join(repoRoot, ".cairn", ".attested-commits");
+  const path = cairnDir(repoRoot, ".attested-commits");
   const existing = new Set<string>();
   if (existsSync(path)) {
     try {
@@ -403,7 +403,7 @@ function resolveBaselineFinding(ctx: McpContext, input: Input): Promise<unknown>
 
   // choice === "b" — append to suppressions.
   return withWriteLock(ctx.repoRoot, () => {
-    const suppressionsPath = join(ctx.repoRoot, ".cairn", "baseline", "suppressions.yaml");
+    const suppressionsPath = cairnDir(ctx.repoRoot, "baseline", "suppressions.yaml");
     mkdirSync(dirname(suppressionsPath), { recursive: true });
     let needsHeader = !existsSync(suppressionsPath);
     if (!needsHeader) {
@@ -1159,11 +1159,19 @@ function mergeConflict(
   const mergedKind: "DEC" | "INV" =
     conflict.aRef.kind === "INV" && conflict.bRef.kind === "INV" ? "INV" : "DEC";
   const mergedId = synthesizeMergedId(mergedKind, conflict.aRef.id, conflict.bRef.id);
+  // Logical display label only — the actual write routes through the dir
+  // helpers below so ghost repos land the merged entity out-of-repo (under
+  // cairnDir), never inside the client tree. `join(repoRoot, ".cairn/…")` here
+  // would write in-repo in ghost and split-brain against the cairnDir-routed
+  // ledger/anchor writers that follow.
   const mergedRel =
     mergedKind === "DEC"
       ? `.cairn/ground/decisions/${mergedId}.md`
       : `.cairn/ground/invariants/${mergedId}.md`;
-  const mergedAbs = join(repoRoot, mergedRel);
+  const mergedAbs = join(
+    mergedKind === "DEC" ? decisionsDir(repoRoot) : invariantsDir(repoRoot),
+    `${mergedId}.md`,
+  );
   const titleA = String(a.fm["title"] ?? conflict.aRef.id);
   const titleB = String(b.fm["title"] ?? conflict.bRef.id);
   const mergedTitle = `Merged: ${titleA} + ${titleB}`;
@@ -1236,6 +1244,17 @@ function synthesizeMergedId(
 }
 
 function resolveInvalidationEvent(_ctx: McpContext, input: Input): Promise<unknown> {
+  // `d` is conflict-only; the shared Input schema permits it, so reject it here
+  // rather than index a 3-key map with `undefined` and return a malformed
+  // `invalidation_undefined` success.
+  if (input.choice === "d") {
+    return Promise.resolve(
+      mcpError(
+        "VALIDATION_FAILED",
+        `choice "d" is only valid for kind="conflict"; invalidation accepts a (refresh) / b (continue) / c (abort)`,
+      ),
+    );
+  }
   const map: Record<"a" | "b" | "c", string> = {
     a: "refresh",
     b: "continue_under_old",
@@ -1260,6 +1279,16 @@ function resolveInvalidationEvent(_ctx: McpContext, input: Input): Promise<unkno
  * entry to mutate here.
  */
 function resolveDriftEvent(_ctx: McpContext, input: Input): Promise<unknown> {
+  // `d` is conflict-only; reject the schema-permitted-but-unsupported choice
+  // instead of returning a malformed `drift_undefined` success.
+  if (input.choice === "d") {
+    return Promise.resolve(
+      mcpError(
+        "VALIDATION_FAILED",
+        `choice "d" is only valid for kind="conflict"; drift accepts a (refresh) / b (defer) / c (dismiss)`,
+      ),
+    );
+  }
   const map: Record<"a" | "b" | "c", string> = {
     a: "refresh",
     b: "defer",

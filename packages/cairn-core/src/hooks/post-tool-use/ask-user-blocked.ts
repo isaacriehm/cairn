@@ -16,13 +16,14 @@
  */
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+
 import { z } from "zod";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { resolveRepoRoot } from "../../session-start/index.js";
 import { findCurrentActiveTask } from "../../tasks/index.js";
 import { readHookStdin } from "../runners/payload.js";
 import { logger } from "../../logger.js";
+import { cairnDir } from "@isaacriehm/cairn-state";
 
 const log = logger("hooks.post-tool-use.ask-user-blocked");
 
@@ -83,7 +84,7 @@ export async function runAskUserBlockedHook(): Promise<void> {
       return;
     }
 
-    const statusPath = join(repoRoot, ".cairn", "tasks", "active", taskId, "status.yaml");
+    const statusPath = cairnDir(repoRoot, "tasks", "active", taskId, "status.yaml");
     if (!existsSync(statusPath)) {
       emitShapeB("");
       return;

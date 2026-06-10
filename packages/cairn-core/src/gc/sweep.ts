@@ -27,6 +27,7 @@ import { runDocClaimsVsRuntime } from "./doc-claims.js";
 import { runDocGardening } from "./doc-gardening.js";
 import { runDocSourceDrift } from "./doc-source-drift.js";
 import { runEntityOrphan } from "./entity-orphan.js";
+import { runGhostReanchor } from "./ghost-anchor.js";
 import { runFrontmatterFreshness } from "./frontmatter.js";
 import { runGeneratorDrift } from "./generator-drift.js";
 import { runQualityUpdate } from "./quality-update.js";
@@ -86,6 +87,7 @@ export async function runGcSweep(opts: RunGcSweepOptions): Promise<GcSweepResult
     "attested-commits-pruning": 0,
     "doc-claims-vs-runtime": 0,
     "doc-source-drift": 0,
+    "ghost-reanchor": 0,
     "entity-orphan": 0,
   };
 
@@ -190,6 +192,17 @@ export async function runGcSweep(opts: RunGcSweepOptions): Promise<GcSweepResult
     const r = runDocSourceDrift({ repoRoot: opts.repoRoot });
     findings.push(...r.findings);
     passDurations["doc-source-drift"] = Date.now() - t0;
+  }
+
+  // 11.5. Ghost re-anchor — refresh anchor-map line ranges for governed comment
+  // blocks that moved within their file (§3.5.1). No-op (and no entity walk)
+  // outside ghost. Runs before entity-orphan so liveness reads a fresh map;
+  // liveness itself is location-independent (content-hash), so ordering is only
+  // a freshness nicety for the lens.
+  {
+    const t0 = Date.now();
+    runGhostReanchor(opts.repoRoot);
+    passDurations["ghost-reanchor"] = Date.now() - t0;
   }
 
   // 12. Entity-orphan — ledger → code; surface DEC/INV that no longer have

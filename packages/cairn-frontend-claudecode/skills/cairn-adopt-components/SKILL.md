@@ -8,7 +8,7 @@ when_to_use: |
   `@cairn` headers". Drives detect → annotate → emit inline. Skip when
   the repo isn't adopted at all (send to cairn-adopt first) or already
   carries a built component store.
-allowed-tools: Skill(cairn:cairn-attention), Task(component-annotator), AskUserQuestion
+allowed-tools: Skill(cairn:cairn-attention), Task(component-annotator), Task(component-registrar), AskUserQuestion
 ---
 
 # Skill: cairn-adopt-components
@@ -27,25 +27,46 @@ shows progress + consent gates, not commands.
 
 ## Step 0 — classify the repo
 
-Run this single probe to decide whether backfill applies:
+Run this single probe to decide whether backfill applies. It is
+**ghost-aware**: a ghost-adopted repo has no in-repo `.cairn/` — its state
+lives out-of-repo at `~/.cairn/state/<root-commit>/`. The probe resolves the
+effective state home (in-repo when present, else the out-of-repo ghost dir
+keyed on the repo's root-commit) and prints `<mode> <verdict> <home>`:
 
 ```bash
 node -e '
   const fs=require("node:fs");
+  const os=require("node:os");
   const path=require("node:path");
+  const cp=require("node:child_process");
   const root=process.cwd();
-  const cfg=path.join(root,".cairn","config.yaml");
-  const idx=path.join(root,".cairn","ground","components");
-  if(!fs.existsSync(path.join(root,".cairn"))){console.log("not-adopted");process.exit(0);}
-  if(!fs.existsSync(cfg)){console.log("not-adopted");process.exit(0);}
+  let mode="committed";
+  let home=path.join(root,".cairn");
+  if(!fs.existsSync(home)){
+    // No in-repo .cairn — may be ghost-adopted. Ghost state lives at
+    // ~/.cairn/state/<repo-id>; repo-id is the move-stable root-commit SHA
+    // (matches registerGhostRepo). Resolve it and probe there instead.
+    let rc="";
+    try{rc=cp.execFileSync("git",["-C",root,"rev-list","--max-parents=0","HEAD"],{encoding:"utf8",stdio:["ignore","pipe","ignore"]}).trim().split(/\s+/)[0]||"";}catch{}
+    if(rc){const g=path.join(os.homedir(),".cairn","state",rc);if(fs.existsSync(g)){home=g;mode="ghost";}}
+  }
+  const cfg=path.join(home,"config.yaml");
+  const idx=path.join(home,"ground","components");
+  if(!fs.existsSync(home)||!fs.existsSync(cfg)){console.log(mode+" not-adopted "+home);process.exit(0);}
   let hasBlock=false;
   try{hasBlock=/^components:/m.test(fs.readFileSync(cfg,"utf8"));}catch{}
   const hasIndex=fs.existsSync(idx)&&fs.readdirSync(idx).length>0;
-  if(hasBlock&&hasIndex){console.log("has-store");process.exit(0);}
-  console.log("backfill");'
+  console.log(mode+" "+(hasBlock&&hasIndex?"has-store":"backfill")+" "+home);'
 ```
 
-Branch:
+The first token is the **mode** (`committed` | `ghost`); the third is the
+resolved **state home**. In **ghost mode**, every `.cairn/…` path in the
+steps below resolves under that home (the out-of-repo dir), NOT the repo
+root — the `node … cli.mjs components …` commands already resolve it
+automatically, so only the raw `cat` / in-place-edit snippets need
+`$CAIRN_HOME` substituted for `.cairn`. Export it: `CAIRN_HOME="<home>"`.
+
+Branch on the verdict (second token):
 
 - **`not-adopted`** → the repo has no Cairn state. Surface one line:
   "This project isn't adopted yet — run `/cairn:cairn-adopt` first; it
@@ -165,11 +186,23 @@ Dispatching `component-annotator` subagents in rounds of 4 to add them.
 Plan-quota, no API billing.
 ```
 
-## Step 4 — annotate (operator-gated, batched)
+## Step 4 — annotate (committed) / register (ghost), operator-gated, batched
 
-**This step mutates source files**, so it is gated on per-batch consent.
-Group the corpus into batches of ~4. For each batch, render an
-`AskUserQuestion`:
+**Ghost mode — register, do NOT annotate.** When Step 0's mode is
+`ghost`, the `@cairn` header is forbidden in client source (constraint
+2). Dispatch the **`component-registrar`** subagent instead of
+`component-annotator`: same per-batch consent + rounds-of-4 dispatch, but
+each agent classifies the unit and calls `cairn_component_register`
+(out-of-repo, **no source edit**) rather than editing a header. The
+banner says "registering" and notes nothing is written to source; the
+brief inlines `file` / `export_name` / `workspace` / `categories`;
+declined units stay as soft `unregistered-unit` offers in the attention
+queue. Skip the committed instructions below and proceed to Step 5
+(`components emit` builds the index from the out-of-repo registry).
+
+**Committed mode** — the path below. **This step mutates source files**,
+so it is gated on per-batch consent. Group the corpus into batches of ~4.
+For each batch, render an `AskUserQuestion`:
 
 - `a` annotate this batch · `b` skip this batch · `c` stop annotating
 

@@ -17,9 +17,11 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { cairnDir } from "@isaacriehm/cairn-state";
 import { advancePhase, isSelfAdoptState } from "./orchestrator.js";
 import type { CurateOutput, PhaseResult, PhaseState } from "./types.js";
 
+/** Repo-relative display path. State home resolution goes through `cairnDir`. */
 export const CURATOR_FINAL_PATH = join(".cairn", "init", "curator", "final.jsonl");
 
 export async function runPhase9bCurate(state: PhaseState): Promise<PhaseResult> {
@@ -35,7 +37,7 @@ export async function runPhase9bCurate(state: PhaseState): Promise<PhaseResult> 
       state: advancePhase(next),
     };
   }
-  const finalAbs = join(state.repoRoot, CURATOR_FINAL_PATH);
+  const finalAbs = cairnDir(state.repoRoot, "init", "curator", "final.jsonl");
   if (!existsSync(finalAbs)) {
     return {
       status: "error",
@@ -43,7 +45,9 @@ export async function runPhase9bCurate(state: PhaseState): Promise<PhaseResult> 
         code: "9b-curate-missing-final",
         message:
           "Curator skill orchestration did not write final.jsonl. The cairn-adopt skill must dispatch curator-map + curator-reduce subagents before invoking 9b-curate.",
-        detail: `Expected file at ${CURATOR_FINAL_PATH}`,
+        // Absolute path actually checked — in ghost this is out-of-repo, so a
+        // subagent that wrote final.jsonl repo-relative surfaces here clearly.
+        detail: `Expected file at ${finalAbs}`,
       },
       state,
     };

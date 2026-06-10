@@ -9,7 +9,7 @@
 
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { runMigrations, type MigrationOutcome } from "@isaacriehm/cairn-core";
+import { isAdopted, runMigrations, type MigrationOutcome } from "@isaacriehm/cairn-core";
 
 function parseRepoFlag(argv: string[]): string {
   const idx = argv.indexOf("--repo");
@@ -27,9 +27,9 @@ function ensureAdopted(repoRoot: string): void {
     console.error(`cairn: repo root does not exist: ${repoRoot}`);
     process.exit(2);
   }
-  if (!existsSync(`${repoRoot}/.cairn`)) {
+  if (!isAdopted(repoRoot)) {
     console.error(
-      `cairn: ${repoRoot} is not cairn-adopted (no .cairn/). Run \`cairn init\` first.`,
+      `cairn: ${repoRoot} is not cairn-adopted (no config.yaml). Run \`cairn init\` first.`,
     );
     process.exit(2);
   }

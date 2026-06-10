@@ -11,6 +11,7 @@ import {
   type StatusJson,
 } from "./index.js";
 import { defaultStatusJson, statusJsonPath } from "./writer.js";
+import { cairnDir } from "@isaacriehm/cairn-state";
 
 /**
  * Status-line event queue (plan §9).
@@ -65,7 +66,7 @@ function mergeWithDefaults(partial: Partial<StatusJson>): StatusJson {
 }
 
 function writeAtomic(repoRoot: string, sessionId: string, status: StatusJson): void {
-  if (!existsSync(join(repoRoot, ".cairn"))) return;
+  if (!existsSync(cairnDir(repoRoot))) return;
   const stateDir = sessionStateDir(repoRoot, sessionId);
   mkdirSync(stateDir, { recursive: true });
   const path = join(stateDir, "status.json");

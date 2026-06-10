@@ -106,6 +106,40 @@ export class CitationCodeLensProvider implements vscode.CodeLensProvider {
         );
       }
     }
+
+    // Ghost (§3.7): no `§` token to anchor a below-lens on, so render one per
+    // governed block from the external anchor-map. `governedBlocksForFile`
+    // returns `[]` in committed (the token-driven lenses above are the trigger);
+    // the mode fork lives in the resolver.
+    for (const b of this.resolver.governedBlocksForFile(doc.uri.fsPath)) {
+      if (token.isCancellationRequested) break;
+      const lineIdx = b.startLine - 1;
+      if (lineIdx < 0 || lineIdx >= lineCount) continue;
+      const anchorLine = lineIdx + 1 < lineCount ? lineIdx + 1 : lineIdx;
+      const anchor = new vscode.Range(anchorLine, 0, anchorLine, 0);
+      if (b.kind === "decision") {
+        const accepted = b.status === "accepted";
+        lenses.push(
+          new vscode.CodeLens(anchor, {
+            title: `↳ ${accepted ? "✓" : "?"} ${accepted ? truncate(b.title, 100) : `(unresolved §${b.id})`}`,
+            command: "cairn-lens.openDecisionsLedger",
+          }),
+        );
+      } else {
+        const label =
+          b.status === "active"
+            ? `✓ ${truncate(b.title, 100)}`
+            : b.status === "superseded"
+              ? "⚠ superseded — see invariants ledger"
+              : `(unresolved §${b.id})`;
+        lenses.push(
+          new vscode.CodeLens(anchor, {
+            title: `↳ ${label}`,
+            command: "cairn-lens.openInvariantsLedger",
+          }),
+        );
+      }
+    }
     return lenses;
   }
 }

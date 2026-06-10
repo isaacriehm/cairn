@@ -1,7 +1,8 @@
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { appendTrace } from "../trace/index.js";
 import type { McpContext } from "./context.js";
+import { cairnDir } from "@isaacriehm/cairn-state";
 
 /**
  * Writes one row per tool call to:
@@ -26,8 +27,8 @@ interface TelemetryRow {
 export function recordCall(ctx: McpContext, row: TelemetryRow): void {
   const path =
     ctx.runId !== undefined
-      ? join(ctx.repoRoot, ".cairn", "runs", "active", ctx.runId, "mcp-calls.jsonl")
-      : join(ctx.repoRoot, ".cairn", "staleness", "mcp-calls.jsonl");
+      ? cairnDir(ctx.repoRoot, "runs", "active", ctx.runId, "mcp-calls.jsonl")
+      : cairnDir(ctx.repoRoot, "staleness", "mcp-calls.jsonl");
   const dir = dirname(path);
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });

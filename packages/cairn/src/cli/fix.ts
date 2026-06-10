@@ -27,7 +27,6 @@
  * here (no blind removal — see docs/MIGRATION_FEATURE_EVAL.md §4.5).
  */
 
-import { execFileSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -39,7 +38,7 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
-import {
+import { cairnDir,
   applyBrandAnswers,
   deriveBrandFromProject,
   derivedToBrandAnswers,
@@ -47,6 +46,7 @@ import {
   gitDirtyPathsInScope,
   parseDraftMeta,
   readMapperOutputFile,
+  remediateGitignore,
   runDecSourceStrip,
   runFixAlign,
   validateFixAlignSentinel,
@@ -84,7 +84,7 @@ function ensureAdopted(repoRoot: string): void {
     console.error(`cairn fix: repo root does not exist: ${repoRoot}`);
     process.exit(2);
   }
-  if (!existsSync(join(repoRoot, ".cairn"))) {
+  if (!existsSync(cairnDir(repoRoot))) {
     console.error(
       `cairn fix: ${repoRoot} is not cairn-adopted (no .cairn/). Run \`cairn init\` first.`,
     );
@@ -93,7 +93,7 @@ function ensureAdopted(repoRoot: string): void {
 }
 
 function readProjectSlug(repoRoot: string): string {
-  const cfgPath = join(repoRoot, ".cairn", "config.yaml");
+  const cfgPath = cairnDir(repoRoot, "config.yaml");
   if (!existsSync(cfgPath)) return "this-project";
   try {
     const raw = readFileSync(cfgPath, "utf8");
@@ -161,7 +161,7 @@ async function fixBrand(repoRoot: string, dryRun: boolean): Promise<void> {
 }
 
 async function fixDecStrip(repoRoot: string, dryRun: boolean): Promise<void> {
-  const decisionsDir = join(repoRoot, ".cairn", "ground", "decisions");
+  const decisionsDir = cairnDir(repoRoot, "ground", "decisions");
   if (!existsSync(decisionsDir)) {
     console.error(
       `cairn fix dec-strip: no decisions dir at ${decisionsDir}. Run \`cairn init\` first.`,
@@ -334,7 +334,7 @@ async function fixClaudeRules(repoRoot: string, dryRun: boolean): Promise<void> 
 }
 
 async function fixScrubCache(repoRoot: string, dryRun: boolean): Promise<void> {
-  const cacheDir = join(repoRoot, ".cairn", "cache", "haiku");
+  const cacheDir = cairnDir(repoRoot, "cache", "haiku");
   if (!existsSync(cacheDir)) {
     process.stdout.write(
       `  ⬡ cairn fix scrub-cache — ${repoRoot}\n` +
@@ -384,115 +384,58 @@ async function fixScrubCache(repoRoot: string, dryRun: boolean): Promise<void> {
 }
 
 async function fixGitignore(repoRoot: string, dryRun: boolean): Promise<void> {
-  const cairnGitignorePath = join(repoRoot, ".cairn", ".gitignore");
+  const cairnGitignorePath = cairnDir(repoRoot, ".gitignore");
   if (!existsSync(cairnGitignorePath)) {
     console.error(
       `cairn fix gitignore: missing ${cairnGitignorePath}. Re-run \`cairn init\`.`,
     );
     process.exit(2);
   }
-  // Resolve the bundled template via the cli's own location. In the
-  // Claude Code plugin bundle layout (esbuild + dist/templates mirror)
-  // the template is `here/templates/.cairn/.gitignore`. In the
-  // workspace dev layout it's reachable from one of the
-  // cairn-core/templates ancestors. Try the bundled path first so a
-  // plugin install never falls through to a four-line error.
-  const here = dirname(fileURLToPath(import.meta.url));
-  const candidates = [
-    join(here, "templates", ".cairn", ".gitignore"),
-    join(here, "..", "..", "..", "cairn-core", "templates", ".cairn", ".gitignore"),
-    join(here, "..", "..", "..", "..", "cairn-core", "templates", ".cairn", ".gitignore"),
-    join(here, "..", "..", "templates", ".cairn", ".gitignore"),
-    join(here, "..", "templates", ".cairn", ".gitignore"),
-  ];
-  const templatePath = candidates.find((p) => existsSync(p));
-  if (templatePath === undefined) {
-    console.error(
-      `cairn fix gitignore: cannot locate bundled .cairn/.gitignore template (looked in ${candidates.join(", ")})`,
-    );
-    process.exit(2);
-  }
-  const templateContent = readFileSync(templatePath, "utf8");
-  const currentContent = readFileSync(cairnGitignorePath, "utf8");
+  // Shared core with the 0002-backfill-gitignore migration: merge any missing
+  // template entries (never clobber) + `git rm --cached` now-ignored tracked
+  // state. `apply: false` for a dry-run preview.
+  const r = remediateGitignore(repoRoot, { apply: !dryRun });
   process.stdout.write(
-    `  ⬡ cairn fix gitignore${dryRun ? " --dry-run" : ""} — ${repoRoot}\n` +
-      `    template: ${templatePath}\n\n`,
+    `  ⬡ cairn fix gitignore${dryRun ? " --dry-run" : ""} — ${repoRoot}\n\n`,
   );
 
-  if (templateContent === currentContent) {
-    process.stdout.write("  ✓ .cairn/.gitignore already matches template — no changes needed\n");
+  if (!r.changed) {
+    process.stdout.write("  ✓ .cairn/.gitignore already current — no changes needed\n");
     process.exit(0);
   }
 
-  // Compute newly-ignored top-level entries by diffing entry lines (any
-  // non-comment, non-blank line). Only entries the OLD file lacked but
-  // the NEW one adds get the `git rm --cached` treatment — entries the
-  // operator added themselves stay alone.
-  const lineEntries = (text: string): Set<string> =>
-    new Set(
-      text
-        .split("\n")
-        .map((l) => l.trim())
-        .filter((l) => l.length > 0 && !l.startsWith("#")),
-    );
-  const before = lineEntries(currentContent);
-  const after = lineEntries(templateContent);
-  const newlyIgnored = [...after].filter((e) => !before.has(e));
-
-  process.stdout.write(`  Newly-ignored entries (${newlyIgnored.length}):\n`);
-  for (const e of newlyIgnored) {
-    process.stdout.write(`    + ${e}\n`);
+  if (r.addedEntries.length > 0) {
+    process.stdout.write(`  Missing ignore entries (${r.addedEntries.length}):\n`);
+    for (const e of r.addedEntries) process.stdout.write(`    + ${e}\n`);
+  }
+  if (r.untracked.length > 0) {
+    process.stdout.write(`  Tracked derived files to untrack (${r.untracked.length}):\n`);
+    for (const p of r.untracked) process.stdout.write(`    - ${p}\n`);
   }
 
   if (dryRun) {
     process.stdout.write(
-      `\n  [dry-run] would rewrite .cairn/.gitignore from template\n`,
+      `\n  [dry-run] would append the missing entries to .cairn/.gitignore` +
+        (r.untracked.length > 0
+          ? " and `git rm --cached` the tracked paths\n"
+          : "\n"),
     );
-    if (newlyIgnored.length > 0) {
-      process.stdout.write(
-        `  [dry-run] would run \`git rm --cached -r --ignore-unmatch\` against newly-ignored entries\n`,
-      );
-    }
     process.exit(0);
   }
 
-  writeFileSync(cairnGitignorePath, templateContent, "utf8");
-  process.stdout.write("\n  ✓ .cairn/.gitignore rewritten from template\n");
-
-  if (newlyIgnored.length === 0) {
-    process.exit(0);
-  }
-  // Untrack newly-ignored paths so they actually drop out of the index.
-  // Paths in .cairn/.gitignore are relative to .cairn/, so prefix.
-  const targets = newlyIgnored.map((e) => join(".cairn", e));
   process.stdout.write(
-    `\n  Running \`git rm --cached -r --ignore-unmatch\` for ${targets.length} path(s)…\n`,
+    `\n  ✓ .cairn/.gitignore backfilled${
+      r.untracked.length > 0 ? `; untracked ${r.untracked.length} path(s)` : ""
+    }\n`,
   );
-  try {
-    const out = execFileSync(
-      "git",
-      ["rm", "--cached", "-r", "--ignore-unmatch", "--", ...targets],
-      { cwd: repoRoot, encoding: "utf8" },
+  if (r.untracked.length > 0) {
+    process.stdout.write(
+      "\n  Commit the .gitignore + index changes when you're ready:\n" +
+        "    git status\n" +
+        "    git add .cairn/.gitignore\n" +
+        '    git commit -m "cairn: tighten .cairn/.gitignore (untrack transient state)"\n',
     );
-    if (out.trim().length > 0) {
-      for (const line of out.trim().split("\n")) {
-        process.stdout.write(`    ${line}\n`);
-      }
-    } else {
-      process.stdout.write("    (nothing to untrack — paths weren't committed)\n");
-    }
-  } catch (err) {
-    console.error(
-      `cairn fix gitignore: git rm --cached failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    process.exit(2);
   }
-  process.stdout.write(
-    "\n  Untracked. Commit the .gitignore + index changes when you're ready:\n" +
-      "    git status\n" +
-      "    git add .cairn/.gitignore\n" +
-      '    git commit -m "cairn: tighten .cairn/.gitignore (untrack transient state)"\n',
-  );
   process.exit(0);
 }
 

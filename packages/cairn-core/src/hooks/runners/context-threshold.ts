@@ -26,7 +26,8 @@
  */
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+
+import { cairnDir } from "@isaacriehm/cairn-state";
 
 export interface ContextThresholdInput {
   repoRoot: string;
@@ -66,7 +67,7 @@ const CTX_SNAPSHOT_STALE_MS = 5 * 60 * 1000;
  * not ship a `context_window` block on the last prompt).
  */
 function readPersistedCtx(repoRoot: string, sessionId: string): CtxSnapshot | null {
-  const path = join(repoRoot, ".cairn", "sessions", sessionId, "ctx.json");
+  const path = cairnDir(repoRoot, "sessions", sessionId, "ctx.json");
   if (!existsSync(path)) return null;
   try {
     const parsed = JSON.parse(readFileSync(path, "utf8")) as CtxSnapshot;
@@ -96,9 +97,7 @@ interface WarnedState {
 }
 
 function warnedStatePath(repoRoot: string, sessionId: string): string {
-  return join(
-    repoRoot,
-    ".cairn",
+  return cairnDir(repoRoot,
     "sessions",
     sessionId,
     "ctx-threshold-warned.json",

@@ -29,13 +29,15 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { parse as parseYaml } from "yaml";
 import { seedAttestedCommits } from "../hooks/seed-attested.js";
 import { VERSION } from "../index.js";
-import { logger } from "../logger.js";
 import { rebuildDerived } from "../state/rebuild-derived.js";
-
-const log = logger("join");
+import { readConfigPin } from "../migrate/config-io.js";
+import {
+  cairnDir,
+  cairnHooksPathForConfig,
+  COMMITTED_HOOKS_PATH,
+} from "@isaacriehm/cairn-state";
 
 export type JoinStepStatus = "ok" | "skipped" | "error" | "warn";
 
@@ -140,7 +142,7 @@ export function runJoin(args: RunJoinArgs = {}): JoinResult {
     };
   }
 
-  const hooksDir = join(repoRoot, ".cairn", "git-hooks");
+  const hooksDir = cairnDir(repoRoot, "git-hooks");
   if (!existsSync(hooksDir)) {
     steps.push({
       step: "set-hooks-path",
@@ -221,6 +223,8 @@ export function runJoin(args: RunJoinArgs = {}): JoinResult {
 function findCairnRoot(start: string): string | null {
   let cur = resolve(start);
   for (let i = 0; i < 80; i++) {
+    // Repo-root discovery probe: physical in-repo `.cairn/` (committed mode).
+    // Literal join is intentional — ghost resolves via the global registry.
     if (existsSync(join(cur, ".cairn"))) return cur;
     const parent = dirname(cur);
     if (parent === cur) return null;
@@ -229,20 +233,9 @@ function findCairnRoot(start: string): string | null {
   return null;
 }
 
+// Single `cairn_version` pin reader, shared with the migration runner + doctor.
 function readProjectVersion(repoRoot: string): string | null {
-  const path = join(repoRoot, ".cairn", "config.yaml");
-  if (!existsSync(path)) return null;
-  try {
-    const parsed = parseYaml(readFileSync(path, "utf8")) as Record<string, unknown>;
-    const v = parsed?.["cairn_version"];
-    return typeof v === "string" ? v : null;
-  } catch (err) {
-    log.warn(
-      { err: err instanceof Error ? err.message : String(err) },
-      "config.yaml unreadable",
-    );
-    return null;
-  }
+  return readConfigPin(repoRoot);
 }
 
 function setGitHooksPath(repoRoot: string): JoinStep {
@@ -253,16 +246,60 @@ function setGitHooksPath(repoRoot: string): JoinStep {
       detail: "no .git/ at repoRoot — skipping git config (initialize git first?)",
     };
   }
+  // Committed: relative `.cairn/git-hooks` (tracked, portable per-clone).
+  // Ghost: the ABSOLUTE out-of-repo `<cairnHome>/git-hooks` — the hooks live
+  // outside the repo tree, so a relative path would not resolve. Local git
+  // config either way (never committed).
+  const hooksPathValue = cairnHooksPathForConfig(repoRoot);
+
+  // ── Clobber guard ──────────────────────────────────────────────────────
+  // git allows exactly ONE core.hooksPath. If the client repo already points
+  // it somewhere that isn't Cairn's (husky, lefthook, a custom dir), blindly
+  // overwriting it silently disables the client's hooks for this operator.
+  // That's worst in ghost — the whole premise is leaving the client's setup
+  // untouched — but it's a latent hazard in committed mode too. Refuse +
+  // warn; never override. (Chaining the prior hook is a future enhancement;
+  // v1 hands the operator a clear remediation. ghost-mode design.)
+  const existing = readGitConfigValue(repoRoot, "core.hooksPath");
+  if (
+    existing !== null &&
+    existing.length > 0 &&
+    !isCairnHooksPath(existing, repoRoot)
+  ) {
+    return {
+      step: "set-hooks-path",
+      status: "warn",
+      detail:
+        `core.hooksPath already set to '${existing}' (husky/lefthook/custom hooks?) — ` +
+        `Cairn will NOT override it, so Cairn's git-hook sensor sweep is inactive ` +
+        `for this clone. To run both, chain '${existing}' into Cairn's hooks, or ` +
+        `clear core.hooksPath and re-run join.`,
+    };
+  }
+
   try {
-    execFileSync("git", ["config", "core.hooksPath", ".cairn/git-hooks"], {
+    execFileSync("git", ["config", "core.hooksPath", hooksPathValue], {
       cwd: repoRoot,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     });
+    // Soft conflict: husky is configured (`.husky/` present) but core.hooksPath
+    // was unset — a later `husky`/`npm install` resets it and clobbers Cairn's
+    // path. Cairn is wired now; warn so the operator chains proactively.
+    if (existsSync(join(repoRoot, ".husky"))) {
+      return {
+        step: "set-hooks-path",
+        status: "warn",
+        detail:
+          `core.hooksPath = ${hooksPathValue} (set), but a .husky/ directory exists — ` +
+          `a future husky install resets core.hooksPath and disables Cairn's hooks. ` +
+          `Chain them to keep both active.`,
+      };
+    }
     return {
       step: "set-hooks-path",
       status: "ok",
-      detail: "core.hooksPath = .cairn/git-hooks",
+      detail: `core.hooksPath = ${hooksPathValue}`,
     };
   } catch (err) {
     return {
@@ -271,6 +308,18 @@ function setGitHooksPath(repoRoot: string): JoinStep {
       detail: `git config failed: ${err instanceof Error ? err.message : String(err)}`,
     };
   }
+}
+
+/**
+ * True when a `core.hooksPath` value is already Cairn's own. Committed stores
+ * the relative `.cairn/git-hooks`; ghost the absolute out-of-repo path
+ * (`cairnDir` yields exactly that, and `<repoRoot>/.cairn/git-hooks` in
+ * committed). Anything else is a foreign hooks path we must not clobber.
+ */
+function isCairnHooksPath(value: string, repoRoot: string): boolean {
+  // Accept BOTH forms regardless of current mode — this is the clobber guard
+  // asking "is this value one of ours?", not "is it wired for this mode?"
+  return value === COMMITTED_HOOKS_PATH || value === cairnDir(repoRoot, "git-hooks");
 }
 
 function chmodHooks(hooksDir: string): JoinStep {
@@ -300,7 +349,7 @@ function chmodHooks(hooksDir: string): JoinStep {
   };
 }
 
-function writeCliPathFile(repoRoot: string): JoinStep {
+export function writeCliPathFile(repoRoot: string): JoinStep {
   const cliArgv = process.argv[1];
   if (typeof cliArgv !== "string" || cliArgv.length === 0) {
     return {
@@ -315,10 +364,20 @@ function writeCliPathFile(repoRoot: string): JoinStep {
   // spaces anywhere in their home, or local-marketplace plugin caches
   // resolved through symlinked dev paths).
   const invocation = isModule ? `node "${cliArgv}"` : `"${cliArgv}"`;
-  const path = join(repoRoot, ".cairn", ".cli-path");
+  const path = cairnDir(repoRoot, ".cli-path");
+  const desired = `${invocation}\n`;
+  // SessionStart calls this every session, but the CLI invocation rarely
+  // changes — skip the mkdir + write when the file already matches (hot path).
   try {
-    mkdirSync(join(repoRoot, ".cairn"), { recursive: true });
-    writeFileSync(path, `${invocation}\n`, "utf8");
+    if (existsSync(path) && readFileSync(path, "utf8") === desired) {
+      return {
+        step: "write-cli-path",
+        status: "skipped",
+        detail: `cli invocation unchanged: ${invocation}`,
+      };
+    }
+    mkdirSync(cairnDir(repoRoot), { recursive: true });
+    writeFileSync(path, desired, "utf8");
   } catch (err) {
     return {
       step: "write-cli-path",
@@ -334,7 +393,7 @@ function writeCliPathFile(repoRoot: string): JoinStep {
 }
 
 function ensureSessionDir(repoRoot: string): JoinStep {
-  const dir = join(repoRoot, ".cairn", "sessions");
+  const dir = cairnDir(repoRoot, "sessions");
   try {
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
@@ -369,6 +428,14 @@ export interface InspectJoinStateArgs {
 export interface JoinState {
   /** True when `git config core.hooksPath` reports `.cairn/git-hooks`. */
   hooksPathSet: boolean;
+  /**
+   * True when `core.hooksPath` is set to a NON-Cairn value (husky / lefthook /
+   * custom). A terminal state, not a not-yet-bootstrapped one: Cairn refuses to
+   * clobber it (§3.3 seam 5), so re-running join can never flip `hooksPathSet`.
+   * Callers use this to stop retrying the bootstrap and to surface the conflict
+   * instead of a false "hooks wired" banner.
+   */
+  hooksPathConflict: boolean;
   /** Raw value reported by git, or null when git failed / unset. */
   hooksPathValue: string | null;
   /** From `.cairn/config.yaml` — null if absent / unreadable. */
@@ -383,12 +450,20 @@ export function inspectJoinState(args: InspectJoinStateArgs): JoinState {
   const repoRoot = args.repoRoot;
   const hooksPathValue = readGitConfigValue(repoRoot, "core.hooksPath");
   const projectCairnVersion = readProjectVersion(repoRoot);
+  // The value join would write for THIS repo's mode. `hooksPathSet` is the
+  // mode-exact check (is it wired for this mode?); `isCairnHooksPath` below is
+  // the mode-agnostic clobber guard (is it ours at all?) — kept distinct.
+  const expectedHooksPath = cairnHooksPathForConfig(repoRoot);
   return {
-    hooksPathSet: hooksPathValue === ".cairn/git-hooks",
+    hooksPathSet: hooksPathValue === expectedHooksPath,
+    hooksPathConflict:
+      hooksPathValue !== null &&
+      hooksPathValue.length > 0 &&
+      !isCairnHooksPath(hooksPathValue, repoRoot),
     hooksPathValue,
     projectCairnVersion,
     versionMatches: projectCairnVersion === VERSION,
-    sessionsDirReady: existsSync(join(repoRoot, ".cairn", "sessions")),
+    sessionsDirReady: existsSync(cairnDir(repoRoot, "sessions")),
   };
 }
 
