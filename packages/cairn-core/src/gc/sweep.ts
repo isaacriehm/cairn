@@ -31,6 +31,7 @@ import { runGhostReanchor } from "./ghost-anchor.js";
 import { runFrontmatterFreshness } from "./frontmatter.js";
 import { runGeneratorDrift } from "./generator-drift.js";
 import { runQualityUpdate } from "./quality-update.js";
+import { runRuntimePrune } from "./runtime-prune.js";
 import { runScopeCoverage } from "./scope-coverage.js";
 import { runStubCatalogHits } from "./stub-hits.js";
 import { runAttestedCommitsGc } from "./attested-commits.js";
@@ -214,6 +215,12 @@ export async function runGcSweep(opts: RunGcSweepOptions): Promise<GcSweepResult
     findings.push(...r.findings);
     passDurations["entity-orphan"] = Date.now() - t0;
   }
+
+  // Runtime-state footprint prune — rotate telemetry logs, sweep the stale
+  // Haiku cache, reap old baseline snapshots. Deletes derived/advisory state
+  // only (safe-class), produces no findings/proposals, so it sits outside the
+  // detection passes above and never blocks them.
+  runRuntimePrune({ repoRoot: opts.repoRoot });
 
   // Re-classify proposals against project globs (passes set defaults; this
   // ensures high-stakes hits dominate when a stale-frontmatter doc happens to

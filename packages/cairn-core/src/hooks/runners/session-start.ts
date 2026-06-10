@@ -19,7 +19,7 @@ import {
 } from "../../session-start/index.js";
 import { rebuildDerived } from "../../state/rebuild-derived.js";
 import { inspectJoinState, runJoin, writeCliPathFile } from "../../join/index.js";
-import { runMigrations, type RunMigrationsResult } from "../../migrate/index.js";
+import { MIGRATIONS, runMigrations, type RunMigrationsResult } from "../../migrate/index.js";
 import { runUpdateCheck } from "../../update-check.js";
 import { VERSION } from "../../index.js";
 import { findCurrentActiveTask, readTaskJournal } from "../../tasks/index.js";
@@ -35,6 +35,7 @@ import {
   readAdoptionState,
 } from "../../status-line/index.js";
 import { gcStaleEvents } from "../../events/reader.js";
+import { runRuntimePrune } from "../../gc/runtime-prune.js";
 import { readActiveTaskSummary } from "../../context/task-summary.js";
 
 import { readDeferState } from "../defer.js";
@@ -224,6 +225,21 @@ export async function runSessionStartHook(): Promise<void> {
       `events_gc_failed: ${message}`,
     );
   }
+  // Footprint prune — rotate telemetry logs, sweep the stale Haiku cache, reap
+  // old baseline snapshots. Cheap (stat-based) + safe (derived/advisory state
+  // only), so it runs every session open rather than waiting on the 24h GC
+  // autotrigger, which is what let these reach tens of MB in the field.
+  try {
+    const pruned = runRuntimePrune({ repoRoot });
+    if (pruned.bytesFreed > 0) {
+      sessionWarnings.push(`runtime_pruned:${Math.round(pruned.bytesFreed / 1024)}KiB`);
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    sessionWarnings.push(
+      `runtime_prune_failed: ${message}`,
+    );
+  }
   // Rebuild the gitignored derived ground state (ledgers, scope-index,
   // manifest, sot-bindings, sot-cache, file-candidates) from the
   // committed DEC/INV sources. Must run BEFORE buildSessionStartContext
@@ -306,11 +322,13 @@ export async function runSessionStartHook(): Promise<void> {
   const midAdoptionBanner = renderMidAdoptionBanner(repoRoot);
   const migrationBanner =
     migrationResult !== null ? renderMigrationBanner(migrationResult) : null;
+  const staleStatuslineBanner = renderStaleStatuslineBanner();
   const banners = [
     bootstrapBanner,
     resumeBanner,
     midAdoptionBanner,
     migrationBanner,
+    staleStatuslineBanner,
     updateBanner,
   ].filter((b): b is string => b !== null);
   const additionalContext =
@@ -605,8 +623,16 @@ function renderMigrationBanner(result: RunMigrationsResult): string | null {
     lines.push("");
   }
   if (result.pendingReview.length > 0) {
+    const describeById = new Map(MIGRATIONS.map((m) => [m.id, m.describe]));
     lines.push(
-      `${result.pendingReview.length} review migration(s) need confirmation — run \`cairn migrate --all\` when ready: ${result.pendingReview.map((id) => `\`${id}\``).join(", ")}.`,
+      `${result.pendingReview.length} review migration(s) are pending — they rewrite or hard-delete committed \`.cairn/\` state, so Cairn does not auto-apply them:`,
+    );
+    for (const id of result.pendingReview) {
+      lines.push(`- \`${id}\` — ${describeById.get(id) ?? "(see migration registry)"}`);
+    }
+    lines.push("");
+    lines.push(
+      "**Action:** summarize what these do for the operator, then — once they confirm — apply them in this session by calling the `cairn_migrate` MCP tool (use `dry_run: true` first to preview). Do not just tell the operator to run a CLI command; clear the queue inline.",
     );
   }
   return lines.join("\n").trimEnd();
@@ -633,6 +659,59 @@ function renderShimWarningsBanner(warnings: string[]): string | null {
     "If `/cairn:cairn-statusline-setup` later says the shim is missing, this is the cause. Common fixes: confirm the plugin is enabled (`/plugin status`), check `CLAUDE_PLUGIN_ROOT` resolves, or rebuild the plugin bundle.",
   );
   return out.join("\n");
+}
+
+/**
+ * Detect a legacy cairn statusline launcher in user-level settings.
+ *
+ * The launcher lives in `~/.claude/settings.json` (machine-global, not repo
+ * state — a migration can't reach it), and `/cairn:cairn-statusline-setup`
+ * is "one-time per machine", so a launcher written by an older Cairn never
+ * gets rewritten. The first-generation form was a shell pipe —
+ * `bash -c '… ls …/.active-version-path … | head -1 … node "$(cat "$shim")" status-line'`
+ * — which has no fallback (goes blank the moment the pointed-to version dir
+ * is GC'd) and can `head -1` its way into another plugin's bundle. The
+ * current form is a shell-free Node `-e` launcher with shim + glob fallback.
+ *
+ * We fingerprint the OLD form specifically: the cairn-only
+ * `.active-version-path` marker AND a `bash`/shell invocation. The Node
+ * launcher carries the marker too but never shells out, so it reads as
+ * current. Anything we can't parse → not stale (never nag on a launcher we
+ * don't recognize).
+ */
+function detectStaleStatuslineLauncher(): boolean {
+  const settingsPath = join(homedir(), ".claude", "settings.json");
+  if (!existsSync(settingsPath)) return false;
+  let cmd: string;
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(settingsPath, "utf8"));
+    if (parsed === null || typeof parsed !== "object") return false;
+    const sl = (parsed as Record<string, unknown>)["statusLine"];
+    if (sl === null || typeof sl !== "object") return false;
+    const c = (sl as Record<string, unknown>)["command"];
+    if (typeof c !== "string") return false;
+    cmd = c;
+  } catch {
+    return false;
+  }
+  const isCairnLauncher = cmd.includes(".active-version-path");
+  const isShellForm = /\bbash\b|\bsh -c\b|\| *head\b/.test(cmd);
+  return isCairnLauncher && isShellForm;
+}
+
+/**
+ * Agent-actionable banner when the user-level statusline launcher is the
+ * legacy shell form. Returns null when the launcher is current/absent.
+ */
+function renderStaleStatuslineBanner(): string | null {
+  if (!detectStaleStatuslineLauncher()) return null;
+  return [
+    "## Cairn — statusline launcher is outdated",
+    "",
+    "Your user-level `~/.claude/settings.json` runs the legacy shell-pipe statusline launcher. It has no fallback — the badge goes blank once the plugin version dir it points at rotates — and the `head -1` glob can spawn an unrelated plugin's bundle.",
+    "",
+    "**Action:** offer to re-run `/cairn:cairn-statusline-setup`, which rewrites the launcher to the current shell-free Node form (shim + glob fallback, self-healing, Windows-safe). One-time; no repo changes.",
+  ].join("\n");
 }
 
 function looksLikeProjectRoot(dir: string): boolean {

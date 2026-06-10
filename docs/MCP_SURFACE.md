@@ -47,7 +47,7 @@ Adopters register the server via `.mcp.json` (created by `cairn init`):
 
 ---
 
-## Tool catalog (29 tools)
+## Tool catalog (30 tools)
 
 Conventions:
 
@@ -95,6 +95,12 @@ Source of truth: `packages/cairn-core/src/mcp/tools/index.ts` (`allTools`).
 | ------------------------- | -------------------------------------------------------------------------------------- |
 | `cairn_retire_decision`   | Archive an accepted DEC that has rotted. Moves it to `.cairn/ground/.archive/`; not a hard delete. |
 | `cairn_retire_invariant`  | Archive an active INV that no longer holds. Same archive semantics.                    |
+
+**Write — maintenance (1)**
+
+| Tool            | What                                                                                                          |
+| --------------- | ----------------------------------------------------------------------------------------------------------- |
+| `cairn_migrate` | Apply pending `review`-class `.cairn/` migrations inline (the queue SessionStart surfaces). `dry_run` previews. Safe-class migrations already auto-applied on session open; this is the operator-confirmed path for the rest. |
 
 **Write — plugin-era attention queue (2)**
 

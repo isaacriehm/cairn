@@ -243,6 +243,11 @@ export const retireInvariantInput = {
   reason: z.string().min(1).optional(),
 };
 
+export const migrateInput = {
+  /** Preview the pending review migrations without writing anything. */
+  dry_run: z.boolean().optional(),
+};
+
 export const resolveAttentionInput = {
   /**
    * Item id from the attention skill — DEC-<hash> for a draft, the

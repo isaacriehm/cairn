@@ -4,6 +4,48 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.1] — 2026-06-10
+
+`.cairn/` footprint hygiene — the per-clone runtime state that grew without
+bound because nothing on the write path trimmed it, plus making the
+review-migration queue something the agent clears inline instead of a CLI
+nudge the operator had to act on out-of-band.
+
+### Added
+
+- **Runtime-state prune (`gc/runtime-prune`).** Every other GC pass guards
+  ground/doc *integrity*; this one guards `.cairn/` *footprint*. Three
+  idempotent, safe-class operations: rotate append-only telemetry/advisory
+  logs (`staleness/mcp-calls.jsonl`, `staleness/log.jsonl`) to a trailing
+  window once they cross 2 MB; sweep Haiku-cache entries past the 30-day TTL
+  the cache already advertises (the cache only evicted lazily on a re-read, so
+  one-shot prompts were cached once and never reclaimed); keep only the newest
+  3 baseline snapshots per family. Runs in the GC sweep AND best-effort every
+  SessionStart (so footprint isn't gated on the 24h GC tick). Observed reclaim
+  on a long-lived repo: a 3 MB telemetry log → 512 KB, ~600 stale cache
+  entries, 8 baseline snapshots.
+- **`0003-prune-scaffolding` migration.** `.cairn/init/` (mapper output +
+  curator corpus) and `.cairn/backups/` (pre-strip `.original` copies) are
+  written once at adoption and only ever read by the `cairn fix` repair
+  escape-hatch. This `review`-class migration removes them as dead weight once
+  a repo is past that window. Surfaced at SessionStart, applied via
+  `cairn_migrate`.
+- **`cairn_migrate` MCP tool.** The in-session verb for the `review`-class
+  migration queue. The SessionStart "Cairn — migrations" banner now lists each
+  pending migration's description and directs the agent to summarize them and
+  apply via this tool once the operator confirms — instead of telling the
+  operator to run `cairn migrate --all` out-of-band. `dry_run` previews.
+
+### Changed
+
+- **Statusline launcher staleness is detected and surfaced.** The launcher
+  lives in machine-global `~/.claude/settings.json` (no migration can reach
+  it) and `/cairn:cairn-statusline-setup` is one-time-per-machine, so a
+  launcher written by an older Cairn was never upgraded. SessionStart now
+  fingerprints the legacy shell-pipe form (no fallback; can blank or spawn
+  another plugin's bundle) and surfaces an agent-actionable banner to re-run
+  the setup, which rewrites it to the current shell-free Node launcher.
+
 ## [0.22.0] — 2026-06-09
 
 Ghost Mode — a zero-footprint adoption mode for client work — plus update

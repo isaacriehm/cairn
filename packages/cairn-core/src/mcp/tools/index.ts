@@ -24,6 +24,7 @@ import { missionSetExitGateTool } from "./mission-set-exit-gate.js";
 import { invariantGetTool } from "./invariant-get.js";
 import { recordDecisionTool } from "./record-decision.js";
 import { retireDecisionTool, retireInvariantTool } from "./retire-entity.js";
+import { migrateTool } from "./migrate.js";
 import { resolveAttentionTool } from "./resolve-attention.js";
 import { searchTool } from "./search.js";
 import { resumeTool } from "./resume.js";
@@ -48,6 +49,8 @@ export const allTools: ToolDef<never>[] = [
   // Write — entity retirement (the OUT path)
   retireDecisionTool,
   retireInvariantTool,
+  // Write — apply pending review-class migrations inline
+  migrateTool,
   // Write — headerless component registry (ghost §3.8.1)
   componentRegisterTool,
   componentReconfirmTool,

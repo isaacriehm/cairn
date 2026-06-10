@@ -26,6 +26,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import {
+  MIGRATIONS,
   runMigrations,
   readConfigPin,
   remediateGitignore,
@@ -236,6 +237,31 @@ async function runSmoke(): Promise<void> {
     const again = remediateGitignore(repoRoot, { apply: false });
     assert(!again.changed, "Step 7: second detect is an idempotent no-op");
     console.log("  ✓ Step 7 — 0002 backfills gitignore + untracks committed derived state");
+  }
+
+  // ── Step 8 — 0003 prunes one-time init scaffolding ────────────────
+  {
+    const pruneScaffolding = MIGRATIONS.find((m) => m.id === "0003-prune-scaffolding");
+    assert(pruneScaffolding !== undefined, "Step 8: 0003 registered");
+    const repoRoot = mkRepo("version: 1\ncairn_version: 0.22.0\nslug: demo\n");
+    mkdirSync(join(repoRoot, ".cairn", "init", "curator"), { recursive: true });
+    writeFileSync(join(repoRoot, ".cairn", "init", "mapper-output.json"), "{}", "utf8");
+    mkdirSync(join(repoRoot, ".cairn", "backups", "source"), { recursive: true });
+    writeFileSync(join(repoRoot, ".cairn", "backups", "source", "f.ts.original"), "x", "utf8");
+
+    assert(pruneScaffolding.introducedIn === "0.22.1", "Step 8: pinned to the 0.22.1 release");
+    assert(pruneScaffolding.class === "review", "Step 8: must be review-class (deletes state)");
+    assert(pruneScaffolding.detect(repoRoot), "Step 8: detect should fire with scaffolding present");
+
+    const applied = pruneScaffolding.apply(repoRoot);
+    assert(applied.changed, "Step 8: apply should report changed");
+    assert(!existsSync(join(repoRoot, ".cairn", "init")), "Step 8: init/ removed");
+    assert(!existsSync(join(repoRoot, ".cairn", "backups")), "Step 8: backups/ removed");
+    assert(existsSync(join(repoRoot, ".cairn", "config.yaml")), "Step 8: config.yaml untouched");
+
+    assert(!pruneScaffolding.detect(repoRoot), "Step 8: detect is a no-op after prune");
+    assert(!pruneScaffolding.apply(repoRoot).changed, "Step 8: re-apply is an idempotent no-op");
+    console.log("  ✓ Step 8 — 0003 prunes init/ + backups/ scaffolding, idempotent");
   }
 
   console.log("smoke-migrate — pass");
