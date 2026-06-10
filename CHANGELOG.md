@@ -4,6 +4,20 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.2] — 2026-06-10
+
+CI hygiene — the `cairn-lens` resolver smoke still exercised a method that
+0.22.0's dead-surface removal had deleted, so the gate threw on a clean tree.
+
+### Fixed
+
+- **`smoke-resolver` no longer probes the removed task-resolution surface.**
+  0.22.0 dropped `resolveTask`/`TaskResolution`/`lookupTask` from `LensResolver`
+  as dead surface, but the smoke's Step 4 was left calling
+  `resolver.resolveTask(...)` — `TypeError: resolver.resolveTask is not a
+  function` on every run. Removed the orphaned step and renumbered the
+  scope-index step that followed; no runtime change.
+
 ## [0.22.1] — 2026-06-10
 
 `.cairn/` footprint hygiene — the per-clone runtime state that grew without

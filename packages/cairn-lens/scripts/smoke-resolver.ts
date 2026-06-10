@@ -107,28 +107,7 @@ function runSmoke(): void {
     console.log("  ✓ Step 3 — resolveInvariant active + superseded");
   }
 
-  // ── Step 4 — resolveTask against active dir ─────────────────────
-  {
-    const repoRoot = mkFixture();
-    const taskDir = join(repoRoot, ".cairn", "tasks", "active", "TSK-foo");
-    mkdirSync(taskDir, { recursive: true });
-    writeFileSync(
-      join(taskDir, "spec.tightened.md"),
-      `---\nstatus: ready_to_dispatch\n---\n\n# Bearer token validation\n\nbody.\n`,
-      "utf8",
-    );
-    const resolver = new LensResolver(repoRoot);
-    const r = resolver.resolveTask("TSK-foo");
-    assert(
-      r.found === "active" && r.title === "Bearer token validation",
-      `Step 4: expected active TSK-foo with title, got ${JSON.stringify(r)}`,
-    );
-    const missing = resolver.resolveTask("TSK-missing");
-    assert(missing.found === "not_found", "Step 4: missing task → not_found");
-    console.log("  ✓ Step 4 — resolveTask hit + miss");
-  }
-
-  // ── Step 5 — scope-index roundtrip via resolveScopeWithTitles ──
+  // ── Step 4 — scope-index roundtrip via resolveScopeWithTitles ──
   {
     const repoRoot = mkFixture();
     mkdirSync(join(repoRoot, ".cairn", "ground"), { recursive: true });
@@ -148,21 +127,21 @@ function runSmoke(): void {
     });
     const resolver = new LensResolver(repoRoot);
     const scope = resolver.resolveScopeWithTitles("src/auth/login.ts");
-    assert(scope !== null, "Step 5: scope should be non-null");
+    assert(scope !== null, "Step 4: scope should be non-null");
     if (scope === null) return;
     assert(
       scope.decisions.length === 1 && scope.decisions[0]?.id === "DEC-deadbee",
-      `Step 5: decisions wrong, got ${JSON.stringify(scope.decisions)}`,
+      `Step 4: decisions wrong, got ${JSON.stringify(scope.decisions)}`,
     );
     assert(
       scope.invariants.length === 1 && scope.invariants[0]?.id === "INV-2323232",
-      `Step 5: invariants wrong, got ${JSON.stringify(scope.invariants)}`,
+      `Step 4: invariants wrong, got ${JSON.stringify(scope.invariants)}`,
     );
     const lint = resolver.resolveScopeWithTitles(".eslintrc.json");
-    assert(lint !== null && lint.unscoped === true, "Step 5: unscoped flag");
+    assert(lint !== null && lint.unscoped === true, "Step 4: unscoped flag");
     const missing = resolver.resolveScopeWithTitles("src/missing.ts");
-    assert(missing === null, "Step 5: missing path → null");
-    console.log("  ✓ Step 5 — scope-index roundtrip");
+    assert(missing === null, "Step 4: missing path → null");
+    console.log("  ✓ Step 4 — scope-index roundtrip");
   }
 
   console.log("smoke-resolver — pass");
