@@ -8,8 +8,18 @@ name: publish
 #
 # Bump the package versions, push the tag — releases happen automatically.
 #
-# Required repo secret:
-#   NPM_TOKEN  — npm granular-access token scoped to @isaacriehm.
+# Auth: npm OIDC trusted publishing — no NPM_TOKEN secret. The `id-token:
+# write` permission below lets pnpm exchange a GitHub OIDC token for a
+# short-lived npm credential at publish time. Each package
+# (@isaacriehm/cairn-state, -core, and the umbrella cairn) must have a trusted
+# publisher configured on npmjs.com pointing at THIS repo + workflow file
+# (.github/workflows/publish.yml). New packages need their trusted-publisher
+# entry added before their first release.
+#
+# Note: `actions/setup-node` is intentionally NOT given `registry-url` — that
+# writes an .npmrc with a `${NODE_AUTH_TOKEN}` placeholder which, with no token
+# present, breaks pnpm's OIDC exchange (404). pnpm publishes to the default
+# registry and does the token exchange itself.
 #
 # Uses the built-in GITHUB_TOKEN for GitHub Release creation; no extra
 # secret required.
@@ -47,11 +57,12 @@ jobs:
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
 
+      # No registry-url — see header note: it writes a token-placeholder
+      # .npmrc that breaks pnpm's OIDC exchange.
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-          registry-url: "https://registry.npmjs.org"
           cache: "pnpm"
 
       - name: Install
@@ -63,20 +74,17 @@ jobs:
       - name: Build
         run: pnpm -r build
 
+      # Trusted publishing: no NODE_AUTH_TOKEN. pnpm performs the OIDC token
+      # exchange using the `id-token: write` permission. Order is dependency
+      # order — state before core before the umbrella.
       - name: Publish cairn-state
         run: pnpm publish --filter @isaacriehm/cairn-state --access public --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish cairn-core
         run: pnpm publish --filter @isaacriehm/cairn-core --access public --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish cairn
         run: pnpm publish --filter @isaacriehm/cairn --access public --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   release-vsix:
     name: Build + release vsix
