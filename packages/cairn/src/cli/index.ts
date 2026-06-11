@@ -16,6 +16,7 @@ import { fixCli } from "./fix.js";
 import { gcCli } from "./gc.js";
 import { hookCli } from "./hook.js";
 import { initCli } from "./init.js";
+import { invariantsCli } from "./invariants.js";
 import { joinCli } from "./join.js";
 import { mcpCli } from "./mcp.js";
 import { migrateCli } from "./migrate.js";
@@ -267,6 +268,9 @@ switch (subcommand) {
   case "components":
     await componentsCli(rest);
     break;
+  case "invariants":
+    await invariantsCli(rest);
+    break;
   case "tag":
     await tagCli(rest);
     break;
@@ -356,6 +360,8 @@ switch (subcommand) {
         "  sensor-run git-hook sensor sweep (--staged | --commit-msg <path>)\n" +
         "  components component registry tooling\n" +
         "             (subcommands: index | check | audit; --repo <path>?)\n" +
+        "  invariants invariant store maintenance\n" +
+        "             (subcommands: prune [--dry-run] [--all] [--repo <path>])\n" +
         "  tag        operator-driven retro-tagging — insert <!-- cairn:decision -->\n" +
         "             markers after lines matching a regex pattern\n" +
         "             (--insert-marker <pattern> <file-or-dir>\n" +

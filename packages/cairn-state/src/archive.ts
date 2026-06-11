@@ -52,6 +52,13 @@ export interface ArchiveEntityOptions {
    * in the archived frontmatter; the entity still moves to the archive.
    */
   supersededBy?: string;
+  /**
+   * When true, skip the per-call SoT-cache delete and ledger rebuild — the
+   * CALLER must rebuild both ONCE after the batch (see `pruneInvariants`).
+   * Avoids an O(n²) rebuild when retiring many entities at once. Default
+   * false: single-entity callers get the self-contained rebuild.
+   */
+  deferDerivedRebuild?: boolean;
   /** Injected clock for tests. */
   now?: Date;
 }
@@ -127,22 +134,24 @@ export function archiveEntity(opts: ArchiveEntityOptions): ArchiveEntityResult {
   writeFileSync(destAbs, content, "utf8");
   rmSync(srcAbs, { force: true });
 
-  // Drop from the SoT cache so the Layer A sot-align hook never matches an
-  // archived body as a citation candidate.
-  try {
-    const cache = readSotCache(opts.repoRoot);
-    writeSotCache(opts.repoRoot, deleteSotCacheEntry(cache, opts.id));
-  } catch {
-    /* best-effort — cache self-heals on next sweep */
-  }
+  if (opts.deferDerivedRebuild !== true) {
+    // Drop from the SoT cache so the Layer A sot-align hook never matches an
+    // archived body as a citation candidate.
+    try {
+      const cache = readSotCache(opts.repoRoot);
+      writeSotCache(opts.repoRoot, deleteSotCacheEntry(cache, opts.id));
+    } catch {
+      /* best-effort — cache self-heals on next sweep */
+    }
 
-  // Rebuild the active ledger — the moved file is gone from srcDir, so it
-  // drops from the accepted/active set seen by cairn_in_scope.
-  try {
-    if (kind === "INV") writeInvariantsLedger({ repoRoot: opts.repoRoot });
-    else writeDecisionsLedger({ repoRoot: opts.repoRoot });
-  } catch {
-    /* best-effort */
+    // Rebuild the active ledger — the moved file is gone from srcDir, so it
+    // drops from the accepted/active set seen by cairn_in_scope.
+    try {
+      if (kind === "INV") writeInvariantsLedger({ repoRoot: opts.repoRoot });
+      else writeDecisionsLedger({ repoRoot: opts.repoRoot });
+    } catch {
+      /* best-effort */
+    }
   }
 
   return { ok: true, id: opts.id, kind, archivedPath: relDest };
