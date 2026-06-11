@@ -44,6 +44,7 @@ export * from "./claude/index.js";
 export * from "./context/index.js";
 export * from "./decision-capture/index.js";
 export * from "./doctor/index.js";
+export * from "./cites/expand.js";
 export * from "./gc/index.js";
 export * from "./invariants/prune.js";
 export * from "./state/rebuild-derived.js";

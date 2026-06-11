@@ -10,6 +10,7 @@ import {
 import { alignCli } from "./align.js";
 import { attentionCli } from "./attention.js";
 import { baselineCli } from "./baseline.js";
+import { citesCli } from "./cites.js";
 import { componentsCli } from "./components.js";
 import { doctorCli } from "./doctor.js";
 import { fixCli } from "./fix.js";
@@ -271,6 +272,9 @@ switch (subcommand) {
   case "invariants":
     await invariantsCli(rest);
     break;
+  case "cites":
+    await citesCli(rest);
+    break;
   case "tag":
     await tagCli(rest);
     break;
@@ -362,6 +366,8 @@ switch (subcommand) {
         "             (subcommands: index | check | audit; --repo <path>?)\n" +
         "  invariants invariant store maintenance\n" +
         "             (subcommands: prune [--dry-run] [--all] [--repo <path>])\n" +
+        "  cites      citation tooling\n" +
+        "             (subcommands: expand [file...] [--dry-run] [--repo <path>])\n" +
         "  tag        operator-driven retro-tagging — insert <!-- cairn:decision -->\n" +
         "             markers after lines matching a regex pattern\n" +
         "             (--insert-marker <pattern> <file-or-dir>\n" +
