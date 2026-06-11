@@ -35,16 +35,16 @@ function usage(): never {
       "  --slug <name>     override the auto-derived project slug\n" +
       "  --force           overwrite existing .cairn/ files\n" +
       "  --skip-mirror     do not clone the parallel mirror checkout\n" +
-      "  --skip-mapper     skip the Tier-2 mapper (project_globs left empty)\n" +
+      "  --skip-mapper     skip the Tier-2 mapper (domain summary + scope index left empty)\n" +
       "  --ghost           private, local-only adoption — nothing Cairn-shaped\n" +
       "                    touches this repo or its history (state lives out-of-repo)\n" +
       "  --no-prompt       run non-interactively (uses defaults; mapper skipped)\n" +
       "  --auto-e2e <v>    when --no-prompt, pick E2E setup answer (now|defer|skip)\n" +
       "\n" +
       "Detects stack signatures (typescript / python / ruby / go / rust /\n" +
-      "elixir / unknown), proposes sensors, dispatches a one-time Tier-2\n" +
-      "mapper to fill route_handler_globs / dto_globs / generator_source_globs\n" +
-      "/ high_stakes_globs, seeds .cairn/ from the cairn\n" +
+      "elixir / unknown), dispatches a one-time Tier-2 mapper to derive the\n" +
+      "domain summary, key modules, off-limits paths, and the file→decision\n" +
+      "scope index, seeds .cairn/ from the cairn\n" +
       "package templates, writes .cairn/config.yaml with the project-specific\n" +
       "overlay (mapper output baked in), patches the `<slug>:` block in\n" +
       ".cairn/config/workflow.md, and clones the parallel mirror at\n" +

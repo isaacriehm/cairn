@@ -14,5 +14,4 @@ export const unknownProfile: Profile = {
   sensors: [],
   extractors: [],
   offLimitsDefaults: [".git/**", ".archive/**", "node_modules/**", ".env", ".env.local"],
-  highStakesDefaults: [],
 };

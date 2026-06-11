@@ -6,8 +6,8 @@
  *   2. Proceed dialog (cancel exits cleanly, no writes)
  *   3. Seed `.cairn/` from templates with `<project_name>`
  *      substituted; write `.cairn/config.yaml` (including `cairn_version`).
- *   4. Mapper (Tier-2 chunked Sonnet) → seed `<slug>:` workflow.md block +
- *      `.cairn/config.yaml` project_globs.
+ *   4. Mapper (Tier-2 chunked Sonnet) → domain summary, key modules,
+ *      off-limits, and the file→decision scope index.
  *   5. Brand setup (4-question wizard).
  *   6. Phase 8 docs ingestion + baseline sensor sweep.
  *   7. Phase 9 source-comment ingestion + Phase 10 rules merge (mock-friendly
@@ -412,9 +412,9 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   // those checks appear.
   const envState = detection.environment;
 
-  // ── Init mapper (Tier 2 / Sonnet) — proposes project_globs.
-  // Without this, project_globs.{route_handler,dto,generator_source,high_stakes}
-  // sit empty and Layer-D sensors never fire on real diffs.
+  // ── Init mapper (Tier 2 / Sonnet) — domain summary, key modules,
+  // off-limits, and the file→decision scope index. Without it the scope
+  // index sits empty and PostToolUse scope hints have nothing to resolve.
   const mapperRunResult = await maybeRunMapper({
     repoRoot,
     detection,
@@ -460,15 +460,11 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
         workflowMdPath: wfPath,
         slug: decidedSlug,
         update: {
-          route_handler_globs: mapperOutput.route_handler_globs,
-          dto_globs: mapperOutput.dto_globs,
-          generator_source_globs: mapperOutput.generator_source_globs,
-          high_stakes_globs: mapperOutput.high_stakes_globs,
           off_limits_append: mapperOutput.off_limits_globs,
         },
       });
       done(
-        `+ patched <${decidedSlug}>: block in ${wfRelPath} (${r.applied_keys.join(", ")}; +${r.off_limits_added.length} off-limits)`,
+        `+ patched <${decidedSlug}>: block in ${wfRelPath} (+${r.off_limits_added.length} off-limits)`,
       );
       mapperAppliedToWorkflow = true;
     } catch (err) {
@@ -476,7 +472,7 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     }
   } else if (mapperOutput !== null && !wfWasSeeded) {
     warnings.push(
-      `mapper output NOT applied to ${wfRelPath} — kept existing; re-run with --force to overwrite, or merge globs manually`,
+      `mapper output NOT applied to ${wfRelPath} — kept existing; re-run with --force to overwrite, or merge off-limits manually`,
     );
   }
 
@@ -490,7 +486,7 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     done(`= .cairn/config.yaml (kept)`);
     if (mapperOutput !== null) {
       warnings.push(
-        `mapper output NOT applied to .cairn/config.yaml — kept existing; project_globs may be stale`,
+        `mapper output NOT applied to .cairn/config.yaml — kept existing; off_limits / domain_summary may be stale`,
       );
     }
   } else {
@@ -812,8 +808,8 @@ async function maybeRunMapper(
     return { output: args.mockMapperOutput, fallbackSlugs: [] };
   }
   if (args.skipMapper) {
-    info("\n── Init mapper skipped (--skip-mapper); project_globs left empty");
-    args.warnings.push("mapper skipped via --skip-mapper — project_globs left empty");
+    info("\n── Init mapper skipped (--skip-mapper); domain summary + scope index left empty");
+    args.warnings.push("mapper skipped via --skip-mapper — domain summary + scope index left empty");
     return null;
   }
   if (args.mode === "auto") {
@@ -824,10 +820,10 @@ async function maybeRunMapper(
   }
   if (!args.envClaudeAuth) {
     args.warnings.push(
-      "mapper skipped — claude CLI not available; project_globs left empty",
+      "mapper skipped — claude CLI not available; domain summary + scope index left empty",
     );
     info(
-      "\n── Init mapper skipped — claude CLI not available; re-run init after `claude` auth to fill project_globs",
+      "\n── Init mapper skipped — claude CLI not available; re-run init after `claude` auth to fill the scope index",
     );
     return null;
   }
@@ -1375,21 +1371,10 @@ async function runPhaseSix(args: PhaseSixArgs): Promise<PhaseSixResult> {
   let baselineAudit: BaselineAuditResult | null = null;
   try {
     const stackKinds = args.detection.stack_signatures.map((s) => s.kind);
-    const projectGlobs = {
-      route_handler_globs: args.mapperOutput?.route_handler_globs ?? [],
-      dto_globs: args.mapperOutput?.dto_globs ?? [],
-      generator_source_globs: args.mapperOutput?.generator_source_globs ?? [],
-      high_stakes_globs: args.mapperOutput?.high_stakes_globs ?? [],
-    };
-    const printedSensors: string[] = [];
-    let suppressedCount = 0;
     baselineAudit = await runBaselineAudit({
       repoRoot: args.repoRoot,
       languages: defaultBaselineLanguages(stackKinds),
     });
-    if (suppressedCount > 0) {
-      process.stdout.write(`    ${visualC.dim(`+ ${suppressedCount} more…`)}\n`);
-    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     args.warnings.push(`baseline audit failed: ${msg}`);

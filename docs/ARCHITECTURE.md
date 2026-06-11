@@ -110,11 +110,13 @@ What lives here:
   only the SAFE subset, canary-gated.
 - `decision-capture/` — DEC id allocator + scanner. The `cairn_record_decision`
   MCP tool composes a draft on top of these.
-- `sensors/` — Layer A (stub catalog), Layer C (structural,
-  project-agnostic), decision-assertions, the diff-scoped `runSensorsOnDiff`
-  sweep runner, and the remediation prompt body. Runs at pre-commit
-  (staged) + CI (`--diff`). (Layer B attestation cross-check was removed —
-  no production path emitted the attestation it depended on.)
+- `sensors/` — Layer A (stub-pattern catalog), decision-assertions, the
+  diff-scoped `runSensorsOnDiff` sweep runner, and the remediation prompt
+  body. Runs at pre-commit (staged) + CI (`--diff`). (Two theatre layers were
+  removed: Layer B attestation cross-check — no production path emitted the
+  attestation it depended on — and the Layer C structural sensors with their
+  `project_globs` targeting, which were fed by LLM-guessed globs that were
+  never validated or refreshed, so they failed silent and never fired.)
 - `session-start/` — `buildSessionStartContext()` composes the SessionStart
   hook payload. Priority-ordered truncation to token budget.
 - `events/` — invalidation events writer + reader; per-session marker.

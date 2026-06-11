@@ -296,7 +296,7 @@ export function diffHasGlobMatch(
 
 /**
  * Filter a diff to entries whose path matches any of the supplied globs.
- * Useful for layered sensors that scope to e.g. route_handler_globs.
+ * Useful for any check that scopes to a glob set (e.g. a decision's scope_globs).
  */
 export function filterDiffByGlobs(
   diff: DiffEntry[],

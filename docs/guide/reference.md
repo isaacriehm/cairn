@@ -210,7 +210,7 @@ A consolidated map of where everything lives.
 
 ```
 .cairn/
-├── config.yaml                                    project slug, version, project_globs
+├── config.yaml                                    project slug, version, off_limits, domain
 ├── config/
 │   ├── workflow.md                                per-task prompt template + cfg
 │   ├── sensors.yaml                               sensor registry

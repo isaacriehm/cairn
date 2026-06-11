@@ -716,7 +716,7 @@ Implementation lives in `packages/cairn-core/src/init/`. Key outputs:
 
 - Creates the directory tree above (templates/.cairn/, templates/.claude/, templates/.mcp.json copied via `seedCairnLayout`)
 - Mechanical stack-signature detection (`detect.ts`) proposes initial sensor list, awaits operator confirm per sensor
-- Init mapper (Tier 2) reads the repo summary and proposes `pilot_module` + `route_handler_globs` + `dto_globs` + `generator_source_globs` + `high_stakes_globs` + `off_limits_globs` + per-project sensor candidates; output applied to the `<slug>:` extension block in `workflow.md` and to `.cairn/config.yaml`
+- Init mapper (Tier 2) reads the repo summary and proposes `domain_summary` + `key_modules` + `off_limits_globs` + the file→decision `scope_index`; output applied to the `<slug>:` extension block in `workflow.md` and to `.cairn/config.yaml`
 - Mechanical pass populates `.cairn/ground/manifest.yaml` and category extracts where generators apply
 - Writes `.mcp.json` registering the Cairn MCP server (`cairn mcp serve`) and `.claude/settings.json` registering the SessionStart hook (`cairn hook session-start`)
 - Phase 9/10 source-comment + rules-merge ingestion (Haiku-classified, deterministic walker + replacement)

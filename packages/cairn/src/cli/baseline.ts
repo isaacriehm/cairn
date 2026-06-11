@@ -14,16 +14,13 @@
  * findings the day-1 sweep couldn't.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { parse as parseYaml } from "yaml";
 import { cairnDir,
   defaultBaselineLanguages,
   detectStackSignatures,
-  readMapperOutputFile,
   runBaselineAudit,
   type BaselineAuditResult,
-  type ProjectGlobs,
 } from "@isaacriehm/cairn-core";
 
 function parseRepoFlag(argv: string[]): string {
@@ -47,54 +44,6 @@ function ensureAdopted(repoRoot: string): void {
       `cairn baseline: ${repoRoot} is not cairn-adopted (no .cairn/). Run \`cairn init\` first.`,
     );
     process.exit(2);
-  }
-}
-
-function loadGlobsFromConfig(repoRoot: string): ProjectGlobs {
-  // Prefer the mapper output (richer coverage); fall back to .cairn/config.yaml.
-  const mapper = readMapperOutputFile(repoRoot);
-  if (mapper !== null) {
-    return {
-      route_handler_globs: mapper.output.route_handler_globs,
-      dto_globs: mapper.output.dto_globs,
-      generator_source_globs: mapper.output.generator_source_globs,
-      high_stakes_globs: mapper.output.high_stakes_globs,
-      off_limits: mapper.output.off_limits_globs,
-    };
-  }
-  const cfgPath = cairnDir(repoRoot, "config.yaml");
-  if (!existsSync(cfgPath)) return {};
-  try {
-    const parsed = parseYaml(readFileSync(cfgPath, "utf8")) as
-      | Record<string, unknown>
-      | null;
-    if (parsed === null || typeof parsed !== "object") return {};
-    const cfg = parsed as Record<string, unknown>;
-    const globs: ProjectGlobs = {};
-    const projectGlobs = cfg["project_globs"];
-    if (typeof projectGlobs === "object" && projectGlobs !== null) {
-      const pg = projectGlobs as Record<string, unknown>;
-      for (const k of [
-        "route_handler_globs",
-        "dto_globs",
-        "generator_source_globs",
-        "high_stakes_globs",
-      ] as const) {
-        const v = pg[k];
-        if (Array.isArray(v)) {
-          (globs as Record<string, unknown>)[k] = v.filter(
-            (x): x is string => typeof x === "string",
-          );
-        }
-      }
-    }
-    const off = cfg["off_limits"];
-    if (Array.isArray(off)) {
-      globs.off_limits = off.filter((x): x is string => typeof x === "string");
-    }
-    return globs;
-  } catch {
-    return {};
   }
 }
 

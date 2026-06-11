@@ -5,7 +5,7 @@
  *   sweep [--repo-root <path>] [--json]
  *     Run all five passes; print findings + proposals; never commit.
  *
- *   run   [--repo-root <path>] [--apply-classes safe[,code[,high-stakes]]]
+ *   run   [--repo-root <path>] [--apply-classes safe[,code]]
  *         [--no-canary] [--no-quality] [--force-frontmatter-refresh] [--json]
  *     Sweep, then apply proposals whose class is in --apply-classes (default
  *     "safe"). Canary on by default. Push is NEVER done by this command —
@@ -64,7 +64,7 @@ function usage(): never {
   console.error(
     "Usage: cairn gc <subcommand> [options]\n" +
       "  sweep  [--repo-root <path>] [--json]\n" +
-      "  run    [--repo-root <path>] [--apply-classes safe[,code[,high-stakes]]]\n" +
+      "  run    [--repo-root <path>] [--apply-classes safe[,code]]\n" +
       "         [--no-canary] [--force-frontmatter-refresh] [--json]\n" +
       "  retire [--repo-root <path>] [--apply] [--no-canary] [--json]\n",
   );
@@ -84,7 +84,7 @@ function parseApplyClasses(value: unknown): readonly GcAutoMergeClass[] {
   const out: GcAutoMergeClass[] = [];
   for (const raw of value.split(",")) {
     const v = raw.trim();
-    if (v === "safe" || v === "code" || v === "high-stakes") out.push(v);
+    if (v === "safe" || v === "code") out.push(v);
   }
   return out.length > 0 ? out : ["safe"];
 }

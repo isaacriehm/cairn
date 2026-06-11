@@ -17,7 +17,7 @@ import { simpleGit } from "simple-git";
 import { logger } from "../logger.js";
 import { selectProfile } from "../profiles/index.js";
 import type { Profile } from "../profiles/types.js";
-import type { ProjectGlobs, SensorLanguage } from "../sensors/types.js";
+import type { SensorLanguage } from "../sensors/types.js";
 import { applyCommit } from "./apply.js";
 import { runGcCanary, type GcCanaryResult } from "./canary.js";
 import { runCitationIntegrity } from "./citation-integrity.js";
@@ -50,8 +50,6 @@ export interface RunGcSweepOptions {
   repoRoot: string;
   /** Override stack profile. Defaults to `selectProfile(repoRoot)`. */
   profile?: Profile;
-  /** Project-extension globs (high_stakes_globs etc). */
-  projectGlobs?: ProjectGlobs;
   /** Languages active for stub-catalog scan. Default ["typescript"]. */
   languages?: readonly SensorLanguage[];
   /** Frontmatter-pass options. */
@@ -222,14 +220,9 @@ export async function runGcSweep(opts: RunGcSweepOptions): Promise<GcSweepResult
   // detection passes above and never blocks them.
   runRuntimePrune({ repoRoot: opts.repoRoot });
 
-  // Re-classify proposals against project globs (passes set defaults; this
-  // ensures high-stakes hits dominate when a stale-frontmatter doc happens to
-  // live under a high-stakes glob).
+  // Re-classify proposals by touched-path extension (safe vs code).
   for (const p of proposals) {
-    p.class = classifyAutoMerge({
-      paths: p.paths,
-      ...(opts.projectGlobs !== undefined ? { projectGlobs: opts.projectGlobs } : {}),
-    });
+    p.class = classifyAutoMerge({ paths: p.paths });
   }
 
   const result: GcSweepResult = {

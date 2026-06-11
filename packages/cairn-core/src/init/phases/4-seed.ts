@@ -69,10 +69,6 @@ export async function runPhase4Seed(state: PhaseState): Promise<PhaseResult> {
           workflowMdPath: cairnDir(state.repoRoot, "config", "workflow.md"),
           slug: projectSlug,
           update: {
-            route_handler_globs: mapperOutput.route_handler_globs,
-            dto_globs: mapperOutput.dto_globs,
-            generator_source_globs: mapperOutput.generator_source_globs,
-            high_stakes_globs: mapperOutput.high_stakes_globs,
             off_limits_append: mapperOutput.off_limits_globs,
           },
         });

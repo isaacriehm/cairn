@@ -1,11 +1,4 @@
 export {
-  scoreDecDraft,
-  scoreInvariant,
-  type DraftConfidence,
-  type DraftScoreInput,
-} from "./scoring.js";
-
-export {
   findDuplicateClusters,
   DEFAULT_THRESHOLD_DEFINITE,
   DEFAULT_THRESHOLD_FLOOR,

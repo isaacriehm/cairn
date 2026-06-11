@@ -6,38 +6,38 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.22.6] — 2026-06-11
 
-Config hygiene — strip dead `config.yaml` weight via two coded migrations, and
-stop emitting it at the source.
+Removed the glob-driven sensor layer. Hard cutover.
+
+### Removed
+
+- **The Layer C structural sensors (`route-handler-non-empty`,
+  `dto-no-fake-fields`) and their `project_globs` / `high_stakes_globs`
+  config surface.** These were the only consumers of the project glob
+  settings. The sensors were stack-specific regex (controller/DTO shapes),
+  fired only through globs that adoption emitted from an LLM pass which never
+  validated them against the tree and never refreshed them afterward. The
+  result: globs that silently rotted as a project moved, so the structural
+  sensors resolved to zero matches and **never fired** — a gate that always
+  passed because its targeting data was dead. The high-stakes GC auto-merge
+  tier and the (unwired) DEC-draft confidence scoring read the same globs and
+  are gone too. The enforcement spine that has teeth — the Layer A stub-pattern
+  catalog and the decision-assertion sensor, both glob-independent — is
+  unchanged. `off_limits` (a simple denylist) stays.
 
 ### Added
 
-- **Migration `0004-collapse-high-stakes-dupe` (safe).** Early adopters carry
-  `high_stakes_globs` twice — a top-level key and `project_globs.high_stakes_globs`,
-  written from one shared array so the serializer emitted a YAML anchor/alias
-  pair. The runtime reads only the nested key (the top-level was a fallback for
-  configs lacking the nested one), so the top-level copy is dead weight — and its
-  anchor makes a naive delete dangle the alias. The migration materializes the
-  canonical list into the nested key as a fresh inline node, then drops the
-  top-level key. Value-preserving, so it auto-applies.
-- **Migration `0005-prune-dead-path-globs` (review).** Adoption could emit gate
-  globs (`off_limits`, `project_globs.*`) anchored at paths that do not exist on
-  disk — mis-rooted (a dropped package-internal path segment) or pointing at a
-  location renamed away since adoption. Such a glob matches zero files, so the
-  high-stakes gate, the route/DTO sensors, and GC classification silently treat
-  it as no coverage. The migration prunes these inert entries. It is `review`,
-  not auto-applied: filesystem absence at one instant is not proof of permanent
-  deadness (an unbuilt generated dir, an unchecked-out submodule, a sibling
-  worktree), so it is surfaced for the operator to apply via `cairn migrate`. The
-  dead-path test is conservative — only globs with a concrete base of two or more
-  literal segments are eligible, so generic ignores (`dist/`, `node_modules/`)
-  and wildcard-anchored patterns (`**/auth/**`) always survive.
+- **Migration `0004-drop-glob-settings` (safe).** Removes the now-defunct
+  `project_globs` block and the legacy top-level `high_stakes_globs` key from an
+  existing `config.yaml`. Nothing reads them anymore, so the strip is
+  value-preserving and auto-applies. `off_limits` and every other key are kept.
 
 ### Changed
 
-- **Adoption stops writing the duplicate top-level `high_stakes_globs`.** New
-  adoptions emit the list only under `project_globs` — the single location the
-  runtime reads (init/overlay.ts). Hard cutover; existing adopters are repaired
-  by migration 0004.
+- **Adoption no longer emits glob settings.** The init mapper now produces only
+  the domain summary, key modules, `off_limits`, and the file→decision scope
+  index; `config.yaml` carries no `project_globs`. The auto-merge classifier is
+  `safe` | `code` (the `high-stakes` tier is gone). Hard cutover; existing
+  adopters are repaired by migration 0004.
 
 ## [0.22.5] — 2026-06-11
 

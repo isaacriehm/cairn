@@ -45,8 +45,6 @@ export interface Profile {
   extractors: ProfileExtractor[];
   /** Suggested off-limits paths on adoption. */
   offLimitsDefaults: string[];
-  /** Suggested high-stakes globs on adoption. */
-  highStakesDefaults: string[];
   /** Suggested start command for the project (e.g., `pnpm dev`). */
   startCommand?: string;
 }

@@ -26,19 +26,16 @@ source-commits:
     - .env.local
     - node_modules/**
     # adopting project extends with its own off-limits paths at init
-  high_stakes_globs: []                 # populated at init from stack-profile heuristic + operator confirm
   trust_posture:
     safe_class_auto_merge: true
     code_class_auto_merge: false
-    high_stakes_auto_merge: false
 
 ---
 
 # Workflow policy
 
-This file is the on-disk surface for the **project-extension block** that
-`cairn-core/src/sensors/runner.ts` reads (via `Object.keys()` lookup) and
-that the Phase-3 init mapper patches with discovered globs and sensors.
+This file carries the **project-extension block** — the project's `off_limits`
+denylist and trust posture, seeded at adoption and extended by the operator.
 
 The plugin-era cairn does NOT use this file as a per-task prompt template
 — each task's spec lives at `.cairn/tasks/active/<task_id>/spec.tightened.md`

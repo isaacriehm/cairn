@@ -44,10 +44,6 @@ export interface ModuleProposal {
   moduleRel: string;
   domain: string;
   confidence: number;
-  routeHandlerGlobs: string[];
-  dtoGlobs: string[];
-  generatorSourceGlobs: string[];
-  highStakesGlobs: string[];
   offLimitsGlobs: string[];
   scopeIndex: MapperScopeIndex;
   notes: string;
@@ -62,10 +58,6 @@ const MODULE_OUTPUT_SCHEMA = {
   properties: {
     domain: { type: "string" },
     confidence: { type: "number" },
-    route_handler_globs: { type: "array", items: { type: "string" } },
-    dto_globs: { type: "array", items: { type: "string" } },
-    generator_source_globs: { type: "array", items: { type: "string" } },
-    high_stakes_globs: { type: "array", items: { type: "string" } },
     off_limits_globs: { type: "array", items: { type: "string" } },
     scope_index: {
       type: "object",
@@ -89,16 +81,7 @@ const MODULE_OUTPUT_SCHEMA = {
     },
     notes: { type: "string" },
   },
-  required: [
-    "domain",
-    "confidence",
-    "route_handler_globs",
-    "dto_globs",
-    "generator_source_globs",
-    "high_stakes_globs",
-    "off_limits_globs",
-    "notes",
-  ],
+  required: ["domain", "confidence", "off_limits_globs", "notes"],
 } as const;
 
 const MODULE_SYSTEM_PROMPT = [
@@ -119,10 +102,6 @@ const MODULE_SYSTEM_PROMPT = [
   "Required outputs (all paths must be REPO-ROOT-RELATIVE — prepend the module path):",
   "  - `domain` — one short sentence describing what this module does.",
   "  - `confidence` — 0.0–1.0 estimate of how reliable your output is. < 0.4 = low confidence, > 0.7 = high.",
-  "  - `route_handler_globs` — globs matching HTTP / CLI / RPC handlers in this module. Examples: `core/src/**/*.controller.ts`, `apps/api/routes/**/*.py`. EMPTY if no handlers.",
-  "  - `dto_globs` — globs matching DTO / schema / form-input / request-validator definitions in this module.",
-  "  - `generator_source_globs` — globs whose changes mean a generator must re-run. Examples: `core/openapi.json`, `core/src/db/schema.ts` (Drizzle), `**/*.proto`, `prisma/schema.prisma`.",
-  "  - `high_stakes_globs` — globs for high-risk surfaces in this module (auth, billing, payments, multi-tenant, integrations storing tokens, telephony). Be conservative.",
   "  - `off_limits_globs` — globs the cairn MUST NOT touch beyond defaults. Vendored code, large fixtures, copied snapshots.",
   '  - `scope_index` — `{ files: { "<repo-relative-path>": { decisions: [], invariants: [], unscoped?: true } } }`. The user prompt provides the in-scope decisions + invariants list. Map only files within THIS module. Use `unscoped: true` for lockfiles, generated, vendored, or dotfile config.',
   '  - IMPORTANT: scope_index decisions[] and invariants[] arrays MUST contain ONLY IDs (e.g. "DEC-a3f7b2c", "INV-5e9d10a" — content-addressed 7+ hex chars). NEVER copy ledger titles or descriptive prose into these arrays — IDs only.',
@@ -359,10 +338,6 @@ function parseModuleProposal(
     moduleRel: slice.moduleRel,
     domain: typeof v["domain"] === "string" ? v["domain"] : "",
     confidence: conf,
-    routeHandlerGlobs: arr("route_handler_globs"),
-    dtoGlobs: arr("dto_globs"),
-    generatorSourceGlobs: arr("generator_source_globs"),
-    highStakesGlobs: arr("high_stakes_globs"),
     offLimitsGlobs: arr("off_limits_globs"),
     scopeIndex,
     notes: typeof v["notes"] === "string" ? v["notes"] : "",
@@ -372,26 +347,12 @@ function parseModuleProposal(
 }
 
 /**
- * Heuristic keywords for the partial-fallback high-stakes scan. Files / dirs
- * matching any of these on a path segment get globbed when the LLM call
- * fails — so even a timed-out module surfaces obvious risk surfaces in the
- * final proposal.
- */
-const FALLBACK_HIGH_STAKES_PATTERNS: RegExp[] = [
-  /^auth(entication)?$/i,
-  /^billing$/i,
-  /^payment(s)?$/i,
-  /^security$/i,
-];
-
-/**
  * Build a ModuleProposal for a slice whose Sonnet call timed out or threw.
  *
  * Fallback policy: don't drop the module entirely.
  * Mark it `failed: true` (so completion summary can name it), give it a
- * confidence: 0.1, derive high-stakes globs heuristically from path
- * segments, and stamp the slice's full directory tree into the scope index
- * as `unscoped: true` so PostToolUse hooks downstream don't re-flag the
+ * confidence: 0.1, and stamp the slice's full directory tree into the scope
+ * index as `unscoped: true` so PostToolUse hooks downstream don't re-flag the
  * files for missing scope. Operator can re-run `cairn scope rebuild` to
  * upgrade the partial entry into a full proposal later.
  */
@@ -407,32 +368,6 @@ function buildFailedProposal(
   const moduleRel = slice.moduleRel;
   const repoRel = (rel: string): string =>
     moduleRel === "." ? rel : `${moduleRel}/${rel}`;
-
-  // High-stakes globs: any path segment that matches a fallback keyword
-  // contributes a glob covering its parent directory.
-  const highStakesGlobs = new Set<string>();
-  for (const path of treePaths) {
-    const segs = path.split("/");
-    for (let i = 0; i < segs.length; i++) {
-      const seg = segs[i];
-      if (seg === undefined) continue;
-      if (!FALLBACK_HIGH_STAKES_PATTERNS.some((re) => re.test(seg))) continue;
-      // Glob the matched directory if the keyword names a directory in the
-      // path (i.e., not the leaf filename). Keyword on a leaf file → glob
-      // its parent directory.
-      const isLeaf = i === segs.length - 1;
-      const dirPath = isLeaf
-        ? segs.slice(0, i).join("/")
-        : segs.slice(0, i + 1).join("/");
-      const repoDir = dirPath === "" ? moduleRel : repoRel(dirPath);
-      if (repoDir === "" || repoDir === ".") {
-        highStakesGlobs.add(`${seg}/**`);
-      } else {
-        highStakesGlobs.add(`${repoDir}/**`);
-      }
-      break; // one glob per path is enough
-    }
-  }
 
   // Scope index: every file in the slice → unscoped: true so the GC's
   // scope-coverage pass doesn't re-flag them while the partial proposal
@@ -459,10 +394,6 @@ function buildFailedProposal(
     moduleRel,
     domain: `${slice.moduleSlug} module (analysis timed out — run cairn scope rebuild)`,
     confidence: 0.1,
-    routeHandlerGlobs: [],
-    dtoGlobs: [],
-    generatorSourceGlobs: [],
-    highStakesGlobs: [...highStakesGlobs],
     offLimitsGlobs: [],
     scopeIndex,
     notes: `module mapper call failed: ${reason}; partial fallback used`,

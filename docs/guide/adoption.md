@@ -203,7 +203,7 @@ Time: 30-60s on small repos, 2-4 minutes on large monorepos.
 
 Writes the `.cairn/` skeleton. Creates:
 
-- `.cairn/config.yaml` (slug, version, project_globs)
+- `.cairn/config.yaml` (slug, version, off_limits, domain)
 - `.cairn/config/` (workflow.md, sensors.yaml, stub-patterns.yaml)
 - `.cairn/ground/` (decisions/, invariants/, canonical-map/, …)
 - `.cairn/git-hooks/` (pre-commit, post-commit, commit-msg)
@@ -299,9 +299,9 @@ the next session.
 
 ### Phase 11 — baseline
 
-The first sensor sweep. Runs Layer A / Layer B / Layer C /
-Structural sensors against a synthetic full-tree diff (every line
-in your repo treated as "newly added"). Findings are written to
+The first sensor sweep. Runs the Layer A stub-pattern catalog
+against a synthetic full-tree diff (every line in your repo treated
+as "newly added"). Findings are written to
 `.cairn/baseline/sensor-audit-<timestamp>.yaml`.
 
 Pre-existing violations don't block adoption — they go into the
@@ -429,7 +429,7 @@ Concrete inventory after a typical adoption:
 
 ```
 .cairn/
-├── config.yaml                        — slug, version, project_globs
+├── config.yaml                        — slug, version, off_limits, domain
 ├── config/
 │   ├── workflow.md                    — per-task prompt template
 │   ├── sensors.yaml                   — sensor registry (with Phase 1 + 11 proposals)

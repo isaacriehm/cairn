@@ -2,18 +2,15 @@
  * Auto-merge classification.
  *
  * Given a set of repo-relative paths a commit will touch, return one of:
- *   safe        — formatting, doc regen, frontmatter refresh, generated content,
- *                 archive moves, stub-catalog additions, .cairn/ground/* writes
- *   code        — touches *.ts / *.tsx / *.js outside generator-managed files
- *   high-stakes — any path matches projectGlobs.high_stakes_globs
+ *   safe — formatting, doc regen, frontmatter refresh, generated content,
+ *          archive moves, stub-catalog additions, .cairn/ground/* writes
+ *   code — touches *.ts / *.tsx / *.js outside generator-managed files
  *
  * The classifier is deliberately conservative: when in doubt, escalate. A
- * single high-stakes hit dominates the result. A single code hit dominates
- * over safe.
+ * single code hit dominates over safe.
  */
 
 import { knownExtensions, matchAnyGlob } from "@isaacriehm/cairn-state";
-import type { ProjectGlobs } from "../sensors/types.js";
 import type { GcAutoMergeClass } from "./types.js";
 
 /** Patterns the classifier always treats as safe regardless of file type. */
@@ -32,7 +29,6 @@ const CODE_EXTS = knownExtensions();
 
 export interface ClassifyArgs {
   paths: readonly string[];
-  projectGlobs?: ProjectGlobs;
   /**
    * Globs of paths the cairn considers generator-managed — touching these
    * stays safe-class even when the extension is .ts. Default: empty.
@@ -41,15 +37,11 @@ export interface ClassifyArgs {
 }
 
 export function classifyAutoMerge(args: ClassifyArgs): GcAutoMergeClass {
-  const highStakes = args.projectGlobs?.high_stakes_globs ?? [];
-  const generated = args.generatorManagedGlobs ?? args.projectGlobs?.generator_source_globs ?? [];
+  const generated = args.generatorManagedGlobs ?? [];
 
   let cls: GcAutoMergeClass = "safe";
   for (const path of args.paths) {
-    if (highStakes.length > 0 && matchAnyGlob(path, highStakes)) {
-      return "high-stakes";
-    }
-    if (cls === "code") continue; // already escalated; only high-stakes upgrade further
+    if (cls === "code") continue; // already escalated
     if (isSafePath(path, generated)) continue;
     if (isCodePath(path)) {
       cls = "code";

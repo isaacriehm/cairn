@@ -70,7 +70,7 @@ paths instead of the agent grepping vaguely or fabricating them.
 
 Plus four runtime layers that keep those stores live: an **MCP
 server** (29 typed tools), a **Claude Code plugin** (skills + hooks +
-reviewer agent), **sensors** (stub-catalog + decision-assertions + structural diff checks), and
+reviewer agent), **sensors** (stub-catalog + decision-assertions), and
 a **CLI** for bootstrap and debug.
 
 ## Quick Start
@@ -127,7 +127,7 @@ Read this once and the rest of the doc reads cleanly.
 | **§INV**            | Invariant — a domain rule the codebase must obey. Violations are bugs.                                 |
 | **Scope**           | The file glob a DEC or §INV applies to (`src/auth/**`, `packages/billing/**`).                         |
 | **Canonical map**   | `topic → file` index. The single source of truth for *"where does X live?"*                            |
-| **Sensor**          | A mechanical check on a diff: stub patterns, decision violations, structural holes.                    |
+| **Sensor**          | A mechanical check on a diff: stub patterns, decision violations.                                       |
 | **Attestation**     | A subagent's signed-off summary of what changed and why; drives task auto-graduation.                  |
 | **Drift**           | When code or docs disagree with the ground state in `.cairn/`.                                         |
 | **Bypass**          | A commit that skipped Cairn's hooks (`--no-verify`, broken hook path). Detected and surfaced.          |
@@ -329,7 +329,7 @@ After `cairn init`:
 
 ```
 .cairn/
-├── config.yaml                  slug, version, project_globs
+├── config.yaml                  slug, version, off_limits, domain
 ├── config/                      workflow.md, sensors.yaml, stub-patterns.yaml
 ├── ground/
 │   ├── decisions/               DEC-<hash>.md per choice + _inbox/<id>.draft.md

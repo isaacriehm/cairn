@@ -6,7 +6,7 @@
  *   - runGcBatch(opts)          → sweep + classify + apply + canary
  *   - applyCommit(opts)         → apply a single proposal
  *   - verifyBatchCanary(opts)   → standalone canary check
- *   - classifyAutoMerge(args)   → safe | code | high-stakes
+ *   - classifyAutoMerge(args)   → safe | code
  *   - runFrontmatterFreshness, runGeneratorDrift, runStubCatalogHits,
  *     runDocGardening, runQualityGradesUpdate — direct pass entry points
  *

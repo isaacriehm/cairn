@@ -36,39 +36,6 @@ sensors:
       - every_run_completion
     fail_severity: hard
 
-  # ── Layer C — project structural / contract sensors ──────────────────────
-  - id: route-handler-non-empty
-    layer: C
-    kind: structural
-    description: "For every route/controller method, body must contain non-trivial implementation (not just `return null` / empty / throw not-implemented)."
-    triggers:
-      - diff_touches_glob
-    glob_keys:
-      - route_handler_globs
-    fail_severity: hard
-
-  - id: dto-no-fake-fields
-    layer: C
-    kind: structural
-    description: "DTO/schema fields that are declared optional and always evaluate undefined fail this sensor — they look thorough without doing work."
-    triggers:
-      - diff_touches_glob
-    glob_keys:
-      - dto_globs
-    fail_severity: hard
-
-  # ── Generator-drift sensors (profile-driven) ──────────────────────────────
-  - id: generator-drift
-    layer: D
-    kind: generator_drift
-    description: "Re-runs the project's declared generator commands (e.g. openapi:generate, db:generate, sqlc generate, alembic check). Any non-empty diff = source out of sync with artifact."
-    triggers:
-      - diff_touches_glob
-    glob_keys:
-      - generator_source_globs
-    profile_hook: profile.generators
-    fail_severity: hard
-
   # ── Decision-assertion sensor ─────────────────────────────────────────────
   - id: decision-assertions
     layer: decisions
@@ -138,19 +105,6 @@ sensors:
       - pre_dispatch
       - pre_push
     fail_severity: soft
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Scoped-glob keys.
-#
-# Each adopting project fills these in its `<project_name>:` block. Sensors that
-# trigger on `glob_keys` resolve them at dispatch from the project block.
-# ──────────────────────────────────────────────────────────────────────────────
-
-required_glob_keys:
-  - route_handler_globs        # e.g. core/src/**/*.controller.ts (NestJS) | app/controllers/**/*.rb (Rails)
-  - dto_globs                  # e.g. core/src/**/*.dto.ts | apps/api/schemas/**/*.py
-  - generator_source_globs     # files that, when changed, mean the generator should re-run
-  - high_stakes_globs          # paths whose changes require Layer E + cross-tenant fixture
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Copy-safety configuration (write guardian + Layer C sensor)

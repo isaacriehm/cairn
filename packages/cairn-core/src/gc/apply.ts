@@ -3,7 +3,7 @@
  * files, run `git add` + `git commit`, return the resulting SHA.
  *
  * The caller is responsible for filtering proposals by `class` (only safe is
- * auto-applied in v1; code / high-stakes are surfaced for confirm).
+ * auto-applied in v1; code is surfaced for confirm).
  *
  * No push happens here — the GC sweep + canary verification + push policy is
  * orchestrated by `runGcBatch` (sweep.ts).

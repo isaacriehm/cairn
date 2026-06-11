@@ -45,7 +45,6 @@ import {
   type ModuleProposal,
 } from "./mapper-parallel.js";
 import { mergeModuleProposals } from "./mapper-merge.js";
-import { inferGlobsFromDetection } from "./glob-inference.js";
 import { sliceModules, type ModuleSlice } from "./module-slicer.js";
 import type { DetectionResult } from "./types.js";
 import type { RepoSummary } from "./walker.js";
@@ -73,10 +72,6 @@ export interface MapperScopeIndex {
 export interface MapperOutput {
   domain_summary: string;
   key_modules: MapperKeyModule[];
-  route_handler_globs: string[];
-  dto_globs: string[];
-  generator_source_globs: string[];
-  high_stakes_globs: string[];
   off_limits_globs: string[];
   notes: string;
   scope_index: MapperScopeIndex;
@@ -115,10 +110,6 @@ function isMapperOutput(value: unknown): value is MapperOutput {
     !(
       typeof v["domain_summary"] === "string" &&
       Array.isArray(v["key_modules"]) &&
-      Array.isArray(v["route_handler_globs"]) &&
-      Array.isArray(v["dto_globs"]) &&
-      Array.isArray(v["generator_source_globs"]) &&
-      Array.isArray(v["high_stakes_globs"]) &&
       Array.isArray(v["off_limits_globs"]) &&
       typeof v["notes"] === "string"
     )
@@ -211,8 +202,8 @@ export async function runMapper(args: RunMapperArgs): Promise<MapperResult> {
 
   // 3. If ANY module call failed, surface the error. One-time adoption
   //    must seed ground state from a complete map — a partial
-  //    fail-soft would silently degrade scope_index, sensor coverage,
-  //    and high-stakes globs for the affected module. Successful
+  //    fail-soft would silently degrade the scope_index for the
+  //    affected module. Successful
   //    module proposals are cached on disk (cacheable: true in the
   //    runClaude call), so re-running `cairn init` only re-issues the
   //    failed slice(s); completed modules hit the cache instantly and
@@ -229,12 +220,10 @@ export async function runMapper(args: RunMapperArgs): Promise<MapperResult> {
 
   // 4. Merge call (Haiku).
   const workspacePackageJson = readIfExists(join(args.repoRoot, "package.json"));
-  const inferredGlobs = inferGlobsFromDetection(args.detection, args.repoRoot);
   const merged = await mergeModuleProposals({
     proposals,
     workspacePackageJson,
     projectSlug: args.detection.project_slug,
-    inferredGlobs,
   });
 
   log.info(

@@ -75,7 +75,6 @@ import {
   type ScopeIndexEntry,
 } from "@isaacriehm/cairn-state";
 import { logger } from "../../logger.js";
-import type { ProjectGlobs } from "../../sensors/types.js";
 import { emitFromTopicIndex, type EmitClassification } from "../sot-emit.js";
 import {
   applyStripReplace,
@@ -148,13 +147,6 @@ export interface IngestSourceCommentsArgs {
   dryRun?: boolean;
   /** When set, override `Date.now()` for deterministic test outputs. */
   nowIso?: string;
-  /**
-   * Project globs from `.cairn/config.yaml`. Carried through for
-   * compatibility with the parallel-678 caller; phase 9 under v0.5.0
-   * doesn't gate behavior on these (every novel rationale/constraint
-   * auto-promotes without scoring).
-   */
-  globs?: ProjectGlobs;
   /**
    * Caller-supplied DEC id Set — kept for symmetry with phases 6 / 7c.
    * Plan §3.2.1 derives content-addressed ids; collisions across phases

@@ -24,8 +24,8 @@
  *      orphan markdown; gardening pass surfaces both.
  *   7. Quality-grades: seed a single terminal run; pass writes a fresh
  *      yaml that classifies as safe-class auto-merge.
- *   8. Auto-merge classifier: high-stakes glob membership escalates a
- *      proposal touching one matching file all the way to high-stakes.
+ *   8. Auto-merge classifier: doc / ground paths classify safe; source
+ *      files classify code.
  *   9. Canary catches a broken workflow.md (truncated mid-section) and
  *      rolls back a multi-commit batch.
  *  10. Cleanup.
@@ -311,18 +311,13 @@ async function main(): Promise<void> {
   );
   console.log(`  quality-grades written locally, no commit proposal`);
 
-  // ── Step 8: classifier escalates high-stakes hits.
-  header("Step 8: classifier — high-stakes glob escalates to high-stakes");
+  // ── Step 8: classifier — safe vs code by touched-path extension.
+  header("Step 8: classifier — safe vs code");
   const safe = classifyAutoMerge({ paths: ["docs/x.md", ".cairn/ground/y.yaml"] });
   assert(safe === "safe", `expected safe (got ${safe})`);
   const code = classifyAutoMerge({ paths: ["src/foo.ts"] });
   assert(code === "code", `expected code (got ${code})`);
-  const high = classifyAutoMerge({
-    paths: ["src/integrations/billing.ts"],
-    projectGlobs: { high_stakes_globs: ["src/integrations/**"] },
-  });
-  assert(high === "high-stakes", `expected high-stakes (got ${high})`);
-  console.log(`  safe=${safe} code=${code} high-stakes=${high}`);
+  console.log(`  safe=${safe} code=${code}`);
 
   // ── Step 9: canary detects broken workflow.md and rolls back batch.
   header("Step 9: canary detects broken workflow.md → rollback");

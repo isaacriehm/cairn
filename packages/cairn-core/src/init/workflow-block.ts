@@ -25,16 +25,11 @@ import {
   YAMLMap,
   YAMLSeq,
   type Document,
-  type Node,
 } from "yaml";
 
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---/;
 
 export interface WorkflowSlugBlockUpdate {
-  route_handler_globs?: string[];
-  dto_globs?: string[];
-  generator_source_globs?: string[];
-  high_stakes_globs?: string[];
   off_limits_append?: string[];
 }
 
@@ -78,31 +73,6 @@ export function updateWorkflowSlugBlock(args: {
 
   const applied: string[] = [];
   const u = args.update;
-  if (u.route_handler_globs !== undefined) {
-    slugBlock.set(
-      "route_handler_globs",
-      doc.createNode(u.route_handler_globs) as Node,
-    );
-    applied.push("route_handler_globs");
-  }
-  if (u.dto_globs !== undefined) {
-    slugBlock.set("dto_globs", doc.createNode(u.dto_globs) as Node);
-    applied.push("dto_globs");
-  }
-  if (u.generator_source_globs !== undefined) {
-    slugBlock.set(
-      "generator_source_globs",
-      doc.createNode(u.generator_source_globs) as Node,
-    );
-    applied.push("generator_source_globs");
-  }
-  if (u.high_stakes_globs !== undefined) {
-    slugBlock.set(
-      "high_stakes_globs",
-      doc.createNode(u.high_stakes_globs) as Node,
-    );
-    applied.push("high_stakes_globs");
-  }
 
   const offLimitsAdded: string[] = [];
   if (u.off_limits_append !== undefined && u.off_limits_append.length > 0) {

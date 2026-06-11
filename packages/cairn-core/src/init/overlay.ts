@@ -21,6 +21,10 @@ const DEFAULT_OFF_LIMITS = [
   ".direnv/",
   ".cache/",
   "coverage/",
+  "**/vendor/**",
+  "**/__generated__/**",
+  "**/*.generated.ts",
+  "**/*.pb.go",
 ];
 
 interface BuildProjectOverlayArgs {
@@ -50,24 +54,14 @@ export function buildProjectOverlay(
   // (origin_url, stack_signatures, hook_capability, start_command) and the
   // never-executed proposed-sensors output are consumed only at init time —
   // persisting them produced dead config (audit Tier 2). `domain_summary`
-  // is kept (read by `cairn fix`).
-  //
-  // high_stakes_globs lives ONLY under project_globs — the single location the
-  // runtime reads (sensors/runner loadProjectGlobs; the top-level key was a
-  // legacy fallback that duplicated this list; migration 0004 collapses it for
-  // existing adopters).
+  // is kept (read by `cairn fix`). `off_limits` is the kept denylist; the
+  // glob-driven sensor layer (project_globs / high_stakes_globs) was removed.
   const overlay: Record<string, unknown> = {
     version: 1,
     cairn_version: VERSION,
     slug: args.decidedSlug,
     off_limits: offLimits,
     defer_hours: 24,
-    project_globs: {
-      route_handler_globs: m?.route_handler_globs ?? [],
-      dto_globs: m?.dto_globs ?? [],
-      generator_source_globs: m?.generator_source_globs ?? [],
-      high_stakes_globs: m?.high_stakes_globs ?? [],
-    },
   };
   if (m !== undefined) {
     overlay["domain_summary"] = m.domain_summary;

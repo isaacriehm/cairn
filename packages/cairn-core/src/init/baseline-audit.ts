@@ -15,10 +15,7 @@ import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { cairnDir, writeFileSafe } from "@isaacriehm/cairn-state";
 import {
   runStubCatalog,
-  runRouteHandlerNonEmpty,
-  runDtoNoFakeFields,
   loadStubCatalog,
-  loadSensorRegistry,
   type SensorLanguage,
   type SensorResult,
 } from "../sensors/index.js";
@@ -98,34 +95,16 @@ export async function runBaselineAudit(
     }
   }
 
-  // 2. Load catalogs and registry.
+  // 2. Load catalog.
   const stubCatalog = loadStubCatalog(args.repoRoot);
-  const registry = loadSensorRegistry(args.repoRoot);
   const results: SensorResult[] = [];
 
-  // 3. Run sensors.
-  // Layer A: Stub catalog
+  // 3. Run sensors — Layer A stub catalog (glob-independent).
   results.push(
     runStubCatalog({
       diff: syntheticDiff,
       catalog: stubCatalog,
       languages: args.languages,
-    }),
-  );
-
-  // Layer C: Structural
-  const routeGlobs = registry.sensors.find((s) => s.id === "route-handler-non-empty")?.glob_keys;
-  results.push(
-    runRouteHandlerNonEmpty({
-      diff: syntheticDiff,
-      globs: routeGlobs ?? [],
-    }),
-  );
-  const dtoGlobs = registry.sensors.find((s) => s.id === "dto-no-fake-fields")?.glob_keys;
-  results.push(
-    runDtoNoFakeFields({
-      diff: syntheticDiff,
-      globs: dtoGlobs ?? [],
     }),
   );
 

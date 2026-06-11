@@ -9,22 +9,11 @@ import {
   runBaselineAudit,
   type BaselineAuditResult,
 } from "../baseline-audit.js";
-import type { ProjectGlobs } from "../../sensors/types.js";
 import { advancePhase } from "./orchestrator.js";
 import type { PhaseResult, PhaseState } from "./types.js";
 
 export async function runPhase11Baseline(state: PhaseState): Promise<PhaseResult> {
   const detection = state.outputs["1-detect"];
-  const mapper = state.outputs["3-mapper"];
-  const globs: ProjectGlobs = mapper
-    ? {
-        route_handler_globs: mapper.output.route_handler_globs,
-        dto_globs: mapper.output.dto_globs,
-        generator_source_globs: mapper.output.generator_source_globs,
-        high_stakes_globs: mapper.output.high_stakes_globs,
-        off_limits: mapper.output.off_limits_globs,
-      }
-    : {};
   const languages = defaultBaselineLanguages(
     (detection?.stack_signatures ?? []).map((s) => s.kind as string),
   );

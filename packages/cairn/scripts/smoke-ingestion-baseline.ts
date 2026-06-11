@@ -192,12 +192,6 @@ async function runSmoke(): Promise<void> {
     const audit = await runBaselineAudit({
       repoRoot,
       languages: defaultBaselineLanguages(["typescript"]),
-      projectGlobs: {
-        route_handler_globs: [],
-        dto_globs: [],
-        generator_source_globs: [],
-        high_stakes_globs: [],
-      },
     });
     assert(
       existsSync(audit.auditPath),
@@ -226,12 +220,6 @@ async function runSmoke(): Promise<void> {
     await runBaselineAudit({
       repoRoot: freshRoot,
       languages: defaultBaselineLanguages(["typescript"]),
-      projectGlobs: {
-        route_handler_globs: [],
-        dto_globs: [],
-        generator_source_globs: [],
-        high_stakes_globs: [],
-      },
     });
     const ctx = await buildSessionStartContext({
       repoRoot: freshRoot,

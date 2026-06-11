@@ -32,9 +32,8 @@ The brief from the cairn-adopt skill includes:
 - `candidates_path` — absolute path you must write to
 - `module` — the top-level module slug (e.g. `core`, `docs`, `rules`)
 - `module_summary` — a short prose summary of what this module owns
-- `module_flags` — strings like `high_stakes`, `route_handler`,
-  `multi_tenant`, `payments` (when present, prioritize entries that
-  govern this surface)
+- `module_flags` — risk-surface tags like `auth`, `multi_tenant`,
+  `payments` (when present, prioritize entries that govern this surface)
 - `project_domain` — one-paragraph project domain summary
 
 Each line of the shard's input JSONL is a `CorpusRecord`:

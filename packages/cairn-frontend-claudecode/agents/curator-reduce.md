@@ -27,8 +27,7 @@ The brief from the cairn-adopt skill includes:
   `.cairn/init/curator/candidates/*.jsonl` written by map subagents
 - `final_path` — absolute path to write `final.jsonl`
 - `project_domain` — one-paragraph project domain summary
-- `key_modules` — array of `{ slug, summary, project_globs, flags }`
-  from the mapper output
+- `key_modules` — array of `{ name, path, purpose }` from the mapper output
 
 Each candidate line:
 

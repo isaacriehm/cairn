@@ -157,8 +157,6 @@ export type {
 } from "./mapper-parallel.js";
 export { mergeModuleProposals, mechanicalMerge } from "./mapper-merge.js";
 export type { MergeArgs } from "./mapper-merge.js";
-export { inferGlobsFromDetection } from "./glob-inference.js";
-export type { InferredGlobs } from "./glob-inference.js";
 export { seedCairnLayout, templatesRoot } from "./seed.js";
 export type { SeedOptions, SeedResult } from "./seed.js";
 export {

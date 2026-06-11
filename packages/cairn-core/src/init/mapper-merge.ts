@@ -25,7 +25,6 @@ import type {
   MapperOutput,
   MapperScopeIndex,
 } from "./mapper.js";
-import type { InferredGlobs } from "./glob-inference.js";
 import type { ModuleProposal } from "./mapper-parallel.js";
 
 const log = logger("init.mapper-merge");
@@ -60,13 +59,11 @@ export interface MergeArgs {
   workspacePackageJson: string | null;
   /** Project slug for filling MapperOutput. */
   projectSlug: string;
-  /** Deterministic globs inferred from framework conventions. Unioned with LLM globs. */
-  inferredGlobs: InferredGlobs;
 }
 
 export async function mergeModuleProposals(args: MergeArgs): Promise<MapperOutput> {
   // Mechanical assembly first — guaranteed even if Haiku call fails.
-  const baseline = mechanicalMerge(args.proposals, args.inferredGlobs);
+  const baseline = mechanicalMerge(args.proposals);
 
   // Fast path: if all proposals failed, no point calling Haiku.
   const successful = args.proposals.filter((p) => !p.failed);
@@ -115,12 +112,9 @@ export async function mergeModuleProposals(args: MergeArgs): Promise<MapperOutpu
  *   - scope_index: union of per-module file maps.
  *   - notes: list of any failed-module reasons.
  */
-export function mechanicalMerge(
-  proposals: ModuleProposal[],
-  inferredGlobs: InferredGlobs,
-): MapperOutput {
+export function mechanicalMerge(proposals: ModuleProposal[]): MapperOutput {
   if (proposals.length === 0) {
-    return emptyMapperOutput(inferredGlobs);
+    return emptyMapperOutput();
   }
   const successful = proposals.filter((p) => !p.failed);
 
@@ -185,26 +179,7 @@ export function mechanicalMerge(
   return {
     domain_summary: domainSummary,
     key_modules: keyModules,
-    route_handler_globs: unionGlobSets(
-      inferredGlobs.route_handler_globs,
-      unionGlobs(successful, (p) => p.routeHandlerGlobs),
-    ),
-    dto_globs: unionGlobSets(
-      inferredGlobs.dto_globs,
-      unionGlobs(successful, (p) => p.dtoGlobs),
-    ),
-    generator_source_globs: unionGlobSets(
-      inferredGlobs.generator_source_globs,
-      unionGlobs(successful, (p) => p.generatorSourceGlobs),
-    ),
-    high_stakes_globs: unionGlobSets(
-      inferredGlobs.high_stakes_globs,
-      unionGlobs(successful, (p) => p.highStakesGlobs),
-    ),
-    off_limits_globs: unionGlobSets(
-      inferredGlobs.off_limits_globs,
-      unionGlobs(successful, (p) => p.offLimitsGlobs),
-    ),
+    off_limits_globs: unionGlobs(successful, (p) => p.offLimitsGlobs),
     notes,
     scope_index: scopeIndex,
   };
@@ -221,23 +196,11 @@ function unionGlobs(
   return [...set];
 }
 
-function unionGlobSets(...sets: string[][]): string[] {
-  const out = new Set<string>();
-  for (const s of sets) {
-    for (const g of s) out.add(g);
-  }
-  return [...out];
-}
-
-function emptyMapperOutput(inferredGlobs: InferredGlobs): MapperOutput {
+function emptyMapperOutput(): MapperOutput {
   return {
     domain_summary: "",
     key_modules: [],
-    route_handler_globs: [...inferredGlobs.route_handler_globs],
-    dto_globs: [...inferredGlobs.dto_globs],
-    generator_source_globs: [...inferredGlobs.generator_source_globs],
-    high_stakes_globs: [...inferredGlobs.high_stakes_globs],
-    off_limits_globs: [...inferredGlobs.off_limits_globs],
+    off_limits_globs: [],
     notes: "no module proposals available",
     scope_index: { files: {} },
   };

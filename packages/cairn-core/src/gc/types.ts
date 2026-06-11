@@ -16,11 +16,10 @@
  * decides how to apply.
  *
  * Auto-merge classes:
- *   safe        — formatting, doc regen, frontmatter refresh, generated content,
- *                 archive moves, stub-catalog additions. Push, no UAT.
- *   code        — touches *.ts outside generator-managed files. Sensors +
- *                 reviewer + UAT 🟢 → push.
- *   high-stakes — touches projectGlobs.high_stakes_globs. Above + E2E + Layer E.
+ *   safe — formatting, doc regen, frontmatter refresh, generated content,
+ *          archive moves, stub-catalog additions. Push, no UAT.
+ *   code — touches *.ts outside generator-managed files. Sensors +
+ *          reviewer + UAT 🟢 → push.
  */
 
 export type GcPassId =
@@ -59,7 +58,7 @@ export type GcFindingKind =
   | "sot_anchor_missing"
   | "orphan_entity";
 
-export type GcAutoMergeClass = "safe" | "code" | "high-stakes";
+export type GcAutoMergeClass = "safe" | "code";
 
 export interface GcFinding {
   pass: GcPassId;

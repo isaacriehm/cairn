@@ -61,20 +61,6 @@ export interface StubCatalog {
   patterns: StubPattern[];
 }
 
-/**
- * Project-extension block resolved from workflow.md `<project>:` extension.
- * Sensors that trigger on `glob_keys` look up the matching key here.
- */
-export interface ProjectGlobs {
-  route_handler_globs?: string[];
-  dto_globs?: string[];
-  generator_source_globs?: string[];
-  high_stakes_globs?: string[];
-  /** Off-limits — file_must_not_be_modified assertions also enforce these. */
-  off_limits?: string[];
-  [key: string]: string[] | undefined;
-}
-
 export interface SensorFinding {
   /** id from sensors.yaml — e.g., "stub-pattern-catalog". */
   sensor_id: string;
