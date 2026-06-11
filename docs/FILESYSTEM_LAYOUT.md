@@ -92,8 +92,7 @@ The layout below is **stack-agnostic**. Subdirectories under `.cairn/ground/{sch
 │   │   │   ├── spec.md             ← original task spec (frontend-adapter ingested)
 │   │   │   ├── spec.tightened.md   ← post-tightener; agent reads this
 │   │   │   ├── status.yaml
-│   │   │   ├── notes.md            ← agent free-text notes (append-only via cairn_append_run_note)
-│   │   │   └── uat.md              ← persistent UAT state
+│   │   │   └── notes.md            ← agent free-text notes (append-only via cairn_append_run_note)
 │   │   ├── done/<task-id>/         ← terminal state, kept for history    HISTORICAL
 │   │   └── archived/<task-id>/     ← user-archived (not auto)            HISTORICAL
 │   ├── runs/                                                              GITIGNORED
@@ -102,15 +101,8 @@ The layout below is **stack-agnostic**. Subdirectories under `.cairn/ground/{sch
 │   │   │   ├── prompt.md           ← rendered prompt
 │   │   │   ├── events.jsonl        ← agent event stream
 │   │   │   ├── commands.jsonl      ← shell commands run by agent
-│   │   │   ├── attestation.yaml    ← agent's self-report (Layer B)
 │   │   │   ├── diff.patch          ← unified diff at completion
-│   │   │   ├── sensor-results.yaml ← per-sensor pass/fail
-│   │   │   └── uat/                ← Playwright artifacts (see UAT_PIPELINE.md)
-│   │   │       ├── recording.gif
-│   │   │       ├── screenshots/
-│   │   │       ├── console.log
-│   │   │       ├── network.json
-│   │   │       └── .uat-passed     ← SHA256 of bundle (evidence file)
+│   │   │   └── sensor-results.yaml ← per-sensor pass/fail
 │   │   └── terminal/<run-id>/      ← completed runs (auto-moved)         HISTORICAL
 │   ├── inbox/                                                             GITIGNORED
 │   │   └── <ts>-<source>.json      ← raw frontend-adapter ingress (Claude Code plugin in v0.1.0)
@@ -398,34 +390,11 @@ discretion:
 ### 6.3 `status.yaml`
 
 ```yaml
-phase: ready_to_dispatch  # ready_to_dispatch | running | sensor_check | reviewer | uat | committing | succeeded | failed | halted
+phase: ready_to_dispatch  # ready_to_dispatch | running | sensor_check | reviewer | committing | succeeded | failed | halted
 attempts: 0
 last_event_at: 2026-05-02T05:31:30Z
 queued_position: 1
 related_run_ids: []
-```
-
-### 6.4 `uat.md`
-
-```yaml
----
-type: uat
-status: pending  # pending | passing | passed | failed | blocked
-generated: 2026-05-02T05:31:30Z
----
-
-# UAT for TSK-2026-05-02-1
-
-## Acceptance criteria checklist
-- [ ] Migration produces valid SQL when applied to a fresh DB
-- [ ] sensor `schema-drift` green
-- [ ] sensor `lint` green
-
-## Cold-start smoke (auto-injected — task touches `core/db-extensions/` or migration)
-- [ ] `pnpm db:reset && pnpm db:migrate` succeeds without error
-
-## Blocked-by
-(empty unless environmental blockers — these never fold into Gaps)
 ```
 
 ---
@@ -469,39 +438,7 @@ One JSON object per line. Append-only via `cairn_record_run_event` MCP. Shape:
 { "ts": "2026-05-02T05:32:31Z", "seq": 5, "kind": "sensor_pass", "sensor": "lint" }
 ```
 
-### 7.3 `attestation.yaml` (Layer B)
-
-```yaml
----
-run_id: run-abc123
-task_id: TSK-2026-05-02-1
-agent_role: &lt;project&gt;-fixer
-emitted_at: 2026-05-02T05:38:00Z
----
-
-delivered:
-  - symbol: integration_oauth_tokens (schema)
-    path: core/src/drizzle/schema/integrations.ts
-    behavior: full
-    sensors_passed: [lint, tsc, schema-drift]
-
-deferred: []
-
-known_limitations: []
-
-todos_introduced: 0
-stubs_introduced: 0
-
-files_touched:
-  - core/src/drizzle/schema/integrations.ts
-  - core/db-extensions/40-integration-oauth-tokens-unique-partial.sql
-  - core/drizzle/0157_integration_oauth_unique.sql
-
-lines_added: 17
-lines_removed: 0
-```
-
-### 7.4 `sensor-results.yaml`
+### 7.3 `sensor-results.yaml`
 
 ```yaml
 - sensor: lint
@@ -510,16 +447,10 @@ lines_removed: 0
 - sensor: tsc
   status: pass
   duration_ms: 8412
-- sensor: schema-drift
-  status: pass
-  duration_ms: 1100
 - sensor: stub-pattern-catalog
   status: pass
   patterns_checked: 32
   hits: 0
-- sensor: attestation-cross-check
-  status: pass
-  matched_claims: 5
 - sensor: decision-assertions
   status: pass
   assertions_evaluated: 0  # no in-scope decisions for this diff
@@ -738,7 +669,7 @@ collaboration_mode: solo  # solo | team
 
 | Mode | Push policy | Auto-merge classes |
 |------|-------------|--------------------|
-| `solo` (default) | Direct commit to `main`; mirror checkout isolates the user's working tree | Per PRIMER §12.2 — safe-class auto, code-class operator-confirmed, high-stakes E2E-gated |
+| `solo` (default) | Direct commit to `main`; mirror checkout isolates the user's working tree | safe-class auto-merge, code-class operator-confirmed |
 | `team` | Cairn opens PRs against `main` from a per-run branch (`cairn/run-<id>`); CI runs as gate; required reviewer can be Cairn's own reviewer subagent OR a real human (configurable) | Auto-merge only on safe-class + protected-branch admins approve via existing GitHub branch protection |
 
 Operator MUST flip to `team` if they:

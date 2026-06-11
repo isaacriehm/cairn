@@ -494,14 +494,13 @@ Sensors are mechanical checks that run on every diff. They don't use
 an LLM; they're deterministic scripts (regex catalogs, schema parses,
 glob walks). Findings flow into the attention queue.
 
-Cairn ships four layers:
+Cairn ships two sensor layers with teeth — both run on the diff, neither
+needs project-specific glob configuration:
 
 | Layer          | What it checks                                                          |
 | -------------- | ----------------------------------------------------------------------- |
 | **Layer A**    | Stub-pattern catalog: incomplete impls, `TODO` placeholders, fake returns. |
-| **Layer B**    | Attestation cross-check: does the reviewer's claim match the actual diff? |
-| **Layer C**    | Decision-assertion enforcement: was the in-scope DEC honored?           |
-| **Structural** | Project-agnostic structural checks: route handlers non-empty, DTOs no fake fields. |
+| **Decisions**  | Decision-assertion enforcement: was the in-scope DEC honored?           |
 
 ### When sensors run
 

@@ -286,7 +286,7 @@ async function main(): Promise<void> {
     join(terminalRunDir, "sensor-results.yaml"),
     stringifyYaml([
       { sensor: "stub-pattern-catalog", status: "pass" },
-      { sensor: "attestation-cross-check", status: "pass" },
+      { sensor: "frontmatter-freshness", status: "pass" },
       { sensor: "decision-assertions", status: "fail" },
     ]),
     "utf8",

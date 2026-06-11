@@ -363,10 +363,8 @@ The hook runs the sensor sweep:
 
 ```
 $ git commit -m "fix: enforce 24h token expiry on /me"
-✓ Layer A (stub catalog)             — 0 hits
-✓ Layer B (attestation cross-check)  — claims match diff
-✓ Layer C (decision-assertions)      — DEC-a3f7b2c a1, a2 evaluated
-✓ Structural                          — 1 route handler verified non-empty
+✓ Layer A (stub catalog)        — 0 hits
+✓ decision-assertions           — DEC-a3f7b2c a1, a2 evaluated
 [main 7f3a2c1] fix: enforce 24h token expiry on /me
 ```
 

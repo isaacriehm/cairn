@@ -1,10 +1,10 @@
 /**
  * `cairn baseline` — re-run the synthetic-diff sensor sweep post-adoption.
  *
- * Phase 8 runs at adoption time but skips 9 sensors that need inputs the
- * pipeline can't supply yet (decision-assertions, invariant-suite,
- * attestation-cross-check, etc.). After adoption those sensors have
- * ground state to chew on, but there's no built-in way to re-run them.
+ * Phase 8 runs at adoption time but skips sensors that need inputs the
+ * pipeline can't supply yet (decision-assertions, etc.). After adoption
+ * those sensors have ground state to chew on, but there's no built-in way
+ * to re-run them.
  *
  * `cairn baseline` (default): re-run the same set Phase 8 ran — fast,
  * no LLM, useful for spot-checking after edits.

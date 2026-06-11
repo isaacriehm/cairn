@@ -27,15 +27,6 @@ sensors:
       - every_run
     fail_severity: hard
 
-  # ── Layer B — attestation cross-check ─────────────────────────────────────
-  - id: attestation-cross-check
-    layer: B
-    kind: attestation
-    description: "Cross-checks agent's attestation.yaml against the actual diff. Mismatches (lying about completeness, files-touched count, todos/stubs introduced) fail the run."
-    triggers:
-      - every_run_completion
-    fail_severity: hard
-
   # ── Decision-assertion sensor ─────────────────────────────────────────────
   - id: decision-assertions
     layer: decisions
@@ -54,37 +45,6 @@ sensors:
       - every_run
     sources:
       - .cairn/ground/invariants/
-    fail_severity: hard
-
-  # ── Reviewer subagent (SessionStart Drain) ───────────────────────────────────────────
-  - id: reviewer-subagent
-    layer: D
-    kind: inferential
-    description: "Same model as implementer; fresh context. Reads only spec.tightened.md + diff + decisions ledger + in-scope assertions. Anti-completionist framing. For high-stakes runs, also enforces query-scope completeness."
-    model_strategy: same_as_implementer
-    triggers:
-      - all_layer_c_sensors_passed
-    fail_severity: soft
-
-  # ── Layer E — high-stakes E2E / demo ─────────────────────────────────────
-  - id: e2e-real-db
-    layer: E
-    kind: e2e
-    description: "Runs the project's E2E suite against a real database (no mocks). High-stakes UAT MUST include a cross-tenant negative fixture — a request from user/org B against a resource owned by user/org A returning the expected denial."
-    triggers:
-      - high_stakes_glob_match
-    profile_hook: profile.e2e_command
-    fail_severity: hard
-    requires:
-      cross_tenant_fixture: true
-
-  # ── Layer U — UAT headless ───────────────────────────────────────────────
-  - id: uat-headless-chrome
-    layer: U
-    kind: uat
-    description: "Headless Chrome via Playwright captures GIF + screenshots + console + network. Evidence-file gate: .uat-passed contains SHA256 of bundle. Bare touch rejected."
-    triggers:
-      - code_class_or_high_stakes
     fail_severity: hard
 
   # ── Frontmatter freshness (nightly GC pass) ──────────────────────────────
@@ -107,10 +67,10 @@ sensors:
     fail_severity: soft
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Copy-safety configuration (write guardian + Layer C sensor)
+# Copy-safety configuration (write guardian + copy scanner)
 #
-# The write guardian (PostToolUse hook on Write/Edit) and the Layer C
-# copy-safety sensor both consume this block. Globs default to common frontend
+# The write guardian and the copy scanner (both PostToolUse hooks on
+# Write/Edit) consume this block. Globs default to common frontend
 # file extensions; extend per-project as needed. allowlist holds verbatim
 # strings that match a pattern but are intentional (technical error codes,
 # product names, etc.).
