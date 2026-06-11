@@ -167,7 +167,28 @@ function isAdoptedCairnDir(dir: string): boolean {
  * Returns null when the cwd is not inside a git working tree, the git
  * binary is unavailable, or the lookup otherwise fails.
  */
+/**
+ * Per-process memo of the `git rev-parse --git-common-dir` result keyed by
+ * cwd. `resolveAnchorRoot` calls this TWICE per invocation (once inside
+ * `resolveRepoRoot`, once via `gitRepoRoot`), and the statusline CLI runs
+ * `resolveAnchorRoot` on every refresh tick. On Windows each `git` spawn is
+ * 10-50× slower than POSIX, and during adoption git is already contended —
+ * the doubled spawn per tick blows Claude Code's statusline render budget and
+ * the badge freezes (the live `⏳ adopt …` heartbeat never repaints). The
+ * cache collapses the two calls into one spawn; a fresh statusline process
+ * still spawns once per tick, but never twice.
+ */
+const gitCommonDirCache = new Map<string, string | null>();
+
 function resolveMainViaGitCommonDir(cwd: string): string | null {
+  const cached = gitCommonDirCache.get(cwd);
+  if (cached !== undefined) return cached;
+  const resolved = computeMainViaGitCommonDir(cwd);
+  gitCommonDirCache.set(cwd, resolved);
+  return resolved;
+}
+
+function computeMainViaGitCommonDir(cwd: string): string | null {
   try {
     const out = execFileSync(
       "git",

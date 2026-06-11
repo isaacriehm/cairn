@@ -457,24 +457,31 @@ candidates. Plan-quota Sonnet 4.6, no API billing.
 
 ### Step 3.5.1 — read the shard plan
 
+Read `shards.json` with node (portable — never `cat`/`jq`, which the
+Bash tool can't rely on across hosts). In committed mode the path is
+`.cairn/init/curator/shards.json`; in ghost mode read
+`<curator_dir>/shards.json`:
+
 ```bash
-cat .cairn/init/curator/shards.json
+node -e "console.log(require('node:fs').readFileSync(process.argv[1],'utf8'))" .cairn/init/curator/shards.json
 ```
 
 The file contains `{ shards: Shard[], total_input_tokens_estimate,
-cap_per_shard }`. Each `Shard` has `shard_id`, `module`, and
-`comment_ids`. If `shards` is empty (small repo or aggressive
-pre-filter), skip 3.5.2 and write an empty `final.jsonl`, then jump
-to 3.5.4 (advance via `cairn_init_run`).
+cap_per_shard }`. Each `Shard` carries `shard_id`, `module`,
+`comment_ids`, and **`shard_file`** — the basename of a ready-to-read
+per-shard corpus slice that `9a-walker` already wrote under
+`<curator_dir>/shards/`. If `shards` is empty (small repo or aggressive
+pre-filter), write an empty `final.jsonl` and jump to 3.5.4 (advance via
+`cairn_init_run`).
 
-### Step 3.5.2 — slice corpus into per-shard JSONL inputs
+### Step 3.5.2 — (automatic) per-shard corpus slices
 
-For each shard, write the shard's `CorpusRecord` lines to
-`.cairn/init/curator/shards/<shard_id>.jsonl`. The corpus lives at
-`.cairn/init/curator/corpus.jsonl` (one record per line). Use a
-single Bash script (jq, awk, or node) that reads the corpus once and
-filters per shard's `comment_ids` set — avoid one read-pass per
-shard.
+`9a-walker` writes each shard's records to
+`<curator_dir>/shards/<shard_file>` as part of the phase — there is **no
+manual slicing step**. Do NOT read `corpus.jsonl` and filter it yourself;
+pass each subagent its `shard_file` directly. (Earlier revisions hand-sliced
+the corpus in Bash; that was fragile — one run filtered on the wrong field
+name and had to retry.)
 
 ### Step 3.5.3 — dispatch `curator-map` subagents in parallel rounds of 4
 
@@ -482,8 +489,9 @@ For each shard:
 
 1. Read the matching mapper `key_modules` row to source
    `module_summary` and `module_flags`.
-2. Compose a Task brief that includes `shard_id`, absolute
-   `shard_path`, absolute `candidates_path` (target:
+2. Compose a Task brief that includes `shard_id`, the absolute
+   `shard_path` (resolve as `<curator_dir>/shards/<shard_file>`), absolute
+   `candidates_path` (target:
    `.cairn/init/curator/candidates/<shard_id>.jsonl`), `module`,
    `module_summary`, `module_flags`, and `project_domain`.
 3. Spawn the `curator-map` subagent via the `Task` tool. Send up to
@@ -536,7 +544,7 @@ ghost), you MUST NOT dispatch the `component-annotator` — it writes
 `@cairn` headers into client source, which ghost forbids (constraint 2).
 Instead dispatch the **`component-registrar`** subagent: same
 classification, but it calls `cairn_component_register` (out-of-repo, no
-source edit) for each unit. Use the same per-batch consent + rounds-of-4
+source edit) for each unit. Use the same single-consent + rounds-of-4
 dispatch as Step 3.6.2, with these ghost differences:
 
 - The banner says "registering" not "annotating", and notes that
@@ -558,8 +566,10 @@ headers already exist and queues the rest as debt.
 
 ### Step 3.6.1 — read the corpus
 
+Read `missing.jsonl` with node (portable — never `cat`):
+
 ```bash
-cat .cairn/init/components/missing.jsonl 2>/dev/null
+node -e "try{process.stdout.write(require('node:fs').readFileSync(process.argv[1],'utf8'))}catch{}" .cairn/init/components/missing.jsonl
 ```
 
 Each line is `{ file, workspace, export_name, categories }`. If the file
@@ -574,16 +584,23 @@ N component files are missing a `@cairn` registry header. Dispatching
 no API billing.
 ```
 
-### Step 3.6.2 — per-batch consent + dispatch
+### Step 3.6.2 — single consent + dispatch
 
-Group the corpus records into batches of ~4. For each batch, surface an
-`AskUserQuestion` consent gate (like Phase 12's strip consent):
+Surface **one** `AskUserQuestion` consent gate covering the WHOLE set —
+not one per batch. Writing headers mutates source, so consent is
+required, but ask exactly once (a 50-file repo previously cost the
+operator a dozen identical yes-clicks, each one stalling the phase for
+minutes):
 
-- `[a]` annotate this batch · `[b]` skip this batch · `[c]` stop annotating
+- `[a]` annotate all N · `[b]` skip annotation (queue as debt)
 
-On `[a]`, spawn one `component-annotator` subagent per file in the batch
-(up to 4 in a single assistant message → parallel; await before the next
-batch). Each brief MUST inline:
+On `[a]`, dispatch `component-annotator` subagents in parallel rounds of
+~4 across the entire corpus — no further prompts between rounds. Send up
+to four briefs per assistant message, await each round, then continue to
+the next automatically until every file is annotated. On `[b]`, skip
+straight to Step 3.6.4 (the deterministic emit still indexes existing
+headers and queues the rest as missing-header debt). Each brief MUST
+inline:
 
 - `file` — absolute path to annotate.
 - `export_name` — the detected export; the `@cairn` value MUST be the
@@ -626,10 +643,22 @@ so there is no separate consent gate for the per-clone wiring:
 node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" join
 ```
 
-The `cairn join` step is idempotent; expected output is two-three
-lines confirming hooks-path + chmod + `.cli-path`. Surface nothing
-if it succeeds; on failure, surface the stderr + `AskUserQuestion`
-(`retry bootstrap` / `skip`).
+If `${CLAUDE_PLUGIN_ROOT}` does not expand in the Bash tool (some hosts
+don't inject it into the skill's shell), resolve the bundle the same
+portable way the statusline launcher does — glob the freshest cli.mjs
+under the plugin cache — rather than hand-writing an absolute path:
+
+```bash
+node -e "const f=require('node:fs'),{homedir}=require('node:os'),{join}=require('node:path'),{spawnSync}=require('node:child_process');const C=join(homedir(),'.claude','plugins','cache');let cli=null,t=-1;try{for(const s of f.readdirSync(C)){const pd=join(C,s,'cairn');let vs;try{vs=f.readdirSync(pd)}catch{continue}for(const v of vs){const p=join(pd,v,'dist','cli.mjs');try{const m=f.statSync(p).mtimeMs;if(m>t){t=m;cli=p}}catch{}}}}catch{}if(!cli){console.error('cairn bundle not found');process.exit(1)}process.exit(spawnSync(process.execPath,[cli,'join'],{stdio:'inherit'}).status??0)"
+```
+
+NEVER hardcode a versioned absolute path like
+`.../cache/<slug>/cairn/<version>/dist/cli.mjs` — the slug and version
+drift, and on this public repo an operator-home path must not be written
+into a command. The `cairn join` step is idempotent; expected output is
+two-three lines confirming hooks-path + chmod + `.cli-path`. Surface
+nothing if it succeeds; on failure, surface the stderr +
+`AskUserQuestion` (`retry bootstrap` / `skip`).
 
 ## Step 5 — final summary + hand off to attention
 
@@ -640,13 +669,17 @@ DEC drafts yet, and ending here orphans them in `_inbox/`.**
 
 The phase tools persist final state to `.cairn/init-state.json` and
 do **not** clear it on terminal completion. Read the persisted state
-to source the summary fields:
+to source the summary fields. The read is wrapped so a missing/relocated
+state file (ghost mode keeps it out-of-repo; some builds clear it on
+completion) degrades to an all-zero summary instead of crashing the
+mandatory final turn — the chained attention Skill call below must still
+fire either way:
 
 ```bash
 node -e '
   const fs=require("node:fs");
-  const s=JSON.parse(fs.readFileSync(".cairn/init-state.json","utf8"));
-  const o=s.outputs||{};
+  let o={};
+  try{ o=(JSON.parse(fs.readFileSync(".cairn/init-state.json","utf8")).outputs)||{}; }catch{}
   const g=(k)=>o[k]||{};
   console.log(JSON.stringify({
     curator_records:(g("9a-walker").records_total)||0,
@@ -660,10 +693,14 @@ node -e '
     components_annotated:(g("9e-comp-annotate").annotated)||0,
     singletons_drafted:(g("9f-comp-emit").singletons_drafted)||0,
     component_audit:(g("9f-comp-emit").audit_findings)||0,
-    baseline_findings:(g("11-baseline").totalFindings)||0,
+    baseline_findings:(g("11-baseline").findingsCount)||0,
     multidev_hosts:(g("13-multidev").hostKinds)||[]
   }));'
 ```
+
+`baseline_findings` is `findingsCount` (soft + hard) — do NOT read
+`totalFindings`, which does not exist on the audit result and silently
+reports `0` ("clean sweep" when the sweep actually found dozens).
 
 In the same assistant message, do both:
 

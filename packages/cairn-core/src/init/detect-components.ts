@@ -197,8 +197,7 @@ const ResultSchema = z.object({
 });
 type DetectResult = z.infer<typeof ResultSchema>;
 
-function buildPrompt(repoRoot: string): string {
-  const digest = buildRepoDigest(repoRoot);
+function buildPrompt(repoRoot: string, digest: RepoDigest): string {
   const manifests = readWorkspaceManifests(repoRoot);
   return [
     "WORKSPACE MANIFESTS:",
@@ -295,10 +294,105 @@ function toConfig(parsed: DetectResult): ComponentsConfig | null {
 export async function detectComponentsConfig(
   repoRoot: string,
 ): Promise<ComponentsConfig | null> {
-  const prompt = buildPrompt(repoRoot);
+  const digest = buildRepoDigest(repoRoot);
+  const prompt = buildPrompt(repoRoot, digest);
   const out = (await attempt(repoRoot, prompt)) ?? (await attempt(repoRoot, prompt));
   if (out === null) return null;
-  return toConfig(out);
+  // Coverage safety net: a single Sonnet pass routinely under-scopes
+  // componentDirs — it picks a dense nested sub-directory of a component
+  // container and misses the sibling sub-directories under the same
+  // container, so 9d-comp-walk only ever sees that one cluster. Widen each
+  // chosen dir up to its enclosing component-container root before building
+  // the config. Bounded: stops at a package boundary, the repo root, or the
+  // first ancestor whose name isn't a recognized container word. The
+  // `isUnitShaped` filter in `collectComponents` keeps the wider walk from
+  // flooding the gate with route/page/util files.
+  const widened = widenDetectedDirs(out, new Set(digest.moduleRoots));
+  return toConfig(widened);
+}
+
+/**
+ * Generic component-container directory names. When a chosen componentDir's
+ * parent is one of these, the chosen dir is a sub-category and the parent
+ * is the real registry root — widen to it. Convention-agnostic detection
+ * still leads; this only EXPANDS to a parent that literally is a component
+ * container, never narrows or invents.
+ */
+const COMPONENT_CONTAINER_DIRS = new Set<string>([
+  "components",
+  "component",
+  "ui",
+  "widgets",
+  "widget",
+  "views",
+  "view",
+  "composables",
+  "blocks",
+  "elements",
+  "partials",
+  "fragments",
+  "screens",
+]);
+
+/** POSIX dirname for repo-relative paths (no drive letters, no leading `/`). */
+function posixDirname(p: string): string {
+  const i = p.lastIndexOf("/");
+  return i <= 0 ? "." : p.slice(0, i);
+}
+
+/** Strip a leading `./` and any trailing slashes; collapse `\` → `/`. */
+function normalizeRelDir(d: string): string {
+  return d.replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/+$/, "");
+}
+
+/**
+ * Walk a chosen componentDir up to its enclosing component-container root.
+ * Each step climbs one level only while the PARENT's basename is a generic
+ * container word and the parent is neither a package/module boundary nor the
+ * repo root. A nested sub-directory of a container folder widens to the
+ * container; a dir already at the container root stays put (its parent is
+ * not a container word).
+ */
+function widenToContainerRoot(dir: string, moduleRoots: Set<string>): string {
+  let cur = normalizeRelDir(dir);
+  for (let i = 0; i < 12; i++) {
+    const parent = posixDirname(cur);
+    if (parent === "." || parent === cur) break;
+    if (moduleRoots.has(parent)) break;
+    const base = parent.slice(parent.lastIndexOf("/") + 1).toLowerCase();
+    if (!COMPONENT_CONTAINER_DIRS.has(base)) break;
+    cur = parent;
+  }
+  return cur;
+}
+
+/** Drop exact dupes and any dir nested under another dir already in the set. */
+function dedupeNestedDirs(dirs: string[]): string[] {
+  const uniq = [...new Set(dirs.map(normalizeRelDir))]
+    .filter((d) => d.length > 0)
+    .sort((a, b) => a.length - b.length);
+  const kept: string[] = [];
+  for (const d of uniq) {
+    if (kept.some((k) => d === k || d.startsWith(`${k}/`))) continue;
+    kept.push(d);
+  }
+  return kept;
+}
+
+/** Apply container-root widening + nested-dir collapse to every workspace. */
+function widenDetectedDirs(
+  parsed: DetectResult,
+  moduleRoots: Set<string>,
+): DetectResult {
+  return {
+    ...parsed,
+    workspaces: parsed.workspaces.map((w) => ({
+      ...w,
+      componentDirs: dedupeNestedDirs(
+        w.componentDirs.map((d) => widenToContainerRoot(d, moduleRoots)),
+      ),
+    })),
+  };
 }
 
 export type EnsureComponentsStatus =

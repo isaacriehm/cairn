@@ -4,6 +4,74 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.4] — 2026-06-11
+
+Adoption-pipeline correctness. Several phases could complete "successfully"
+while shipping almost no ground state — the decision ledger and component
+index came out near-empty, and clearing a baseline backlog cost one MCP call
+per finding.
+
+### Fixed
+
+- **Curator emit no longer hard-drops decisions on missing evidence.**
+  `9c-emit` required every entry to cite an evidence file that resolves on
+  disk. Entries synthesized from docs and rule sections cite paths the model
+  infers — which may not resolve when essay-class code comments are sparse or
+  sources sit behind an unchecked-out submodule — so they were silently
+  discarded as `evidence-missing`, in the worst case taking nearly the whole
+  ledger. Evidence is now corroboration, not a gate: `filterExistingEvidence`
+  strips refs that don't resolve and the entry survives on its `scope_globs` +
+  body. The structural checks (title / body sections / JSDoc-leak / scope)
+  stay hard.
+- **Component detection covers the container root, not a nested sub-directory.**
+  The single Sonnet pass that maps component layout could return a nested
+  sub-directory of a component container and miss its siblings, so
+  `9d-comp-walk` saw only a fraction of the units. Detection now widens each
+  chosen `componentDir` up to its enclosing container directory (names like
+  `components` / `ui` / `widgets` …) — bounded so it never climbs past a
+  package manifest or the first ancestor that isn't a recognized container
+  name — then collapses nested dirs. The `isUnitShaped` filter keeps the wider
+  walk from sweeping in route / page / utility files.
+- **Adoption summary reports the real baseline count.** The final summary read a
+  `totalFindings` field that does not exist on the audit result, so it always
+  announced "0 baseline findings — clean sweep" while the attention queue
+  immediately surfaced the real findings. It reads `findingsCount` now.
+- **Final-summary state read tolerates a missing init-state file.** The summary
+  `JSON.parse`d `.cairn/init-state.json` unguarded; when the file was relocated
+  (ghost mode) or already cleared, it threw — aborting the mandatory hand-off
+  turn that drains pending DEC drafts. Wrapped in try/catch: it degrades to an
+  all-zero summary and the chained attention skill still fires.
+
+### Added
+
+- **`cairn_resolve_attention` batch form (`item_ids`).** Applies one kind +
+  choice to many items in a single call and returns
+  `{ ok, batch, count, resolved, failed, results }`. Deferring or suppressing a
+  whole baseline backlog previously cost one MCP round-trip per finding; the
+  cairn-attention skill now collapses bulk defer / suppress to a single call.
+
+### Changed
+
+- **Curator corpus is sharded by the walker, not the skill.** `9a-walker` writes
+  ready-to-read per-shard slices to `<curator_dir>/shards/` and records each
+  `shard_file` in `shards.json`; the cairn-adopt skill reads them directly
+  instead of hand-slicing `corpus.jsonl` in Bash — a step that could filter on
+  the wrong corpus field and need a retry mid-adoption.
+- **Component annotation asks for consent once, not per batch.** Header
+  annotation previously surfaced a separate yes/no gate per batch of four, each
+  stalling the phase; one gate now covers the whole set and dispatch proceeds in
+  rounds without re-prompting.
+- **Statusline git-root resolution is memoized per process.** `resolveAnchorRoot`
+  shelled out to `git rev-parse --git-common-dir` twice per call, and the
+  statusline runs it on every refresh tick; on Windows the doubled spawn under
+  adoption-time git contention blew Claude Code's render budget and froze the
+  live `⏳ adopt …` badge. Cached per cwd — one spawn per tick.
+- **Adoption-skill shell reads are node-only and the bootstrap is path-safe.**
+  Replaced `cat` / `ls … 2>/dev/null` with portable `node -e` reads (the POSIX
+  idioms failed on native Windows), and gave the `cairn join` bootstrap a
+  cache-glob fallback when `${CLAUDE_PLUGIN_ROOT}` does not expand — never a
+  hardcoded, version-pinned path.
+
 ## [0.22.3] — 2026-06-11
 
 Windows adoption regression — `cairn init` died at the Sonnet domain-mapper

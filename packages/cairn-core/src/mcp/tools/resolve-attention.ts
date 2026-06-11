@@ -89,23 +89,32 @@ const resolveAttentionInput = {
     "conflict",
     "alignment_pending",
   ]),
-  item_id: z.string(),
+  item_id: z.string().optional(),
+  // Batch form: resolve many items with the SAME kind + choice in one call.
+  // The cairn-attention "defer all" path otherwise issues one MCP round-trip
+  // per finding (dozens on a fresh adoption's baseline backlog). Pass
+  // `item_ids` to collapse that to a single call. Mutually exclusive-ish with
+  // `item_id`: when both appear, `item_ids` wins and `item_id` is ignored.
+  item_ids: z.array(z.string()).optional(),
   choice: z.enum(["a", "b", "c", "d"]),
   rationale: z.string().optional(),
   defer_hours: z.number().optional(),
   flagged_items: z.array(z.string()).optional(),
 };
 
+type AttentionKind =
+  | "decision_draft"
+  | "baseline_finding"
+  | "invalidation_event"
+  | "drift"
+  | "bypass"
+  | "review"
+  | "conflict"
+  | "alignment_pending";
+
+/** Per-item resolution payload — what every kind-specific resolver consumes. */
 interface Input {
-  kind:
-    | "decision_draft"
-    | "baseline_finding"
-    | "invalidation_event"
-    | "drift"
-    | "bypass"
-    | "review"
-    | "conflict"
-    | "alignment_pending";
+  kind: AttentionKind;
   item_id: string;
   choice: "a" | "b" | "c" | "d";
   rationale?: string;
@@ -113,10 +122,59 @@ interface Input {
   flagged_items?: string[];
 }
 
-async function handler(ctx: McpContext, input: Input): Promise<unknown> {
+/** Tool boundary — `item_id` (single) OR `item_ids` (batch). */
+interface ToolInput {
+  kind: AttentionKind;
+  item_id?: string;
+  item_ids?: string[];
+  choice: "a" | "b" | "c" | "d";
+  rationale?: string;
+  defer_hours?: number;
+  flagged_items?: string[];
+}
+
+async function handler(ctx: McpContext, input: ToolInput): Promise<unknown> {
   const block = requireBootstrap(ctx.repoRoot);
   if (block !== null) return block;
 
+  const { item_id: _ignore, item_ids, ...rest } = input;
+
+  // Batch path — same kind + choice across many ids in one round-trip.
+  if (item_ids !== undefined && item_ids.length > 0) {
+    const results: unknown[] = [];
+    let resolved = 0;
+    let failed = 0;
+    for (const id of item_ids) {
+      const single = await dispatchSingle(ctx, { ...rest, item_id: id });
+      results.push(single);
+      if (single !== null && typeof single === "object" && (single as { ok?: unknown }).ok === true) {
+        resolved += 1;
+      } else {
+        failed += 1;
+      }
+    }
+    return {
+      ok: failed === 0,
+      batch: true,
+      kind: input.kind,
+      choice: input.choice,
+      count: item_ids.length,
+      resolved,
+      failed,
+      results,
+    };
+  }
+
+  if (input.item_id === undefined || input.item_id.length === 0) {
+    return mcpError(
+      "VALIDATION_FAILED",
+      "resolve_attention requires item_id (or a non-empty item_ids array)",
+    );
+  }
+  return dispatchSingle(ctx, { ...rest, item_id: input.item_id });
+}
+
+async function dispatchSingle(ctx: McpContext, input: Input): Promise<unknown> {
   switch (input.kind) {
     case "decision_draft":
       return resolveDecisionDraft(ctx, input);
@@ -1321,10 +1379,10 @@ function emitEvent(
   });
 }
 
-export const resolveAttentionTool: ToolDef<Input> = {
+export const resolveAttentionTool: ToolDef<ToolInput> = {
   name: "cairn_resolve_attention",
   description:
-    "Resolve an inline-A/B/C attention pick — DEC draft accept/reject/edit, baseline finding suppress/defer/triage, invalidation event refresh/continue/abort, drift event refresh/defer/dismiss. Called by the cairn-attention skill after the operator picks an option.",
+    "Resolve an inline-A/B/C attention pick — DEC draft accept/reject/edit, baseline finding suppress/defer/triage, invalidation event refresh/continue/abort, drift event refresh/defer/dismiss. Called by the cairn-attention skill after the operator picks an option. Pass `item_id` for one item, or `item_ids` (array) to apply the SAME kind + choice to many in a single call — use this for bulk defer/suppress (e.g. \"defer all remaining baseline findings\") instead of one call per finding.",
   inputSchema: resolveAttentionInput,
   handler,
 };

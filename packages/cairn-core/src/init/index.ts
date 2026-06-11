@@ -247,6 +247,7 @@ export type {
 
 export {
   validateEntry,
+  filterExistingEvidence,
   stripLineRange,
   type FinalEntry,
   type ValidationResult,

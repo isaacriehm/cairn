@@ -31,6 +31,7 @@ import {
 import {
   packShards,
   writeCorpus,
+  writeShardCorpora,
   writeShards,
   type CorpusRecord,
   type SourceKind,
@@ -203,9 +204,13 @@ export async function runCuratorWalker(
     }
   }
 
-  // ── 4. Persist corpus + shards ────────────────────────────────────
+  // ── 4. Persist corpus + per-shard slices + shard plan ─────────────
   const corpus = writeCorpus(repoRoot, records);
   const plan = packShards(records);
+  // Write ready-to-read per-shard corpus slices BEFORE the plan so each
+  // shard's `shard_file` basename lands in shards.json. The cairn-adopt
+  // skill reads these directly instead of slicing the corpus in Bash.
+  writeShardCorpora(repoRoot, records, plan);
   const shardsPath = writeShards(repoRoot, plan);
 
   return {

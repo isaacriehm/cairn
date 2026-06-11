@@ -290,7 +290,16 @@ out of repeated round-trips. If the queue has more than 4 pending,
 emit the first 4 in batch 1, then a separate single-question prompt:
 
 - `continue` — show the next batch (up to 4 more)
+- `defer all remaining` — defer every remaining same-kind item in ONE
+  `cairn_resolve_attention` call via `item_ids` (see Step 3's bulk
+  path). Use this for a large post-adoption baseline backlog rather
+  than walking batch by batch — pre-existing debt is silenced until the
+  matching file next changes.
 - `later` — defer until next session
+
+A fresh adoption commonly surfaces dozens of soft baseline findings
+(pre-existing debt). Offer `defer all remaining` up front in that case
+so the operator clears the backlog with a single pick + single call.
 
 ## Step 3 — surface up to 4 items per AskUserQuestion call
 
@@ -313,15 +322,28 @@ truncate):
     on the same turn before the question lands.
 
 The tool returns answers as a parallel array (one answer per
-question, in the order they were sent). Loop through the answers
-and call `cairn_resolve_attention` once per item:
+question, in the order they were sent). For items that need DISTINCT
+kind/choice, call `cairn_resolve_attention` once each:
 
 ```
 cairn_resolve_attention({kind: "decision_draft", item_id: "DEC-deadbee", choice: "a"})
 ```
 
-Resolve calls can run in parallel (separate tool_use blocks in the
-same assistant turn) — the MCP write lock serializes them on disk.
+**Bulk path — same kind + same choice → ONE call with `item_ids`.**
+When the operator applies the same decision to many items (most
+commonly defer or suppress across a batch of baseline findings), pass
+the id array instead of looping. Do NOT emit one call per finding —
+a backlog of dozens otherwise costs dozens of sequential
+`resolve_attention` round-trips that one call clears:
+
+```
+cairn_resolve_attention({ kind: "baseline_finding", choice: "c",
+  item_ids: ["stub-catalog::a.ts:1", "stub-catalog::b.ts:9", …] })
+```
+
+It returns `{ ok, batch:true, count, resolved, failed, results }`.
+Distinct-choice calls can still run in parallel (separate tool_use
+blocks in the same turn) — the MCP write lock serializes them on disk.
 
 The tool dispatches by kind: `decision_draft` for accept/reject/edit,
 `baseline_finding` for triage/suppress/defer, `invalidation_event`

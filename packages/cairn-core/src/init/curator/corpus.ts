@@ -27,6 +27,8 @@ import { cairnDir } from "@isaacriehm/cairn-state";
 export const CORPUS_DIR = join(".cairn", "init", "curator");
 export const CORPUS_JSONL_PATH = join(CORPUS_DIR, "corpus.jsonl");
 export const SHARDS_JSON_PATH = join(CORPUS_DIR, "shards.json");
+/** Per-shard corpus slices live here — written by `writeShardCorpora`. */
+export const SHARD_CORPUS_DIR = join(CORPUS_DIR, "shards");
 
 /** Under-cairn segments (no `.cairn` prefix) for `cairnDir` resolution. */
 const CURATOR_SEGS = ["init", "curator"] as const;
@@ -102,6 +104,14 @@ export interface Shard {
   estimated_input_tokens: number;
   /** Per-source-kind count (helps the subagent prompt know what to expect). */
   records_by_kind: { comment: number; doc: number; rule: number };
+  /**
+   * Basename of the ready-to-read per-shard corpus slice under
+   * `<curator_dir>/shards/`. Set by `writeShardCorpora`. The curator-map
+   * orchestration reads this file directly — it no longer slices the corpus
+   * by hand. Resolve absolute as `join(curator_dir, "shards", shard_file)`
+   * (works in committed AND ghost mode).
+   */
+  shard_file?: string;
 }
 
 export interface ShardPlan {
@@ -181,6 +191,45 @@ export function writeShards(
   writeFileSync(tmp, JSON.stringify(plan, null, 2), "utf8");
   renameSync(tmp, shardsAbs);
   return SHARDS_JSON_PATH;
+}
+
+/** Map a shard_id (carries `/` and `#`) to a filesystem-safe `.jsonl` name. */
+function shardFilename(shardId: string): string {
+  return `${shardId.replace(/[^a-zA-Z0-9_.-]/g, "-")}.jsonl`;
+}
+
+/**
+ * Write each shard's `CorpusRecord` lines to a ready-to-read slice at
+ * `<curator_dir>/shards/<shard_file>` and stamp `shard.shard_file` on the
+ * plan in place (so the subsequent `writeShards` persists the basename).
+ *
+ * This moves corpus slicing OFF the cairn-adopt skill, which previously
+ * hand-rolled a per-shard filter in Bash on every adoption — fragile (one
+ * run shipped the wrong corpus field name and had to retry) and slow. The
+ * curator-map orchestration now points each subagent straight at the
+ * pre-written shard file. Call BEFORE `writeShards` so the basenames land
+ * in `shards.json`.
+ */
+export function writeShardCorpora(
+  repoRoot: string,
+  records: CorpusRecord[],
+  plan: ShardPlan,
+): void {
+  const byId = new Map(records.map((r) => [r.comment_id, r]));
+  const dirAbs = cairnDir(repoRoot, ...CURATOR_SEGS, "shards");
+  mkdirSync(dirAbs, { recursive: true });
+  for (const shard of plan.shards) {
+    const recs = shard.comment_ids
+      .map((id) => byId.get(id))
+      .filter((r): r is CorpusRecord => r !== undefined);
+    const body = recs.length === 0 ? "" : `${recs.map((r) => JSON.stringify(r)).join("\n")}\n`;
+    const fname = shardFilename(shard.shard_id);
+    const abs = join(dirAbs, fname);
+    const tmp = `${abs}.tmp`;
+    writeFileSync(tmp, body, "utf8");
+    renameSync(tmp, abs);
+    shard.shard_file = fname;
+  }
 }
 
 /* -------------------------------------------------------------------------- */

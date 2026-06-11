@@ -258,8 +258,16 @@ export const resolveAttentionInput = {
    * (the rest go in flagged_items). For kind=review, item_id is the
    * task_id of the FIRST pending review. For kind=conflict, item_id is
    * the conflict filename slug `<a-id>__<b-id>` (without `.md`).
+   *
+   * Optional when `item_ids` is supplied (batch form).
    */
-  item_id: z.string().min(1),
+  item_id: z.string().min(1).optional(),
+  /**
+   * Batch form — apply the SAME kind + choice to every id in one call.
+   * Collapses bulk defer/suppress (e.g. "defer all remaining baseline
+   * findings") from one MCP round-trip per item to a single call.
+   */
+  item_ids: z.array(z.string().min(1)).optional(),
   /**
    * Operator's pick from the inline A/B/C/D. The fourth slot is only
    * meaningful for `conflict` kind (archive-both per plan §5.4.1); other

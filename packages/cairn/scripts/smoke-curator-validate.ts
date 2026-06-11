@@ -29,6 +29,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
+  filterExistingEvidence,
   stripLineRange,
   validateEntry,
   type FinalEntry,
@@ -222,23 +223,25 @@ function buildCases(repo: string): Case[] {
       expectValid: false,
       expectReason: "no-scope-globs",
     },
+    // Evidence is corroboration, not a gate (see validate.ts header). An
+    // entry with no evidence, or evidence that doesn't resolve on disk, is
+    // STILL valid — `filterExistingEvidence` strips dangling refs at emit
+    // time but the decision survives. Regression guard: a docs/rules corpus
+    // citing unverifiable paths must not be discarded into an empty ledger.
     {
-      name: "no evidence_files",
+      name: "no evidence_files — still valid (evidence is soft)",
       entry: { ...baseDec, evidence_files: [] },
-      expectValid: false,
-      expectReason: "no-evidence",
+      expectValid: true,
     },
     {
-      name: "evidence file missing on disk",
+      name: "evidence missing on disk — still valid",
       entry: { ...baseDec, evidence_files: ["core/src/auth/nonexistent.ts:1-10"] },
-      expectValid: false,
-      expectReason: "evidence-missing:core/src/auth/nonexistent.ts",
+      expectValid: true,
     },
     {
-      name: "evidence file missing on disk (#L anchor form)",
+      name: "evidence missing on disk (#L anchor) — still valid",
       entry: { ...baseDec, evidence_files: ["core/src/auth/nope.ts#L1-L10"] },
-      expectValid: false,
-      expectReason: "evidence-missing:core/src/auth/nope.ts",
+      expectValid: true,
     },
   ];
 }
@@ -267,8 +270,23 @@ function runSmoke(): void {
     "stripLineRange bare path",
   );
 
+  // filterExistingEvidence keeps resolvable refs, drops danglers, dedups.
+  const evReal = "core/src/auth/session.ts"; // seeded by buildCases
+  const filtered = filterExistingEvidence(
+    [`${evReal}:1-5`, "core/src/auth/ghost.ts:1-5", `${evReal}:1-5`],
+    repo,
+  );
+  assert(
+    filtered.length === 1 && filtered[0] === `${evReal}:1-5`,
+    `filterExistingEvidence: expected [${evReal}:1-5], got ${JSON.stringify(filtered)}`,
+  );
+  assert(
+    filterExistingEvidence(["nope/a.ts", "nope/b.ts"], repo).length === 0,
+    "filterExistingEvidence: all-dangling → empty",
+  );
+
   for (const c of cases) {
-    const result = validateEntry(c.entry, repo);
+    const result = validateEntry(c.entry);
     if (c.expectValid) {
       assert(
         result.valid === true,

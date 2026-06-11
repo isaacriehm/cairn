@@ -41,8 +41,7 @@ import {
   scanExistingInvariantIds,
 } from "../../decision-capture/id.js";
 import { logger } from "../../logger.js";
-import { validateEntry, type FinalEntry } from "./validate.js";
-import { CURATOR_FINAL_PATH } from "../phases/9b-curate.js";
+import { filterExistingEvidence, validateEntry, type FinalEntry } from "./validate.js";
 
 const log = logger("init.curator.emit");
 
@@ -113,11 +112,16 @@ export async function runCuratorEmit(
       continue;
     }
 
-    const verdict = validateEntry(entry, repoRoot);
+    const verdict = validateEntry(entry);
     if (!verdict.valid) {
       bumpDrop(dropReasons, verdict.rejectReason ?? "unknown");
       continue;
     }
+
+    // Evidence is corroboration, not a gate: strip refs that don't resolve
+    // on disk (doc-derived candidates routinely cite inferred or
+    // submodule-only paths) but keep the entry regardless.
+    entry.evidence_files = filterExistingEvidence(entry.evidence_files, repoRoot);
 
     if (entry.kind === "DEC") {
       const id = allocateDecId(entry, existingDecIds);

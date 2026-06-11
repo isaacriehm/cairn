@@ -50,12 +50,24 @@ bootstrap and debug entrypoint. There is no separate orchestration runtime
 
 ### Operator-private strings: never write to a committed artifact
 
-This is a public open-source repository. Any string visible from the
-runtime context that identifies the operator personally — the absolute
-working-directory path, parent folders above the repo root, the
-operator's umbrella organization name (visible in the cwd path
-segments), the operator's email address, any private project
-codenames — must NEVER appear in:
+This is a public open-source repository. Two classes of string from the
+runtime context are private and must NEVER appear in a committed artifact.
+
+**Class 1 — operator identity.** The absolute working-directory path,
+parent folders above the repo root, the operator's umbrella organization
+name (visible in the cwd path segments), the operator's email address, any
+private project codenames.
+
+**Class 2 — any OTHER project observed in the runtime context.** When a
+pasted transcript, log, the cwd, or tool output reveals a project being
+worked on (e.g. a repo the operator is adopting, debugging, or testing
+against), that project's *identity and shape* are private too: its name,
+its language or framework, whether it is a monorepo / multi-package, its
+package count, and — most often missed — its real directory and file
+names. A bug surfaced by processing such a project is described by
+MECHANISM ONLY.
+
+Neither class may appear in:
 
 - Committed source code (including comments)
 - Documentation (`README.md`, `CHANGELOG.md`, `docs/**`)
@@ -66,17 +78,29 @@ codenames — must NEVER appear in:
 The public maintainer name attached to the repo's package metadata
 and LICENSE is the only personally-identifying string allowed; it is
 the deliberate public attribution. Everything else from the operator's
-local environment is private, do not mention even redacted references.
+local environment — and everything about whatever project the operator
+pointed the tools at — is private. Do not mention even redacted references.
 
-When describing a class of bug that involves one of these strings
-(e.g. "paths with spaces"), use a generic placeholder such as
-`/path/with spaces/...`, `<operator-home>`, or `<personal-email>`.
-Do NOT quote the operator's actual path even inside an error string,
-even inside a fenced code-block, even inside a commit-message body.
+When describing a class of bug, describe it abstractly and invent neutral
+placeholders unrelated to anything in the context. Do NOT echo a concrete
+value seen in the context, and do NOT emit a near-twin of it: if the
+observed tree had a folder `<container>/<leaf>`, write neither that path,
+NOR a truncation of it, NOR `<container>/<placeholder>` — write "a nested
+sub-directory of the container root". For paths-with-spaces use
+`/path/with spaces/...`; for the operator home `<operator-home>`; for the
+email `<personal-email>`. Do NOT quote a real path or directory name even
+inside an error string, a fenced code-block, or a commit-message body.
+
+Banned phrasings (these characterize the operator's codebase and have
+shipped before): "a real multi-package repo", "their <language> monorepo",
+"on a real adoption", and any concrete folder example mirrored from the
+context. State the fix; never the project it was found on.
 
 Enforcement is by attention, not tooling. Violations have shipped
 publicly more than once. If unsure whether a string qualifies as
-operator-private, OMIT IT — there is no "borderline" category.
+private, OMIT IT — there is no "borderline" category. "It's a generic
+convention name" is NOT an exemption when the name was lifted from the
+observed tree.
 
 ## Workspace layout
 
