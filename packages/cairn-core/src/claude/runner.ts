@@ -1,5 +1,7 @@
 import { spawn, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { delimiter, join } from "node:path";
 import { z } from "zod";
 import { logger } from "../logger.js";
 import { appendTrace } from "../trace/index.js";
@@ -12,14 +14,33 @@ export type { ClaudeTier, ClaudeUsage, RunClaudeOptions, RunClaudeResult } from 
 const log = logger("claude.runner");
 
 /**
- * On Windows the npm-installed `claude` CLI is a `.cmd` shim. Node's
- * spawn/spawnSync without `shell:true` calls CreateProcess directly and
- * does not apply PATHEXT, so the bare name resolves to ENOENT. Name the
- * shim explicitly per-platform instead of enabling a shell (the prompt is
- * piped via stdin and --system-prompt/--json-schema carry JSON argv, so a
- * cmd.exe shell would require manual quoting/escaping).
+ * Resolve the `claude` executable to spawn. Node's spawn/spawnSync without
+ * `shell:true` calls CreateProcess directly and does not apply PATHEXT, so
+ * on Windows a bare `claude` resolves to ENOENT — and the two Windows
+ * install methods ship different names: the native installer drops
+ * `claude.exe`, the npm global drops a `claude.cmd` shim. Probe PATH for
+ * whichever exists (preferring the native `.exe`) and spawn its absolute
+ * path. We resolve rather than enabling a shell because the prompt is piped
+ * via stdin and --system-prompt/--json-schema carry JSON argv, so a cmd.exe
+ * shell would require manual quoting/escaping. POSIX keeps the bare name (a
+ * real executable / shell shim found via PATH).
  */
-const CLAUDE_BIN = process.platform === "win32" ? "claude.cmd" : "claude";
+function resolveClaudeBin(): string {
+  if (process.platform !== "win32") return "claude";
+  const candidates = ["claude.exe", "claude.cmd", "claude.bat"];
+  for (const dir of (process.env.PATH ?? "").split(delimiter)) {
+    if (dir === "") continue;
+    for (const name of candidates) {
+      const full = join(dir, name);
+      if (existsSync(full)) return full;
+    }
+  }
+  // Nothing on PATH — fall back to the native installer's name so the
+  // availability check surfaces a clean ENOENT instead of a bad guess.
+  return "claude.exe";
+}
+
+const CLAUDE_BIN = resolveClaudeBin();
 
 const ClaudeEnvelopeSchema = z.object({
   result: z.string().optional(),

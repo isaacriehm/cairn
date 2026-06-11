@@ -4,6 +4,25 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.3] — 2026-06-11
+
+Windows adoption regression — `cairn init` died at the Sonnet domain-mapper
+(phase 3) for every native-installer user, taking the whole adoption pass
+with it.
+
+### Fixed
+
+- **`claude` subprocess on Windows now resolves the real binary.** The model
+  runner hardcoded `claude.cmd` on win32 — the name the *npm global* shim
+  uses. The native installer instead ships `claude.exe` and no `.cmd`, so
+  `spawn("claude.cmd")` threw `ENOENT` synchronously: every mapper module
+  call died in ~10ms before any model round-trip, surfacing as a
+  deterministic "N/N module call(s) returned errors" that retry couldn't
+  clear. `runClaude` / the availability check now probe `PATH` for an
+  existing `claude` executable (preferring the native `claude.exe`, then the
+  `claude.cmd` / `claude.bat` shims) and spawn its absolute path, so both
+  install methods work. POSIX is unchanged.
+
 ## [0.22.2] — 2026-06-10
 
 CI hygiene — the `cairn-lens` resolver smoke still exercised a method that
