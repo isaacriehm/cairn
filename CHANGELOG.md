@@ -4,6 +4,25 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.5] — 2026-06-11
+
+Release-pipeline fix. The CLI was uninstallable from a clean machine — a
+transitive workspace dependency had never been published, so npm could not
+resolve the dependency tree.
+
+### Fixed
+
+- **Publish workflow now ships `@isaacriehm/cairn-state`.** `cairn-state`
+  was split into its own workspace package and became a transitive
+  dependency of `cairn-core` (and the umbrella `cairn`), but the tag-push
+  publish job only published `cairn-core` and `cairn`. At publish time pnpm
+  rewrites each `workspace:*` range to the exact version, so every published
+  `cairn-core` since the split pinned a `@isaacriehm/cairn-state` that did
+  not exist on the registry — a clean `npm install -g @isaacriehm/cairn`
+  failed with `404 … @isaacriehm/cairn-state … is not in this registry`. The
+  workflow now publishes `cairn-state` first, in dependency order
+  (state → core → cairn).
+
 ## [0.22.4] — 2026-06-11
 
 Adoption-pipeline correctness. Several phases could complete "successfully"
