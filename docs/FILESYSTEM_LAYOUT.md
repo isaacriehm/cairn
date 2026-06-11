@@ -92,17 +92,14 @@ The layout below is **stack-agnostic**. Subdirectories under `.cairn/ground/{sch
 │   │   │   ├── spec.md             ← original task spec (frontend-adapter ingested)
 │   │   │   ├── spec.tightened.md   ← post-tightener; agent reads this
 │   │   │   ├── status.yaml
-│   │   │   └── notes.md            ← agent free-text notes (append-only via cairn_append_run_note)
+│   │   │   └── notes.md            ← agent free-text notes (read by the handoff builder if present)
 │   │   ├── done/<task-id>/         ← terminal state, kept for history    HISTORICAL
 │   │   └── archived/<task-id>/     ← user-archived (not auto)            HISTORICAL
 │   ├── runs/                                                              GITIGNORED
 │   │   ├── active/<run-id>/
-│   │   │   ├── meta.json           ← {task_id, sha_pin, started_at, agent_role, model}
-│   │   │   ├── prompt.md           ← rendered prompt
-│   │   │   ├── events.jsonl        ← agent event stream
-│   │   │   ├── commands.jsonl      ← shell commands run by agent
-│   │   │   ├── diff.patch          ← unified diff at completion
-│   │   │   └── sensor-results.yaml ← per-sensor pass/fail
+│   │   │   ├── meta.json           ← {run_id, task_id, sha_pin, started_at, model}
+│   │   │   ├── mcp-calls.jsonl     ← MCP-call telemetry, append-only
+│   │   │   └── sensor-results.yaml ← per-sensor pass/fail (when a sweep runs)
 │   │   └── terminal/<run-id>/      ← completed runs (auto-moved)         HISTORICAL
 │   ├── inbox/                                                             GITIGNORED
 │   │   └── <ts>-<source>.json      ← raw frontend-adapter ingress (Claude Code plugin in v0.1.0)
@@ -389,8 +386,12 @@ discretion:
 
 ### 6.3 `status.yaml`
 
+`phase` tracks the task through Claude Code's built-in subagent flow — there
+is no separate orchestration runtime. The live phase set is the one the
+task-lifecycle code reads (`tasks/lifecycle.ts`, `context/task-summary.ts`):
+
 ```yaml
-phase: ready_to_dispatch  # ready_to_dispatch | running | sensor_check | reviewer | committing | succeeded | failed | halted
+phase: queued  # queued | tightening | running | sensor_check | reviewing | backprop, then terminal: succeeded | failed | halted
 attempts: 0
 last_event_at: 2026-05-02T05:31:30Z
 queued_position: 1
@@ -401,52 +402,38 @@ related_run_ids: []
 
 ## 7. Run file shape (`.cairn/runs/active/<run-id>/`)
 
-Gitignored. Per-run scratch + outputs.
+Gitignored. Per-run scratch + outputs. There is no orchestration runtime
+writing a streaming event log — only these three artifacts actually exist,
+written by the telemetry path and the sensor sweep. (`run-id` is the
+session id; runs auto-move to `runs/terminal/<run-id>/` on completion.)
 
 ### 7.1 `meta.json`
+
+Minimal run metadata. GC's completion-integrity check (`gc/completion-integrity.ts`)
+requires `sha_pin` to verify the committed diff matches the run.
 
 ```json
 {
   "run_id": "run-abc123",
   "task_id": "TSK-2026-05-02-1",
-  "agent_role": "&lt;project&gt;-fixer",
-  "attempt": 1,
-  "model": "claude-sonnet-4-6",
-  "started_at": "2026-05-02T05:32:00Z",
-  "finished_at": null,
-  "phase": "streaming_turn",
   "sha_pin": "9e3f4a2",
-  "branch_pin": "main",
-  "mirror_path": "~/.cairn/repos/<project-slug>",
-  "adapter_channel_id": "...",
-  "adapter_thread_id": "...",
-  "tokens_input": 0,
-  "tokens_output": 0,
-  "cost_usd": 0
+  "started_at": "2026-05-02T05:32:00Z",
+  "model": "haiku"
 }
 ```
 
-### 7.2 `events.jsonl`
+### 7.2 `mcp-calls.jsonl`
 
-One JSON object per line. Append-only via `cairn_record_run_event` MCP. Shape:
-
-```json
-{ "ts": "2026-05-02T05:32:01Z", "seq": 1, "kind": "phase_transition", "from": "preparing_workspace", "to": "building_prompt" }
-{ "ts": "2026-05-02T05:32:02Z", "seq": 2, "kind": "tool_use", "tool": "Read", "args": { "path": "core/src/drizzle/schema/integrations.ts" } }
-{ "ts": "2026-05-02T05:32:05Z", "seq": 3, "kind": "tool_result", "tool": "Read", "result_summary": "loaded 247 lines" }
-{ "ts": "2026-05-02T05:32:30Z", "seq": 4, "kind": "usage", "tokens_in": 8123, "tokens_out": 412 }
-{ "ts": "2026-05-02T05:32:31Z", "seq": 5, "kind": "sensor_pass", "sensor": "lint" }
-```
+One JSON object per line, append-only — MCP-call telemetry written by
+`mcp/telemetry.ts` when a run id is in scope (otherwise it lands in
+`.cairn/staleness/mcp-calls.jsonl`). Consumed by `gc/runtime-prune.ts`.
 
 ### 7.3 `sensor-results.yaml`
 
+Per-sensor pass/fail, written when a sensor sweep runs against the diff.
+Read by completion-integrity to confirm all sensors passed.
+
 ```yaml
-- sensor: lint
-  status: pass
-  duration_ms: 4231
-- sensor: tsc
-  status: pass
-  duration_ms: 8412
 - sensor: stub-pattern-catalog
   status: pass
   patterns_checked: 32
