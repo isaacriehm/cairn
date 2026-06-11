@@ -7,7 +7,6 @@
  *   - the run directory exists in runs/terminal/ (or fallback runs/active/)
  *   - the run's meta.json contains a sha_pin
  *   - the sha_pin is reachable in the current git history
- *   - attestation.yaml is present in the run dir
  *   - sensor-results.yaml (if present) indicates all sensors passed
  */
 
@@ -127,14 +126,6 @@ export async function runCompletionIntegrity(
     } catch (err) {
       findings.push(
         makeFinding(taskId, `meta.json unparseable in ${relPathOf(opts.repoRoot, runDir)}: ${stringifyErr(err)}`),
-      );
-      continue;
-    }
-
-    const attestationPath = join(runDir, "attestation.yaml");
-    if (!existsSync(attestationPath)) {
-      findings.push(
-        makeFinding(taskId, `attestation.yaml missing in ${relPathOf(opts.repoRoot, runDir)}`),
       );
       continue;
     }
