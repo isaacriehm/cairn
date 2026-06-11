@@ -36,16 +36,23 @@ sensors:
       - every_run
     fail_severity: hard
 
-  # ── §INV invariant sensors (auto-registered by backprop) ────────────────
+  # ── §INV invariant sensors ───────────────────────────────────────────────
+  # PLANNED — not yet wired. No runner reads this entry: the pre-commit sweep
+  # executes only stub-pattern-catalog + decision-assertions. Invariants are
+  # curated (§INV pillar) but enforcement (an assertions[] array on each
+  # invariant routed through the assertion evaluator, like decisions) is a
+  # gap, not a live gate. Kept `soft` so it reads as a roadmap item, NOT a
+  # hard gate that silently passes because nothing runs it.
   - id: invariant-suite
     layer: invariants
     kind: invariant_runner
-    description: "Runs every active §INV invariant's linked sensor script. Active invariants accumulate over time; superseded ones are skipped."
+    status: planned
+    description: "PLANNED (not wired): would run every active §INV invariant's linked assertion. Today no runner reads this; invariant enforcement is unimplemented."
     triggers:
       - every_run
     sources:
       - .cairn/ground/invariants/
-    fail_severity: hard
+    fail_severity: soft
 
   # ── Frontmatter freshness (nightly GC pass) ──────────────────────────────
   - id: frontmatter-freshness
