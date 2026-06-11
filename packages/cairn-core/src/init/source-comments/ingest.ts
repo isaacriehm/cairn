@@ -89,28 +89,30 @@ import type {
 } from "./classify.js";
 import { walkSourceComments } from "./walker.js";
 import type { CommentBlock, WalkOptions, WalkResult } from "./walker.js";
+import { hasConstraintShape } from "../../hooks/sot-align-common.js";
 
 const log = logger("init.source-comments.ingest");
 const CAPTURE_SOURCE = "init-source-comments";
 
 /**
- * Phase 9 regex pre-filter.
+ * Phase 9 constraint-shape pre-filter.
  *
  * Essay-class block comments only fall through to the Haiku batch
- * classifier when their prose matches imperative documentation
- * conventions. Code uses rigid conventions, so this regex is safe in a
- * way it would not be on arbitrary natural-language prose.
+ * classifier when their prose carries a constraint signal (modal/rule
+ * keyword or an explicit marker). Code uses rigid conventions, so this
+ * gate is safe in a way it would not be on arbitrary natural-language
+ * prose. The predicate is `hasConstraintShape` from `sot-align-common`
+ * — the SAME gate the Layer A runtime hook applies, so the bulk-import
+ * path and the live path can't drift.
  *
  * Accepted false-negative: passive-voice invariants like
  *   "Token expiry is enforced via …"
- * miss the regex and remain topic-index candidates only. The operator
+ * miss the gate and remain topic-index candidates only. The operator
  * (or any AI agent reading the file) can promote them later via
  * `cairn_propose_decision` from the candidate surface introduced in PR 2.
  */
-const PHASE_7B_DECISION_REGEX =
-  /(MUST|MUST NOT|SHALL|NEVER|ALWAYS|REQUIRED|FORBIDDEN|INVARIANT|@invariant|@rule|@decision|@cairn:decision|@cairn:rule)/i;
 
-/** Marker override — always emits regardless of regex match. */
+/** Marker override — always emits regardless of constraint shape. */
 const PHASE_7B_MARKER_REGEX = /@cairn:(decision|rule)/i;
 
 type BlockDisposition =
@@ -129,7 +131,7 @@ function dispositionForBlock(block: CommentBlock): BlockDisposition {
     const kw = (m[1] ?? "").toLowerCase();
     return { kind: "marker", markerKind: kw === "rule" ? "rule" : "decision" };
   }
-  if (PHASE_7B_DECISION_REGEX.test(block.prose)) {
+  if (hasConstraintShape(block.prose)) {
     return { kind: "classify" };
   }
   return { kind: "candidate-only" };

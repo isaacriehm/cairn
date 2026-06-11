@@ -111,6 +111,7 @@ import {
   TOP_K_CANDIDATES,
   containsEssayClassShape,
   extractBlocks,
+  isLedgerWorthyBlock,
   isMarkdownPath,
   readEntityBody,
   tier1PickWithBody,
@@ -610,6 +611,18 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
       result.descriptive += 1;
       continue;
     }
+    // Structural pre-filter — only a block with a real constraint or
+    // decision shape is ledger-worthy. Section banners, separator/box-
+    // drawing lines, file/class/endpoint descriptions, behavior notes,
+    // test-fixture comments and re-export banners are gated to
+    // `descriptive` here and NEVER reach the Haiku creation judge.
+    // Without this, the judge ran on every prose block and over-labeled
+    // descriptions as `constraint`, producing a ~97%-junk invariant
+    // store. Mirrors init's Phase-7b gate (shared in `sot-align-common`).
+    if (!isLedgerWorthyBlock(block.prose, block.raw)) {
+      result.descriptive += 1;
+      continue;
+    }
     const cachedT3P1 = readVerdictCache(repoRoot, "create-p1", block.prose, "creation");
     let creationP1: CreationVerdict;
     if (
@@ -1084,18 +1097,31 @@ const CREATION_P1_SCHEMA = {
   },
 } as const;
 
-const CREATION_P1_SYSTEM = `You classify a single prose block as one of:
+const CREATION_P1_SYSTEM = `You classify ONE prose block from a source comment. Output exactly one verdict.
 
-  - "decision"    contains an explicit decision verb (chose, selected, picked,
-                  decided) AND a comparative/rationale clause (over X, because Y).
-  - "constraint"  contains an explicit constraint verb (must, must not, never,
-                  always, required, forbidden).
-  - "descriptive" explains what the code does, intent, behavior notes.
-                  No decision verb, no constraint verb.
-  - "ambiguous"   cannot tell.
+VERDICTS
+  - "constraint"  states an ENFORCEABLE RULE: a modal obligation (must / must
+                  not / never / always / required / forbidden / cannot) bound
+                  to a specific condition the code must obey.
+  - "decision"    records a CHOSEN TRADEOFF: an explicit decision verb (chose /
+                  selected / picked / decided / adopted) AND a rationale or
+                  rejected-alternative clause (over X, because Y, instead of Z).
+  - "descriptive" everything below.
+  - "ambiguous"   a real rule or decision may be present but the wording is
+                  too unclear to tell which.
 
-Default to "descriptive" when uncertain — false-positive DEC creation
-pollutes the ground state worse than missed capture.
+ALWAYS "descriptive" — these are NOT rules or decisions:
+  - section banners, separator / box-drawing lines (────, ====, ## ---)
+  - file / module / class / function / endpoint descriptions
+    ("Foo — adapter that dispatches…", "Handler for POST /bar")
+  - "what this code does" / behavior / intent narration
+  - test-fixture notes ("inserts a valid row", "seeds the table")
+  - re-export / barrel / import comments
+
+BIAS HARD to "descriptive". A false "constraint" mints a junk invariant that
+becomes a false gate forever; a missed rule is recoverable. Require an actual
+modal+condition for "constraint" and an actual choice+rationale for "decision".
+A stray "only" or "always" inside descriptive prose is NOT a rule.
 
 Reply ONLY: { "verdict": "decision" | "constraint" | "descriptive" | "ambiguous" }`;
 
@@ -1146,14 +1172,19 @@ async function runCreationJudgePass1(args: {
 
 const CREATION_P2_SCHEMA = CREATION_P1_SCHEMA;
 
-const CREATION_P2_SYSTEM = `You classify a prose block, using step-by-step reasoning before the verdict.
+const CREATION_P2_SYSTEM = `You classify ONE prose block as decision | constraint | descriptive |
+ambiguous, reasoning step by step before the verdict.
 
-Step 1: list explicit decision/constraint verbs in the block.
-Step 2: does the block describe a CHOICE the codebase made (decision),
-        a RULE the code must obey (constraint), or just describe what
-        the code does (descriptive)?
-Step 3: default to descriptive when in doubt — false-positive DEC creation
-        pollutes ground state worse than missed capture.
+Step 1 — Is the block a section banner, a separator / box-drawing line, a
+         file/class/endpoint description, a behavior note, a test-fixture
+         note, or a re-export comment? If yes → "descriptive". Stop.
+Step 2 — Does it state an ENFORCEABLE RULE (a modal must / never / required
+         + a specific condition the code must obey)? If yes → "constraint".
+Step 3 — Does it record a CHOSEN TRADEOFF (a decision verb + a rationale or
+         rejected alternative)? If yes → "decision".
+Step 4 — Otherwise → "descriptive". Default HARD to descriptive: a false
+         constraint mints a permanent junk invariant; a missed rule is
+         recoverable. A stray "only"/"always" in descriptive prose is no rule.
 
 Final verdict JSON: { "verdict": "decision" | "constraint" | "descriptive" | "ambiguous" }.`;
 
@@ -1181,9 +1212,10 @@ async function runCreationJudgePass2(args: {
     "---surrounding source context---",
     ctx.length > 0 ? ctx : "(no surrounding context available)",
     "",
-    "Step 1: list explicit decision/constraint verbs in the block.",
-    "Step 2: choice / rule / descriptive?",
-    "Step 3: default to descriptive when in doubt.",
+    "Step 1: banner / separator / description / fixture / re-export? → descriptive.",
+    "Step 2: enforceable rule (modal + condition)? → constraint.",
+    "Step 3: chosen tradeoff (decision verb + rationale)? → decision.",
+    "Step 4: otherwise → descriptive (default hard).",
     "",
     "Final verdict: decision | constraint | descriptive | ambiguous.",
   ].join("\n");

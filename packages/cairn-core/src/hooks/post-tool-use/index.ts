@@ -25,4 +25,11 @@ export type {
 } from "./sot-align.js";
 export { runPostWriteHook } from "./post-write.js";
 export { runAskUserBlockedHook } from "./ask-user-blocked.js";
-export { containsEssayClassShape, isMarkdownPath } from "../sot-align-common.js";
+export {
+  containsEssayClassShape,
+  isMarkdownPath,
+  isSeparatorBlock,
+  hasConstraintShape,
+  hasDecisionShape,
+  isLedgerWorthyBlock,
+} from "../sot-align-common.js";

@@ -273,24 +273,45 @@ async function main(): Promise<void> {
   {
     const repoRoot = mkRepoRoot();
     // Write a file with 7 essay JSDoc blocks — the per-Write cap is 5.
-    // Each block needs distinct prose so the in-loop sot-cache append
-    // doesn't let later blocks Tier-1-cite the first emit. Per-topic
-    // wording with no shared structure keeps Jaccard well below 0.3.
-    const distinctTopics: string[] = [
-      "We chose Postgres over MySQL because the JSON column support and logical replication match our needs.",
-      "Rate limit anonymous traffic to 60 requests per minute via the leaky-bucket implementation in nginx.",
-      "Sign auth tokens with HS512 not RS256 because we lack a key rotation surface in the deployment topology.",
-      "The order events bus uses RabbitMQ over Kafka because operational simplicity outweighs partition durability.",
-      "Use bcrypt for password hashing with cost factor 12 mapped to our SLO budget for login latency.",
-      "Audit log entries are append-only in a partitioned table indexed by tenant_id and creation timestamp.",
-      "Background jobs run on BullMQ over Sidekiq because the runtime is Node-native and Redis is already deployed.",
+    // Each block must (a) clear the Tier-3 ledger-worthy gate and (b) stay
+    // distinct so the in-loop sot-cache append doesn't let later blocks
+    // dedup-cite an earlier emit. So each is a genuine "chose X over Y
+    // because Z" decision (clears the gate via decision-shape) with a
+    // varied verb/connector and a distinct topic (keeps Jaccard < 0.3).
+    const decisionBlocks: string[][] = [
+      [
+        "We chose Postgres over MySQL for the primary store because JSONB support",
+        "and logical replication match the nightly analytics workload.",
+      ],
+      [
+        "We selected a leaky-bucket limiter rather than a fixed-window counter",
+        "because burst tolerance matters for the anonymous traffic tier.",
+      ],
+      [
+        "We picked HS512 instead of RS256 for token signing because the deployment",
+        "topology lacks a key-rotation surface today.",
+      ],
+      [
+        "We adopted RabbitMQ over Kafka for the order events bus because operational",
+        "simplicity outweighs partition durability for this team.",
+      ],
+      [
+        "We decided on bcrypt rather than argon2 for password hashing because its",
+        "cost factor maps cleanly to the login latency budget.",
+      ],
+      [
+        "We standardize on append-only partitioned tables instead of mutable rows",
+        "for the audit log because immutability eases compliance export.",
+      ],
+      [
+        "We went with BullMQ over Sidekiq for background jobs because the runtime",
+        "is Node-native and Redis is already deployed in this cluster.",
+      ],
     ];
-    const blocks: string[] = distinctTopics.map((topic, i) =>
+    const blocks: string[] = decisionBlocks.map((lines, i) =>
       [
         "/**",
-        ` * ${topic}`,
-        ` * The choice is documented here so future maintainers can revisit it`,
-        ` * without re-running the whole architecture review process again.`,
+        ...lines.map((l) => ` * ${l}`),
         " */",
         `export function component${i + 1}() {}`,
       ].join("\n"),
@@ -630,11 +651,14 @@ async function main(): Promise<void> {
   // ── Step 10 — Pass 2 still ambiguous → alignment-pending file ────
   {
     const repoRoot = mkRepoRoot();
+    // Gate-passing (decision-shape: "chose … because") so the block reaches
+    // the creation judge, but vague enough that the mock-forced ambiguous
+    // verdict on both passes is plausible — exercises the pending path.
     const source = [
       "/**",
-      " * The thing happens when the other thing is ready, sometimes more than",
-      " * once. There used to be a bug here related to how the upstream service",
-      " * decides ordering — it depends on which way the wind is blowing today.",
+      " * We chose to defer the ordering guarantee because the upstream service",
+      " * behavior is unpredictable and the team has not aligned on the semantics",
+      " * yet; revisit once the contract stabilizes.",
       " */",
       "export function thing() {}",
     ].join("\n") + "\n";
@@ -659,7 +683,7 @@ async function main(): Promise<void> {
     const pendingBody = readFileSync(join(pendingDir, pending[0]!), "utf8");
     assert(pendingBody.includes("kind: tier3-ambiguous"), "Step 10: kind frontmatter");
     assert(pendingBody.includes("source_file: src/thing.ts"), "Step 10: source_file frontmatter");
-    assert(pendingBody.includes("the wind is blowing"), "Step 10: prose preserved verbatim");
+    assert(pendingBody.includes("revisit once the contract stabilizes"), "Step 10: prose preserved verbatim");
     // Source untouched — operator's narrative + verbatim block stays.
     const after = readFileSync(join(repoRoot, "src/thing.ts"), "utf8");
     assert(after === source, "Step 10: source untouched on alignment-pending");
