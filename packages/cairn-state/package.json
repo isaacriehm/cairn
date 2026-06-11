@@ -1,6 +1,6 @@
 {
   "name": "@isaacriehm/cairn-state",
-  "version": "0.22.5",
+  "version": "0.22.6",
   "description": "Cairn state — lightweight schemas and read-only I/O.",
   "author": "Isaac Riehm",
   "license": "MIT",

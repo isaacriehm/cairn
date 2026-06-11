@@ -23,6 +23,15 @@ Removed the glob-driven sensor layer. Hard cutover.
   are gone too. The enforcement spine that has teeth — the Layer A stub-pattern
   catalog and the decision-assertion sensor, both glob-independent — is
   unchanged. `off_limits` (a simple denylist) stays.
+- **Four unwired manifest sensors.** `uat-headless-chrome` (Layer U),
+  `e2e-real-db` (Layer E), `attestation-cross-check` (Layer B), and
+  `reviewer-subagent` were declared `fail_severity: hard` in `sensors.yaml` but
+  had no executor — the sweep only ever ran the stub-pattern catalog and
+  decision-assertions. Removed the manifest entries and the docs that presented
+  them as live gates (the concepts layer table, the daily-flow commit example,
+  and the FILESYSTEM_LAYOUT UAT pipeline + `attestation.yaml` run-file section).
+  `invariant-suite` is intentionally kept — it's an unfilled gap (invariants are
+  curated but not yet machine-enforced), not theatre.
 
 ### Added
 
