@@ -2,10 +2,16 @@
  * `cairn doctor` — verify the adoption is healthy.
  *
  * Pure filesystem reads + a status.json check. No LLM. No subprocess fan-out.
- * Returns a structured `DoctorReport` the CLI renders. Exit-code mapping:
- *   0 — all checks OK
- *   1 — at least one error
- *   2 — at least one warning (but no errors)
+ * Returns a structured `DoctorReport` the CLI renders.
+ *
+ * Status semantics:
+ *   error — broken adoption; the CLI exits 1.
+ *   warn  — advisory; the CLI prints it but exits 0 (use `--strict` to fail).
+ *   info  — expected/benign state, never counted toward warnings. Used for an
+ *           ABSENT rebuildable cache (scope-index, *.ledger): those are
+ *           gitignored by design, so a clean checkout legitimately lacks them.
+ *           Reserve `warn` for a cache that is present-but-broken (empty /
+ *           unreadable), which is a real problem.
  */
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -194,11 +200,12 @@ function checkWorkflowMd(repoRoot: string): DoctorCheck {
 function checkScopeIndex(repoRoot: string): DoctorCheck {
   const path = cairnDir(repoRoot, "ground", "scope-index.yaml");
   if (!existsSync(path)) {
+    // Rebuildable, gitignored cache — absent on a clean checkout is benign.
     return {
       group: "ground",
       label: "scope-index",
-      status: "warn",
-      detail: "missing — run cairn scope rebuild",
+      status: "info",
+      detail: "absent (rebuildable) — run cairn scope rebuild to populate",
       fixCommand: "cairn scope rebuild",
     };
   }
@@ -246,11 +253,12 @@ function checkLedger(
 ): DoctorCheck {
   const path = cairnDir(repoRoot, "ground", kind, `${kind}.ledger.yaml`);
   if (!existsSync(path)) {
+    // Rebuildable, gitignored cache — absent on a clean checkout is benign.
     return {
       group: "ground",
       label: `${kind}.ledger`,
-      status: "warn",
-      detail: "missing — rebuilding...",
+      status: "info",
+      detail: "absent (rebuildable) — run cairn fix to populate",
       fixCommand: "cairn fix",
     };
   }
@@ -447,9 +455,14 @@ export async function runFix(opts: RunFixOptions): Promise<FixReport> {
   const manual: { check: string; command: string | null }[] = [];
 
   for (const c of report.checks) {
-    if (c.status !== "warn" && c.status !== "error") continue;
-
-    if (c.label === "scope-index" && opts.rebuildScopeIndexFn !== undefined) {
+    // Scope-index is a rebuildable cache: rebuild whenever it is not OK,
+    // including the `info` (absent-on-clean-tree) state — `cairn fix` is the
+    // one path that should still materialize it.
+    if (
+      c.label === "scope-index" &&
+      c.status !== "ok" &&
+      opts.rebuildScopeIndexFn !== undefined
+    ) {
       try {
         const r = await opts.rebuildScopeIndexFn(opts.repoRoot);
         applied.push(
@@ -464,6 +477,8 @@ export async function runFix(opts: RunFixOptions): Promise<FixReport> {
       }
       continue;
     }
+
+    if (c.status !== "warn" && c.status !== "error") continue;
 
     manual.push({
       check: c.label,

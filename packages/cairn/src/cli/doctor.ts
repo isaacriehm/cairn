@@ -1,6 +1,13 @@
 /**
  * `cairn doctor` — verify the adoption is healthy.
  * `cairn fix`    — auto-resolve the warnings doctor flags where we can.
+ *
+ * Exit codes:
+ *   0 — healthy, OR advisory warnings only (warnings never fail by default,
+ *       so a CI health-check job stays green on a clean checkout where the
+ *       gitignored rebuildable caches are simply absent)
+ *   1 — at least one error
+ *   2 — warnings present AND `--strict` was passed (opt-in hard gate)
  */
 
 import { existsSync } from "node:fs";
@@ -93,14 +100,30 @@ function renderReport(report: DoctorReport): void {
   }
 }
 
+/**
+ * Map a doctor report to a process exit code. Pure — extracted so the
+ * exit-code contract is testable without `process.exit` tearing down a smoke.
+ *
+ *   errors  → 1 (always, regardless of --strict)
+ *   warns   → 2 only under --strict; otherwise 0 (advisory, CI stays green)
+ *   clean   → 0
+ */
+export function doctorExitCode(
+  report: Pick<DoctorReport, "errors" | "warnings">,
+  opts: { strict: boolean },
+): number {
+  if (report.errors > 0) return 1;
+  if (opts.strict && report.warnings > 0) return 2;
+  return 0;
+}
+
 export async function doctorCli(argv: string[]): Promise<void> {
   const repoRoot = parseRepoFlag(argv);
+  const strict = argv.includes("--strict");
   ensureAdopted(repoRoot);
   const report = runDoctor({ repoRoot });
   renderReport(report);
-  if (report.errors > 0) process.exit(1);
-  if (report.warnings > 0) process.exit(2);
-  process.exit(0);
+  process.exit(doctorExitCode(report, { strict }));
 }
 
 export async function fixCli(argv: string[]): Promise<void> {

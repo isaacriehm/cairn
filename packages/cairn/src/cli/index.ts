@@ -342,7 +342,7 @@ switch (subcommand) {
         "  scope      scope-index commands\n" +
         "             (subcommands: rebuild [--repo <path>])\n" +
         "  doctor     verify the adoption is healthy (checks core, ground, sensors)\n" +
-        "             (--repo <path>?)\n" +
+        "             (--repo <path>? --strict?  — warnings exit 0 unless --strict)\n" +
         "  fix        auto-resolve doctor warnings where possible\n" +
         "             (--repo <path>?)\n" +
         "  migrate    bring .cairn/ state up to the current cairn version\n" +
