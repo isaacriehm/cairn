@@ -47,6 +47,7 @@ export * from "./doctor/index.js";
 export * from "./cites/expand.js";
 export * from "./gc/index.js";
 export * from "./invariants/prune.js";
+export * from "./uninstall/index.js";
 export * from "./state/rebuild-derived.js";
 export * from "./update-check.js";
 export * from "@isaacriehm/cairn-state";

@@ -26,6 +26,7 @@ import { scopeCli } from "./scope.js";
 import { sensorRunCli } from "./sensor-run.js";
 import { tagCli } from "./tag.js";
 import { traceCli } from "./trace.js";
+import { uninstallCli } from "./uninstall.js";
 import { cairnDir } from "@isaacriehm/cairn-core";
 
 interface StatusLinePayload {
@@ -275,6 +276,9 @@ switch (subcommand) {
   case "cites":
     await citesCli(rest);
     break;
+  case "uninstall":
+    await uninstallCli(rest);
+    break;
   case "tag":
     await tagCli(rest);
     break;
@@ -368,6 +372,9 @@ switch (subcommand) {
         "             (subcommands: prune [--dry-run] [--all] [--repo <path>])\n" +
         "  cites      citation tooling\n" +
         "             (subcommands: expand [file...] [--dry-run] [--repo <path>])\n" +
+        "  uninstall  remove Cairn from this repo (expand cites, drop .cairn/,\n" +
+        "             rule import, git-hook path) — preview unless --yes\n" +
+        "             ([--yes] [--keep-cites] [--repo <path>])\n" +
         "  tag        operator-driven retro-tagging — insert <!-- cairn:decision -->\n" +
         "             markers after lines matching a regex pattern\n" +
         "             (--insert-marker <pattern> <file-or-dir>\n" +

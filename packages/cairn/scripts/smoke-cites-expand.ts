@@ -10,7 +10,9 @@
  *            sharing a line with code left in place.
  *   Step 2 — file wrapper: resolves against the live ground store, writes
  *            in place, no §token remains; dry-run mutates nothing.
- *   Step 3 — repo walker: scope-index drives the cited-file set.
+ *   Step 3 — repo walker: the working tree is scanned for §tokens (NOT the
+ *            scope-index), so a cited file with no scope-index entry is
+ *            still found and uncited.
  */
 
 import {
@@ -27,7 +29,6 @@ import {
   expandCitesInFile,
   expandCitesInRepo,
   expandCitesInText,
-  writeScopeIndex,
 } from "@isaacriehm/cairn-core";
 
 const cleanups: string[] = [];
@@ -157,21 +158,15 @@ function main(): void {
     console.log("  ✓ Step 2 — file wrapper: dry-run safe, real run un-cites");
   }
 
-  // ── Step 3 — repo walker via scope-index ─────────────────────────
+  // ── Step 3 — repo walker via working-tree scan (no scope-index) ──
   {
     const repo = mkRepo();
     seedDec(repo, "DEC-7654321", "Use HS512 for token signing.");
     mkdirSync(join(repo, "src"), { recursive: true });
+    // NOTE: deliberately write NO scope-index — the scan is the source of
+    // truth, so a cited file with no index entry must still be found.
     writeFileSync(join(repo, "src", "auth.ts"), "// §DEC-7654321\nexport function sign() {}\n", "utf8");
     writeFileSync(join(repo, "src", "nocites.ts"), "export const k = 1;\n", "utf8");
-
-    writeScopeIndex(repo, {
-      generated: "2026-01-01T00:00:00Z",
-      files: {
-        "src/auth.ts": { decisions: ["DEC-7654321"], invariants: [] },
-        "src/nocites.ts": { decisions: [], invariants: [] },
-      },
-    });
 
     const r = expandCitesInRepo({ repoRoot: repo });
     assert(r.expanded === 1, `Step 3: one cite expanded repo-wide, got ${r.expanded}`);
@@ -180,7 +175,7 @@ function main(): void {
     const after = readFileSync(join(repo, "src", "auth.ts"), "utf8");
     assert(after.startsWith("// Use HS512 for token signing."), "Step 3: auth.ts un-cited");
     assert(!after.includes("§DEC-"), "Step 3: no token remains");
-    console.log("  ✓ Step 3 — repo walker: scope-index drives the cited-file set");
+    console.log("  ✓ Step 3 — repo walker: working-tree scan finds cited file, no scope-index needed");
   }
 
   cleanup();

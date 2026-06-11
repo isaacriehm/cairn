@@ -16,9 +16,8 @@
  * whose entity is missing on disk is left as-is (`danglingSkipped`).
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { readScopeIndex } from "@isaacriehm/cairn-state";
 import { readEntityBody } from "../hooks/sot-align-common.js";
 
 const CITE_RE = /§(DEC|INV)-([0-9a-f]{7,})/g;
@@ -144,11 +143,67 @@ export function expandCitesInFile(
   return { ...result, filePath: opts.filePath, changed };
 }
 
+/** Dirs the cited-file scan never descends into. */
+const SCAN_SKIP_DIRS = new Set([
+  ".git",
+  ".cairn",
+  "node_modules",
+  "dist",
+  "build",
+  "out",
+  "coverage",
+  ".next",
+  ".turbo",
+  ".vercel",
+]);
+const CITE_SCAN_RE = /§(?:DEC|INV)-[0-9a-f]{7,}/;
+const SCAN_SKIP_EXT = new Set([
+  ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".pdf", ".zip", ".gz",
+  ".woff", ".woff2", ".ttf", ".eot", ".mp4", ".mov", ".wasm", ".lock", ".map",
+]);
+const SCAN_MAX_BYTES = 2_000_000;
+
+/**
+ * Walk the working tree for files that contain a `§DEC-/§INV-` token. The
+ * source of truth for un-citing is the source itself, NOT the scope-index —
+ * a stale/missing scope-index would silently leave dangling cites behind.
+ */
+export function findCitedFiles(repoRoot: string): string[] {
+  const out: string[] = [];
+  const walk = (absDir: string, relDir: string): void => {
+    let entries;
+    try {
+      entries = readdirSync(absDir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      const rel = relDir.length > 0 ? `${relDir}/${e.name}` : e.name;
+      if (e.isDirectory()) {
+        if (SCAN_SKIP_DIRS.has(e.name)) continue;
+        walk(join(absDir, e.name), rel);
+      } else if (e.isFile()) {
+        const dot = e.name.lastIndexOf(".");
+        if (dot !== -1 && SCAN_SKIP_EXT.has(e.name.slice(dot).toLowerCase())) continue;
+        const abs = join(absDir, e.name);
+        try {
+          if (statSync(abs).size > SCAN_MAX_BYTES) continue;
+          if (CITE_SCAN_RE.test(readFileSync(abs, "utf8"))) out.push(rel);
+        } catch {
+          /* unreadable — skip */
+        }
+      }
+    }
+  };
+  walk(repoRoot, "");
+  return out;
+}
+
 export interface ExpandCitesRepoOptions {
   repoRoot: string;
   /**
-   * Explicit repo-relative files to expand. When omitted, the cited-file
-   * set is taken from the scope-index (every file with a bound DEC/INV).
+   * Explicit repo-relative files to expand. When omitted, the working tree
+   * is scanned for every file carrying a `§DEC-/§INV-` token.
    */
   files?: string[];
   dryRun?: boolean;
@@ -169,11 +224,7 @@ export interface ExpandCitesRepoResult {
 export function expandCitesInRepo(
   opts: ExpandCitesRepoOptions,
 ): ExpandCitesRepoResult {
-  let targets = opts.files;
-  if (targets === undefined) {
-    const idx = readScopeIndex(opts.repoRoot);
-    targets = idx === null ? [] : Object.keys(idx.files);
-  }
+  const targets = opts.files ?? findCitedFiles(opts.repoRoot);
 
   const out: ExpandCitesRepoResult = {
     files: [],

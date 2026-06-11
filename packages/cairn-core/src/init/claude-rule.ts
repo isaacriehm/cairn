@@ -30,7 +30,7 @@ const log = getLogger();
 /** The repo-root-relative @import line Claude Code resolves. */
 export const CAIRN_RULE_IMPORT = "@.claude/rules/cairn.md";
 
-const IMPORT_MARKER =
+export const IMPORT_MARKER =
   "<!-- cairn: plugin-absent onboarding — loads the install notice for clones without the Cairn plugin -->";
 
 export interface EnsureImportResult {
