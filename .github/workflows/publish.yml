@@ -84,14 +84,37 @@ jobs:
       # Trusted publishing: no NODE_AUTH_TOKEN. pnpm performs the OIDC token
       # exchange using the `id-token: write` permission. Order is dependency
       # order — state before core before the umbrella.
+      #
+      # Each step is idempotent — it skips a version already on the registry, so
+      # re-firing a publish that partially failed (e.g. one package's trusted
+      # publisher wasn't configured yet) doesn't dead-end on "cannot publish over
+      # existing version".
       - name: Publish cairn-state
-        run: pnpm publish --filter @isaacriehm/cairn-state --access public --no-git-checks
+        run: |
+          VER=$(node -p "require('./packages/cairn-state/package.json').version")
+          if npm view "@isaacriehm/cairn-state@$VER" version >/dev/null 2>&1; then
+            echo "@isaacriehm/cairn-state@$VER already published — skipping"
+          else
+            pnpm publish --filter @isaacriehm/cairn-state --access public --no-git-checks
+          fi
 
       - name: Publish cairn-core
-        run: pnpm publish --filter @isaacriehm/cairn-core --access public --no-git-checks
+        run: |
+          VER=$(node -p "require('./packages/cairn-core/package.json').version")
+          if npm view "@isaacriehm/cairn-core@$VER" version >/dev/null 2>&1; then
+            echo "@isaacriehm/cairn-core@$VER already published — skipping"
+          else
+            pnpm publish --filter @isaacriehm/cairn-core --access public --no-git-checks
+          fi
 
       - name: Publish cairn
-        run: pnpm publish --filter @isaacriehm/cairn --access public --no-git-checks
+        run: |
+          VER=$(node -p "require('./packages/cairn/package.json').version")
+          if npm view "@isaacriehm/cairn@$VER" version >/dev/null 2>&1; then
+            echo "@isaacriehm/cairn@$VER already published — skipping"
+          else
+            pnpm publish --filter @isaacriehm/cairn --access public --no-git-checks
+          fi
 
   release-vsix:
     name: Build + release vsix
