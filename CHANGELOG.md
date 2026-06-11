@@ -4,6 +4,41 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.6] — 2026-06-11
+
+Config hygiene — strip dead `config.yaml` weight via two coded migrations, and
+stop emitting it at the source.
+
+### Added
+
+- **Migration `0004-collapse-high-stakes-dupe` (safe).** Early adopters carry
+  `high_stakes_globs` twice — a top-level key and `project_globs.high_stakes_globs`,
+  written from one shared array so the serializer emitted a YAML anchor/alias
+  pair. The runtime reads only the nested key (the top-level was a fallback for
+  configs lacking the nested one), so the top-level copy is dead weight — and its
+  anchor makes a naive delete dangle the alias. The migration materializes the
+  canonical list into the nested key as a fresh inline node, then drops the
+  top-level key. Value-preserving, so it auto-applies.
+- **Migration `0005-prune-dead-path-globs` (review).** Adoption could emit gate
+  globs (`off_limits`, `project_globs.*`) anchored at paths that do not exist on
+  disk — mis-rooted (a dropped package-internal path segment) or pointing at a
+  location renamed away since adoption. Such a glob matches zero files, so the
+  high-stakes gate, the route/DTO sensors, and GC classification silently treat
+  it as no coverage. The migration prunes these inert entries. It is `review`,
+  not auto-applied: filesystem absence at one instant is not proof of permanent
+  deadness (an unbuilt generated dir, an unchecked-out submodule, a sibling
+  worktree), so it is surfaced for the operator to apply via `cairn migrate`. The
+  dead-path test is conservative — only globs with a concrete base of two or more
+  literal segments are eligible, so generic ignores (`dist/`, `node_modules/`)
+  and wildcard-anchored patterns (`**/auth/**`) always survive.
+
+### Changed
+
+- **Adoption stops writing the duplicate top-level `high_stakes_globs`.** New
+  adoptions emit the list only under `project_globs` — the single location the
+  runtime reads (init/overlay.ts). Hard cutover; existing adopters are repaired
+  by migration 0004.
+
 ## [0.22.5] — 2026-06-11
 
 Release-pipeline fix. The CLI was uninstallable from a clean machine — a

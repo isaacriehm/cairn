@@ -264,6 +264,105 @@ async function runSmoke(): Promise<void> {
     console.log("  ✓ Step 8 — 0003 prunes init/ + backups/ scaffolding, idempotent");
   }
 
+  // ── Step 9 — 0004 collapses the aliased high_stakes_globs duplicate ──
+  {
+    const collapse = MIGRATIONS.find((m) => m.id === "0004-collapse-high-stakes-dupe");
+    assert(collapse !== undefined, "Step 9: 0004 registered");
+    assert(collapse.class === "safe", "Step 9: 0004 is safe-class (value-preserving)");
+    // Top-level anchor + nested alias — the shape that dangles on a naive delete.
+    const aliased = [
+      "version: 1",
+      "cairn_version: 0.22.5",
+      "slug: dupe",
+      "high_stakes_globs: &a1",
+      '  - "**/auth/**"',
+      "  - core/src/billing",
+      "defer_hours: 24",
+      "project_globs:",
+      "  route_handler_globs: []",
+      "  dto_globs: []",
+      "  generator_source_globs: []",
+      "  high_stakes_globs: *a1",
+      "",
+    ].join("\n");
+    const repoRoot = mkRepo(aliased);
+    assert(collapse.detect(repoRoot), "Step 9: detect fires while top-level key present");
+    const applied = collapse.apply(repoRoot);
+    assert(applied.changed, "Step 9: apply reports changed");
+
+    const raw = readFileSync(join(repoRoot, ".cairn", "config.yaml"), "utf8");
+    assert(!raw.includes("&a1") && !raw.includes("*a1"), "Step 9: anchor/alias materialized away");
+    const cfg = readConfig(repoRoot);
+    assert(!("high_stakes_globs" in cfg), "Step 9: dead top-level key removed");
+    const pg = cfg["project_globs"] as Record<string, unknown>;
+    assert(
+      JSON.stringify(pg["high_stakes_globs"]) === JSON.stringify(["**/auth/**", "core/src/billing"]),
+      `Step 9: nested high_stakes_globs preserved, got ${JSON.stringify(pg["high_stakes_globs"])}`,
+    );
+    assert(!collapse.detect(repoRoot), "Step 9: detect is a no-op after collapse");
+    assert(!collapse.apply(repoRoot).changed, "Step 9: re-apply is idempotent");
+    console.log("  ✓ Step 9 — 0004 collapses aliased high_stakes dupe, idempotent");
+  }
+
+  // ── Step 10 — 0005 prunes globs anchored at non-existent paths ────────
+  {
+    const prune = MIGRATIONS.find((m) => m.id === "0005-prune-dead-path-globs");
+    assert(prune !== undefined, "Step 10: 0005 registered");
+    assert(prune.class === "review", "Step 10: 0005 is review-class (judgement / fs-dependent)");
+    const cfgYaml = [
+      "version: 1",
+      "cairn_version: 0.22.5",
+      "slug: deadpaths",
+      "off_limits:",
+      "  - dist/", // generic single-segment ignore, absent → KEEP
+      '  - "**/generated/**"', // wildcard-anchored → KEEP
+      "  - platform/components/ui/**", // mis-rooted (no src/) → PRUNE
+      "  - platform/src/components/ui/**", // base exists → KEEP
+      "project_globs:",
+      "  route_handler_globs:",
+      "    - core/src/api/auth.controller.ts", // file exists → KEEP
+      "    - core/legacy/old.controller.ts", // absent → PRUNE
+      "  dto_globs:",
+      '    - "**/*.dto.ts"', // wildcard-anchored → KEEP
+      "  generator_source_globs: []",
+      "  high_stakes_globs:",
+      "    - core/api/*.controller.ts", // base core/api absent → PRUNE
+      "    - core/src/api/*.controller.ts", // base exists → KEEP
+      "",
+    ].join("\n");
+    const repoRoot = mkRepo(cfgYaml);
+    mkdirSync(join(repoRoot, "platform", "src", "components", "ui"), { recursive: true });
+    mkdirSync(join(repoRoot, "core", "src", "api"), { recursive: true });
+    writeFileSync(join(repoRoot, "core", "src", "api", "auth.controller.ts"), "x", "utf8");
+
+    assert(prune.detect(repoRoot), "Step 10: detect fires with dead-path globs present");
+    const applied = prune.apply(repoRoot);
+    assert(applied.changed, "Step 10: apply reports changed");
+
+    const cfg = readConfig(repoRoot);
+    const pg = cfg["project_globs"] as Record<string, unknown>;
+    assert(
+      JSON.stringify(cfg["off_limits"]) ===
+        JSON.stringify(["dist/", "**/generated/**", "platform/src/components/ui/**"]),
+      `Step 10: off_limits — generic + wildcard + live kept, mis-rooted pruned, got ${JSON.stringify(cfg["off_limits"])}`,
+    );
+    assert(
+      JSON.stringify(pg["route_handler_globs"]) === JSON.stringify(["core/src/api/auth.controller.ts"]),
+      `Step 10: dead literal-file glob pruned, got ${JSON.stringify(pg["route_handler_globs"])}`,
+    );
+    assert(
+      JSON.stringify(pg["dto_globs"]) === JSON.stringify(["**/*.dto.ts"]),
+      "Step 10: wildcard-anchored glob kept (no groundable base)",
+    );
+    assert(
+      JSON.stringify(pg["high_stakes_globs"]) === JSON.stringify(["core/src/api/*.controller.ts"]),
+      `Step 10: dead-base high_stakes glob pruned, live kept, got ${JSON.stringify(pg["high_stakes_globs"])}`,
+    );
+    assert(!prune.detect(repoRoot), "Step 10: detect is a no-op after prune");
+    assert(!prune.apply(repoRoot).changed, "Step 10: re-apply is idempotent");
+    console.log("  ✓ Step 10 — 0005 prunes dead-path globs, spares generic/wildcard, idempotent");
+  }
+
   console.log("smoke-migrate — pass");
 }
 

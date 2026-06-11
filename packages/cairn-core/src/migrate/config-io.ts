@@ -58,6 +58,24 @@ export function configHasKeys(
   return keys.filter((k) => d.has(k));
 }
 
+/**
+ * Parse `config.yaml`, hand the Document to `fn`, and write it back iff `fn`
+ * reports a mutation. The single round-trip preserves key order + comments
+ * outside whatever `fn` rewrites. No-op (returns false) when the file is
+ * absent. Callers serialize via the migrate lock.
+ */
+export function mutateConfig(
+  repoRoot: string,
+  fn: (doc: Document) => boolean,
+): boolean {
+  const p = configPath(repoRoot);
+  if (!existsSync(p)) return false;
+  const doc = parseDocument(readFileSync(p, "utf8"));
+  const changed = fn(doc);
+  if (changed) writeFileSync(p, doc.toString(), "utf8");
+  return changed;
+}
+
 /** Delete top-level `keys`; returns the keys actually removed. */
 export function deleteConfigKeys(repoRoot: string, keys: readonly string[]): string[] {
   const p = configPath(repoRoot);

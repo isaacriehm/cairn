@@ -10,9 +10,13 @@ import type { Migration } from "./types.js";
 import { dropDeadConfigFields } from "./migrations/0001-drop-dead-config-fields.js";
 import { backfillGitignore } from "./migrations/0002-backfill-gitignore.js";
 import { pruneScaffolding } from "./migrations/0003-prune-scaffolding.js";
+import { collapseHighStakesDupe } from "./migrations/0004-collapse-high-stakes-dupe.js";
+import { pruneDeadPathGlobs } from "./migrations/0005-prune-dead-path-globs.js";
 
 export const MIGRATIONS: readonly Migration[] = [
   dropDeadConfigFields,
   backfillGitignore,
   pruneScaffolding,
+  collapseHighStakesDupe,
+  pruneDeadPathGlobs,
 ];

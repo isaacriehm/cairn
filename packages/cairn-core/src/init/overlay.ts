@@ -51,12 +51,16 @@ export function buildProjectOverlay(
   // never-executed proposed-sensors output are consumed only at init time —
   // persisting them produced dead config (audit Tier 2). `domain_summary`
   // is kept (read by `cairn fix`).
+  //
+  // high_stakes_globs lives ONLY under project_globs — the single location the
+  // runtime reads (sensors/runner loadProjectGlobs; the top-level key was a
+  // legacy fallback that duplicated this list; migration 0004 collapses it for
+  // existing adopters).
   const overlay: Record<string, unknown> = {
     version: 1,
     cairn_version: VERSION,
     slug: args.decidedSlug,
     off_limits: offLimits,
-    high_stakes_globs: m?.high_stakes_globs ?? [],
     defer_hours: 24,
     project_globs: {
       route_handler_globs: m?.route_handler_globs ?? [],
