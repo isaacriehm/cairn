@@ -4,6 +4,78 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Kill over-generated, unconsumed, and unwired state; add clean removal.
+
+### Added
+
+- **`cairn invariants prune`.** Retires junk invariants the Layer A
+  sot-align hook minted before the creation gate existed. Surgical by
+  default (archives `capture_source: layer-a-sot-align` invariants whose
+  statement has no constraint shape — the same bar the gate now applies);
+  `--all` resets every sot-align invariant; `--dry-run` previews. Entities
+  move to `.cairn/ground/.archive/` (recoverable) via `archiveEntity`, with
+  a single batched ledger rebuild instead of O(n²).
+- **`cairn cites expand`.** The inverse of sot-align's strip-replace —
+  replaces each `// §DEC-/§INV-` citation line with the entity's body
+  inline, as a plain comment in the file's own comment style. A citation
+  sharing a line with code, or one whose entity is missing, is left in
+  place. `--dry-run` previews.
+- **`cairn uninstall`.** Clean de-adoption, the inverse of `cairn init`.
+  Expands cites to inline comments, unwires the `@.claude/rules/cairn.md`
+  import, removes that rule file, unsets Cairn's `core.hooksPath` (a foreign
+  husky/lefthook path is left intact), and deletes `.cairn/`. Destructive,
+  so it previews by default and only applies under `--yes`; `--keep-cites`
+  leaves the `§` tokens in source. The cited-file set is found by scanning
+  the working tree, so a stale scope-index can't leave dangling refs.
+- **`cairn doctor --strict`.** Restores the old behavior of exiting `2`
+  when warnings are present, for anyone who wants warnings to hard-fail CI.
+
+### Changed
+
+- **Layer A creation is gated by a structural pre-filter.** The sot-align
+  hook ran a Haiku "creation judge" on every prose block with no structural
+  pre-filter; the judge over-labeled descriptions as `constraint`, so
+  banners, box-drawing separators, class/endpoint descriptions and
+  test-fixture notes all became "active invariants" (the runtime store was
+  ~97% junk). A block now reaches the judge only when it is not a separator
+  AND carries a real constraint shape (modal/marker) or decision shape
+  (decision verb + rationale); everything else is `descriptive` and never
+  burns a Haiku call. The constraint predicate is shared with init's
+  Phase-7b gate so the two paths can't drift, and the Pass-1/Pass-2 prompts
+  bias hard to `descriptive`.
+- **`cairn doctor` exits `0` on advisory warnings.** Previously warnings
+  mapped to exit `2`, which red-failed a `cairn doctor` CI health job under
+  `set -e`. Only errors are fatal now (exit `1`); use `--strict` for the old
+  behavior. Absent rebuildable caches (scope-index, ledgers) report `info`,
+  not `warn`, since a clean checkout legitimately lacks the gitignored
+  derived state.
+- **`invariant-suite` sensor relabeled `soft` / `status: planned`.** It was
+  declared `fail_severity: hard` but no runner executes it — a hard gate
+  that silently always passes. It stays as a roadmap item (invariant
+  enforcement is an unfilled gap), not a live gate.
+
+### Fixed
+
+- **Completion-integrity no longer requires `attestation.yaml` in the run
+  dir.** Nothing writes it there (the optional reviewer writes attestation
+  into the task dir), so every completed run was flagged — and the missing
+  check's `continue` even short-circuited the sha-pin reachability check.
+  Removed; the live task-lifecycle attestation handling is untouched.
+
+### Docs
+
+- **Trimmed the run-pipeline fiction** in `FILESYSTEM_LAYOUT` §6–7 — an
+  orchestration state machine (`events.jsonl`, `commands.jsonl`, a fat
+  `meta.json`, a phase enum) that had no writers — down to the real run-dir
+  contract (`meta.json` + `mcp-calls.jsonl` + `sensor-results.yaml`).
+- **Reconciled `PLUGIN_ARCHITECTURE` §16 with the real uninstall.** The
+  documented two-mode `cairn uninstall` / `--full` restore-from-backups
+  design was never built; `.cairn/backups/source/*.original` is a transient
+  adoption-repair snapshot (pruned by migration `0003`, read by no tooling),
+  not the uninstall mechanism.
+
 ## [0.22.6] — 2026-06-11
 
 Removed the glob-driven sensor layer. Hard cutover.

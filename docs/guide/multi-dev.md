@@ -165,8 +165,8 @@ If you're new to Cairn, read the [user guide](docs/guide/concepts.md)
 or the [README](README.md).
 ```
 
-You can edit this file freely — it's just markdown — but adoption
-regenerates it on `cairn doctor --fix` if it's missing.
+You can edit this file freely — it's just markdown — but `cairn fix`
+regenerates it if it's missing.
 
 ---
 

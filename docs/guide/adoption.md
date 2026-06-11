@@ -330,8 +330,9 @@ Pre-write safety:
 - **Uncommitted changes check.** If a file is dirty, you're warned
   before any write — option to stash, skip, or overwrite.
 - **Backup.** Every file modified by strip-replace is backed up
-  to `.cairn/backups/source/<rel>.original`. `cairn uninstall --full`
-  can restore.
+  to `.cairn/backups/source/<rel>.original` — a transient safety net
+  you can restore by hand during the post-adoption repair window.
+  Migration `0003` prunes it once adoption settles.
 - **Diff preview.** You see the proposed diff before it's applied.
 
 Most operators choose `[a]` for non-pilot modules and `[b]` for the
@@ -559,16 +560,20 @@ DECs, missing canonical entries, weird globs. Diagnostic steps:
 ### Total reset
 
 If adoption produced something you don't want and you'd rather
-start clean:
+start clean, preview the de-adoption then apply it:
 
 ```bash
-cairn uninstall --full
+cairn uninstall            # preview — changes nothing
+cairn uninstall --yes      # apply
 ```
 
-This restores stripped source comments from `.cairn/backups/source/`,
-removes `.cairn/`, removes the git hooks, and removes `JOIN.md`. It
-asks for confirmation: *"this is irreversible. proceed?"*. After
-that, the project is back to its pre-adoption state.
+This expands each `// §DEC-/§INV-` citation back to the entity's body
+as a plain inline comment (so the source stays self-documenting),
+unwires the `.claude/rules/cairn.md` import, removes that rule file,
+unsets Cairn's `core.hooksPath`, and deletes `.cairn/`. Pass
+`--keep-cites` to leave the `§` tokens in source instead. The
+machine-level plugin is removed separately with `/plugin uninstall
+cairn`.
 
 `cairn uninstall` (without `--full`) is the lighter option: stops
 enforcement (removes `core.hooksPath`, removes the CI gate, removes

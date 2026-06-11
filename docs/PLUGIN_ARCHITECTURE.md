@@ -605,7 +605,7 @@ Before any source file is modified during Phase 10:
 
 1. **Uncommitted-changes check** — `git status --porcelain` on the file. If dirty:
    > `services/auth.ts` has uncommitted changes. Replacing comments would mix into your work-in-progress. `[a]` stash and process `[b]` skip this file `[c]` overwrite (lose uncommitted changes — destructive)
-2. **Backup** — copy `services/auth.ts` → `.cairn/backups/source/services/auth.ts.original` (preserves directory structure). One backup per file, single snapshot. Used by `cairn uninstall --full` to restore.
+2. **Backup** — copy `services/auth.ts` → `.cairn/backups/source/services/auth.ts.original` (preserves directory structure). One backup per file, single snapshot — a transient safety net the operator can restore by hand during the post-adoption repair window. Migration `0003` prunes `.cairn/backups/` once adoption settles; it is not read by tooling and is NOT the uninstall mechanism (see §16).
 3. **Diff preview** — generate the proposed diff and show in the per-module batch consent prompt before any write.
 
 ### Consent flow
@@ -628,14 +628,25 @@ Reviewer subagent extracts DEC drafts from new essay-style comments the operator
 
 ## §16 Uninstall
 
-Two operations, distinct intents:
+`cairn uninstall` removes Cairn from a repo — the inverse of adoption. It is
+destructive, so it **previews by default** and only applies under `--yes`.
+Steps run in dependency order:
 
-| Command | What it does | Reversible? |
-|---------|--------------|-------------|
-| `cairn uninstall` | Stops active enforcement only: removes `core.hooksPath` config, removes `.github/workflows/cairn-check.yml`, removes `package.json` `prepare` script entry. Leaves `.cairn/` directory + stripped comments + `.cairn/git-hooks/` intact. | **Yes** — re-enable via `cairn join` or plugin re-adopt |
-| `cairn uninstall --full` | Full de-adoption: above + restores all stripped source comments from `.cairn/backups/source/*.original` (verified file-by-file; warns on missing or modified backups), deletes `.cairn/`, removes `.cairn/git-hooks/`, removes `JOIN.md`, removes plugin's project entry from `${CLAUDE_PLUGIN_DATA}/projects.json`. Asks confirmation: "this is irreversible. proceed?" `[a]` yes `[b]` no | **No** — fresh adoption required to re-enable |
+| Step | What it does |
+|------|--------------|
+| expand cites | Replaces each `// §DEC-/§INV-` citation with the entity's body inline, as a plain comment in the file's own comment style — so removing `.cairn/` leaves the source self-documenting with no dangling refs. The cited-file set is found by **scanning the working tree** (not the scope-index, which can be stale). `--keep-cites` skips this and the `§` tokens then dangle. |
+| unwire import | Removes the `@.claude/rules/cairn.md` import block from `CLAUDE.md` / `AGENTS.md`. Operator content is preserved; the memory file itself is kept. |
+| remove rule | Deletes `.claude/rules/cairn.md` and prunes `.claude/rules/` (and `.claude/`) if they empty out. |
+| unset hooks | Unsets `git config core.hooksPath` — ONLY when it is Cairn's own value (`.cairn/git-hooks`). A foreign husky/lefthook path is warned and left intact. |
+| remove state | Deletes `.cairn/`. |
 
-The split mirrors how plugin disable (`/plugin disable cairn`) is per-user (just stops the plugin) vs full plugin uninstall (`/plugin uninstall cairn`) which removes user-level state. `cairn uninstall` is per-project light; `cairn uninstall --full` is per-project complete.
+Cite expansion happens FIRST, while `.cairn/ground/` still exists to resolve
+the bodies — it does not use the transient `.cairn/backups/` snapshots (§15),
+which migration `0003` prunes early and which no tooling reads.
+
+The machine-level Claude Code plugin is **user-scoped**, not repo-scoped, so
+uninstall can't remove it; it prints the `/plugin uninstall cairn` reminder
+instead. Re-adoption is a fresh `cairn init`.
 
 ## §17 Multi-developer enforcement
 
@@ -755,7 +766,7 @@ The following decisions were made during drafting and folded into the relevant s
 | Existing rules merge | Adoption ingests; post-adoption regenerates `CLAUDE.md` + `AGENTS.md` from ground state with `<!-- cairn:keep-start -->` operator sections preserved | §6 Phase 10 |
 | Reviewer last-detection | Stop hook scans `.cairn/tasks/active/<id>/` for missing `attestation.yaml`; spawns reviewer if any | §10 |
 | `--no-verify` bypass detection | Pre-commit hook (paired with post-commit) appends attested SHAs to `.cairn/.attested-commits`; Stop hook diffs against HEAD's last 5; surfaces backfill prompt | §17 Layer 1 |
-| Uninstall vs full uninstall | `cairn uninstall` light (stops enforcement, keeps state); `cairn uninstall --full` restores original comments from backups, deletes `.cairn/`, removes hooks + CI workflow | §16 |
+| Uninstall | `cairn uninstall` (preview; `--yes` to apply) expands DEC/INV cites to inline comments, unwires the rule import, removes `.claude/rules/cairn.md`, unsets Cairn's `core.hooksPath`, deletes `.cairn/`. Single mode — no backup-restore | §16 |
 | MCP project-root detection | cwd-based walker (look for `.cairn/` or `.git/`); no env var dependency | §9 |
 | Subagent dispatch protocol | Skill emits structured ```dispatch``` fenced block; main Claude parses and issues Task calls | §11 |
 | Claude binary requirement | **Hard requirement** — no degraded mode. Adoption preflight detects missing `claude`, bails with install instructions | §6 Phase 1 |

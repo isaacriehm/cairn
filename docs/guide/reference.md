@@ -18,10 +18,10 @@ or directly via `npm install -g @isaacriehm/cairn`.
 | ------------------------------ | --------------------------------------------------------------------- | ---------------------------------------------------------------------- |
 | `cairn init`                   | Run the 13-phase adoption pipeline from a terminal.                   | When you'd rather drive adoption from a shell than from Claude Code.   |
 | `cairn join`                   | Bootstrap this clone — set `core.hooksPath`, verify CLI version.      | First time on a clone. Idempotent — safe to re-run.                    |
-| `cairn doctor`                 | Health check — ledger integrity, hook installation, drift, bypass.    | When something feels off; run as the first diagnostic.                 |
-| `cairn doctor --fix`           | Same as `doctor` plus automatic remediation for the easy cases.       | After `doctor` reports fixable issues.                                 |
-| `cairn uninstall`              | Stop enforcement (remove hooks-path, CI gate, prepare entry).         | When you want to disable Cairn but keep `.cairn/` for re-enable later. |
-| `cairn uninstall --full`       | Full de-adoption — restore stripped comments, delete `.cairn/`.       | When you want the project back to pre-adoption state.                  |
+| `cairn doctor`                 | Health check — ledger integrity, hook installation, version pin. Exits 0 on advisory warnings (errors → 1). | When something feels off; safe as a CI health gate.   |
+| `cairn doctor --strict`        | Same health check, but exit 2 when any warning is present.            | When you want warnings to hard-fail a CI job.                          |
+| `cairn uninstall`              | Preview de-adoption — expand DEC/INV cites to inline comments, then remove `.cairn/`, the rule import, and the hook path. Changes nothing without `--yes`. | When you're considering removing Cairn.                |
+| `cairn uninstall --yes`        | Apply de-adoption. `--keep-cites` leaves the `§DEC-/§INV-` tokens in source instead of inlining them. | When you want the project back to its pre-adoption state. |
 
 ### Daily work
 
@@ -48,6 +48,8 @@ or directly via `npm install -g @isaacriehm/cairn`.
 | `cairn gc`                               | Run all five GC passes (drift / completion / scope / quality / staleness). |
 | `cairn gc --pass drift`                  | Run only the drift pass.                                                 |
 | `cairn fix`                              | Apply mechanical remediation for known-fixable findings.                 |
+| `cairn invariants prune`                 | Retire junk invariants the Layer A hook minted before the creation gate (sot-align-sourced, no constraint shape). `--all` resets every sot-align INV; `--dry-run` previews. Archives to `.cairn/ground/.archive/`. |
+| `cairn cites expand`                     | Replace `// §DEC-/§INV-` citation lines with the entity body inline, as a plain comment. `--dry-run` previews. |
 
 ### Inspection
 
