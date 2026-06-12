@@ -91,6 +91,7 @@ const ISGHOST_ALLOW = new Set([
   "packages/cairn-core/src/components/reconfirm.ts",
   "packages/cairn-core/src/components/emit.ts",
   "packages/cairn-core/src/mcp/tools/component-register.ts",
+  "packages/cairn-core/src/mcp/tools/component-annotate.ts",
   "packages/cairn-core/src/mcp/tools/component-reconfirm.ts",
   "packages/cairn-core/src/init/phases/9e-comp-annotate.ts",
   // enforcement (multi-dev / record-decision / gc anchor + orphan / backup / hot write)

@@ -58,6 +58,29 @@ export const componentRegisterInput = {
   uses: z.array(z.string()).optional(),
 };
 
+export const componentAnnotateInput = {
+  /** Repo-relative POSIX path of the component file to annotate. */
+  file: z.string().min(1),
+  /** The exported symbol — the server validates it is a real export. */
+  export_name: z.string().min(1),
+  /** One of the owning workspace's `@category` taxonomy (server-validated). */
+  category: z.string().min(1),
+  /** One searchable sentence. */
+  purpose: z.string().min(1),
+  /** ≥2 concrete comma-separated nouns a teammate might search for. */
+  aliases: z.array(z.string()).min(2),
+  /** Public API props for the `@props` tag. */
+  public_props: z.array(z.string()).optional(),
+  /** Other registered components this one uses (`@uses`). */
+  uses: z.array(z.string()).optional(),
+  /** `@status` — stable | wip | deprecated. */
+  status: z.enum(["stable", "wip", "deprecated"]).optional(),
+  /** `@singleton` — declares exactly-once; promoted to a hard §INV. */
+  singleton: z.boolean().optional(),
+  /** Owning workspace; omit / "" for single-app. */
+  workspace: z.string().optional(),
+};
+
 export const componentReconfirmInput = {
   /** Reconfirm a single file's component; omit to sweep every flagged unit. */
   file: z.string().min(1).optional(),

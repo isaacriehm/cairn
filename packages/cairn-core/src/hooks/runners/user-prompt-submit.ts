@@ -28,6 +28,10 @@ import {
   readAndConsumePhaseReadyPending,
   renderPhaseReadyHint,
 } from "./phase-ready-surface.js";
+import {
+  readAndConsumeAnnotatePending,
+  renderAnnotateHint,
+} from "./annotate-surface.js";
 import { buildWorkingHeader } from "../../context/index.js";
 import { getSeenFingerprint, setSeenFingerprint } from "../../session/index.js";
 
@@ -122,6 +126,20 @@ export async function runUserPromptSubmitHook(): Promise<void> {
         }
       } catch {
         // best-effort — never block the prompt on this
+      }
+      // Stage-3 component capture-gate: consume the Stop hook's
+      // annotate stash and fold it into the deferred surface so it
+      // flows through every emit path below. Inject-only.
+      try {
+        const asks = readAndConsumeAnnotatePending(repoRoot, sessionId);
+        if (asks !== null && asks.length > 0) {
+          const annotateText = renderAnnotateHint(asks);
+          phaseReadyContext = [phaseReadyContext, annotateText]
+            .filter((s) => s.length > 0)
+            .join("\n\n");
+        }
+      } catch {
+        // best-effort
       }
     }
 

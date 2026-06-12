@@ -61,6 +61,11 @@ import {
   type PhaseReadyHint,
   writePhaseReadyPending,
 } from "./phase-ready-surface.js";
+import {
+  collectAnnotateAsks,
+  writeAnnotatePending,
+} from "./annotate-surface.js";
+import { markShownIds } from "../../session/index.js";
 import { runGcAutotriggerCheck } from "./gc-autotrigger.js";
 import {
   emitShapeB,
@@ -523,6 +528,36 @@ export async function runStopHook(): Promise<void> {
       } catch (err) {
         warnings.push(
           `mission_phase_scan_failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+
+      // Component capture-gate (stage 3): at turn end — peak
+      // understanding — surface any component the session touched that
+      // still lacks a @cairn header. The server pre-derives the
+      // mechanical fields (export, categories); the agent supplies only
+      // judgment via cairn_component_annotate. Stashed for the next UPS
+      // to inject (inject-only — Stop never blocks on this). Debounced
+      // once-per-component via seen.shownIds (D5).
+      try {
+        if (!isFirstTurnWarmup) {
+          const asks = collectAnnotateAsks(repoRoot, sessionId);
+          if (asks.length > 0) {
+            writeAnnotatePending(repoRoot, sessionId, asks);
+            markShownIds(
+              repoRoot,
+              sessionId,
+              asks.map((a) => `annotate:${a.file}`),
+            );
+            warnings.push(`component_annotate_deferred_to_ups:${asks.length}`);
+            if (systemMessage.length === 0) {
+              const noun = asks.length === 1 ? "component" : "components";
+              systemMessage = `⬡ Cairn — ${asks.length} ${noun} need a @cairn header. Submit any prompt to register.`;
+            }
+          }
+        }
+      } catch (err) {
+        warnings.push(
+          `component_annotate_scan_failed: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
 

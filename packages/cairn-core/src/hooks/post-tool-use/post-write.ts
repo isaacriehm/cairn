@@ -9,6 +9,7 @@
 import { z } from "zod";
 import { relative, resolve } from "node:path";
 import { resolveRepoRoot } from "../../session-start/index.js";
+import { appendTouched } from "../../session/index.js";
 import { readHookStdin } from "../runners/payload.js";
 import { executeSotAlign } from "./sot-align.js";
 import { executeWriteGuardian } from "./write-guardian.js";
@@ -118,6 +119,23 @@ export async function runPostWriteHook(): Promise<void> {
     // gitignore / glob / scope-index lookups all expect a repo-relative
     // path, so normalize here before handing it over.
     const relPath = relative(repoRoot, resolve(cwd, filePath));
+
+    // Stage-3 (D6): record the touched path so the Stop capture-gate can
+    // later filter to component-dir files missing a @cairn header. Best-
+    // effort, before the guard block — PostToolUse fires after the write
+    // landed, so the file is on disk regardless of the guard hint.
+    const sessionId =
+      typeof payload.session_id === "string" && payload.session_id.length > 0
+        ? payload.session_id
+        : null;
+    if (sessionId !== null) {
+      try {
+        appendTouched(repoRoot, sessionId, relPath);
+      } catch {
+        // best-effort — never affect the write
+      }
+    }
+
     const guard = executeWriteGuardian({
       repoRoot,
       relPath,

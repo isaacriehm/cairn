@@ -2,6 +2,7 @@ import type { ToolDef } from "./types.js";
 import { attentionDedupTool } from "./attention-dedup.js";
 import { bootstrapRetryTool } from "./bootstrap-retry.js";
 import { canonicalForTopicTool } from "./canonical-for-topic.js";
+import { componentAnnotateTool } from "./component-annotate.js";
 import { componentGetTool } from "./component-get.js";
 import { componentRegisterTool } from "./component-register.js";
 import { componentReconfirmTool } from "./component-reconfirm.js";
@@ -51,7 +52,8 @@ export const allTools: ToolDef<never>[] = [
   retireInvariantTool,
   // Write — apply pending review-class migrations inline
   migrateTool,
-  // Write — headerless component registry (ghost §3.8.1)
+  // Write — component registry (committed header + ghost §3.8.1)
+  componentAnnotateTool,
   componentRegisterTool,
   componentReconfirmTool,
   taskCreateTool,

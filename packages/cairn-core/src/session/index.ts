@@ -38,3 +38,4 @@ export {
   markShownIds,
   setSeenFingerprint,
 } from "./seen.js";
+export { appendTouched, readTouched } from "./touched.js";
