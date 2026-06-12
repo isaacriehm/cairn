@@ -361,6 +361,21 @@ Write tools wrap their work in the per-write flock helper from `cairn-core/src/l
 | Slash command | `commands/cairn-init.md` | Operator types `/cairn-init` | Same as auto-adopt skill but explicitly invoked |
 | Slash command | `commands/cairn-direction.md` | Operator types `/cairn-direction <prompt>` | Manual invocation of the direction skill — escape hatch when auto-invoke misses (conversational message wrongly classified, or operator wants to force the question-asker on a borderline prompt) |
 
+**Context-engine integration (see `docs/CONTEXT_ENGINE.md`).** `cairn-direction`
+no longer re-gathers its frame every message. The server injects it: the
+UserPromptSubmit working header carries the active task + mission/phase + the
+in-scope DEC/INV id index (deduped per session), and the PostToolUse(Read)
+enricher attaches the DEC/INV bodies + component slice bound to files as they
+are opened. So Step 0 preloads only the WRITE + judgment tools
+(`cairn_task_create`/`_complete`, `cairn_record_decision`,
+`cairn_component_annotate`, the mission-lifecycle writers, `AskUserQuestion`);
+the read context tools (`cairn_in_scope`, `cairn_canonical_for_topic`,
+`cairn_components_in_scope`, `cairn_component_get`, `cairn_mission_get`,
+`cairn_search`) load on demand only. Component registration is the
+`cairn_component_annotate` tool — judgment in, server writes + validates the
+`@cairn` header — and the Stop capture-gate surfaces any component left
+headerless; the pre-commit check stays the hard backstop.
+
 Skill `description` frontmatter is what triggers auto-invocation. Example for `cairn-direction`:
 
 ```yaml

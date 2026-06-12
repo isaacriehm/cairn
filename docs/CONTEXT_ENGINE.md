@@ -1,7 +1,9 @@
 # Context Engine — server-driven orchestration
 
-Status: **design locked, staged build in progress.** Stage 1 shipped; 2–4
-pending. This doc is the source of truth; drift between it and the code is a bug.
+Status: **design locked, fully shipped.** Stages 1–4 landed — the working
+header, the scope enricher, the Stop capture-gate + `cairn_component_annotate`,
+and the shrunk `cairn-direction`. This doc is the source of truth; drift
+between it and the code is a bug.
 
 ## The problem
 
@@ -85,15 +87,15 @@ is reversible.
 1. **UserPromptSubmit working header (deduped).** Inject active task + mission +
    in-scope ids per prompt, only when changed. Removes the agent's need to call
    `cairn_in_scope` / `cairn_mission_get` to know its frame. ← **shipped**
-2. **Scope enricher → components.** Extend the read-enricher / `PostToolBatch`
-   to attach the component slice (and dedupe DEC/INV legends against a session
-   "seen" set so navigation never re-bloats). Kills the "classify as UI work"
-   trigger and the `components_in_scope` call.
+2. **Scope enricher → components.** Extend the read-enricher to attach the
+   component slice (and dedupe DEC/INV legends against a session "seen" set so
+   navigation never re-bloats). Kills the "classify as UI work" trigger and the
+   `components_in_scope` call. ← **shipped**
 3. **Stop capture-gate + `cairn_component_annotate`.** Server pre-derives
-   mechanics, asks only for judgment, writes + validates the header.
+   mechanics, asks only for judgment, writes + validates the header. ← **shipped**
 4. **Shrink `cairn-direction`.** Once 1–2 make the gather redundant, the skill
-   drops Step 0's ToolSearch + Step 1's gather and becomes the judgment core
-   (pivot? mission? spec wording?) — cheap to re-enter per message.
+   drops Step 0's read-tool preload + Step 1's gather and becomes the judgment
+   core (pivot? mission? spec wording?) — cheap to re-enter per message. ← **shipped**
 
 ## Risks + mitigations
 

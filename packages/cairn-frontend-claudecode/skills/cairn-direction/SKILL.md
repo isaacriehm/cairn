@@ -28,8 +28,21 @@ the entry-point summary.
 
 ## Step 0 — preload deferred tools (REQUIRED FIRST)
 
+Preload only the WRITE + judgment tools. The read-only context tools
+(`cairn_in_scope`, `cairn_canonical_for_topic`, `cairn_components_in_scope`,
+`cairn_component_get`, `cairn_mission_get`, `cairn_search`) are no longer
+preloaded — the server now injects your frame for you:
+
+- **SessionStart / UserPromptSubmit** inject the working-context header:
+  active task, mission + phase, and the in-scope DEC/INV id index.
+- **PostToolUse(Read)** injects the DEC/INV bodies + the component slice
+  bound to files as you open them (each once per session).
+
+Load any of those read tools on demand only — when you need a body the
+header didn't carry, or a mission field the header omitted.
+
 ```
-ToolSearch(select:mcp__plugin_cairn_cairn__cairn_task_create,mcp__plugin_cairn_cairn__cairn_task_complete,mcp__plugin_cairn_cairn__cairn_in_scope,mcp__plugin_cairn_cairn__cairn_canonical_for_topic,mcp__plugin_cairn_cairn__cairn_search,mcp__plugin_cairn_cairn__cairn_components_in_scope,mcp__plugin_cairn_cairn__cairn_component_get,mcp__plugin_cairn_cairn__cairn_mission_get,mcp__plugin_cairn_cairn__cairn_mission_start,mcp__plugin_cairn_cairn__cairn_mission_accept_draft,mcp__plugin_cairn_cairn__cairn_mission_plan_phase,mcp__plugin_cairn_cairn__cairn_mission_advance,mcp__plugin_cairn_cairn__cairn_mission_set_exit_gate,mcp__plugin_cairn_cairn__cairn_record_decision,AskUserQuestion)
+ToolSearch(select:mcp__plugin_cairn_cairn__cairn_task_create,mcp__plugin_cairn_cairn__cairn_task_complete,mcp__plugin_cairn_cairn__cairn_record_decision,mcp__plugin_cairn_cairn__cairn_component_annotate,mcp__plugin_cairn_cairn__cairn_mission_start,mcp__plugin_cairn_cairn__cairn_mission_accept_draft,mcp__plugin_cairn_cairn__cairn_mission_plan_phase,mcp__plugin_cairn_cairn__cairn_mission_advance,mcp__plugin_cairn_cairn__cairn_mission_set_exit_gate,AskUserQuestion)
 ```
 
 `AskUserQuestion` is deferred — without preload you fall back to
@@ -109,26 +122,32 @@ read-only `Bash`, `cairn_*` MCP tools.
 "No questions needed" from Step 2 → write the spec NOW with empty
 questions; it does NOT skip Step 3.
 
-## Step 1 — gather in-scope context (parallel)
+## Step 1 — in-scope context (mostly injected)
 
-`cairn_in_scope`, `cairn_canonical_for_topic`, `cairn_search`,
-`Bash: git log --oneline -5`.
+The in-scope DEC/INV id index arrives in the injected working header;
+their bodies + the component slice arrive on the read-enricher as you
+open files. Don't re-gather what's already in context. Still do:
 
-**UI / component work — also load the registry.** When the task creates
-or modifies any UI component (or touches a component dir), call
-`cairn_components_in_scope({path_globs})` and read the COMPLETE returned
-inventory — it is the full slice you are entitled to use, never a partial
-retrieval. Fold it into the tightened spec under a "Components in scope"
-heading, then apply the ladder:
+- `Bash: git log --oneline -5` — recent history (not injected).
+- `cairn_search` / `cairn_canonical_for_topic` / `cairn_in_scope` —
+  **on demand only**, when you need a body the header didn't carry or a
+  topic the injection didn't surface.
 
-- **USE** — an indexed component fits. Read its header via
-  `cairn_component_get({name})` for `@props`/`@example` BEFORE importing;
-  never guess props, never re-style it inline.
+**UI / component work.** The component slice for any file you read under
+a component dir is injected automatically (name · category · purpose ·
+`[S]`), so you no longer call `cairn_components_in_scope` to know the
+inventory. Apply the ladder:
+
+- **USE** — an injected component fits. Read its header (or
+  `cairn_component_get({name})` on demand) for `@props`/`@example` BEFORE
+  importing; never guess props, never re-style it inline.
 - **EXTEND** — a component almost fits. Add a prop/variant in place and
   update its header. Never copy-paste it into a new file.
-- **CREATE** — nothing fits. The new component MUST carry a complete
-  `@cairn` header (see `.cairn/config/workflow.md`) before the task closes;
-  the pre-commit check blocks a missing/duplicate header.
+- **CREATE** — nothing fits. Build the component, then register it with
+  `cairn_component_annotate({ file, export_name, category, purpose,
+  aliases })` — you supply judgment, the server writes + validates the
+  `@cairn` header. (The Stop gate also surfaces this for any component you
+  leave headerless; the pre-commit check is the hard backstop.)
 
 Respect `off_limits` workspaces (isolated — never import or adapt their
 components) and `[S]` singletons (extend in place, never fork).
