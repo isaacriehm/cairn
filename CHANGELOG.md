@@ -4,6 +4,52 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.0] — 2026-06-12
+
+Context engine — move orchestration off the LLM onto the server. The agent
+writes code and supplies judgment; the server feeds scoped, deduped context
+and pre-fills the mechanical half of every capture. Every hook stays
+inject-only: a crash degrades to "no context injected," never a trapped
+session. Hard enforcement remains at the git pre-commit sweep + `cairn doctor`.
+
+### Added
+
+- **Working-context header.** On every prompt the `UserPromptSubmit` hook
+  injects a compact frame — the active task (goal + state), its in-scope
+  DEC/INV id index, and the mission phase — deduped against per-session state
+  so an unchanged frame is never re-sent. The agent stops re-querying
+  `cairn_in_scope` / `cairn_mission_get` to know where it is. Multi-task
+  aware: the task is resolved by session affinity (`last_journal_session` /
+  `created_by_session`), and the mission + phase come from that task's own
+  anchor — so two windows on one checkout each see their own frame.
+- **Scope enricher.** The `PostToolUse(Read)` hook attaches the ground state
+  bound to files as they are opened — each cited DEC/INV body and, for files
+  under a component dir, the component slice (name · category · purpose ·
+  `[S]`) — each shown at most once per session. Replaces the "classify as UI
+  work → call `cairn_components_in_scope`" step.
+- **`cairn_component_annotate`.** Register a component by supplying judgment
+  (export, category, purpose, aliases; optional props / uses / status /
+  singleton); the server validates the export and category against the code,
+  formats the canonical `@cairn` header, inserts it above the export (below
+  any shebang or `"use client"` / `"use server"` directive), and rebuilds the
+  index + singleton invariants. Committed projects write the in-file header;
+  ghost projects route to `cairn_component_register`.
+- **Stop capture-gate.** At turn end the server lists components the session
+  touched that still lack a `@cairn` header, pre-derives their export +
+  allowed categories, and surfaces one fully-specified
+  `cairn_component_annotate` ask on the next prompt — inject-only, debounced
+  once per component per session. The pre-commit check stays the hard backstop.
+
+### Changed
+
+- **`cairn-direction` slimmed to its judgment core.** Step 0 preloads only the
+  write + judgment tools; the read-only context tools (`cairn_in_scope`,
+  `cairn_canonical_for_topic`, `cairn_components_in_scope`,
+  `cairn_component_get`, `cairn_mission_get`, `cairn_search`) drop out of the
+  preload and load on demand — their output now arrives via injection. Step 1
+  stops re-gathering in-scope context every message; the UI ladder reads the
+  injected component slice and registers via `cairn_component_annotate`.
+
 ## [0.23.0] — 2026-06-11
 
 Kill over-generated, unconsumed, and unwired state; add clean removal.
