@@ -30,3 +30,11 @@ export {
   stampEventsPoll,
 } from "./events-marker.js";
 export type { EventsMarker } from "./events-marker.js";
+export {
+  fingerprintText,
+  filterUnshownIds,
+  getSeenFingerprint,
+  hasShownId,
+  markShownIds,
+  setSeenFingerprint,
+} from "./seen.js";

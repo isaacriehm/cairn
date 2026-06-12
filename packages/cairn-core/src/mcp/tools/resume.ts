@@ -24,19 +24,13 @@ import {
   readTaskJournal,
   type JournalEntry,
 } from "../../tasks/index.js";
+import { readTaskSpec } from "../../tasks/spec-reader.js";
 import { cairnDir } from "@isaacriehm/cairn-state";
 
 interface Input {
   task_id?: string;
   /** Cap on most-recent journal entries returned. Default 7. */
   max_entries?: number;
-}
-
-interface SpecFrontmatter {
-  title?: string;
-  in_scope_decisions?: string[];
-  in_scope_invariants?: string[];
-  target_path_globs?: string[];
 }
 
 interface ResumePayload {
@@ -101,45 +95,15 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     );
   }
 
-  const specPath = join(taskDir, "spec.tightened.md");
-  let title = taskId;
-  let goal = "(spec not found)";
-  let inScopeDecisions: string[] = [];
-  let inScopeInvariants: string[] = [];
-  let targetPathGlobs: string[] = [];
-
-  if (existsSync(specPath)) {
-    const raw = readFileSync(specPath, "utf8");
-    const fmMatch = raw.match(/^---\r?\n([\s\S]*?)\n---\r?\n([\s\S]*)$/);
-    if (fmMatch) {
-      try {
-        const fm = parseYaml(fmMatch[1] ?? "") as SpecFrontmatter;
-        if (typeof fm.title === "string") title = fm.title;
-        if (Array.isArray(fm.in_scope_decisions)) {
-          inScopeDecisions = fm.in_scope_decisions.filter(
-            (x): x is string => typeof x === "string",
-          );
-        }
-        if (Array.isArray(fm.in_scope_invariants)) {
-          inScopeInvariants = fm.in_scope_invariants.filter(
-            (x): x is string => typeof x === "string",
-          );
-        }
-        if (Array.isArray(fm.target_path_globs)) {
-          targetPathGlobs = fm.target_path_globs.filter(
-            (x): x is string => typeof x === "string",
-          );
-        }
-      } catch {
-        // malformed frontmatter — fall through with defaults
-      }
-      const body = fmMatch[2] ?? "";
-      const goalMatch = body.match(/##\s+Goal\s*\r?\n+([\s\S]*?)(?:\r?\n##\s+|$)/);
-      if (goalMatch && goalMatch[1] !== undefined) {
-        goal = goalMatch[1].trim();
-      }
-    }
-  }
+  // Shared spec reader (tasks/spec-reader.ts) — same parse the
+  // UserPromptSubmit working-header uses. Preserve resume's historical
+  // fallbacks: title → taskId, goal → "(spec not found)" when absent.
+  const spec = readTaskSpec(taskDir);
+  const title = spec !== null && spec.title.length > 0 ? spec.title : taskId;
+  const goal = spec !== null && spec.goal.length > 0 ? spec.goal : "(spec not found)";
+  const inScopeDecisions = spec?.inScopeDecisions ?? [];
+  const inScopeInvariants = spec?.inScopeInvariants ?? [];
+  const targetPathGlobs = spec?.targetPathGlobs ?? [];
 
   const journal = readTaskJournal(ctx.repoRoot, taskId, scope);
   const cap = Math.max(1, Math.min(50, input.max_entries ?? 7));

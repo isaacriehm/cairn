@@ -10,3 +10,5 @@ export { buildSpecDelta } from "./spec-delta.js";
 export type { SpecDelta } from "./spec-delta.js";
 export { readActiveTaskSummary } from "./task-summary.js";
 export type { ActiveTaskSummary } from "./task-summary.js";
+export { buildWorkingHeader } from "./working-header.js";
+export type { WorkingHeader } from "./working-header.js";

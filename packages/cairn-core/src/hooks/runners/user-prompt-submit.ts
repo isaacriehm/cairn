@@ -23,11 +23,13 @@ import {
   getScopeIndexEntry,
 } from "@isaacriehm/cairn-state";
 import { buildLegend, type ScopeIndexHint } from "../post-tool-use/legend-builder.js";
-import { readHookStdin } from "./payload.js";
+import { appendTelemetry, readHookStdin } from "./payload.js";
 import {
   readAndConsumePhaseReadyPending,
   renderPhaseReadyHint,
 } from "./phase-ready-surface.js";
+import { buildWorkingHeader } from "../../context/index.js";
+import { getSeenFingerprint, setSeenFingerprint } from "../../session/index.js";
 
 const MAX_FILE_BYTES = 512_000;
 // Match `@<path>` only when `@` follows whitespace or is at start of
@@ -123,20 +125,53 @@ export async function runUserPromptSubmitHook(): Promise<void> {
       }
     }
 
-    // Fast-path: no `@` token in prompt → emit phase-ready alone (if any).
+    // Working-context header (context engine, stage 1): inject a compact
+    // active-task + mission + in-scope-id frame, deduped against this
+    // session's last injection (per-session fingerprint, key
+    // `working-header`). Only re-sent when it changed — unchanged frames
+    // never re-bloat context. Prepended to EVERY emit path below; it is
+    // the highest-value frame so it goes first.
+    let headerCtx = "";
+    if (repoRoot !== null && sessionId !== null && sessionId.length > 0) {
+      try {
+        const wh = buildWorkingHeader(repoRoot);
+        if (
+          wh !== null &&
+          getSeenFingerprint(repoRoot, sessionId, "working-header") !== wh.fingerprint
+        ) {
+          headerCtx = wh.text;
+          setSeenFingerprint(repoRoot, sessionId, "working-header", wh.fingerprint);
+        }
+      } catch {
+        // best-effort — never block the prompt on the header
+      }
+      appendTelemetry({
+        repoRoot,
+        sessionId,
+        kind: "working-header",
+        durationMs: 0,
+        source: null,
+        warnings: [],
+        extra: { injected: headerCtx.length > 0 },
+      });
+    }
+    const withHeader = (ctx: string): string =>
+      [headerCtx, ctx].filter((s) => s.length > 0).join("\n\n");
+
+    // Fast-path: no `@` token in prompt → emit header + phase-ready alone.
     if (prompt.length === 0 || !prompt.includes("@")) {
-      emitShapeB(phaseReadyContext);
+      emitShapeB(withHeader(phaseReadyContext));
       return;
     }
 
     if (repoRoot === null) {
-      emitShapeB(phaseReadyContext);
+      emitShapeB(withHeader(phaseReadyContext));
       return;
     }
 
     const paths = extractAttachedPaths(prompt);
     if (paths.length === 0) {
-      emitShapeB(phaseReadyContext);
+      emitShapeB(withHeader(phaseReadyContext));
       return;
     }
 
@@ -170,7 +205,7 @@ export async function runUserPromptSubmitHook(): Promise<void> {
       aggregated.invariants.length === 0 &&
       aggregated.decisions.length === 0
     ) {
-      emitShapeB(phaseReadyContext);
+      emitShapeB(withHeader(phaseReadyContext));
       return;
     }
 
@@ -194,9 +229,11 @@ export async function runUserPromptSubmitHook(): Promise<void> {
       scopeHint,
     );
 
-    // Stitch phase-ready (if any) ahead of the legend so the operator
-    // sees the higher-priority surface first.
-    const combined = [phaseReadyContext, legend ?? ""].filter((s) => s.length > 0).join("\n\n");
+    // Stitch header → phase-ready → legend so the operator sees the
+    // highest-priority surfaces first.
+    const combined = [headerCtx, phaseReadyContext, legend ?? ""]
+      .filter((s) => s.length > 0)
+      .join("\n\n");
     emitShapeB(combined);
   } catch {
     try {
