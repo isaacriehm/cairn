@@ -400,20 +400,30 @@ unbalanced: [
     console.log("  ✓ Step 6 — malformed frontmatter survives");
   }
 
-  // ── Step 7 — brand_and_positioning injection ─────────────────────
+  // ── Step 7 — brand context injects ONLY confirmed files ──────────
   {
     const repoRoot = mkFixture();
     const groundDir = join(repoRoot, ".cairn", "ground");
     mkdirSync(join(groundDir, "brand"), { recursive: true });
     mkdirSync(join(groundDir, "product"), { recursive: true });
+    // Confirmed overview → injected.
     writeFileSync(
       join(groundDir, "brand", "overview.md"),
       `---\nstatus: accepted\n---\n\n# Brand overview\n\nWe are bold and minimal.\n`,
       "utf8",
     );
+    // Draft positioning → NOT injected (generic / unconfirmed brand must
+    // never burn SessionStart context).
     writeFileSync(
       join(groundDir, "product", "positioning.md"),
       `---\nstatus: draft\n---\n\n# Positioning\n\nFor solo developers.\n`,
+      "utf8",
+    );
+    // Confirmed voice → injected (voice.md was previously written but
+    // never fed into context — now it is, when confirmed).
+    writeFileSync(
+      join(groundDir, "brand", "voice.md"),
+      `---\nstatus: current\n---\n\n# Voice\n\nTerse and direct, no fluff.\n`,
       "utf8",
     );
     const result = await buildSessionStartContext({ repoRoot });
@@ -423,17 +433,21 @@ unbalanced: [
     );
     assert(
       result.additionalContext.includes("We are bold and minimal."),
-      "Step 7: brand body missing from context",
+      "Step 7: confirmed brand overview should be injected",
     );
     assert(
-      result.additionalContext.includes("For solo developers."),
-      "Step 7: positioning body missing from context",
+      result.additionalContext.includes("Terse and direct, no fluff."),
+      "Step 7: confirmed voice should be injected (voice.md fix)",
     );
     assert(
-      result.additionalContext.includes("[DRAFT"),
-      "Step 7: draft hint should appear when product/positioning.md is draft",
+      !result.additionalContext.includes("For solo developers."),
+      "Step 7: draft positioning must NOT be injected",
     );
-    console.log("  ✓ Step 7 — brand + positioning injection");
+    assert(
+      !result.additionalContext.includes("[DRAFT"),
+      "Step 7: no draft hint — drafts are skipped entirely now",
+    );
+    console.log("  ✓ Step 7 — only confirmed brand/voice injected; drafts skipped");
   }
 
   // ── Step 8 — absent files: no section, no warnings ───────────────

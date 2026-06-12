@@ -342,7 +342,9 @@ export async function buildSessionStartContext(
   const latestBaseline = readLatestBaselineAudit(args.repoRoot, warnings);
   counts.baselineFindings = latestBaseline?.hardFindings ?? 0;
 
-  // ── Section 1.5 — brand + product positioning (always injected) ───
+  // ── Section 1.5 — brand + product context (only when CONFIRMED) ───
+  // Overview, positioning, AND voice — but only files the operator has
+  // confirmed (status: current). Drafts / generic auto-fill are skipped.
   const brandAndPositioningSection = readBrandAndPositioning(args.repoRoot, warnings);
 
   // ── First-session onboarding block ────────────────────────────────
@@ -639,6 +641,11 @@ function isMissionPhaseDeferActive(
 function readBrandAndPositioning(repoRoot: string, warnings: string[]): string | null {
   const brandPath = cairnDir(repoRoot, "ground", "brand", "overview.md");
   const positioningPath = cairnDir(repoRoot, "ground", "product", "positioning.md");
+  // voice.md was written by brand setup but never injected — the skills
+  // tell the model "chat voice comes via SessionStart", yet nothing fed
+  // it in. Inject it here (confirmed-only) so the voice file is actually
+  // used instead of being dead state.
+  const voicePath = cairnDir(repoRoot, "ground", "brand", "voice.md");
 
   // Read both files first, then dedupe.
   //
@@ -652,12 +659,12 @@ function readBrandAndPositioning(repoRoot: string, warnings: string[]): string |
   interface Section {
     label: string;
     body: string;
-    draftHint: string;
   }
   const sections: Section[] = [];
   for (const [label, path] of [
     ["Brand overview", brandPath] as const,
     ["Product positioning", positioningPath] as const,
+    ["Voice & tone", voicePath] as const,
   ]) {
     if (!existsSync(path)) continue;
     try {
@@ -667,11 +674,13 @@ function readBrandAndPositioning(repoRoot: string, warnings: string[]): string |
       const status = typeof fm["status"] === "string" ? (fm["status"] as string) : null;
       const body = parsed.body.trim();
       if (body.length === 0) continue;
-      const draftHint =
-        status === "draft"
-          ? "  [DRAFT — operator has not filled this in; ask before making design decisions]"
-          : "";
-      sections.push({ label, body, draftHint });
+      // Only inject brand the operator has CONFIRMED. A `draft` (the
+      // seeded placeholder, or a machine-written auto-fill the operator
+      // hasn't reviewed) is NOT injected — generic brand text must never
+      // burn SessionStart context as authoritative voice. The operator
+      // confirms by editing the file (status flips to `current`).
+      if (status !== "current" && status !== "accepted") continue;
+      sections.push({ label, body });
     } catch (err) {
       warnings.push(
         `${label} read failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -697,10 +706,10 @@ function readBrandAndPositioning(repoRoot: string, warnings: string[]): string |
   if (uniqBodies.size === 1 && sections.length > 1) {
     const first = sections[0]!;
     const mergedLabel = sections.map((s) => s.label).join(" / ");
-    return `## Brand and product context\n\n### ${mergedLabel}${first.draftHint}\n\n${first.body}`;
+    return `## Brand and product context\n\n### ${mergedLabel}\n\n${first.body}`;
   }
 
-  const parts = sections.map((s) => `### ${s.label}${s.draftHint}\n\n${s.body}`);
+  const parts = sections.map((s) => `### ${s.label}\n\n${s.body}`);
   return `## Brand and product context\n\n${parts.join("\n\n")}`;
 }
 

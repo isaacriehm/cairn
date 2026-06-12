@@ -111,16 +111,32 @@ async function ask(rl: Interface, prompt: string): Promise<string> {
   return reply.trim();
 }
 
+export interface ApplyBrandOptions {
+  /**
+   * Flip each written file's `status` to `current` (operator-confirmed).
+   * Default true — the interactive wizard collects the operator's own
+   * words. The Phase-6 AUTO-DERIVE path passes false: machine-written
+   * brand stays `status: draft`, which SessionStart does NOT inject, so
+   * a generic first draft never pollutes context as authoritative voice.
+   * The operator confirms a draft by editing the file (or re-running the
+   * interactive setup), which flips it to `current`.
+   */
+  markCurrent?: boolean;
+}
+
 /**
- * Apply answers to the seeded templates. Empty answers are no-ops; only
- * answered files flip from `status: draft` to `status: current`.
+ * Apply answers to the seeded templates. Empty answers are no-ops. When
+ * `markCurrent` (default) the answered files flip `draft → current`;
+ * the auto-derive path passes `markCurrent: false` to keep them `draft`.
  *
  * Returns the list of files that were actually rewritten.
  */
 export function applyBrandAnswers(
   repoRoot: string,
   answers: BrandAnswers,
+  opts: ApplyBrandOptions = {},
 ): { updated: string[]; warnings: string[] } {
+  const markCurrent = opts.markCurrent ?? true;
   const updated: string[] = [];
   const warnings: string[] = [];
 
@@ -131,6 +147,7 @@ export function applyBrandAnswers(
       answers.whatItDoes,
       warnings,
       rel,
+      markCurrent,
     );
     if (ok) updated.push(rel);
     // Also pre-fill brand/overview.md with the same domain summary —
@@ -144,6 +161,7 @@ export function applyBrandAnswers(
       answers.whatItDoes,
       warnings,
       overviewRel,
+      markCurrent,
     );
     if (overviewOk) updated.push(overviewRel);
   }
@@ -155,11 +173,12 @@ export function applyBrandAnswers(
       answers.personas,
       warnings,
       rel,
+      markCurrent,
     );
     if (ok) updated.push(rel);
   } else if (answers.mainUsers.length > 0) {
     const rel = ".cairn/ground/product/personas.yaml";
-    const ok = rewritePersonas(join(repoRoot, rel), answers.mainUsers, warnings, rel);
+    const ok = rewritePersonas(join(repoRoot, rel), answers.mainUsers, warnings, rel, markCurrent);
     if (ok) updated.push(rel);
   }
 
@@ -171,6 +190,7 @@ export function applyBrandAnswers(
       answers.avoid,
       warnings,
       rel,
+      markCurrent,
     );
     if (ok) updated.push(rel);
   }
@@ -183,6 +203,7 @@ function rewriteWithBody(
   body: string,
   warnings: string[],
   rel: string,
+  markCurrent: boolean,
 ): boolean {
   if (!existsSync(abs)) {
     warnings.push(`brand-setup: ${rel} missing — skipping`);
@@ -195,7 +216,7 @@ function rewriteWithBody(
     warnings.push(`brand-setup: ${rel} unreadable: ${stringifyErr(err)}`);
     return false;
   }
-  const flipped = flipStatus(text);
+  const flipped = flipStatus(text, markCurrent);
   const out = replaceBodyAfterFrontmatter(flipped, body);
   try {
     writeFileSync(abs, out, "utf8");
@@ -211,6 +232,7 @@ function rewritePersonas(
   description: string,
   warnings: string[],
   rel: string,
+  markCurrent: boolean,
 ): boolean {
   if (!existsSync(abs)) {
     warnings.push(`brand-setup: ${rel} missing — skipping`);
@@ -219,7 +241,7 @@ function rewritePersonas(
   const next =
     `# Product personas — who this is for. Read at every SessionStart.\n` +
     `# See DOCS_SPEC.md §3.4 for shape.\n` +
-    `status: current\n` +
+    `status: ${markCurrent ? "current" : "draft"}\n` +
     `personas:\n` +
     `  - name: primary\n` +
     `    description: ${yamlSingleLine(description)}\n`;
@@ -243,6 +265,7 @@ function rewritePersonasStructured(
   personas: BrandPersona[],
   warnings: string[],
   rel: string,
+  markCurrent: boolean,
 ): boolean {
   if (!existsSync(abs)) {
     warnings.push(`brand-setup: ${rel} missing — skipping`);
@@ -251,7 +274,7 @@ function rewritePersonasStructured(
   const lines: string[] = [];
   lines.push(`# Product personas — who this is for. Read at every SessionStart.`);
   lines.push(`# See DOCS_SPEC.md §3.4 for shape.`);
-  lines.push(`status: current`);
+  lines.push(`status: ${markCurrent ? "current" : "draft"}`);
   lines.push(`personas:`);
   for (const p of personas) {
     lines.push(`  - name: ${p.name}`);
@@ -272,6 +295,7 @@ function rewriteVoice(
   avoid: string,
   warnings: string[],
   rel: string,
+  markCurrent: boolean,
 ): boolean {
   if (!existsSync(abs)) {
     warnings.push(`brand-setup: ${rel} missing — skipping`);
@@ -284,7 +308,7 @@ function rewriteVoice(
     warnings.push(`brand-setup: ${rel} unreadable: ${stringifyErr(err)}`);
     return false;
   }
-  const flipped = flipStatus(text);
+  const flipped = flipStatus(text, markCurrent);
   const main = body.length > 0 ? body : "(operator did not specify a voice — fill in later)";
   const avoidBlock =
     avoid.length > 0 ? `\n\n## Avoid\n\n${avoid}\n` : "";
@@ -300,7 +324,11 @@ function rewriteVoice(
 
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?\r?\n)---\r?\n?/;
 
-function flipStatus(text: string): string {
+function flipStatus(text: string, markCurrent: boolean): string {
+  // Auto-derive path (markCurrent=false) leaves status untouched — the
+  // seeded template is `status: draft`, and a machine-written draft must
+  // stay draft so SessionStart doesn't inject it as confirmed brand.
+  if (!markCurrent) return text;
   const m = text.match(FRONTMATTER_RE);
   if (!m) return text;
   const fm = m[1] ?? "";

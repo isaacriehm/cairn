@@ -514,7 +514,6 @@ redundant.
   suppress non-blocking AskUserQuestion calls. The only allowed
   pause is a kind=conflict surface (hard inconsistency).
 - Match the project's chat-reply voice from
-  `.cairn/ground/brand/voice.md` when present (Cairn's spec-delta
-  scan injects it into SessionStart context). Default to plain
-  English when the file is absent or empty. Any DEC body the skill
+  `.cairn/ground/brand/voice.md` when it appears in your context.
+  Default to plain English when it's absent. Any DEC body the skill
   writes is always full English regardless of voice.

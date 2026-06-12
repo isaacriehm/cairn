@@ -50,7 +50,11 @@ export async function runPhase6Brand(state: PhaseState): Promise<PhaseResult> {
               voice: DEFAULT_VOICE,
               avoid: DEFAULT_AVOID,
             };
-        result = applyBrandAnswers(state.repoRoot, answers);
+        // Machine-written brand is a DRAFT, never confirmed voice.
+        // markCurrent:false keeps status:draft so SessionStart doesn't
+        // inject a generic first draft as authoritative every session —
+        // the operator confirms it by editing the file.
+        result = applyBrandAnswers(state.repoRoot, answers, { markCurrent: false });
         if (derived === null) {
           result.warnings.push(
             "brand-derive: Haiku timeout/parse fail → using mechanical defaults. Re-run `cairn fix brand` after init.",
@@ -79,14 +83,14 @@ export async function runPhase6Brand(state: PhaseState): Promise<PhaseResult> {
       "Want Cairn to draft your project's voice & positioning? It helps your AI assistant write in a tone that matches your project.",
     options: [
       {
-        id: "auto-fill",
-        label: "Yes, draft it for me",
-        detail: "Cairn writes a first draft from what it learned — edit anytime",
+        id: "skip",
+        label: "Skip (recommended)",
+        detail: "Leave it blank — add it later only if you want it",
       },
       {
-        id: "skip",
-        label: "Skip for now",
-        detail: "Leave it blank; you can add it later",
+        id: "auto-fill",
+        label: "Draft it for me",
+        detail: "Cairn writes a starting draft you review; not used until you confirm it",
       },
       {
         id: "manual",
@@ -94,7 +98,7 @@ export async function runPhase6Brand(state: PhaseState): Promise<PhaseResult> {
         detail: "You'll fill it in after setup",
       },
     ],
-    default: "auto-fill",
+    default: "skip",
   };
   return { status: "needs_input", question, state };
 }
