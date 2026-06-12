@@ -4,6 +4,43 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.26.0] — 2026-06-12
+
+Migration release. Three content-repair migrations fix stale ground state
+on repos adopted before the relevant fix landed — the changes shipped, but
+existing repos kept the old state. All `review`-class: they surface at
+SessionStart and apply via `cairn migrate` (or the `cairn_migrate` MCP
+tool), never silently. Each ships with `introducedIn: 0.26.0` so a repo
+whose `cairn_version` pin already advanced past the underlying fix still
+re-evaluates it; `detect()` carries correctness.
+
+### Added
+
+- **`0005-demote-autofilled-brand`.** Before 0.25.0, auto-generated brand
+  (voice / overview / positioning / personas) was marked `status: current`,
+  so SessionStart injected generic machine-written brand as authoritative
+  every session. This migration detects the provably auto-generated docs —
+  the mechanical-fallback voice / personas markers, and an overview that's
+  byte-identical to positioning (the auto-fill signature) — and demotes
+  them to `draft` so they stop being injected. Operator-written brand is
+  left alone.
+- **`0006-prune-sot-align-invariants`.** Repos adopted before the 0.23.0
+  creation gate carry junk Layer-A (sot-align) invariants minted from
+  non-rule prose. This archives the shapeless sot-align entries (the exact
+  bar the gate now applies) to `.cairn/ground/.archive/`, keeps real
+  sot-align rules, and never touches curated DEC/INV — the same surgical
+  core as `cairn invariants prune`.
+- **`0007-collapse-component-dirs`.** The pre-0.22.4 component detector
+  could enumerate a directory and its sub-directories (and individual leaf
+  component folders) as separate `componentDirs`, leaving dozens of
+  redundant entries. The component walk recurses and collection dedups, so
+  the redundancy is pure config bloat; this collapses each workspace's
+  `componentDirs` to the shallowest ancestors (value-preserving) and
+  reports the count.
+- **`writeConfigDoc` migration helper.** The config-io helpers were built
+  for top-level key edits; content migrations that repair a NESTED config
+  structure now mutate the yaml `Document` and persist with this.
+
 ## [0.25.0] — 2026-06-12
 
 Post-0.24.0 polish: plain-English adoption, brand that stays silent until
