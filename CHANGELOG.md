@@ -4,6 +4,40 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.0] — 2026-06-12
+
+Post-0.24.0 polish: plain-English adoption, brand that stays silent until
+you mean it, a journaling fix, and a plugin-manifest audit.
+
+### Added
+
+- **`.cairn/ground/brand/voice.md` is finally used.** It was written at
+  adoption but read by nothing — now it's injected into SessionStart
+  context (when confirmed) alongside the brand overview and positioning,
+  so the project's voice actually reaches the assistant.
+
+### Changed
+
+- **Adoption speaks plain English.** Every surface the user sees — phase
+  progress banners, the consent prompt, the Shared / Private mode choice,
+  the voice question, the live statusline, and the final recap — was
+  rewritten to drop Cairn-internal jargon (raw phase ids, model names,
+  "curator", "shard", "DEC/INV", "ground state"). A non-developer can now
+  follow what's happening.
+- **Brand is opt-in and stays silent until confirmed.** The brand-draft
+  question defaults to Skip; an auto-filled draft is written as a draft
+  and is NOT injected; SessionStart injects only brand the operator has
+  confirmed (`status: current`/`accepted`). Generic or placeholder brand
+  no longer burns session context as authoritative voice.
+- **`cairn-direction` preloads `cairn_task_journal_append`** and states
+  the every-turn journaling contract, so the model stops failing its first
+  journal call (deferred tool → input-schema error → ToolSearch → retry).
+- **Plugin manifest audit (against the official plugins reference).**
+  `claude plugin validate --strict` passes. Added `displayName: "Cairn"`
+  and `author.url`; rewrote the plugin README, which had documented a
+  broken `${CLAUDE_PLUGIN_ROOT}/../…` path-traversal pattern that fails
+  after a marketplace install.
+
 ## [0.24.0] — 2026-06-12
 
 Context engine — move orchestration off the LLM onto the server. The agent

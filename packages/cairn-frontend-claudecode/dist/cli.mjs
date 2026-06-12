@@ -984,7 +984,7 @@ ${w}`:w}}}catch(_){a.push(`bypass_scan_failed: ${_ instanceof Error?_.message:St
 
 `);if(n.length===0||!n.includes("@")){kd(c(s));return}if(o===null){kd(c(s));return}let u=LKe(n);if(u.length===0){kd(c(s));return}let l={invariants:[],decisions:[]},d=null;for(let _ of u){let k=jKe(_)?_:FKe(o,_),b=UKe(k);if(b===null)continue;let w=cm(b);if(w.invariants.length>0||w.decisions.length>0){if(d===null){let E=NKe(o,k);!E.startsWith("..")&&E.length>0&&(d=E.replace(/\\/g,"/"))}l.invariants.push(...w.invariants),l.decisions.push(...w.decisions)}}if(l.invariants.length===0&&l.decisions.length===0){kd(c(s));return}let f=d!==null?Zu(o,d):null,m=f!==null?{decisions:f.decisions,invariants:f.invariants}:null,h=Lb(o),g=Ub(o),y=um(l,h,g,m),v=[a,s,y??""].filter(_=>_.length>0).join(`
 
-`);kd(v)}catch{try{kd("")}catch{}}}function HKe(){return"0.24.0"}var Ct=HKe();import{resolve as WKe}from"node:path";function Iae(){console.error(`Usage: cairn align <subcommand>
+`);kd(v)}catch{try{kd("")}catch{}}}function HKe(){return"0.25.0"}var Ct=HKe();import{resolve as WKe}from"node:path";function Iae(){console.error(`Usage: cairn align <subcommand>
   drain                              SessionStart Drain SessionStart drain.
     [--session-id <id>]              push drain blips to this session
     [--max-haiku-calls <n>]          cap Haiku judge calls (default 30)
