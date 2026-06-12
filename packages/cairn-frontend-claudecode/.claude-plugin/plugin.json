@@ -1,10 +1,12 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "cairn",
+  "displayName": "Cairn",
   "version": "0.24.0",
   "description": "Cairn — state + context-loading layer for AI coding agents.",
   "author": {
-    "name": "Isaac Riehm"
+    "name": "Isaac Riehm",
+    "url": "https://github.com/isaacriehm"
   },
   "homepage": "https://github.com/isaacriehm/cairn#readme",
   "keywords": [

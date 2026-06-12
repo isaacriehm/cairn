@@ -1,36 +1,36 @@
-# @isaacriehm/cairn-frontend-claudecode
+# Cairn — Claude Code plugin
 
-Claude Code plugin frontend for Cairn — the invisible project maintainer.
+The Claude Code frontend for Cairn: a state + context-loading layer that
+reads your project once, then keeps your AI assistant aware of its
+decisions, rules, and components so it stays consistent instead of
+re-guessing.
+
+This package is the plugin bundle. Everything runs through a single
+self-contained build, `dist/cli.mjs`; the plugin wires it via hooks, an
+MCP server, skills, agents, and commands.
 
 ## Layout
 
+| Path | What |
+| ---- | ---- |
+| `.claude-plugin/plugin.json` | Plugin manifest |
+| `.mcp.json` | Registers the `cairn` MCP server (`node dist/cli.mjs mcp serve`) |
+| `hooks/hooks.json` | SessionStart, SessionEnd, Stop, UserPromptSubmit, PostToolUse (Read · Write\|Edit · AskUserQuestion) |
+| `skills/` | cairn-adopt, cairn-adopt-components, cairn-direction, cairn-attention |
+| `agents/` | reviewer, curator-map, curator-reduce, component-annotator, component-registrar |
+| `commands/` | cairn-init, cairn-direction, cairn-resume, cairn-statusline-setup |
+| `bin/cairn` | The `cairn` CLI, on the Bash tool's PATH while the plugin is enabled |
+| `dist/` | The committed, minified bundle (`cli.mjs` + templates) the hooks call |
+
+Every hook and MCP command invokes `node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" …`
+— self-contained, no global install, and no path traversal outside the
+plugin root (which would break after a marketplace install).
+
+## Install
+
 ```
-.claude-plugin/plugin.json    — plugin manifest
-.mcp.json                     — registers cairn-core MCP server (stdio)
-hooks/hooks.json              — SessionStart, SessionEnd, Stop, PostToolUse[Read|Grep|Glob,Write|Edit]
-skills/                       — adopt, direction, attention (added in step 5)
-agents/                       — reviewer (added in step 6)
-commands/                     — cairn-init, cairn-direction (added in step 5)
-scripts/check-layout.mjs      — `pnpm build` validator
+/plugin marketplace add isaacriehm/cairn
+/plugin install cairn@isaacriehm-cairn
 ```
 
-## Bin paths
-
-Hooks and MCP are wired with node-direct paths to compiled cairn-core
-output:
-
-```
-node ${CLAUDE_PLUGIN_ROOT}/../cairn-core/dist/hooks/<event>.js
-node ${CLAUDE_PLUGIN_ROOT}/../cairn-core/dist/mcp/serve.js
-```
-
-So the plugin works without the `cairn` umbrella CLI being on PATH.
-The umbrella CLI's `cairn hook <event>` subcommand calls the same
-runners as a debug/dev escape hatch.
-
-## Distribution
-
-Install via `/plugin marketplace add isaacriehm/cairn` then
-`/plugin install cairn@isaacriehm-cairn`.
-
-See `docs/PLUGIN_ARCHITECTURE.md` §5 for distribution + version cadence.
+See `docs/PLUGIN_ARCHITECTURE.md` for the full design and version cadence.
