@@ -47,6 +47,22 @@ export function writeConfigPin(repoRoot: string, version: string): boolean {
   return true;
 }
 
+/**
+ * Write a mutated config `Document` back to disk. The migration system was
+ * built for top-level key edits (drop a dead key, set the pin); content
+ * migrations that need to repair a NESTED structure (e.g. collapse a
+ * workspace's `componentDirs`) mutate the `Document` via `loadConfigDoc` +
+ * `doc.getIn` / `doc.setIn` and persist with this. Whole-file rewrite under
+ * the caller's migrate lock; key order + comments are preserved by the yaml
+ * Document API. Returns false when the config is absent.
+ */
+export function writeConfigDoc(repoRoot: string, doc: Document): boolean {
+  const p = configPath(repoRoot);
+  if (!existsSync(p)) return false;
+  writeFileSync(p, doc.toString(), "utf8");
+  return true;
+}
+
 /** Which of `keys` are present as top-level config keys. */
 export function configHasKeys(
   repoRoot: string,

@@ -11,10 +11,16 @@ import { dropDeadConfigFields } from "./migrations/0001-drop-dead-config-fields.
 import { backfillGitignore } from "./migrations/0002-backfill-gitignore.js";
 import { pruneScaffolding } from "./migrations/0003-prune-scaffolding.js";
 import { dropGlobSettings } from "./migrations/0004-drop-glob-settings.js";
+import { demoteAutofilledBrand } from "./migrations/0005-demote-autofilled-brand.js";
+import { pruneSotAlignInvariants } from "./migrations/0006-prune-sot-align-invariants.js";
+import { collapseComponentDirs } from "./migrations/0007-collapse-component-dirs.js";
 
 export const MIGRATIONS: readonly Migration[] = [
   dropDeadConfigFields,
   backfillGitignore,
   pruneScaffolding,
   dropGlobSettings,
+  demoteAutofilledBrand,
+  pruneSotAlignInvariants,
+  collapseComponentDirs,
 ];
