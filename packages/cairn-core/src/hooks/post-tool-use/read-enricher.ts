@@ -17,12 +17,17 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve, relative } from "node:path";
 import { z } from "zod";
 import {
+  componentsInScope,
   getDecisionsLedger,
   getInvariantsLedger,
   getScopeIndexEntry,
+  hasComponentConfig,
+  loadComponentsConfig,
 } from "@isaacriehm/cairn-state";
 import type {
+  ComponentLedgerEntry,
   LedgerSnapshot,
+  NormalizedComponentsConfig,
   ScopeIndexEntry,
 } from "@isaacriehm/cairn-state";
 import {
@@ -32,8 +37,9 @@ import {
   appendTelemetry,
 } from "../runners/payload.js";
 import { resolveRepoRoot } from "../../session-start/index.js";
-import { scanCitations } from "./citation-scanner.js";
+import { scanCitations, type ScannedCitations } from "./citation-scanner.js";
 import { buildLegend } from "./legend-builder.js";
+import { filterUnshownIds, markShownIds } from "../../session/index.js";
 import { logger } from "../../logger.js";
 
 const MAX_CONTENT_BYTES = 512_000;
@@ -119,17 +125,77 @@ export async function runReadEnricher(): Promise<void> {
       return;
     }
 
+    const sessionId =
+      typeof payload.session_id === "string" && payload.session_id.length > 0
+        ? payload.session_id
+        : null;
+
     const citations = scanCitations(content);
     const scopeEntry = getScopeIndexEntry(repoRoot, relPath);
     const decisionsLedger = getDecisionsLedger(repoRoot);
     const invariantsLedger = getInvariantsLedger(repoRoot);
 
+    // Stage-2 dedup (D13): the stage-1 working header carries the
+    // persistent in-scope id INDEX, so the enricher renders each cited
+    // DEC/INV BODY at most once per session. Re-reads of the same file
+    // no longer re-inject the (bulky) title lines.
+    const citedIds = [
+      ...citations.decisions.map((d) => d.id),
+      ...citations.invariants.map((i) => i.id),
+    ];
+    const freshIds =
+      sessionId !== null
+        ? new Set(filterUnshownIds(repoRoot, sessionId, citedIds))
+        : new Set(citedIds);
+    const freshCitations: ScannedCitations = {
+      decisions: citations.decisions.filter((d) => freshIds.has(d.id)),
+      invariants: citations.invariants.filter((i) => freshIds.has(i.id)),
+    };
+
     const legend = buildLegend(
-      citations,
+      freshCitations,
       invariantsLedger,
       decisionsLedger,
       scopeEntry,
     );
+
+    // Stage-2 component slice (D17): when the agent reads a file under a
+    // component dir, attach the entitled inventory (name · category ·
+    // purpose · [S]) once per component per session — replacing the
+    // agent's need to classify "UI work" and call components_in_scope.
+    let componentSlice = "";
+    const shownComponentKeys: string[] = [];
+    try {
+      const config = loadComponentsConfig(repoRoot);
+      if (hasComponentConfig(config) && fileInComponentDir(config, relPath)) {
+        const scope = componentsInScope(repoRoot, [relPath]);
+        const keys = scope.components.map((c) => `comp:${c.name}`);
+        const freshCompKeys =
+          sessionId !== null
+            ? new Set(filterUnshownIds(repoRoot, sessionId, keys))
+            : new Set(keys);
+        const freshComponents = scope.components.filter((c) =>
+          freshCompKeys.has(`comp:${c.name}`),
+        );
+        if (freshComponents.length > 0) {
+          componentSlice = renderComponentSlice(freshComponents);
+          for (const c of freshComponents) shownComponentKeys.push(`comp:${c.name}`);
+        }
+      }
+    } catch {
+      // component config is optional — never block the read on it
+    }
+
+    // Mark shown AFTER building so a crash before this point leaves the
+    // ids un-shown (they surface on the next read instead of vanishing).
+    if (sessionId !== null) {
+      const toMark = [...freshIds, ...shownComponentKeys];
+      if (toMark.length > 0) markShownIds(repoRoot, sessionId, toMark);
+    }
+
+    const combined = [legend ?? "", componentSlice]
+      .filter((s) => s.length > 0)
+      .join("\n\n");
 
     outcome = {
       ok: true,
@@ -137,11 +203,13 @@ export async function runReadEnricher(): Promise<void> {
       citations: {
         invariants: citations.invariants.length,
         decisions: citations.decisions.length,
+        fresh: freshCitations.invariants.length + freshCitations.decisions.length,
       },
-      legend_chars: legend?.length ?? 0,
+      components_shown: shownComponentKeys.length,
+      legend_chars: combined.length,
     };
 
-    emitShapeB(legend ?? "", "PostToolUse");
+    emitShapeB(combined, "PostToolUse");
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     outcome = { error: message };
@@ -200,4 +268,32 @@ function isBinary(content: string): boolean {
     if (content.charCodeAt(i) === 0) nullCount++;
   }
   return nullCount / sampleLen > BINARY_THRESHOLD;
+}
+
+/** True when `relPath` sits inside any workspace's component dir. */
+function fileInComponentDir(
+  config: NormalizedComponentsConfig,
+  relPath: string,
+): boolean {
+  const p = relPath.replace(/\\/g, "/");
+  for (const ws of config.workspaces) {
+    for (const dir of ws.componentDirs) {
+      if (p === dir || p.startsWith(`${dir}/`)) return true;
+    }
+  }
+  return false;
+}
+
+/** Render the deduped component slice (D17): name · category · purpose · [S]. */
+function renderComponentSlice(components: ComponentLedgerEntry[]): string {
+  const lines: string[] = [
+    "## Cairn — components in scope (USE > EXTEND > CREATE)",
+  ];
+  for (const c of components) {
+    const flag = c.singleton ? " [S]" : "";
+    const purpose = c.purpose.length > 0 ? ` · ${c.purpose}` : "";
+    lines.push(`- ${c.name} · ${c.category}${purpose}${flag}`);
+  }
+  lines.push("`[S]` = singleton: extend in place, never fork or rebuild.");
+  return lines.join("\n");
 }
