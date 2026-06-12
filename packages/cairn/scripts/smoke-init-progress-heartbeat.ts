@@ -118,16 +118,18 @@ function runSmoke(): void {
   {
     const startedAt = Date.now() - 60_000;
     const out = formatStatus(syntheticStatus(), undefined, {
-      phase: "7b-source-comments",
+      phase: "7-topic-index",
       batch: 5,
       total: 20,
       startedAt,
     });
     assert(out.includes("⏳"), `Step 4: progress glyph missing, got ${out}`);
-    assert(out.includes("7b-source-comments"), `Step 4: phase missing, got ${out}`);
+    // The statusline shows a plain label, NOT the internal phase id.
+    assert(out.includes("tidying notes"), `Step 4: friendly phase label missing, got ${out}`);
+    assert(!out.includes("7-topic-index"), `Step 4: raw phase id leaked, got ${out}`);
     assert(out.includes("5/20"), `Step 4: batch/total missing, got ${out}`);
     assert(out.includes("25%"), `Step 4: pct missing, got ${out}`);
-    console.log("  ✓ Step 4 — formatStatus ⏳ adopt render");
+    console.log("  ✓ Step 4 — formatStatus ⏳ adopt render (plain label)");
   }
 
   // ── Step 5 — progress beats every other signal ─────────────────
@@ -161,16 +163,16 @@ function runSmoke(): void {
   {
     const repoRoot = mkFixture();
     writeProgress(repoRoot, {
-      phase: "6-docs-ingest",
+      phase: "3-mapper",
       batch: 2,
       total: 8,
       startedAt: Date.now(),
     });
     const out = readStatusForCLI(repoRoot, null);
     assert(out.includes("⏳"), `Step 6: ground fallback should render progress, got ${out}`);
-    assert(out.includes("6-docs-ingest"), `Step 6: phase missing, got ${out}`);
+    assert(out.includes("mapping project"), `Step 6: friendly phase label missing, got ${out}`);
     assert(out.includes("2/8"), `Step 6: batch/total missing, got ${out}`);
-    console.log("  ✓ Step 6 — ground fallback surfaces progress");
+    console.log("  ✓ Step 6 — ground fallback surfaces progress (plain label)");
   }
 
   // ── Step 7 — progressAbsPath stable + reflects expected layout ──

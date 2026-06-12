@@ -87,9 +87,9 @@ Branch on the output:
 - **`mid-adoption:<phase>`** → adoption is in progress and was
   interrupted (operator `/exit`, crash, rate-limit bail, etc.). Consent
   was already granted. Skip Step 1 + Step 1.5, jump straight to Step 2
-  (`cairn_init_resume`). Surface a one-line note like "Resuming Cairn
-  adoption from `<phase>`." so the operator sees the pickup is
-  intentional.
+  (`cairn_init_resume`). Surface a plain one-line note like "Picking up
+  Cairn setup where it left off." — do NOT print the raw `<phase>` id to
+  the user; the per-phase banner already narrates the current step.
 - **`adopted`** → fully adopted. Surface a one-line note ("Project
   already adopted — `/cairn:cairn-resume` or `/cairn:cairn-attention`
   for daily flow.") and exit.
@@ -98,14 +98,27 @@ If the probe errors entirely, fail closed by exiting with no output.
 
 ## Step 1 — propose adoption
 
-Call `AskUserQuestion` directly with the three options:
+Call `AskUserQuestion` directly. The user may have never heard of Cairn,
+so the question text itself must say, in plain words, what it is and what
+it does for them — no jargon, no "ground state" / "DEC" / "ingest".
 
-- **`yes`** — walk adoption now (~30-60s, streamed)
-- **`not now`** — ask again next session
-- **`never for this project`** — mark opted-out
+Question text (use this, or very close to it):
 
-Do not preamble. Do not render the question as inline markdown — the
-`AskUserQuestion` UI is the canonical render path.
+> **Set up Cairn for this project?** Cairn reads your code, docs, and
+> commit history once to learn your project — the decisions you've made,
+> the rules to follow, and the components you've built — then keeps that
+> knowledge handy so your AI assistant stays consistent instead of
+> re-guessing. One-time, ~1-2 minutes; you can stop and resume anytime.
+
+Options (set each option's `description` to the plain line shown):
+
+- **`yes`** — "Set it up now — I'll watch it go."
+- **`not now`** — "Ask me again next time I open this project."
+- **`never for this project`** — "Don't set up Cairn here."
+
+Do not add a separate preamble line. Do not render the question as inline
+markdown — the `AskUserQuestion` UI is the canonical render path; the
+question text + descriptions above ARE the explanation.
 
 - **`yes`** → continue to Step 1.5.
 - **`not now`** → record `decline-temp` in `projects.json` (re-prompt
@@ -207,21 +220,21 @@ the global registry; re-asking would imply a mid-life mode flip, which is
 not supported.
 
 The choice is **never** auto-defaulted and **never** inferred from the
-path. Ask it explicitly via `AskUserQuestion`:
+path. Ask it explicitly via `AskUserQuestion`. Use plain labels — the
+user shouldn't have to know the words "committed" or "ghost":
 
-- **`committed`** (the normal mode) — Cairn state lives in `.cairn/` inside
-  this repo and is committed alongside your code. Teammates who clone the
-  repo and run Cairn share the same ground state. CI can enforce it.
-- **`ghost`** — private, local-only. **Nothing about Cairn touches this
-  repo or its history**: no in-repo `.cairn/`, no `§DEC`/`§INV` source
-  cites, no `@cairn` component headers, no edits to `CLAUDE.md`/`.gitignore`,
-  no `.github/` CI workflow. State lives entirely outside the repo at
-  `~/.cairn/state/`. Enforcement is advisory (the pre-commit sensor sweep
-  warns, never blocks). For consultant / client work where the repo must
-  stay byte-identical to un-adopted.
+- Label **"Shared (recommended)"** → records `committed`. Description:
+  "Cairn's notes live in your repo and get committed with your code, so
+  teammates who clone it share what Cairn learned. Adds a `.cairn/`
+  folder and a few small markers."
+- Label **"Private (local-only)"** → records `ghost`. Description:
+  "Cairn keeps everything outside your repo — your code and git history
+  are never touched, not one byte. Just for you, on this machine. Best
+  for client or consulting work."
 
-Render the one-line explanation as each option's `description`. Do not
-preamble; the `AskUserQuestion` widget is the canonical render path.
+Keep those one-liners as each option's `description`. Do not preamble;
+the `AskUserQuestion` widget is the canonical render path. Map the picked
+label back to `committed` / `ghost` below.
 
 Record the answer for Step 3:
 
@@ -327,41 +340,41 @@ The phase tools persist `state` to `.cairn/init-state.json` after every
 successful return so a mid-init `/exit` resumes cleanly on the next
 session — the top of this loop just calls `cairn_init_resume` again.
 
-**During each phase**, render a styled status banner BEFORE invoking
-the tool. The banner is a markdown horizontal rule + bold phase name +
-em-dashed description + scale-aware ETA + (for the long-running
-phases) a one-line note explaining what is actually happening so the
-operator isn't staring at a frozen turn for minutes wondering whether
-adoption is alive.
+**During each phase**, render a plain-English status banner BEFORE
+invoking the tool — so the user (who is NOT a Cairn developer and does
+not know terms like "curator", "shard", "DEC/INV", or which AI model
+runs) always knows, in their own words, what's happening and roughly how
+long it'll take. NEVER show the raw phase id, the internal phase name, or
+a model name (Sonnet / Haiku) in the banner.
 
 Format:
 
 ```markdown
 ---
-**Phase <id>** — <one-line description> · <eta>
-<optional context line for long phases>
+**⬡ Cairn — <title>** · <eta>
+<one plain line: what this step does for them>
 ```
 
-Use this exact phase registry — pick the matching row, substitute the
-`<id>`, render. ETAs are ranges; tip the operator toward the high end
-when `outputs["2-walker"].total_files > 300`. Do NOT improvise
-descriptions:
+Use this exact registry — match the runtime phase id to its row and
+render the **title**, **line**, and **eta** verbatim. Never leak the id.
+ETAs are ranges; tip toward the high end when
+`outputs["2-walker"].total_files > 300`.
 
-| `<id>` | description | eta (small / large repo) |
-|---|---|---|
-| `1-detect` | environment + stack signature scan | <1s |
-| `2-walker` | repo summary scan | <1s / ~2s |
-| `3-mapper` | Sonnet domain map (per-module slice) | ~30-60s / 2-4min |
-| `4-seed` | seed `.cairn/` skeleton + grandfather commits | <1s |
-| `5-preflight` | count units + estimate ETA for long phases | <1s / ~3s |
-| `6-brand` | brand auto-fill (Haiku) | operator + ~30s |
-| `7-topic-index` | cross-source dedup pre-pass (Haiku judges semantically-similar pairs) | ~30s / 2-10min |
-| `9a-walker` | unified curator corpus walk + regex pre-filter + shard pack | <5s |
-| `9c-emit` | validate curator output + write DEC/INV ground files | <5s |
-| `9d-comp-walk` | list component files missing a `@cairn` header | <5s |
-| `9f-comp-emit` | build component index + draft singleton §INVs + audit | <5s |
-| `11-baseline` | first sensor sweep | <1s / ~5s |
-| `13-multidev` | per-host package manager hints | <1s |
+| phase id | title | line | eta |
+|---|---|---|---|
+| `1-detect` | Checking your setup | Looking at your toolchain and how the project is organized. | <1s |
+| `2-walker` | Taking inventory | A quick pass over your files. | <1s / ~2s |
+| `3-mapper` | Mapping your project | Working out what each part of your code does. | ~30-60s / 2-4min |
+| `4-seed` | Setting up | Creating the small workspace where Cairn keeps its notes. | <1s |
+| `5-preflight` | Sizing the job | Estimating how long the deeper steps will take. | <1s / ~3s |
+| `6-brand` | Your project's voice | — | your choice |
+| `7-topic-index` | Tidying your notes | Spotting overlapping notes across your docs so nothing's counted twice. | ~30s / 2-10min |
+| `9a-walker` | Reading your decisions & rules | Gathering the decisions and rules already written in your code, docs, and commit history. | <5s |
+| `9c-emit` | Saving what it learned | Writing those decisions and rules into Cairn's memory. | <5s |
+| `9d-comp-walk` | Finding your components | Listing the UI pieces that aren't catalogued yet. | <5s |
+| `9f-comp-emit` | Building your component catalog | Indexing your components so they get reused, not rebuilt. | <5s |
+| `11-baseline` | First health check | A first scan for anything worth flagging. | <1s / ~5s |
+| `13-multidev` | Team setup tips | Noting a couple of setup hints for your teammates. | <1s |
 
 `8-docs-ingest`, `9b-curate`, `9e-comp-annotate`, and `10-rules-merge`
 are not listed. The docs/rules markers are v0.9.0 no-op markers (curator
@@ -370,17 +383,12 @@ skill-driven pseudo-phases — Step 3.5 and Step 3.6 below handle their
 surfaces (parallel subagent dispatch); skip the banner for both since
 the dispatch is the surface.
 
-For phases `3-mapper`, `7-topic-index`, `9a-walker`, and `9c-emit`,
-render a one-line context note immediately under the banner so the
-operator knows what's running. Pick the matching row; do NOT
-improvise:
-
-| `<id>` | context line |
-|---|---|
-| `3-mapper` | `Sonnet runs per detected module slice in parallel rounds of 4 (cap: 50 slices). Scales with module count.` |
-| `7-topic-index` | `Walker collects markdown paragraphs; Haiku judges every cross-file pair above the Jaccard threshold (5-way parallel, hard cap 200). Watch the `⏳` indicator on your statusline for live `X/Y pairs (P%) ~Nm` updates.` |
-| `9a-walker` | `Unified walker collects source comments + doc paragraphs + rule sections, drops 60-80% via regex pre-filter, packs into ≤120k-token shards. Deterministic, no LLM.` |
-| `9c-emit` | `Validates curator output line-by-line and writes surviving entries directly to .cairn/ground/. Drops below the strict quality bar silently — counter logged.` |
+The `line` in the table above IS the under-banner note — one plain
+sentence is enough for every step, including the slow ones (`3-mapper`,
+`7-topic-index`, `9a-walker`). For `7-topic-index` you MAY add a second
+short line: "Watch the ⏳ on your statusline for live progress." Never add
+a model name, a token count, or an internal term to make a step sound
+busier — plain and honest beats impressive-sounding jargon.
 
 **ETA banner — phase `5-preflight`**: when this phase completes, render
 its `bannerLines` verbatim as a single block before invoking phase
@@ -449,11 +457,13 @@ Render a status banner before dispatch:
 
 ```markdown
 ---
-**Phase 9b-curate** — synthesize ground state from corpus · ~1-3 min
-Map: N parallel `curator-map` subagents (rounds of 4) over the shards
-9a-walker packed. Reduce: 1 `curator-reduce` subagent over aggregated
-candidates. Plan-quota Sonnet 4.6, no API billing.
+**⬡ Cairn — Pulling out your decisions & rules** · ~1-3 min
+Reading your code and docs in parallel to find the decisions and rules
+worth remembering. Runs on your Claude plan — no extra API charge.
 ```
+
+(Internally this dispatches the `curator-map` / `curator-reduce`
+subagents below — but none of those words go to the user.)
 
 ### Step 3.5.1 — read the shard plan
 
@@ -578,10 +588,10 @@ Step 3.6.4. Otherwise render a banner:
 
 ```markdown
 ---
-**Phase 9e-comp-annotate** — annotate component headers · operator-gated
-N component files are missing a `@cairn` registry header. Dispatching
-`component-annotator` subagents (rounds of 4) to add them. Plan-quota,
-no API billing.
+**⬡ Cairn — Cataloguing your components** · ~1-2 min
+N components aren't catalogued yet. With your OK, Cairn adds a short
+catalogue note to each so they get reused, not rebuilt — your code's
+behavior doesn't change. Runs on your Claude plan — no extra API charge.
 ```
 
 ### Step 3.6.2 — single consent + dispatch
@@ -592,7 +602,7 @@ required, but ask exactly once (a 50-file repo previously cost the
 operator a dozen identical yes-clicks, each one stalling the phase for
 minutes):
 
-- `[a]` annotate all N · `[b]` skip annotation (queue as debt)
+- `[a]` Catalogue all N now · `[b]` Skip for now (I'll show them later)
 
 On `[a]`, dispatch `component-annotator` subagents in parallel rounds of
 ~4 across the entire corpus — no further prompts between rounds. Send up
@@ -704,27 +714,31 @@ reports `0` ("clean sweep" when the sweep actually found dozens).
 
 In the same assistant message, do both:
 
-1. Emit a tight summary using the values above:
+1. Emit a short, friendly recap — what Cairn learned + that it now works
+   on its own. Plain words only; the user does not know "ground state",
+   "curator", "§INV", "baseline", or "multidev". Open with a clear "Cairn
+   is set up" line and the `⬡` mark, then a few bullets from the values
+   above:
 
-   - Decisions accepted into ground state (`decs_emitted`) — every
-     entry already at `status: accepted`
-   - Invariants seeded into ground state (`invs_emitted`) — every
-     entry already at `status: active`
-   - Curator drop count (`curator_dropped`) — entries the validators
-     refused; surface only when > 0 so the operator knows the bar
-     held
-   - Components indexed (`components_indexed`) and singleton rules
-     seeded (`singletons_drafted`) — surface only when
-     `components_indexed > 0` (non-UI repos skip the component store).
-     When `components_missing > 0` or `component_audit > 0`, note that
-     N components still need `@cairn` headers / audit triage — the
-     chained attention skill surfaces them for annotation.
-   - Baseline sensor findings (`baseline_findings`)
-   - Multi-dev install host kinds (`multidev_hosts`)
+   - `decs_emitted` + `invs_emitted` → "**N decisions and M rules**
+     learned from your code, docs, and history." (Call them decisions and
+     rules — never "DEC/INV", "ground state", or "invariants seeded".)
+   - `curator_dropped` (only when > 0) → "(skipped K low-confidence ones)"
+     — a brief aside, so they know the bar held.
+   - `components_indexed` + `singletons_drafted` (only when
+     `components_indexed > 0`; non-UI repos skip this) → "**N components
+     catalogued**", adding ", K marked one-of-a-kind" when
+     `singletons_drafted > 0`. When `components_missing > 0` or
+     `component_audit > 0`, add one plain line: "a few components still
+     need cataloguing — I'll show you next."
+   - `baseline_findings` → "First health check: **N items** flagged for
+     your review." (Omit the word "sensor".)
+   - `multidev_hosts` (only when non-empty) → one plain line that teammate
+     setup hints were noted.
 
-   Use plain operator-facing language. Do **not** say "§INV invariant
-   proposals" or other internal-spec jargon — say "invariant rules
-   seeded" or "hard constraints logged".
+   Close with one line that sets expectations: from here Cairn works
+   quietly in the background and the user's AI assistant uses this
+   automatically — nothing else to install or run.
 
 2. Immediately call the `Skill` tool with `skill: "cairn:cairn-attention"`
    to drain pending DEC drafts. The `allowed-tools` line in this skill's

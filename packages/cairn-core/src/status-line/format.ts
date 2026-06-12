@@ -144,8 +144,25 @@ export function renderCtxMeter(ctx: CtxMeterInput): string {
 }
 
 /**
+ * Friendly statusline label per progress-writing phase. The user sees
+ * this live during adoption, so it must read in plain words — never the
+ * internal phase id (`7-topic-index`). Only `3-mapper`, `7-topic-index`,
+ * and `9a-walker` emit a progress heartbeat; an unknown id falls back to
+ * a generic word rather than leaking the id.
+ */
+const ADOPT_PHASE_LABEL: Record<string, string> = {
+  "3-mapper": "mapping project",
+  "7-topic-index": "tidying notes",
+  "9a-walker": "reading rules",
+};
+
+function adoptPhaseLabel(phase: string): string {
+  return ADOPT_PHASE_LABEL[phase] ?? "working";
+}
+
+/**
  * Render the live adoption-progress badge from the heartbeat snapshot.
- * Format: `⏳ adopt <phase> <batch>/<total> (P%) ~Nm` — the eta is
+ * Format: `⏳ adopt <label> <batch>/<total> (P%) ~Nm` — the eta is
  * extrapolated from elapsed time × remaining-fraction. Sub-minute etas
  * collapse to seconds; sub-second etas omit the trailing eta entirely.
  */
@@ -162,7 +179,7 @@ function renderProgress(p: ProgressSnapshot): string {
       eta = ` ~${etaSec}s`;
     }
   }
-  return `⏳ adopt ${p.phase} ${p.batch}/${p.total} (${pct}%)${eta}`;
+  return `⏳ adopt ${adoptPhaseLabel(p.phase)} ${p.batch}/${p.total} (${pct}%)${eta}`;
 }
 
 function renderEvent(e: StatusEvent): string {

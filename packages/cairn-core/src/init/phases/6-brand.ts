@@ -75,22 +75,23 @@ export async function runPhase6Brand(state: PhaseState): Promise<PhaseResult> {
 
   const question: PhaseQuestion = {
     id: "6-brand",
-    prompt: "Auto-fill brand text (positioning + voice)?",
+    prompt:
+      "Want Cairn to draft your project's voice & positioning? It helps your AI assistant write in a tone that matches your project.",
     options: [
       {
         id: "auto-fill",
-        label: "yes, auto-fill",
-        detail: "Use the mapper's domain summary; mark brand files current",
+        label: "Yes, draft it for me",
+        detail: "Cairn writes a first draft from what it learned — edit anytime",
       },
       {
         id: "skip",
-        label: "skip for now",
-        detail: "Brand files stay as drafts; populate later when ready",
+        label: "Skip for now",
+        detail: "Leave it blank; you can add it later",
       },
       {
         id: "manual",
-        label: "I'll edit the drafts myself",
-        detail: "Open .cairn/ground/brand/* after adoption to fill in",
+        label: "I'll write it myself",
+        detail: "You'll fill it in after setup",
       },
     ],
     default: "auto-fill",
