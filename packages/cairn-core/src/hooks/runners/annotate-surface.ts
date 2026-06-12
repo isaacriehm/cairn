@@ -187,8 +187,7 @@ export function renderAnnotateHint(asks: AnnotateAsk[]): string {
   }
   lines.push("");
   lines.push(
-    "The pre-commit component check blocks the commit until each is registered. " +
-      "Surface at a natural stopping point; you supply category/purpose/aliases, the server writes + validates the header.",
+    "Pre-commit check blocks the commit until each is registered — surface at a natural stopping point.",
   );
   return lines.join("\n");
 }

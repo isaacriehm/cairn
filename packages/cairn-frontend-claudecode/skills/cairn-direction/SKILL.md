@@ -42,8 +42,12 @@ Load any of those read tools on demand only — when you need a body the
 header didn't carry, or a mission field the header omitted.
 
 ```
-ToolSearch(select:mcp__plugin_cairn_cairn__cairn_task_create,mcp__plugin_cairn_cairn__cairn_task_complete,mcp__plugin_cairn_cairn__cairn_record_decision,mcp__plugin_cairn_cairn__cairn_component_annotate,mcp__plugin_cairn_cairn__cairn_mission_start,mcp__plugin_cairn_cairn__cairn_mission_accept_draft,mcp__plugin_cairn_cairn__cairn_mission_plan_phase,mcp__plugin_cairn_cairn__cairn_mission_advance,mcp__plugin_cairn_cairn__cairn_mission_set_exit_gate,AskUserQuestion)
+ToolSearch(select:mcp__plugin_cairn_cairn__cairn_task_create,mcp__plugin_cairn_cairn__cairn_task_complete,mcp__plugin_cairn_cairn__cairn_task_journal_append,mcp__plugin_cairn_cairn__cairn_record_decision,mcp__plugin_cairn_cairn__cairn_component_annotate,mcp__plugin_cairn_cairn__cairn_mission_start,mcp__plugin_cairn_cairn__cairn_mission_accept_draft,mcp__plugin_cairn_cairn__cairn_mission_plan_phase,mcp__plugin_cairn_cairn__cairn_mission_advance,mcp__plugin_cairn_cairn__cairn_mission_set_exit_gate,AskUserQuestion)
 ```
+
+`cairn_task_journal_append` is preloaded because you call it every turn
+(see Hard rules) — without preloading it the first call fails with an
+input-schema error and you waste a turn re-discovering it.
 
 `AskUserQuestion` is deferred — without preload you fall back to
 inline prose and break the structured-answer contract.
@@ -294,6 +298,10 @@ Never restate the body or prepend `// AI:`. Restating the title
 
 - `AskUserQuestion` ≤3 questions per call; cite DEC / §INV / RUN
   in every option. Never inline prose.
+- **Journal every turn.** While a task is active, end each assistant
+  turn with `cairn_task_journal_append({summary, next_step})` — terse
+  one-liners; `task_id` defaults to the active task. This is the record
+  `/cairn:cairn-resume` reads back after a `/clear`. (Preloaded in Step 0.)
 - **Self-attest.** Close tasks with
   `cairn_task_complete({outcome, summary})` — summary IS the
   attestation (1-2 paragraphs). Reviewer subagent is opt-in.
