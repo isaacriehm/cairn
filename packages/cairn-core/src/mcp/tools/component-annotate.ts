@@ -100,16 +100,32 @@ function formatHeader(input: Input, form: CommentForm): string {
   return tags.map((t) => `${marker} ${t}`).join("\n");
 }
 
-/** Insert `header` above the code, after a shebang line if present. */
+// A leading directive-prologue statement — `"use client"`, `"use server"`,
+// `"use strict"`. These MUST stay the file's first statement (React Server
+// Components / strict mode break if a comment-bearing header pushes them
+// down in some bundlers), so the header is inserted AFTER them.
+const DIRECTIVE_RE = /^\s*['"]use [\w-]+['"]\s*;?\s*$/;
+
+/**
+ * Insert `header` above the code, but below any shebang and leading
+ * directive prologue (`"use client"` etc.) — those must remain the
+ * file's first line / first statement.
+ */
 function insertHeader(source: string, header: string): string {
-  if (source.startsWith("#!")) {
-    const nl = source.indexOf("\n");
-    if (nl >= 0) {
-      const shebang = source.slice(0, nl + 1);
-      return `${shebang}${header}\n${source.slice(nl + 1)}`;
+  const lines = source.split("\n");
+  let insertAt = 0;
+  if (lines.length > 0 && lines[0]!.startsWith("#!")) insertAt = 1; // shebang
+  while (insertAt < lines.length) {
+    const line = lines[insertAt]!;
+    if (line.trim() === "" || DIRECTIVE_RE.test(line)) {
+      insertAt += 1;
+      continue;
     }
+    break;
   }
-  return `${header}\n${source}`;
+  const before = lines.slice(0, insertAt);
+  const after = lines.slice(insertAt);
+  return [...before, header, ...after].join("\n");
 }
 
 async function handler(ctx: McpContext, input: Input): Promise<unknown> {

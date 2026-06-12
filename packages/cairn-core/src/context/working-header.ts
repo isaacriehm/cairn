@@ -23,7 +23,8 @@ import {
   readMissionState,
   readRoadmap,
 } from "@isaacriehm/cairn-state";
-import { readActiveTaskSummary } from "./task-summary.js";
+import { resolveSessionTaskId, readTaskSummaryById } from "./task-summary.js";
+import { readTaskMissionAnchor } from "../missions/index.js";
 import { readTaskSpec } from "../tasks/spec-reader.js";
 import { fingerprintText } from "../session/seen.js";
 
@@ -60,9 +61,23 @@ function renderIdList(ids: string[], cap: number): string {
  * nothing extra). When a task is active but has no in-scope ids, the
  * "In scope" line is omitted (active-task line only).
  */
-export function buildWorkingHeader(repoRoot: string): WorkingHeader | null {
-  const active = readActiveTaskSummary(repoRoot);
-  const missionId = findActiveMission(repoRoot);
+export function buildWorkingHeader(
+  repoRoot: string,
+  sessionId: string | null,
+): WorkingHeader | null {
+  // Resolve the task THIS session is on (affinity), not a global pick —
+  // correct when multiple tasks are active across windows.
+  const taskId = resolveSessionTaskId(repoRoot, sessionId);
+  const active = taskId !== null ? readTaskSummaryById(repoRoot, taskId) : null;
+
+  // Mission: prefer the resolved task's own anchor (the mission + phase
+  // this session is working) over a global scan — correct when several
+  // missions are active. Fall back to the single active mission only
+  // when there's no task to anchor on.
+  const anchor =
+    active !== null ? readTaskMissionAnchor(repoRoot, active.taskId) : null;
+  const missionId = anchor?.mission_id ?? findActiveMission(repoRoot);
+  const preferredPhaseId = anchor?.phase_id ?? null;
 
   if (active === null && missionId === null) return null;
 
@@ -92,7 +107,7 @@ export function buildWorkingHeader(repoRoot: string): WorkingHeader | null {
   }
 
   if (missionId !== null) {
-    const missionLine = renderMissionLine(repoRoot, missionId);
+    const missionLine = renderMissionLine(repoRoot, missionId, preferredPhaseId);
     if (missionLine !== null) lines.push(missionLine);
   }
 
@@ -109,14 +124,20 @@ export function buildWorkingHeader(repoRoot: string): WorkingHeader | null {
  * title-only line when the cursor phase can't be located, and to null
  * when the mission state/roadmap is unreadable (D-graceful: never throw).
  */
-function renderMissionLine(repoRoot: string, missionId: string): string | null {
+function renderMissionLine(
+  repoRoot: string,
+  missionId: string,
+  preferredPhaseId: string | null,
+): string | null {
   const roadmap = readRoadmap(repoRoot, missionId);
   const state = readMissionState(repoRoot, missionId);
   if (roadmap === null) return null;
 
   const title = roadmap.frontmatter.title;
   const phases = roadmap.frontmatter.phases;
-  const activePhase = state?.cursor.active_phase ?? null;
+  // The task anchor's phase wins (the phase THIS session is working);
+  // fall back to the mission cursor when there's no task anchor.
+  const activePhase = preferredPhaseId ?? state?.cursor.active_phase ?? null;
 
   if (activePhase !== null) {
     const idx = phases.findIndex((p) => p.id === activePhase);

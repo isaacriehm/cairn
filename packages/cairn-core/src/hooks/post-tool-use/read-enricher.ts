@@ -39,7 +39,7 @@ import {
 import { resolveRepoRoot } from "../../session-start/index.js";
 import { scanCitations, type ScannedCitations } from "./citation-scanner.js";
 import { buildLegend } from "./legend-builder.js";
-import { filterUnshownIds, markShownIds } from "../../session/index.js";
+import { filterUnshownIds, hasShownId, markShownIds } from "../../session/index.js";
 import { logger } from "../../logger.js";
 
 const MAX_CONTENT_BYTES = 512_000;
@@ -152,11 +152,21 @@ export async function runReadEnricher(): Promise<void> {
       invariants: citations.invariants.filter((i) => freshIds.has(i.id)),
     };
 
+    // The stage-1 working header is the persistent in-scope id index, so
+    // the enricher's file-scope box ("Decisions/Invariants in scope")
+    // renders at most once per file per session. Without this, every
+    // re-read of a scoped file re-injects the box — the over-injection
+    // the engine exists to avoid (D13).
+    const scopeKey = `scope:${relPath}`;
+    const showScope =
+      scopeEntry !== null &&
+      (sessionId === null || !hasShownId(repoRoot, sessionId, scopeKey));
+
     const legend = buildLegend(
       freshCitations,
       invariantsLedger,
       decisionsLedger,
-      scopeEntry,
+      showScope ? scopeEntry : null,
     );
 
     // Stage-2 component slice (D17): when the agent reads a file under a
@@ -189,7 +199,11 @@ export async function runReadEnricher(): Promise<void> {
     // Mark shown AFTER building so a crash before this point leaves the
     // ids un-shown (they surface on the next read instead of vanishing).
     if (sessionId !== null) {
-      const toMark = [...freshIds, ...shownComponentKeys];
+      const toMark = [
+        ...freshIds,
+        ...shownComponentKeys,
+        ...(showScope ? [scopeKey] : []),
+      ];
       if (toMark.length > 0) markShownIds(repoRoot, sessionId, toMark);
     }
 

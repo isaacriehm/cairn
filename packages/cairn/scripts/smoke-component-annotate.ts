@@ -188,6 +188,37 @@ async function main(): Promise<void> {
     console.log("  ✓ D — re-annotate already-headered file is a no-op");
   }
 
+  // ── E — header inserts BELOW a "use client" directive ───────────────
+  {
+    write(
+      repo,
+      "src/components/Modal.tsx",
+      `"use client";\n\nexport function Modal() {\n  return <div className="fixed inset-0" />;\n}\n`,
+    );
+    const res = await componentAnnotateTool.handler(ctx, {
+      file: "src/components/Modal.tsx",
+      export_name: "Modal",
+      category: "layout",
+      purpose: "Overlay modal",
+      aliases: ["modal", "dialog"],
+    });
+    assert(!isErr(res), `E: annotate should succeed (got ${JSON.stringify(res)})`);
+    const text = readFileSync(join(repo, "src/components/Modal.tsx"), "utf8");
+    assert(
+      text.startsWith('"use client";'),
+      "E: the use-client directive must stay the first line",
+    );
+    assert(
+      text.indexOf('"use client"') < text.indexOf("@cairn"),
+      "E: header must sit BELOW the directive",
+    );
+    assert(
+      text.indexOf("@cairn") < text.indexOf("export function Modal"),
+      "E: header must sit above the export",
+    );
+    console.log('  ✓ E — header inserts below a "use client" directive');
+  }
+
   cleanup();
   console.log("smoke-component-annotate — pass");
 }

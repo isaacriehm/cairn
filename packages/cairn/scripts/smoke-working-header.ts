@@ -67,15 +67,21 @@ interface SeedTaskArgs {
   goal: string;
   decisions: string[];
   invariants: string[];
+  /** Stamp `last_journal_session` so the affinity resolver can pick it. */
+  lastJournalSession?: string;
 }
 
 function seedActiveTask(repoRoot: string, taskId: string, args: SeedTaskArgs): void {
   const taskDir = join(repoRoot, ".cairn", "tasks", "active", taskId);
   mkdirSync(taskDir, { recursive: true });
-  writeFileSync(join(taskDir, "status.yaml"), "phase: running\n", "utf8");
+  const status =
+    args.lastJournalSession !== undefined
+      ? `phase: running\nlast_journal_session: ${args.lastJournalSession}\n`
+      : "phase: running\n";
+  writeFileSync(join(taskDir, "status.yaml"), status, "utf8");
   const fm = [
     "---",
-    "title: Working Header Smoke",
+    `title: ${taskId}`,
     "in_scope_decisions:",
     ...args.decisions.map((d) => `  - ${d}`),
     "in_scope_invariants:",
@@ -84,7 +90,7 @@ function seedActiveTask(repoRoot: string, taskId: string, args: SeedTaskArgs): v
     "  - src/**",
     "---",
     "",
-    "# Working Header Smoke",
+    `# ${taskId}`,
     "",
     "## Goal",
     "",
@@ -135,7 +141,7 @@ function main(): void {
       decisions: ["DEC-aaaaaaa", "DEC-bbbbbbb"],
       invariants: ["INV-ccccccc"],
     });
-    const wh = buildWorkingHeader(repo);
+    const wh = buildWorkingHeader(repo, null);
     assert(wh !== null, "A: header should be non-null with an active task");
     assert(wh.text.includes(HEADER_MARK), "A: header missing the marker line");
     assert(wh.text.includes(taskId), "A: header should name the active task id");
@@ -192,7 +198,7 @@ function main(): void {
       phase_progress: {},
       outcome: "active",
     });
-    const wh = buildWorkingHeader(repo);
+    const wh = buildWorkingHeader(repo, null);
     assert(wh !== null, "C: header should be non-null with an active mission");
     assert(
       wh.text.includes("Mission: Smoke Mission"),
@@ -209,10 +215,42 @@ function main(): void {
   {
     const repo = mkRepoRoot("d");
     assert(
-      buildWorkingHeader(repo) === null,
+      buildWorkingHeader(repo, null) === null,
       "D: empty repo (no task, no mission) must yield null",
     );
     console.log("  ✓ D — no task + no mission → null");
+  }
+
+  // ── E — multi-task: header shows the task THIS session owns ─────────
+  {
+    const repo = mkRepoRoot("e");
+    seedActiveTask(repo, "TSK-mine-1111111", {
+      goal: "Wire the session-owned widget",
+      decisions: ["DEC-mineaaa"],
+      invariants: [],
+      lastJournalSession: "sess-mine",
+    });
+    seedActiveTask(repo, "TSK-other-2222222", {
+      goal: "Unrelated parallel work",
+      decisions: ["DEC-otherbb"],
+      invariants: [],
+      lastJournalSession: "sess-other",
+    });
+    const mine = buildWorkingHeader(repo, "sess-mine");
+    assert(mine !== null, "E: header should resolve for the owning session");
+    assert(mine.text.includes("TSK-mine-1111111"), "E: should show the session's own task");
+    assert(mine.text.includes("DEC-mineaaa"), "E: should show the own task's in-scope ids");
+    assert(
+      !mine.text.includes("TSK-other-2222222") && !mine.text.includes("DEC-otherbb"),
+      "E: must NOT leak the other session's task / ids",
+    );
+    // The other session sees ITS task, from the same repo.
+    const other = buildWorkingHeader(repo, "sess-other");
+    assert(
+      other !== null && other.text.includes("TSK-other-2222222"),
+      "E: a different session resolves its own task",
+    );
+    console.log("  ✓ E — multi-task: each session's header shows its own task");
   }
 
   cleanup();

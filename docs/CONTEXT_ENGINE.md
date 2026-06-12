@@ -68,12 +68,14 @@ Header authoring splits by who holds the knowledge:
   `aliases`, which props are the public API. Supplied as fields to
   `cairn_component_annotate({ file, category, purpose, ... })` — never as header
   syntax. The agent never reads `workflow.md`'s grammar.
-- **Server (mechanics + truth):** detect the export symbol, extract `@props`
-  from the type, infer `@uses` from imports, **validate the agent's claims
-  against the code** (category in the project enum, name matches the real
-  export, declared props exist), format the canonical header, write it, rebuild
-  the index + singleton §INV. Format is structurally impossible to get wrong;
-  the registry cannot drift to a wrong name.
+- **Server (mechanics + truth):** **validate the agent's claims against the
+  code** — the `@cairn` name must be a real export of the file, the category
+  must be in the project enum — then format the canonical header from the
+  agent's fields, write it above the export (below any shebang / `"use client"`
+  directive), and rebuild the index + singleton §INV. Format is structurally
+  impossible to get wrong; the registry cannot drift to a wrong name.
+  (Deriving `@props` from the type signature and inferring `@uses` from imports
+  are planned refinements; today the agent supplies `public_props` / `uses`.)
 
 This is strictly better than a server-side classification LLM: the agent that
 just wrote the component understands its *role in the feature* — a model seeing

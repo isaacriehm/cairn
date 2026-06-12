@@ -23,6 +23,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { writeScopeIndex } from "@isaacriehm/cairn-core";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "..", "..", "..");
@@ -159,6 +160,27 @@ function main(): void {
     const out = readEnrich(repo, sid, "src/util.ts", content);
     assert(out.length === 0, `C: plain file should inject nothing (got ${out.length} chars)`);
     console.log("  ✓ C — non-component, no-citation file injects nothing");
+  }
+
+  // ── D — file-scope box (scope-index binding) shows once, then deduped
+  {
+    const repo = mkRepoRoot("d");
+    mkdirSync(join(repo, ".cairn", "ground"), { recursive: true });
+    writeScopeIndex(repo, {
+      generated: "2026-01-01T00:00:00Z",
+      files: { "src/auth/login.ts": { decisions: ["DEC-deadbee"], invariants: [] } },
+    });
+    const sid = "sess-enricher-d";
+    const content = "export const handler = () => {};\n";
+    write(repo, "src/auth/login.ts", content);
+    const first = readEnrich(repo, sid, "src/auth/login.ts", content);
+    assert(first.includes("DEC-deadbee"), "D: first read should inject the file-scope box");
+    const second = readEnrich(repo, sid, "src/auth/login.ts", content);
+    assert(
+      !second.includes("DEC-deadbee"),
+      "D: re-read must NOT re-inject the file-scope box (scope dedup)",
+    );
+    console.log("  ✓ D — file-scope box injected once, suppressed on re-read");
   }
 
   cleanup();

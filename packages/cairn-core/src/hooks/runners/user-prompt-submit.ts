@@ -152,7 +152,7 @@ export async function runUserPromptSubmitHook(): Promise<void> {
     let headerCtx = "";
     if (repoRoot !== null && sessionId !== null && sessionId.length > 0) {
       try {
-        const wh = buildWorkingHeader(repoRoot);
+        const wh = buildWorkingHeader(repoRoot, sessionId);
         if (
           wh !== null &&
           getSeenFingerprint(repoRoot, sessionId, "working-header") !== wh.fingerprint
