@@ -25,6 +25,7 @@ import {
   runEntityRetire,
   runGcBatch,
   runGcSweep,
+  writeConfigDriftBaseline,
   type EntityRetireResult,
   type GcAutoMergeClass,
   type GcBatchResult,
@@ -110,6 +111,10 @@ export async function gcCli(argv: string[]): Promise<void> {
       let retire: EntityRetireResult | null = null;
       if (process.env["CAIRN_GC_AUTOTRIGGERED"] === "1") {
         retire = await runEntityRetire({ repoRoot, apply: true });
+        // Persist config-drift findings so the cairn-attention surface picks
+        // them up as `baseline_finding` items on the next session (the daily
+        // tick is the surfacing path; a manual `gc sweep` stays read-only).
+        writeConfigDriftBaseline(repoRoot, result.findings);
       }
       if (json) {
         console.log(

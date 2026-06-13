@@ -340,7 +340,15 @@ export async function buildSessionStartContext(
   // 500+ soft findings as "⚑ N pending" gives the operator a count
   // they can't drain item-by-item.
   const latestBaseline = readLatestBaselineAudit(args.repoRoot, warnings);
-  counts.baselineFindings = latestBaseline?.hardFindings ?? 0;
+  // Config-drift (24h GC pass) writes its own baseline family; its findings are
+  // actionable nudges, so roll them into the same hard-findings count.
+  const latestConfigDrift = readLatestBaselineAudit(
+    args.repoRoot,
+    warnings,
+    "config-drift-",
+  );
+  counts.baselineFindings =
+    (latestBaseline?.hardFindings ?? 0) + (latestConfigDrift?.hardFindings ?? 0);
 
   // ── Section 1.5 — brand + product context (only when CONFIRMED) ───
   // Overview, positioning, AND voice — but only files the operator has
@@ -1013,33 +1021,42 @@ interface DraftEntry {
 }
 
 function listPendingDrafts(repoRoot: string, warnings: string[]): DraftEntry[] {
-  const dir = cairnDir(repoRoot, "ground", "decisions", "_inbox");
-  if (!existsSync(dir)) return [];
-  let entries: Dirent[];
-  try {
-    entries = readdirSync(dir, { withFileTypes: true, encoding: "utf8" });
-  } catch {
-    return [];
-  }
+  // Both DEC (`decisions/_inbox/`) and INV (`invariants/_inbox/`) drafts are
+  // operator-pending review items: init-curator + manual record_decision write
+  // the former, resync re-curation writes both. The id prefix (DEC-/INV-)
+  // tells the operator which is which; cairn-attention dispatches on it.
+  const dirs = [
+    cairnDir(repoRoot, "ground", "decisions", "_inbox"),
+    cairnDir(repoRoot, "ground", "invariants", "_inbox"),
+  ];
   const out: DraftEntry[] = [];
-  for (const e of entries) {
-    if (!e.isFile()) continue;
-    if (!e.name.endsWith(".draft.md")) continue;
-    const abs = join(dir, e.name);
-    let text: string;
+  for (const dir of dirs) {
+    if (!existsSync(dir)) continue;
+    let entries: Dirent[];
     try {
-      text = readFileSync(abs, "utf8");
-    } catch (err) {
-      warnings.push(`draft ${e.name} unreadable: ${err instanceof Error ? err.message : String(err)}`);
+      entries = readdirSync(dir, { withFileTypes: true, encoding: "utf8" });
+    } catch {
       continue;
     }
-    const parsed = parseFrontmatter(text);
-    const fm = (parsed.frontmatter ?? {}) as Record<string, unknown>;
-    const id = typeof fm["id"] === "string" ? (fm["id"] as string) : e.name.replace(/\.draft\.md$/, "");
-    const title = typeof fm["title"] === "string" ? (fm["title"] as string) : "(untitled draft)";
-    const captureSource = typeof fm["capture_source"] === "string" ? (fm["capture_source"] as string) : null;
-    const decidedAt = typeof fm["decided_at"] === "string" ? (fm["decided_at"] as string) : null;
-    out.push({ id, title, capture_source: captureSource, decided_at: decidedAt });
+    for (const e of entries) {
+      if (!e.isFile()) continue;
+      if (!e.name.endsWith(".draft.md")) continue;
+      const abs = join(dir, e.name);
+      let text: string;
+      try {
+        text = readFileSync(abs, "utf8");
+      } catch (err) {
+        warnings.push(`draft ${e.name} unreadable: ${err instanceof Error ? err.message : String(err)}`);
+        continue;
+      }
+      const parsed = parseFrontmatter(text);
+      const fm = (parsed.frontmatter ?? {}) as Record<string, unknown>;
+      const id = typeof fm["id"] === "string" ? (fm["id"] as string) : e.name.replace(/\.draft\.md$/, "");
+      const title = typeof fm["title"] === "string" ? (fm["title"] as string) : "(untitled draft)";
+      const captureSource = typeof fm["capture_source"] === "string" ? (fm["capture_source"] as string) : null;
+      const decidedAt = typeof fm["decided_at"] === "string" ? (fm["decided_at"] as string) : null;
+      out.push({ id, title, capture_source: captureSource, decided_at: decidedAt });
+    }
   }
   out.sort((a, b) => a.id.localeCompare(b.id));
   return out;
@@ -1143,6 +1160,7 @@ interface BaselineSummary {
 function readLatestBaselineAudit(
   repoRoot: string,
   warnings: string[],
+  prefix = "sensor-audit-",
 ): BaselineSummary | null {
   const dir = cairnDir(repoRoot, "baseline");
   if (!existsSync(dir)) return null;
@@ -1155,8 +1173,10 @@ function readLatestBaselineAudit(
     );
     return null;
   }
+  const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`^${escaped}.*\\.yaml$`);
   const matching = entries
-    .filter((name) => /^sensor-audit-.*\.yaml$/.test(name))
+    .filter((name) => re.test(name))
     .sort();
   const latest = matching.at(-1);
   if (latest === undefined) return null;
@@ -1254,7 +1274,9 @@ function humanizeMinutes(minutes: number): string {
 function renderPendingDraftsSection(drafts: DraftEntry[]): string | null {
   if (drafts.length === 0) return null;
   const lines: string[] = [];
-  lines.push(`## Decision drafts pending operator confirm (${drafts.length})`);
+  // Both DEC and INV drafts surface here (the id prefix disambiguates each row);
+  // INV drafts come from resync re-curation.
+  lines.push(`## Decision / invariant drafts pending operator confirm (${drafts.length})`);
   lines.push("");
   const slice = drafts.slice(0, DRAFTS_CAP);
   for (const d of slice) {

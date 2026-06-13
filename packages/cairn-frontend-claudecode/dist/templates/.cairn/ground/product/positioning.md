@@ -2,8 +2,8 @@
 type: rule
 status: draft
 audience: dual
-generated: 2026-05-04T00:00:00Z
-verified-at: 2026-05-04T00:00:00Z
+generated: <seed_timestamp>
+verified-at: <seed_timestamp>
 source-commits:
   - manual
 ---

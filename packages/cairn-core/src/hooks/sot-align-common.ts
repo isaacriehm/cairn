@@ -41,6 +41,41 @@ export function isMarkdownPath(filePath: string): boolean {
   return filePath.endsWith(".md") || filePath.endsWith(".mdx");
 }
 
+/**
+ * Test / fixture / harness source — comments here are test-fixture notes
+ * ("the auto-created contact must roll back"), not durable product rules.
+ * Layer A skips these the same way it skips markdown: a modal buried in a
+ * spec's prose is not an invariant. Matches the conventional suffixes
+ * (`.spec` / `.test` / `.integration` / `.e2e` / `.fixture`) and the
+ * `__tests__` / `__mocks__` / `/test(s)/` container dirs. Pre-0.27.0 these
+ * were ingested; `pruneInvariants` retires the ones already minted.
+ */
+const TEST_PATH_RE =
+  /(?:\.(?:spec|test|integration|e2e|fixture)\.[cm]?[jt]sx?$)|(?:(?:^|\/)(?:__tests__|__mocks__|tests?)\/)/i;
+
+export function isTestPath(filePath: string): boolean {
+  return TEST_PATH_RE.test(filePath);
+}
+
+/**
+ * A line carrying no real lexical content — box-drawing separators
+ * (`────`, `── Conference ──`), rule bars (`====`), or pure punctuation.
+ * A stored invariant whose TITLE is one of these is a capture artifact,
+ * never a rule. Threshold: fewer than 3 alphanumeric characters once
+ * whitespace is stripped. Used by `pruneInvariants` to retire
+ * separator-titled sot-align entries the pre-0.27.0 gate let through.
+ */
+export function isNonLexicalLine(text: string): boolean {
+  let alnum = 0;
+  for (const ch of text) {
+    if (/[A-Za-z0-9]/.test(ch)) {
+      alnum += 1;
+      if (alnum >= 3) return false;
+    }
+  }
+  return true;
+}
+
 /* -------------------------------------------------------------------------- */
 /* Essay-class shape detector — diff-aware sot-align short-circuit            */
 /* -------------------------------------------------------------------------- */

@@ -33,6 +33,10 @@
  *       ground state worse than missed capture). `ambiguous` →
  *       escalate to Pass 2 (full prose + ±200-char context + step-by-
  *       step prompt). Pass-2-still-ambiguous → alignment-pending.
+ *       Precision gate (Q17): only a high-signal `decision` auto-creates;
+ *       a runtime `constraint` (the low-confidence over-mint, and INV
+ *       enforcement is unwired) routes to the alignment-pending CANDIDATE
+ *       surface for operator promotion, NOT the active ledger.
  *
  * Hard rules:
  *   - The hook never blocks the Write. Failures degrade to no-op +
@@ -113,6 +117,7 @@ import {
   extractBlocks,
   isLedgerWorthyBlock,
   isMarkdownPath,
+  isTestPath,
   readEntityBody,
   tier1PickWithBody,
   topKCandidates,
@@ -298,6 +303,15 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
   // surface. Skipping markdown also avoids polluting docs with a
   // `// §DEC-<hash>` line that isn't valid markdown syntax.
   if (isMarkdownPath(filePath)) {
+    return result;
+  }
+
+  // Test / fixture / harness files carry prose ("the contact must roll
+  // back", "never clobber a finished snapshot") that reads like a rule but
+  // describes test setup, not a product invariant. Skip them the same way
+  // markdown is skipped — pre-0.27.0 these leaked through the modal gate
+  // and dominated the junk corpus `cairn invariants prune` now retires.
+  if (isTestPath(filePath)) {
     return result;
   }
 
@@ -682,7 +696,18 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
       result.descriptive += 1;
       continue;
     }
-    if (creationVerdict === "ambiguous") {
+    // Precision gate (Q17): runtime auto-creation is reserved for the
+    // high-signal `decision` (shape-gated chose/…/because; the operator still
+    // reviews it as a DEC). A runtime `constraint` is the documented
+    // low-confidence over-mint — the ~97%-junk invariant store the prune had
+    // to clean up after — AND invariant enforcement is unwired (sensors.yaml
+    // `invariant-suite` is PLANNED, not run), so an auto-active runtime INV
+    // carries no enforcement value. Route it (with `ambiguous`) to the
+    // alignment-pending CANDIDATE surface, where the operator promotes it to a
+    // real INV (`cairn_resolve_attention` choice "b") or dismisses it. This
+    // removes the bloat at the source with no extra hot-path Haiku pass and no
+    // added PostToolUse latency.
+    if (creationVerdict === "ambiguous" || creationVerdict === "constraint") {
       writeAlignmentPending({
         repoRoot,
         block,
@@ -692,7 +717,7 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
       continue;
     }
 
-    // creationVerdict === "decision" | "constraint" → emit ledger entity.
+    // creationVerdict === "decision" → emit ledger entity (high-signal).
     const emit = await emitLedgerEntity({
       repoRoot,
       block,

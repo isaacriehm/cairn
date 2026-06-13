@@ -16,6 +16,7 @@ import { doctorCli } from "./doctor.js";
 import { fixCli } from "./fix.js";
 import { gcCli } from "./gc.js";
 import { hookCli } from "./hook.js";
+import { resyncCli } from "./resync.js";
 import { initCli } from "./init.js";
 import { invariantsCli } from "./invariants.js";
 import { joinCli } from "./join.js";
@@ -240,6 +241,9 @@ switch (subcommand) {
   case "gc":
     await gcCli(rest);
     break;
+  case "resync":
+    await resyncCli(rest);
+    break;
   case "scope":
     await scopeCli(rest);
     break;
@@ -351,6 +355,8 @@ switch (subcommand) {
         "             (subcommands: serve)\n" +
         "  gc         garbage-collection passes against the canonical zone\n" +
         "             (subcommands: sweep | run)\n" +
+        "  resync     resolve surfaced config drift into config.yaml edits\n" +
+        "             ([--area <dir>] [--apply]; dry-run by default)\n" +
         "  scope      scope-index commands\n" +
         "             (subcommands: rebuild [--repo <path>])\n" +
         "  doctor     verify the adoption is healthy (checks core, ground, sensors)\n" +

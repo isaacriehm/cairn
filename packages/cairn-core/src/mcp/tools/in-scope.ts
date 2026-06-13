@@ -140,7 +140,15 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
           ),
         );
         const indexHit = invIndexHits.has(fm.data.id);
-        if (!overlap && !indexHit) continue;
+        // A Layer-A capture has no parent decision and isn't in the
+        // init-built scope-index, so neither `overlap` nor `indexHit` fires
+        // for it. Match its own `source_file` against the requested globs so
+        // a captured invariant is discoverable by the file it documents.
+        const sourceFile =
+          typeof fm.data.source_file === "string" ? fm.data.source_file : "";
+        const sourceFileHit =
+          sourceFile.length > 0 && matchAnyGlob(sourceFile, path_globs);
+        if (!overlap && !indexHit && !sourceFileHit) continue;
 
         out.push({
           id: fm.data.id,

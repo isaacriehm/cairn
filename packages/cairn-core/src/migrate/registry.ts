@@ -14,6 +14,7 @@ import { dropGlobSettings } from "./migrations/0004-drop-glob-settings.js";
 import { demoteAutofilledBrand } from "./migrations/0005-demote-autofilled-brand.js";
 import { pruneSotAlignInvariants } from "./migrations/0006-prune-sot-align-invariants.js";
 import { collapseComponentDirs } from "./migrations/0007-collapse-component-dirs.js";
+import { cleanAdoptionScaffolding } from "./migrations/0008-clean-adoption-scaffolding.js";
 
 export const MIGRATIONS: readonly Migration[] = [
   dropDeadConfigFields,
@@ -23,4 +24,5 @@ export const MIGRATIONS: readonly Migration[] = [
   demoteAutofilledBrand,
   pruneSotAlignInvariants,
   collapseComponentDirs,
+  cleanAdoptionScaffolding,
 ];

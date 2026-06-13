@@ -21,7 +21,7 @@ sensors:
   - id: stub-pattern-catalog
     layer: A
     kind: regex_catalog
-    description: "Mechanical scan of diff against .cairn/config/stub-patterns.yaml. Layer A of the honest-agent invariants stack."
+    description: "Mechanical scan of diff against .cairn/config/stub-patterns.yaml."
     catalog: .cairn/config/stub-patterns.yaml
     triggers:
       - every_run

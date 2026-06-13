@@ -22,6 +22,7 @@ import { applyCommit } from "./apply.js";
 import { runGcCanary, type GcCanaryResult } from "./canary.js";
 import { runCitationIntegrity } from "./citation-integrity.js";
 import { classifyAutoMerge } from "./classify.js";
+import { runConfigDrift } from "./config-drift.js";
 import { runCompletionIntegrity } from "./completion-integrity.js";
 import { runDocClaimsVsRuntime } from "./doc-claims.js";
 import { runDocGardening } from "./doc-gardening.js";
@@ -88,6 +89,7 @@ export async function runGcSweep(opts: RunGcSweepOptions): Promise<GcSweepResult
     "doc-source-drift": 0,
     "ghost-reanchor": 0,
     "entity-orphan": 0,
+    "config-drift": 0,
   };
 
   // 1. Frontmatter freshness.
@@ -212,6 +214,16 @@ export async function runGcSweep(opts: RunGcSweepOptions): Promise<GcSweepResult
     const r = runEntityOrphan({ repoRoot: opts.repoRoot });
     findings.push(...r.findings);
     passDurations["entity-orphan"] = Date.now() - t0;
+  }
+
+  // 13. Config-drift — declared config (off_limits + componentDirs/extensions)
+  // vs the current tree. Findings only; persisted to a baseline (and surfaced)
+  // by the autotriggered sweep, never auto-applied (sensors surface only).
+  {
+    const t0 = Date.now();
+    const r = runConfigDrift({ repoRoot: opts.repoRoot });
+    findings.push(...r.findings);
+    passDurations["config-drift"] = Date.now() - t0;
   }
 
   // Runtime-state footprint prune — rotate telemetry logs, sweep the stale

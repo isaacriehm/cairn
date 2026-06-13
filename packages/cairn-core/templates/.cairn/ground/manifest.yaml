@@ -5,9 +5,7 @@
 # and (for generated artifacts) the source + generator.
 #
 # Agents query the MCP tool surface, NOT this file directly.
-#
-# Layout per docs/FILESYSTEM_LAYOUT.md §8.
 
 version: 1
-generated: 2026-05-02T13:19:00Z
+generated: <seed_timestamp>
 files: []

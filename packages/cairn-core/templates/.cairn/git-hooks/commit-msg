@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 # Cairn commit-msg hook (versioned, per-clone activation via core.hooksPath).
 #
-# Spec: PLUGIN_ARCHITECTURE §17 Layer 1.
-#
 # Validates DEC/TSK/§INV citations in the commit message body when the
 # project's commit policy requires them. The Cairn CLI owns the policy
 # (sensors.yaml `commit_msg_policy`) so the hook stays a thin shim. Advisory

@@ -104,6 +104,7 @@ const resolveAttentionInput = {
 
 type AttentionKind =
   | "decision_draft"
+  | "invariant_draft"
   | "baseline_finding"
   | "invalidation_event"
   | "drift"
@@ -178,6 +179,8 @@ async function dispatchSingle(ctx: McpContext, input: Input): Promise<unknown> {
   switch (input.kind) {
     case "decision_draft":
       return resolveDecisionDraft(ctx, input);
+    case "invariant_draft":
+      return resolveInvariantDraft(ctx, input);
     case "baseline_finding":
       return resolveBaselineFinding(ctx, input);
     case "invalidation_event":
@@ -435,6 +438,106 @@ async function resolveDecisionDraft(ctx: McpContext, input: Input): Promise<unkn
     return {
       ok: true,
       resolved_kind: "decision_rejected" as const,
+      item_id: input.item_id,
+      rejected_path: rejectedRel,
+      ...(input.rationale !== undefined ? { rationale: input.rationale } : {}),
+    };
+  });
+}
+
+/**
+ * Drain an INV draft from `invariants/_inbox/<id>.draft.md` (written by resync
+ * re-curation, `runCuratorEmit({ draft: true })`). Additive sibling of
+ * `resolveDecisionDraft` — kept separate so the tested DEC path (auto-restore,
+ * source-strip) is untouched. INV drafts have no source block to strip and no
+ * auto-restore surface yet, so this is the lean a/b/c: accept graduates to an
+ * active INV, reject archives, edit hands the body back to the operator.
+ */
+async function resolveInvariantDraft(ctx: McpContext, input: Input): Promise<unknown> {
+  if (input.choice === "d") {
+    return mcpError(
+      "VALIDATION_FAILED",
+      `choice "d" is only valid for kind="conflict"; invariant_draft accepts a (accept) / b (reject) / c (edit)`,
+    );
+  }
+  if (!/^INV-[0-9a-f]{7,}$/.test(input.item_id)) {
+    return mcpError(
+      "VALIDATION_FAILED",
+      `invariant_draft item_id must match INV-<hash7>, got ${input.item_id}`,
+    );
+  }
+  const invDir = invariantsDir(ctx.repoRoot);
+  const inboxPath = join(invDir, "_inbox", `${input.item_id}.draft.md`);
+  const rejectedPath = join(invDir, "_inbox", `${input.item_id}.rejected.md`);
+  const activePath = join(invDir, `${input.item_id}.md`);
+
+  if (!existsSync(inboxPath)) {
+    return mcpError("FILE_NOT_FOUND", `no draft at ${inboxPath}`);
+  }
+
+  if (input.choice === "c") {
+    return {
+      ok: true,
+      resolved_kind: "invariant_edit_pending" as const,
+      item_id: input.item_id,
+      draft_path: `.cairn/ground/invariants/_inbox/${input.item_id}.draft.md`,
+      body: readFileSync(inboxPath, "utf8"),
+    };
+  }
+
+  return withWriteLock(ctx.repoRoot, async () => {
+    if (input.choice === "a") {
+      mkdirSync(dirname(activePath), { recursive: true });
+      const draft = readFileSync(inboxPath, "utf8");
+      const promoted = draft.replace(/^status:\s*draft\b/m, "status: active");
+      writeFileSync(activePath, promoted, "utf8");
+      try {
+        rmSync(inboxPath, { force: true });
+      } catch {
+        // ignore
+      }
+      try {
+        writeInvalidationEvent(ctx.repoRoot, {
+          kind: "invariant_accepted",
+          refs: [{ kind: "invariant", id: input.item_id }],
+          path: `.cairn/ground/invariants/${input.item_id}.md`,
+          source: { session_id: ctx.sessionId ?? null, tool: "cairn_resolve_attention" },
+        });
+      } catch {
+        // ignore
+      }
+      try {
+        writeInvariantsLedger({ repoRoot: ctx.repoRoot });
+      } catch (err) {
+        log.warn(
+          { err: err instanceof Error ? err.message : String(err) },
+          "invariants ledger rebuild failed",
+        );
+      }
+      return {
+        ok: true,
+        resolved_kind: "invariant_accepted" as const,
+        item_id: input.item_id,
+        accepted_path: `.cairn/ground/invariants/${input.item_id}.md`,
+      };
+    }
+
+    // choice === "b" — reject.
+    renameSync(inboxPath, rejectedPath);
+    const rejectedRel = `.cairn/ground/invariants/_inbox/${input.item_id}.rejected.md`;
+    try {
+      writeInvalidationEvent(ctx.repoRoot, {
+        kind: "invariant_rejected",
+        refs: [{ kind: "invariant", id: input.item_id }],
+        path: rejectedRel,
+        source: { session_id: ctx.sessionId ?? null, tool: "cairn_resolve_attention" },
+      });
+    } catch {
+      // ignore
+    }
+    return {
+      ok: true,
+      resolved_kind: "invariant_rejected" as const,
       item_id: input.item_id,
       rejected_path: rejectedRel,
       ...(input.rationale !== undefined ? { rationale: input.rationale } : {}),

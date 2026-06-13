@@ -229,11 +229,14 @@ Run these in parallel. Use the MCP tools exclusively for DEC
 content; **never** `cat`, `Read`, or otherwise inline-read draft
 files.
 
-1. List draft paths only (no contents): `Bash: ls .cairn/ground/decisions/_inbox/*.draft.md 2>/dev/null`
-2. For each draft id (parsed from the filename), call
-   `cairn_decision_get({id: "DEC-NNNN"})` — the tool resolves both
-   accepted decisions and `_inbox/` drafts. The response carries
-   `id`, `title`, `status`, plus the body markdown.
+1. List draft paths only (no contents): `Bash: ls .cairn/ground/decisions/_inbox/*.draft.md .cairn/ground/invariants/_inbox/*.draft.md 2>/dev/null`
+   Both DEC drafts (init-curator + manual record_decision) and INV drafts
+   (resync re-curation) live in parallel `_inbox/` dirs; the id prefix
+   (`DEC-`/`INV-`) tells them apart.
+2. For each draft id (parsed from the filename), call the matching getter —
+   `cairn_decision_get({id: "DEC-NNNN"})` for a DEC, `cairn_invariant_get({id:
+   "INV-NNNN"})` for an INV. The response carries `id`, `title`, `status`,
+   plus the body markdown.
 3. **Conflicts** — list pending contradictions written by phase 7c:
    `Bash: ls .cairn/ground/conflicts/*.md 2>/dev/null`. Each
    filename has the shape `<a-id>__<b-id>.md` where both ids match
@@ -243,16 +246,22 @@ files.
    `a_source`, `b_sot_path`, `reasoning`. Treat the rendered prose
    blocks (`## DEC-<a> ...`, `## DEC-<b> ...`) as the verbatim
    sides to surface.
-4. Latest baseline audits (path only) — read the newest of BOTH the
-   sensor sweep and the component store sweep:
+4. Latest baseline audits (path only) — read the newest of the sensor
+   sweep, the component store sweep, AND the config-drift sweep:
    `Bash: ls -1t .cairn/baseline/sensor-audit-*.yaml | head -1`
    `Bash: ls -1t .cairn/baseline/components-*.yaml | head -1`
-   The `components-*.yaml` file shares the sensor-audit payload shape
+   `Bash: ls -1t .cairn/baseline/config-drift-*.yaml | head -1`
+   The `components-*.yaml` and `config-drift-*.yaml` files share the
+   sensor-audit payload shape
    (`sensors: [{sensor_id, findings: [{path, line, severity, message}]}]`),
-   so parse it identically. Its `component-missing-header` findings are
-   the components still needing a `@cairn` header; `component-audit`
-   findings are advisory inline-rebuild / name-collision EXTEND hints.
-   Surface both as `baseline_finding` items.
+   so parse them identically. `components-*`'s `component-missing-header`
+   findings are components still needing a `@cairn` header; `component-audit`
+   findings are advisory inline-rebuild / name-collision EXTEND hints. The
+   `config-drift-*` file's `config-drift` findings are the "your project grew"
+   nudge — a grown dir / new file type outside declared component scope, a
+   declared componentDir that vanished, or a `.gitignore` entry missing from
+   `off_limits`; each `message` names the one-line config edit that resolves
+   it. Surface them all as `baseline_finding` items under one group.
 5. Drift events: `cairn_search({query: "drift"})` against the
    staleness log if any.
 6. Recent invalidation events: read the per-session events marker,
@@ -276,9 +285,9 @@ from the MCP responses.
 Sort by:
 
 1. Hard inconsistencies first (kind=conflict)
-2. DEC drafts (kind=decision_draft) — oldest-first by ID so the
-   summary surfaced earlier in the session matches the order the
-   operator sees here
+2. DEC drafts (kind=decision_draft) + INV drafts (kind=invariant_draft) —
+   oldest-first by ID so the summary surfaced earlier in the session matches
+   the order the operator sees here
 3. Baseline findings (kind=sensor_finding) — by sensor severity
 4. Drift events (kind=drift)
 5. Cross-session invalidation events (kind=invalidation)
@@ -314,6 +323,7 @@ Per-kind option labels (≤ 30 chars each so mobile mode doesn't
 truncate):
 
 **DEC draft:** `accept` / `reject` / `edit first`
+**INV draft:** `accept` / `reject` / `edit first`
 **Baseline finding:** `triage now` / `suppress` / `defer`
 **Invalidation event:** `refresh in scope` / `continue under old` / `abort`
 **Drift event:** `refresh source` / `defer` / `dismiss`
@@ -346,9 +356,12 @@ Distinct-choice calls can still run in parallel (separate tool_use
 blocks in the same turn) — the MCP write lock serializes them on disk.
 
 The tool dispatches by kind: `decision_draft` for accept/reject/edit,
-`baseline_finding` for triage/suppress/defer, `invalidation_event`
-for refresh/continue/abort, `drift` for refresh/defer/dismiss,
-`bypass` and `review` for Stop-hook surfaces. On `decision_draft + a`, the tool also strips the
+`invariant_draft` for accept/reject/edit (accept graduates the draft to an
+active `§INV`; reject archives a `.rejected.md` tombstone; INV drafts come from
+resync re-curation), `baseline_finding` for triage/suppress/defer,
+`invalidation_event` for refresh/continue/abort, `drift` for
+refresh/defer/dismiss, `bypass` and `review` for Stop-hook surfaces. On
+`decision_draft + a`, the tool also strips the
 originating source comment and replaces it with a bare `§DEC-NNNN`
 symbol (matching the `§INV-NNNN` invariant convention; Cairn Lens
 resolves title + body from the ledger) when the DEC came from

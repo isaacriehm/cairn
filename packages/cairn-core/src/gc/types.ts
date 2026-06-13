@@ -35,7 +35,8 @@ export type GcPassId =
   | "doc-claims-vs-runtime"
   | "doc-source-drift"
   | "ghost-reanchor"
-  | "entity-orphan";
+  | "entity-orphan"
+  | "config-drift";
 
 export type GcFindingKind =
   | "frontmatter_stale"
@@ -56,7 +57,11 @@ export type GcFindingKind =
   | "doc_source_drift"
   | "sot_missing"
   | "sot_anchor_missing"
-  | "orphan_entity";
+  | "orphan_entity"
+  | "config_orphan_path"
+  | "config_gitignore_drift"
+  | "config_uncovered_dir"
+  | "config_uncovered_ext";
 
 export type GcAutoMergeClass = "safe" | "code";
 

@@ -4,21 +4,20 @@ sessions/
 
 # Per-clone run logs — agent event streams, rendered prompts, diffs,
 # sensor results, UAT artifacts under runs/active|terminal/<run-id>/.
-# Local execution record, not shared state; heavy + per-clone. Marked
-# GITIGNORED in docs/FILESYSTEM_LAYOUT.md.
+# Local execution record, not shared state; heavy + per-clone.
 runs/
 
 # Invalidation event log — inter-session signal, 7-day retention,
-# regenerable. Spec: PLUGIN_ARCHITECTURE §7.
+# regenerable.
 events/
 
-# Per-write flock + whole-operation locks (per PLUGIN_ARCHITECTURE §7).
+# Per-write flock + whole-operation locks.
 .write-lock
 .gc-lock
 .audit-lock
 
 # Per-clone attested-commits log — written by post-commit hook, read by
-# Stop hook bypass detection. Per PLUGIN_ARCHITECTURE §17 Layer 1.
+# Stop hook bypass detection.
 .attested-commits
 
 # Per-clone CLI invocation path — written by `cairn join`, read by the
@@ -64,10 +63,12 @@ tasks/
 # `cairn fix gitignore` on projects adopted before v0.11.3.
 missions/
 
-# Draft decision inbox — operator-pending DEC review queue. Drafts
-# don't graduate to ground until accepted; per-developer attention
-# queue. Already excluded from canonical-zone reads in spec §2.2.
+# Draft decision + invariant inbox — operator-pending DEC/INV review queue.
+# Drafts don't graduate to ground until accepted; per-developer attention
+# queue. Already excluded from canonical-zone reads. DEC drafts: init-curator
+# + manual record_decision. INV drafts: resync re-curation.
 ground/decisions/_inbox/
+ground/invariants/_inbox/
 
 # Derived ground-state indexes + caches. Regenerated from the committed
 # DEC/INV `.md` sources (which carry sot_kind / sot_path /

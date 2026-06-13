@@ -136,6 +136,21 @@ async function main(): Promise<void> {
   assert(c1.missing.includes("src/ui/Modal.tsx") && !c1.missing.includes("src/ui/Card.tsx"), "Modal stays unregistered; Card no longer missing");
   assert(getComponent(ghostRepo, "Card") !== null, "getComponent resolves the registered component");
 
+  // Q9 — ghost discovery enumerates the registry, not componentDirs: a unit
+  // registered OUTSIDE any declared componentDir is still in the store.
+  mkdirSync(join(ghostRepo, "src", "lib"), { recursive: true });
+  writeFileSync(join(ghostRepo, "src", "lib", "Helper.tsx"), "export function Helper() {\n  return null;\n}\n", "utf8");
+  await callRegister(
+    { repoRoot: ghostRepo },
+    { file: "src/lib/Helper.tsx", export_name: "Helper", name: "Helper", category: "data-display", purpose: "A helper.", aliases: ["helper", "util"] },
+  );
+  const cOut = collectComponents(ghostRepo, cfg);
+  assert(
+    cOut.components.some((c) => c.tags.cairn === "Helper" && c.file === "src/lib/Helper.tsx"),
+    "ghost enumerates a registered unit outside componentDirs (Q9 self-locating)",
+  );
+  assert(!cOut.missing.includes("src/lib/Helper.tsx"), "the outside-dir registered unit is not flagged missing");
+
   /* ── Adoption-phase ghost flow (9d → 9e registers, never source-annotates) ─ */
   const state0 = {
     repoRoot: ghostRepo,

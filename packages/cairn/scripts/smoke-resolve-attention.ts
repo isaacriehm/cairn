@@ -49,6 +49,27 @@ function writeDraftDec(repoRoot: string, id: string): string {
   return path;
 }
 
+function writeDraftInv(repoRoot: string, id: string): string {
+  const dir = join(repoRoot, ".cairn", "ground", "invariants", "_inbox");
+  mkdirSync(dir, { recursive: true });
+  const path = join(dir, `${id}.draft.md`);
+  // Mirror the frontmatter `runCuratorEmit({ draft })` actually writes — the
+  // sot_* trio is required by InvariantFrontmatter, so cairn_invariant_get's
+  // safeParse only resolves a draft that carries them.
+  const fm = [
+    "---",
+    `id: ${id}`,
+    "title: smoke-test INV draft",
+    "status: draft",
+    "sot_kind: ledger",
+    "sot_path: ledger",
+    `sot_content_hash: ${"a".repeat(64)}`,
+    "---",
+  ].join("\n");
+  writeFileSync(path, `${fm}\n\n# ${id} — smoke-test INV draft\n\nbody.\n`, "utf8");
+  return path;
+}
+
 function getResolveTool(): ToolDef<unknown> {
   const tool = (allTools as ToolDef<unknown>[]).find((t) => t.name === "cairn_resolve_attention");
   assert(tool !== undefined, "cairn_resolve_attention should be registered in allTools");
@@ -123,6 +144,73 @@ async function runSmoke(): Promise<void> {
     assert(typeof result.body === "string" && (result.body as string).length > 0, "Step 3: should return body");
     assert(existsSync(draftPath), "Step 3: draft should remain in inbox");
     console.log("  ✓ Step 3 — DEC edit (no-op)");
+  }
+
+  // ── Step 3i — INV draft accept (a) → graduates to active invariant ──
+  {
+    const repoRoot = mkRepoRoot();
+    const draftPath = writeDraftInv(repoRoot, "INV-aaaaaaa");
+    const ctx: McpContext = { repoRoot, sessionId: "session-inv-a" };
+    const result = await call(tool, ctx, {
+      item_id: "INV-aaaaaaa",
+      kind: "invariant_draft",
+      choice: "a",
+    });
+    assert(result.ok === true, `Step 3i: ok=true expected, got ${JSON.stringify(result)}`);
+    assert(result.resolved_kind === "invariant_accepted", "Step 3i: resolved_kind mismatch");
+    const activePath = join(repoRoot, ".cairn", "ground", "invariants", "INV-aaaaaaa.md");
+    assert(existsSync(activePath), "Step 3i: graduated INV file should exist");
+    assert(/status: active/.test(readFileSync(activePath, "utf8")), "Step 3i: status promoted to active");
+    assert(!existsSync(draftPath), "Step 3i: draft should leave _inbox");
+    console.log("  ✓ Step 3i — INV draft accept → active");
+  }
+
+  // ── Step 3ii — INV draft reject (b) → archives tombstone ───────────
+  {
+    const repoRoot = mkRepoRoot();
+    const draftPath = writeDraftInv(repoRoot, "INV-bbbbbbb");
+    const ctx: McpContext = { repoRoot, sessionId: "session-inv-b" };
+    const result = await call(tool, ctx, {
+      item_id: "INV-bbbbbbb",
+      kind: "invariant_draft",
+      choice: "b",
+      rationale: "superseded",
+    });
+    assert(result.resolved_kind === "invariant_rejected", "Step 3ii: resolved_kind mismatch");
+    assert(!existsSync(draftPath), "Step 3ii: draft should be gone from inbox");
+    const rejectedPath = join(repoRoot, ".cairn", "ground", "invariants", "_inbox", "INV-bbbbbbb.rejected.md");
+    assert(existsSync(rejectedPath), "Step 3ii: .rejected.md tombstone should exist");
+    console.log("  ✓ Step 3ii — INV draft reject");
+  }
+
+  // ── Step 3iii — INV draft edit (c) + DEC-id guard + getter resolves draft ─
+  {
+    const repoRoot = mkRepoRoot();
+    const draftPath = writeDraftInv(repoRoot, "INV-ccccccc");
+    const ctx: McpContext = { repoRoot, sessionId: "session-inv-c" };
+    // cairn_invariant_get must resolve the _inbox/ draft (the cairn-attention
+    // skill calls it to surface INV-draft content before the operator picks).
+    const getter = (allTools as ToolDef<unknown>[]).find((t) => t.name === "cairn_invariant_get");
+    assert(getter !== undefined, "cairn_invariant_get should be registered");
+    const got = await call(getter!, ctx, { id: "INV-ccccccc" });
+    assert(got.status === "draft", "Step 3iii: getter resolves the draft with status draft");
+    assert(typeof got.body_markdown === "string" && (got.body_markdown as string).length > 0, "Step 3iii: getter returns draft body");
+    const edit = await call(tool, ctx, {
+      item_id: "INV-ccccccc",
+      kind: "invariant_draft",
+      choice: "c",
+    });
+    assert(edit.resolved_kind === "invariant_edit_pending", "Step 3iii: edit resolved_kind mismatch");
+    assert(typeof edit.body === "string" && (edit.body as string).length > 0, "Step 3iii: edit returns body");
+    assert(existsSync(draftPath), "Step 3iii: draft remains in inbox on edit");
+    // A DEC id under invariant_draft must be rejected (prefix guard).
+    const bad = await call(tool, ctx, {
+      item_id: "DEC-ddddddd",
+      kind: "invariant_draft",
+      choice: "a",
+    });
+    assert(bad.ok !== true, "Step 3iii: invariant_draft must reject a DEC-prefixed id");
+    console.log("  ✓ Step 3iii — INV draft edit (no-op) + DEC-id guard");
   }
 
   // ── Step 4 — Baseline suppress (b) → appends to suppressions.yaml ─

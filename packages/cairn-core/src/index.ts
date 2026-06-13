@@ -69,6 +69,7 @@ export type { GhostBackupResult } from "./hooks/ghost-backup.js";
 export * from "./init/index.js";
 export * from "./join/index.js";
 export * from "./migrate/index.js";
+export * from "./resync/index.js";
 export * from "./mcp/index.js";
 export * from "./paths/index.js";
 export * from "./profiles/index.js";

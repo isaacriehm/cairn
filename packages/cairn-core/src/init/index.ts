@@ -249,6 +249,12 @@ export {
   stripLineRange,
   type FinalEntry,
   type ValidationResult,
+  runCuratorEmit,
+  type RunCuratorEmitArgs,
+  type RunCuratorEmitResult,
+  runCuratorWalker,
+  type RunCuratorWalkerArgs,
+  type RunCuratorWalkerResult,
 } from "./curator/index.js";
 
 export {

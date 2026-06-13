@@ -335,30 +335,188 @@ function entryToTags(entry: ComponentRegistryEntry): ComponentTags {
   return tags;
 }
 
+function trimTrailingSlash(p: string): string {
+  return p.endsWith("/") ? p.slice(0, -1) : p;
+}
+
+/** `rel` is `dir` itself or nested under it. */
+function isUnderDir(rel: string, dir: string): boolean {
+  const n = trimTrailingSlash(dir);
+  return n.length > 0 && (rel === n || rel.startsWith(`${n}/`));
+}
+
+/** Longest common directory prefix of a set of repo-relative dirs ("" if none). */
+function commonDirPrefix(dirs: readonly string[]): string {
+  if (dirs.length === 0) return "";
+  const split = dirs.map((d) => trimTrailingSlash(d).split("/"));
+  const first = split[0]!;
+  let len = first.length;
+  for (const segs of split) {
+    let i = 0;
+    while (i < len && i < segs.length && segs[i] === first[i]) i++;
+    len = i;
+  }
+  return first.slice(0, len).join("/");
+}
+
 /**
- * Walk every workspace's component dirs and parse headers. Returns the
- * parsed components plus the files that are missing a header. Output is
- * deterministically sorted (workspace, then component name).
+ * Self-locating workspace attribution (Q10). A discovered header is assigned to
+ * the workspace whose componentDir is the longest prefix of its path; failing
+ * that, the workspace whose ROOT (common prefix of its componentDirs) contains
+ * it; failing that, the sole / first workspace (single-app → ""). The result is
+ * always an existing workspace name so `renderComponentsIndex` can slice it.
+ */
+function attributeWorkspace(rel: string, workspaces: readonly ComponentWorkspace[]): string {
+  let best: string | null = null;
+  let bestLen = -1;
+  for (const ws of workspaces) {
+    for (const dir of ws.componentDirs) {
+      const n = trimTrailingSlash(dir);
+      if (isUnderDir(rel, n) && n.length > bestLen) {
+        best = ws.name;
+        bestLen = n.length;
+      }
+    }
+  }
+  if (best !== null) return best;
+  for (const ws of workspaces) {
+    const root = commonDirPrefix(ws.componentDirs);
+    if (isUnderDir(rel, root) && root.length > bestLen) {
+      best = ws.name;
+      bestLen = root.length;
+    }
+  }
+  return best ?? workspaces[0]?.name ?? "";
+}
+
+/** The workspace whose componentDir is the longest prefix of `rel`, or null. */
+function owningComponentDirWorkspace(
+  rel: string,
+  workspaces: readonly ComponentWorkspace[],
+): ComponentWorkspace | null {
+  let best: ComponentWorkspace | null = null;
+  let bestLen = -1;
+  for (const ws of workspaces) {
+    for (const dir of ws.componentDirs) {
+      const n = trimTrailingSlash(dir);
+      if (isUnderDir(rel, n) && n.length > bestLen) {
+        best = ws;
+        bestLen = n.length;
+      }
+    }
+  }
+  return best;
+}
+
+/**
+ * Discover the project's components and the files missing from the store.
+ *
+ * Committed mode is **self-locating** (§3.8.1, Q8): every `@cairn` header in the
+ * git-walked tree is found and attributed to a workspace by path prefix —
+ * `componentDirs` is the attribution + nag scope, NOT the discovery boundary
+ * (so a header in a brand-new dir is covered with no config edit, and a
+ * single-app project needs no `componentDirs` at all). Ghost mode enumerates
+ * the out-of-repo registry directly (Q9) — its entries are the source of truth,
+ * keyed (workspace, file, export). The `ComponentRecord` shape is identical
+ * either way, so nothing downstream branches. Output is deterministically
+ * sorted (workspace, then component name).
+ *
+ * The missing-header nag stays scoped to `componentDirs` (Q11): a unit-shaped
+ * file there still owes a header, but files outside every declared componentDir
+ * are discovered-if-headered yet never nagged — so adopting a repo without
+ * declaring componentDirs can't flood the header-debt gate.
  */
 export function collectComponents(
   repoRoot: string,
   config: NormalizedComponentsConfig,
 ): CollectResult {
+  return isGhost(repoRoot)
+    ? collectComponentsGhost(repoRoot, config)
+    : collectComponentsCommitted(repoRoot, config);
+}
+
+function collectComponentsCommitted(
+  repoRoot: string,
+  config: NormalizedComponentsConfig,
+): CollectResult {
   const components: ComponentRecord[] = [];
   const missing: string[] = [];
+  const workspaces = config.workspaces;
+
+  // Read filter for the repo-wide header scan: the union of declared component
+  // file types (a header lives only in a component file, so this bounds reads
+  // without missing one). Skip the standard junk + every workspace's exclude.
+  const candidateExts = new Set<string>();
+  for (const ws of workspaces) for (const e of ws.extensions) candidateExts.add(e);
+  if (candidateExts.size === 0) for (const e of UI_EXTENSIONS) candidateExts.add(e);
+  const skipDirs = new Set<string>([".git", ".cairn"]);
+  for (const ws of workspaces) for (const d of ws.exclude) skipDirs.add(d);
+
   const seen = new Set<string>();
+  walkFs({
+    dir: repoRoot,
+    repoRoot,
+    skipDirs,
+    onFile: (rel, abs) => {
+      if (!candidateExts.has(extname(abs))) return;
+      if (seen.has(rel)) return;
+      seen.add(rel);
+      let source: string;
+      try {
+        source = readFileSync(abs, "utf8");
+      } catch {
+        return;
+      }
+      const tags = parseComponentHeader(source);
+      if (tags !== null) {
+        components.push({
+          file: rel,
+          workspace: attributeWorkspace(rel, workspaces),
+          tags,
+          exportName: extractExportName(source, rel),
+          exportNames: extractExportNames(source, rel),
+        });
+        return;
+      }
+      // No header → nag only inside a declared componentDir (Q11). Non-unit
+      // files (route/entry like page.tsx / layout.tsx) are skipped, so a mixed
+      // dir can be a componentDir without flooding the gate.
+      const owner = owningComponentDirWorkspace(rel, workspaces);
+      if (
+        owner !== null &&
+        owner.extensions.includes(extname(abs)) &&
+        profileForFile(rel)?.isUnitShaped(source, rel) === true
+      ) {
+        missing.push(rel);
+      }
+    },
+  });
 
-  // Mode-aware tag source (§3.8.1). Committed: the in-file `@cairn` header is
-  // the SoT (`parseComponentHeader`). Ghost: the out-of-repo registry, keyed
-  // (workspace, file, export) — source is never read for tags. The
-  // `ComponentRecord` shape is identical either way, so nothing downstream
-  // branches.
-  const ghost = isGhost(repoRoot);
-  const registry = ghost ? readComponentRegistry(repoRoot) : null;
+  return sortCollectResult(components, missing, false);
+}
 
+function collectComponentsGhost(
+  repoRoot: string,
+  config: NormalizedComponentsConfig,
+): CollectResult {
+  // Discovery (Q9): the out-of-repo registry IS the source of truth — enumerate
+  // its entries directly rather than walking componentDirs, so a registered
+  // unit outside any declared componentDir is still in the store.
+  const registry = readComponentRegistry(repoRoot);
+  const components: ComponentRecord[] = registry.entries.map((e) => ({
+    file: e.file,
+    workspace: e.workspace,
+    tags: entryToTags(e),
+    exportName: e.export,
+    exportNames: e.exports.length > 0 ? e.exports : [e.export],
+  }));
+
+  // Unregistered units — same componentDir-scoped nag boundary as committed.
+  const missing: string[] = [];
+  const seen = new Set<string>();
   for (const ws of config.workspaces) {
-    const skipDirs = new Set(ws.exclude);
     const exts = new Set(ws.extensions);
+    const skipDirs = new Set(ws.exclude);
     for (const dir of ws.componentDirs) {
       const absDir = join(repoRoot, dir);
       if (!existsSync(absDir)) continue;
@@ -368,8 +526,8 @@ export function collectComponents(
         skipDirs,
         onFile: (rel, abs) => {
           if (!exts.has(extname(abs))) return;
-          if (seen.has(`${ws.name} ${rel}`)) return;
-          seen.add(`${ws.name} ${rel}`);
+          if (seen.has(rel)) return;
+          seen.add(rel);
           let source: string;
           try {
             source = readFileSync(abs, "utf8");
@@ -377,34 +535,23 @@ export function collectComponents(
             return;
           }
           const exportNames = extractExportNames(source, rel);
-          const tags =
-            ghost && registry !== null
-              ? ((entry) => (entry === null ? null : entryToTags(entry)))(
-                  lookupComponentEntry(registry, ws.name, rel, exportNames),
-                )
-              : parseComponentHeader(source);
-          if (tags === null) {
-            // Only a unit-shaped file (a real component/widget/view) is
-            // "missing". Committed: no `@cairn` header. Ghost: not in the
-            // registry (an *unregistered unit*). Non-unit files co-located in a
-            // component dir — route/entry files like page.tsx / layout.tsx
-            // (lowercase, not unit-shaped) — are skipped, so a mixed dir (e.g.
-            // app/) can be added to componentDirs without flooding the gate.
-            if (profileForFile(rel)?.isUnitShaped(source, rel)) missing.push(rel);
-            return;
+          const entry = lookupComponentEntry(registry, ws.name, rel, exportNames);
+          if (entry === null && profileForFile(rel)?.isUnitShaped(source, rel) === true) {
+            missing.push(rel);
           }
-          components.push({
-            file: rel,
-            workspace: ws.name,
-            tags,
-            exportName: extractExportName(source, rel),
-            exportNames,
-          });
         },
       });
     }
   }
 
+  return sortCollectResult(components, missing, true);
+}
+
+function sortCollectResult(
+  components: ComponentRecord[],
+  missing: string[],
+  ghost: boolean,
+): CollectResult {
   components.sort(
     (a, b) =>
       (a.workspace || "").localeCompare(b.workspace || "") ||

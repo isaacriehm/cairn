@@ -104,6 +104,12 @@ export type {
   ScopeCoverageOptions,
   ScopeCoverageResult,
 } from "./scope-coverage.js";
+export { runConfigDrift, writeConfigDriftBaseline } from "./config-drift.js";
+export type {
+  ConfigDriftOptions,
+  ConfigDriftResult,
+  ConfigDriftBaselineResult,
+} from "./config-drift.js";
 export { runStubCatalogHits } from "./stub-hits.js";
 export type {
   StubCatalogHitsOptions,

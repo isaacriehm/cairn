@@ -167,7 +167,11 @@ export const InvariantFrontmatter = z
     id: z.string().regex(/^INV-[0-9a-f]{7,}$/, "invariant id must match INV-<hash7>"),
     title: z.string(),
     type: z.literal("invariant").optional(),
-    status: z.enum(["active", "superseded", "archived"]).optional(),
+    // `draft` is the resync re-curation `_inbox/` state; it never appears in the
+    // active ledger (the ledger builder + id-scan skip `_inbox/`), but the
+    // frontmatter parser must accept it so `cairn_invariant_get` can resolve a
+    // pending INV draft for the cairn-attention surface.
+    status: z.enum(["draft", "active", "superseded", "archived"]).optional(),
     audience: Audience.optional(),
     generated: z.string().optional(),
     "verified-at": z.string().optional(),
@@ -183,6 +187,11 @@ export const InvariantFrontmatter = z
     sot_content_hash: z.string().length(64),
     related: z.string().nullish(),
     derived_from: z.string().nullish(),
+    // The repo-relative file a Layer-A (sot-align) capture came from.
+    // `cairn_in_scope` matches path_globs against this so a captured
+    // invariant is discoverable by the file it documents, even when it has
+    // no parent decision and isn't in the (init-built) scope-index.
+    source_file: z.string().optional(),
   })
   .passthrough();
 export type InvariantFrontmatter = z.infer<typeof InvariantFrontmatter>;

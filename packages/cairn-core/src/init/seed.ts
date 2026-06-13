@@ -38,6 +38,13 @@ export interface SeedOptions {
   projectSlug: string;
   /** Allow overwriting existing files. Default false (collide-fail). */
   force?: boolean;
+  /**
+   * ISO timestamp stamped into the templates' `<seed_timestamp>` token
+   * (`generated`/`verified-at` frontmatter). The REAL adoption time — so
+   * `verified-at` is meaningful and the freshness system can trust it.
+   * Defaults to now; the phase passes a single stamp for the whole pass.
+   */
+  nowIso?: string;
 }
 
 export interface SeedResult {
@@ -113,6 +120,7 @@ function addGitInfoExclude(repoRoot: string): void {
 export function seedCairnLayout(opts: SeedOptions): SeedResult {
   const written: string[] = [];
   const collisions: string[] = [];
+  const nowIso = opts.nowIso ?? new Date().toISOString();
   const ghost = isGhost(opts.repoRoot);
   const allowlist = ghost ? GHOST_SEED_ALLOWLIST : SEED_TOP_LEVEL_ALLOWLIST;
   walkFs({
@@ -133,7 +141,12 @@ export function seedCairnLayout(opts: SeedOptions): SeedResult {
       }
       mkdirSync(dirname(absDst), { recursive: true });
       const raw = readFileSync(absSrc, "utf8");
-      const out = applyPlaceholders({ content: raw, projectSlug: opts.projectSlug, relPath: rel });
+      const out = applyPlaceholders({
+        content: raw,
+        projectSlug: opts.projectSlug,
+        relPath: rel,
+        nowIso,
+      });
       writeFileSync(absDst, out, "utf8");
       if (isExecutableTemplate(rel)) {
         try {
@@ -152,14 +165,14 @@ export function seedCairnLayout(opts: SeedOptions): SeedResult {
 }
 
 /**
- * Substitute the `<project_name>` placeholder in shipped templates.
- * Only `.cairn/config/workflow.md` and `.cairn/config/sensors.yaml`
- * carry it today; the function is broad enough to safely no-op on other
- * files.
+ * Substitute the shipped templates' adoption-time placeholders.
  *
- * Two replacement targets:
- *   1. `<project_name>:` YAML key → `<slug>:` (the per-project extension block)
- *   2. Inline mentions in comments, e.g. ``<project_name>:` extension block``
+ *   - `<seed_timestamp>` → the real adoption ISO (every template carrying a
+ *     `generated`/`verified-at` stamp). Applied to ALL files so no template
+ *     ships a synthetic/template-author timestamp into an adopter's repo —
+ *     a fake `verified-at` is one the freshness system can't trust.
+ *   - `<project_name>` → the project slug. Only `.cairn/config/workflow.md`
+ *     and `.cairn/config/sensors.yaml` carry it today; scoped to those.
  *
  * The Liquid-style `{{project_name}}` placeholders inside the agent
  * prompt body are NOT touched here — those resolve at run time when the
@@ -169,19 +182,22 @@ function applyPlaceholders(args: {
   content: string;
   projectSlug: string;
   relPath: string;
+  nowIso: string;
 }): string {
-  // Only mutate workflow.md / sensors.yaml; other files pass through.
   const norm = args.relPath.split("\\").join("/");
+  // Seed timestamp: stamp every template's `<seed_timestamp>` token.
+  let out = args.content.split("<seed_timestamp>").join(args.nowIso);
+  // Project slug: only workflow.md / sensors.yaml carry it.
   if (
-    norm !== ".cairn/config/workflow.md" &&
-    norm !== ".cairn/config/sensors.yaml"
+    norm === ".cairn/config/workflow.md" ||
+    norm === ".cairn/config/sensors.yaml"
   ) {
-    return args.content;
+    out = out
+      .replace(/<project_name>:/g, `${args.projectSlug}:`)
+      .replace(/`<project_name>`/g, `\`${args.projectSlug}\``)
+      .replace(/<project_name>/g, args.projectSlug);
   }
-  return args.content
-    .replace(/<project_name>:/g, `${args.projectSlug}:`)
-    .replace(/`<project_name>`/g, `\`${args.projectSlug}\``)
-    .replace(/<project_name>/g, args.projectSlug);
+  return out;
 }
 
 /** Exposed for the smoke test — locate the templates root from runtime. */

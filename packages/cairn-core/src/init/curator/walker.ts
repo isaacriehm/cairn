@@ -56,6 +56,13 @@ const SKIP_DIRS = new Set([
 
 export interface RunCuratorWalkerArgs {
   repoRoot: string;
+  /**
+   * Repo-relative subtree to scope the corpus to (e.g. `src/new-area`).
+   * When set, only records whose source file is at/under it survive — this
+   * is how `cairn resync` re-curates a single grown area incrementally
+   * instead of re-walking the whole tree. Omit for a full walk (init).
+   */
+  area?: string;
 }
 
 export interface RunCuratorWalkerResult {
@@ -204,13 +211,16 @@ export async function runCuratorWalker(
     }
   }
 
-  // ── 4. Persist corpus + per-shard slices + shard plan ─────────────
-  const corpus = writeCorpus(repoRoot, records);
-  const plan = packShards(records);
+  // ── 4. Scope to the requested area (incremental re-curation) ──────
+  const scoped = scopeRecordsToArea(records, args.area);
+
+  // ── 5. Persist corpus + per-shard slices + shard plan ─────────────
+  const corpus = writeCorpus(repoRoot, scoped);
+  const plan = packShards(scoped);
   // Write ready-to-read per-shard corpus slices BEFORE the plan so each
   // shard's `shard_file` basename lands in shards.json. The cairn-adopt
   // skill reads these directly instead of slicing the corpus in Bash.
-  writeShardCorpora(repoRoot, records, plan);
+  writeShardCorpora(repoRoot, scoped, plan);
   const shardsPath = writeShards(repoRoot, plan);
 
   return {
@@ -227,6 +237,17 @@ export async function runCuratorWalker(
 /* -------------------------------------------------------------------------- */
 /* Helpers — module / docs / rules / off-limits                               */
 /* -------------------------------------------------------------------------- */
+
+/**
+ * Keep only records whose source file is at/under `area` (repo-relative).
+ * A trailing slash on `area` is tolerated; an undefined/empty area is a
+ * no-op (full corpus). Exact-file match also counts (a single-file area).
+ */
+function scopeRecordsToArea(records: CorpusRecord[], area: string | undefined): CorpusRecord[] {
+  if (area === undefined || area.length === 0) return records;
+  const norm = area.endsWith("/") ? area.slice(0, -1) : area;
+  return records.filter((r) => r.file === norm || r.file.startsWith(`${norm}/`));
+}
 
 function moduleSlugForFile(file: string): string {
   // Top-level dir wins; if path has no dir, use "(root)".

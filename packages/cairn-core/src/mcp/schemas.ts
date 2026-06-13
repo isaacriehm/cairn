@@ -271,6 +271,29 @@ export const migrateInput = {
   dry_run: z.boolean().optional(),
 };
 
+export const resyncInput = {
+  /** Apply the proposed config edits. Default false — preview only (safe). */
+  apply: z.boolean().optional(),
+  /** Limit to config-drift findings at/under this repo-relative dir. */
+  area: z.string().optional(),
+  /**
+   * Run the LLM re-cluster pass (re-walk prose, Haiku-judge new semantic
+   * collisions, rebuild topic-index + anchor-map) instead of the deterministic
+   * config pass. Spends Haiku (only on genuinely-new prose — unchanged pairs
+   * hit the cache); opt-in. `apply` then overwrites the maps (archived first).
+   */
+  recluster: z.boolean().optional(),
+  /**
+   * Re-curation phase, driven by the cairn-resync skill (curator-map/reduce
+   * subagents do the middle):
+   *   - "walk" — build the curator corpus + shards over `area` (incremental),
+   *     returning the shard plan for the skill to dispatch subagents over.
+   *   - "emit" — read the skill-written `final.jsonl` and emit each entry as a
+   *     reviewable DEC/INV draft to `_inbox/` (never auto-graduates).
+   */
+  recurate: z.enum(["walk", "emit"]).optional(),
+};
+
 export const resolveAttentionInput = {
   /**
    * Item id from the attention skill — DEC-<hash> for a draft, the
@@ -324,6 +347,7 @@ export const resolveAttentionInput = {
    */
   kind: z.enum([
     "decision_draft",
+    "invariant_draft",
     "baseline_finding",
     "invalidation_event",
     "drift",

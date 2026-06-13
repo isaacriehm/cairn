@@ -51,8 +51,13 @@ export async function runPhase4Seed(state: PhaseState): Promise<PhaseResult> {
   const mapperFull = readMapperOutputFile(state.repoRoot);
 
   try {
-    // Step 1 — seed templates into .cairn/.
-    const seed = seedCairnLayout({ repoRoot: state.repoRoot, projectSlug });
+    // Step 1 — seed templates into .cairn/. Stamp the real adoption time
+    // into every `<seed_timestamp>` token (one clock read for the pass).
+    const seed = seedCairnLayout({
+      repoRoot: state.repoRoot,
+      projectSlug,
+      nowIso: new Date().toISOString(),
+    });
 
     // Step 2 — patch <slug>: workflow.md block when workflow.md was
     // freshly seeded (existing workflow stays untouched on re-run).

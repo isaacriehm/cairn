@@ -240,7 +240,6 @@ function rewritePersonas(
   }
   const next =
     `# Product personas — who this is for. Read at every SessionStart.\n` +
-    `# See DOCS_SPEC.md §3.4 for shape.\n` +
     `status: ${markCurrent ? "current" : "draft"}\n` +
     `personas:\n` +
     `  - name: primary\n` +
@@ -273,7 +272,6 @@ function rewritePersonasStructured(
   }
   const lines: string[] = [];
   lines.push(`# Product personas — who this is for. Read at every SessionStart.`);
-  lines.push(`# See DOCS_SPEC.md §3.4 for shape.`);
   lines.push(`status: ${markCurrent ? "current" : "draft"}`);
   lines.push(`personas:`);
   for (const p of personas) {
@@ -337,7 +335,14 @@ function flipStatus(text: string, markCurrent: boolean): string {
     : /^status:\s*/m.test(fm)
       ? fm
       : `${fm}status: current\n`;
-  return text.replace(FRONTMATTER_RE, `---\n${flipped}---\n`);
+  // The operator just confirmed this brand → `verified-at` is honestly now.
+  // (`generated` stays the original adoption time.) Re-stamp only an existing
+  // key — never fabricate one a template didn't carry.
+  const now = new Date().toISOString();
+  const restamped = /^verified-at:\s*.*$/m.test(flipped)
+    ? flipped.replace(/^verified-at:\s*.*$/m, `verified-at: ${now}`)
+    : flipped;
+  return text.replace(FRONTMATTER_RE, `---\n${restamped}---\n`);
 }
 
 function replaceBodyAfterFrontmatter(text: string, body: string): string {

@@ -49,6 +49,16 @@ const CAPTURE_SOURCE = "init-curator";
 
 export interface RunCuratorEmitArgs {
   repoRoot: string;
+  /**
+   * Draft mode (resync re-curation). Writes each entry as a reviewable
+   * `_inbox/<id>.draft.md` (status `draft`) instead of graduating it
+   * straight to ground, and does NOT rebuild the ledgers. The operator
+   * drains the drafts via cairn-attention (accept graduates; reject
+   * archives). Default false — init auto-accepts into ground.
+   */
+  draft?: boolean;
+  /** capture_source stamped into frontmatter. Default "init-curator". */
+  captureSource?: string;
 }
 
 export interface CuratorEmitWritten {
@@ -71,6 +81,8 @@ export async function runCuratorEmit(
   args: RunCuratorEmitArgs,
 ): Promise<RunCuratorEmitResult> {
   const { repoRoot } = args;
+  const draft = args.draft === true;
+  const captureSource = args.captureSource ?? CAPTURE_SOURCE;
   const finalAbs = cairnDir(repoRoot, "init", "curator", "final.jsonl");
   if (!existsSync(finalAbs)) {
     return {
@@ -125,15 +137,22 @@ export async function runCuratorEmit(
 
     if (entry.kind === "DEC") {
       const id = allocateDecId(entry, existingDecIds);
-      const path = writeDecisionFile({ repoRoot, id, entry });
+      const path = writeDecisionFile({ repoRoot, id, entry, draft, captureSource });
       existingDecIds.add(id);
       decsWritten.push({ id, path, title: entry.title });
     } else {
       const id = allocateInvId(entry, existingInvIds);
-      const path = writeInvariantFile({ repoRoot, id, entry });
+      const path = writeInvariantFile({ repoRoot, id, entry, draft, captureSource });
       existingInvIds.add(id);
       invsWritten.push({ id, path, title: entry.title });
     }
+  }
+
+  // Drafts are not graduated — leave the ledgers alone (they index ground,
+  // and the operator graduates drafts later via cairn-attention).
+  if (draft) {
+    const dropped = Object.values(dropReasons).reduce((a, b) => a + b, 0);
+    return { decsWritten, invsWritten, dropped, dropReasons };
   }
 
   // Rebuild aggregate ledgers when we wrote anything.
@@ -230,24 +249,30 @@ interface WriteFileArgs {
   repoRoot: string;
   id: string;
   entry: FinalEntry;
+  draft: boolean;
+  captureSource: string;
 }
 
 function writeDecisionFile(args: WriteFileArgs): string {
-  const dir = decisionsDir(args.repoRoot);
+  const baseDir = decisionsDir(args.repoRoot);
+  const dir = args.draft ? join(baseDir, "_inbox") : baseDir;
   mkdirSync(dir, { recursive: true });
-  const filename = `${args.id}.md`;
-  const abs = join(dir, filename);
-  writeFileSync(abs, renderDecision(args), "utf8");
-  return `.cairn/ground/decisions/${filename}`;
+  const filename = args.draft ? `${args.id}.draft.md` : `${args.id}.md`;
+  writeFileSync(join(dir, filename), renderDecision(args), "utf8");
+  return args.draft
+    ? `.cairn/ground/decisions/_inbox/${filename}`
+    : `.cairn/ground/decisions/${filename}`;
 }
 
 function writeInvariantFile(args: WriteFileArgs): string {
-  const dir = invariantsDir(args.repoRoot);
+  const baseDir = invariantsDir(args.repoRoot);
+  const dir = args.draft ? join(baseDir, "_inbox") : baseDir;
   mkdirSync(dir, { recursive: true });
-  const filename = `${args.id}.md`;
-  const abs = join(dir, filename);
-  writeFileSync(abs, renderInvariant(args), "utf8");
-  return `.cairn/ground/invariants/${filename}`;
+  const filename = args.draft ? `${args.id}.draft.md` : `${args.id}.md`;
+  writeFileSync(join(dir, filename), renderInvariant(args), "utf8");
+  return args.draft
+    ? `.cairn/ground/invariants/_inbox/${filename}`
+    : `.cairn/ground/invariants/${filename}`;
 }
 
 function renderDecision(args: WriteFileArgs): string {
@@ -256,13 +281,13 @@ function renderDecision(args: WriteFileArgs): string {
     id: args.id,
     title: args.entry.title,
     type: "adr",
-    status: "accepted",
+    status: args.draft ? "draft" : "accepted",
     audience: "dual",
     generated: now,
     "verified-at": now,
     decided_at: now.slice(0, 10),
-    decided_by: CAPTURE_SOURCE,
-    capture_source: CAPTURE_SOURCE,
+    decided_by: args.captureSource,
+    capture_source: args.captureSource,
     sot_kind: "ledger",
     sot_path: "ledger",
     sot_content_hash: bodyContentHash(args.entry.body),
@@ -279,11 +304,11 @@ function renderInvariant(args: WriteFileArgs): string {
     id: args.id,
     title: args.entry.title,
     type: "invariant",
-    status: "active",
+    status: args.draft ? "draft" : "active",
     audience: "dual",
     generated: now,
     "verified-at": now,
-    capture_source: CAPTURE_SOURCE,
+    capture_source: args.captureSource,
     sot_kind: "ledger",
     sot_path: "ledger",
     sot_content_hash: bodyContentHash(args.entry.body),

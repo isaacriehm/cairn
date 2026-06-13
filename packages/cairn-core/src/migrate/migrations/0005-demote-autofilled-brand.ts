@@ -15,12 +15,20 @@
  * injected. Operator-written brand is left alone; a demoted file is one
  * frontmatter edit (or a re-run of brand setup) away from `current` again.
  *
+ * The 0.26.0 detection only caught the mechanical fallback (fixed marker
+ * strings) and the byte-identical overview/positioning pair — it missed
+ * Haiku-derived auto-fill (voice.md / personas.yaml), which is worded
+ * freshly each run. 0.27.0 adds a co-generation cohort channel: once the
+ * overview≡positioning identity proves the pass auto-filled brand, every
+ * confirmed doc stamped with the same `generated` timestamp is demoted too.
+ *
  * `review`-class: it rewrites committed ground state, so it surfaces for
  * the operator and applies via `cairn migrate` — never silently.
  *
- * Ships in 0.26.0, so `introducedIn` is 0.26.0 (not 0.25.0): a repo whose
- * pin already advanced to 0.25.0 must still re-evaluate it. `detect()`
- * carries correctness.
+ * The cohort channel ships in 0.27.0, so `introducedIn` advances to 0.27.0:
+ * a repo that already ran the 0.26.0 pass (demoting only the pair) must
+ * re-evaluate to catch the co-generated siblings. `detect()` carries
+ * correctness.
  */
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -52,6 +60,8 @@ function brandDocs(repoRoot: string): BrandDoc[] {
 
 interface ParsedDoc {
   status: string | null;
+  /** The adoption pass stamps every co-generated doc the same `generated`. */
+  generated: string | null;
   body: string;
   raw: string;
 }
@@ -75,7 +85,13 @@ function readDoc(abs: string): ParsedDoc | null {
     const m = raw.match(/^status:\s*(\S+)\s*$/m);
     status = m?.[1] ?? null;
   }
-  return { status, body: parsed.body, raw };
+  let generated =
+    typeof fm["generated"] === "string" ? (fm["generated"] as string) : null;
+  if (generated === null) {
+    const g = raw.match(/^generated:\s*(\S+)\s*$/m);
+    generated = g?.[1] ?? null;
+  }
+  return { status, generated, body: parsed.body, raw };
 }
 
 const CONFIRMED = new Set(["current", "accepted"]);
@@ -90,12 +106,26 @@ function normalize(s: string): string {
 
 /**
  * Repo-relative labels of confirmed brand docs that are provably the
- * pre-0.25.0 auto-fill output:
- *   - voice.md carrying a mechanical-default marker,
- *   - personas.yaml carrying the placeholder marker,
- *   - overview.md and positioning.md whose bodies are byte-identical
- *     (auto-fill wrote the same domain summary to both; a hand-written
- *     pair would diverge).
+ * pre-0.25.0 auto-fill output. Two evidence channels:
+ *
+ *   1. Per-doc markers — voice.md / personas.yaml carrying a mechanical
+ *      fallback's distinctive string. Precise but narrow: it ONLY catches
+ *      the timeout fallback, never the Haiku-derived auto-fill (which is
+ *      worded freshly each run and so carries no fixed marker).
+ *
+ *   2. Co-generation cohort — overview.md and positioning.md with
+ *      byte-identical bodies is near-certain auto-fill proof (a hand-author
+ *      doesn't write the exact same domain summary into two files). When
+ *      that fires, every confirmed brand doc stamped with the SAME
+ *      `generated` timestamp came out of the same automated pass and is
+ *      demoted too. This is what catches a Haiku-derived voice.md the
+ *      marker channel misses. The identity check is status-independent —
+ *      an earlier run may have already demoted the pair to draft, yet its
+ *      still-confirmed siblings must follow.
+ *
+ * A demoted file is one frontmatter edit from `current` again, so the
+ * asymmetry favors demoting: a false demote costs one keystroke, a false
+ * keep burns context every session as machine-written "authoritative" voice.
  */
 function autofilledConfirmed(repoRoot: string): string[] {
   const docs = brandDocs(repoRoot);
@@ -103,11 +133,13 @@ function autofilledConfirmed(repoRoot: string): string[] {
   for (const d of docs) byRel.set(d.rel, readDoc(d.abs));
 
   const hits = new Set<string>();
+  const get = (rel: string): ParsedDoc | null => byRel.get(rel) ?? null;
   const confirmed = (rel: string): ParsedDoc | null => {
-    const p = byRel.get(rel) ?? null;
+    const p = get(rel);
     return p !== null && p.status !== null && CONFIRMED.has(p.status) ? p : null;
   };
 
+  // Channel 1 — per-doc mechanical-fallback markers.
   const voice = confirmed("brand/voice.md");
   if (voice && (voice.body.includes(VOICE_MARKER) || voice.body.includes(AVOID_MARKER))) {
     hits.add("brand/voice.md");
@@ -116,17 +148,33 @@ function autofilledConfirmed(repoRoot: string): string[] {
   if (personas && personas.raw.includes(PERSONAS_MARKER)) {
     hits.add("product/personas.yaml");
   }
-  const overview = confirmed("brand/overview.md");
-  const positioning = confirmed("product/positioning.md");
-  if (
-    overview &&
-    positioning &&
-    normalize(overview.body).length > 0 &&
-    normalize(overview.body) === normalize(positioning.body)
-  ) {
-    hits.add("brand/overview.md");
-    hits.add("product/positioning.md");
+
+  // Channel 2 — co-generation cohort, proven by the overview≡positioning
+  // identity (checked regardless of either doc's current status).
+  const overviewAny = get("brand/overview.md");
+  const positioningAny = get("product/positioning.md");
+  const pairAutofilled =
+    overviewAny !== null &&
+    positioningAny !== null &&
+    normalize(overviewAny.body).length > 0 &&
+    normalize(overviewAny.body) === normalize(positioningAny.body);
+
+  if (pairAutofilled) {
+    // Cohort timestamp — the pass stamps every co-generated doc identically.
+    const cohortGen = overviewAny.generated ?? positioningAny.generated;
+    // overview/positioning are themselves cohort members; demote if still confirmed.
+    if (confirmed("brand/overview.md")) hits.add("brand/overview.md");
+    if (confirmed("product/positioning.md")) hits.add("product/positioning.md");
+    // A confirmed voice.md sharing the cohort timestamp is the same pass's
+    // output — the timestamp guard spares a voice the operator hand-wrote later.
+    if (voice && cohortGen !== null && voice.generated === cohortGen) {
+      hits.add("brand/voice.md");
+    }
+    // personas.yaml carries no `generated`; it's the lowest-value, most
+    // placeholder-prone doc, so the pair-proof alone demotes a confirmed one.
+    if (personas) hits.add("product/personas.yaml");
   }
+
   return [...hits];
 }
 
@@ -150,9 +198,9 @@ function demoteToDraft(abs: string): boolean {
 
 export const demoteAutofilledBrand: Migration = {
   id: "0005-demote-autofilled-brand",
-  introducedIn: "0.26.0",
+  introducedIn: "0.27.0",
   describe:
-    "Demote auto-generated brand drafts (marked confirmed before 0.25.0) back to status: draft so generic voice/positioning stops being injected every session",
+    "Demote auto-generated brand (marked confirmed before 0.25.0) back to status: draft so machine-written voice/positioning/personas stops being injected every session — now catches the full co-generated cohort, not just the mechanical fallback",
   class: "review",
   detect(repoRoot: string): boolean {
     return autofilledConfirmed(repoRoot).length > 0;

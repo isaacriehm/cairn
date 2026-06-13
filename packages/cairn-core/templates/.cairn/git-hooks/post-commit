@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 # Cairn post-commit hook (versioned, per-clone activation via core.hooksPath).
 #
-# Spec: PLUGIN_ARCHITECTURE §17 Layer 1 (bypass tracking).
-#
 # Records the SHA of the commit that just succeeded into
 # `<cairnHome>/.attested-commits`. The Stop hook uses this list to detect
 # `--no-verify` bypasses and surface them inline.

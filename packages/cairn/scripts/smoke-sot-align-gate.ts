@@ -21,9 +21,11 @@
  */
 
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -170,7 +172,11 @@ async function main(): Promise<void> {
     console.log(`  ✓ Step 2 — ${result.blocksConsidered} junk blocks gated, judge never reached, 0 entities`);
   }
 
-  // ── Step 3 — MUST NOT clears the gate → judge → INV ──────────────
+  // ── Step 3 — MUST NOT clears the gate → judge → CANDIDATE (Q17) ──
+  // A runtime `constraint` no longer auto-creates an active INV (the
+  // low-confidence over-mint the prune cleaned up after; INV enforcement
+  // is unwired). It routes to the alignment-pending candidate surface for
+  // operator promotion — with NO second Haiku pass (no added latency).
   {
     const repoRoot = mkRepoRoot();
     const source = [
@@ -184,6 +190,7 @@ async function main(): Promise<void> {
     commitAll(repoRoot);
 
     let creationCalls = 0;
+    let p2Calls = 0;
     const result = await alignFile({
       repoRoot,
       filePath: "src/flush.ts",
@@ -193,10 +200,21 @@ async function main(): Promise<void> {
         creationCalls += 1;
         return "constraint";
       },
+      mockCreationJudgePass2: async () => {
+        p2Calls += 1;
+        return "constraint";
+      },
     });
     assert(creationCalls === 1, `Step 3: constraint block reaches judge, got ${creationCalls}`);
-    assert(result.invsCreated === 1, `Step 3: INV minted, got ${result.invsCreated}`);
-    console.log("  ✓ Step 3 — MUST NOT clears gate → judge → INV");
+    assert(p2Calls === 0, "Step 3: no confirmation Pass-2 — constraint routes on Pass-1 alone (no added latency)");
+    assert(result.invsCreated === 0, `Step 3: constraint NOT auto-minted as active INV, got ${result.invsCreated}`);
+    assert(result.pending === 1, `Step 3: constraint routes to the alignment-pending candidate, got pending=${result.pending}`);
+    assert(
+      existsSync(join(repoRoot, ".cairn/ground/invariants")) === false ||
+        readdirSync(join(repoRoot, ".cairn/ground/invariants")).filter((f) => f.endsWith(".md")).length === 0,
+      "Step 3: active invariants ledger stays empty",
+    );
+    console.log("  ✓ Step 3 — MUST NOT clears gate → judge → candidate (not active ledger)");
   }
 
   // ── Step 4 — decision-shape clears the gate → judge → DEC ────────
@@ -226,6 +244,37 @@ async function main(): Promise<void> {
     assert(creationCalls === 1, `Step 4: decision block reaches judge, got ${creationCalls}`);
     assert(result.decsCreated === 1, `Step 4: DEC minted, got ${result.decsCreated}`);
     console.log("  ✓ Step 4 — decision-shape clears gate → judge → DEC");
+  }
+
+  // ── Step 5 — a rule-shaped comment in a TEST file is skipped whole ───
+  // The exact `MUST NOT` block that minted an INV from src/flush.ts in
+  // Step 3 produces nothing when it lives in a *.spec.ts: a spec's prose
+  // ("the contact must roll back") reads like a rule but is test setup.
+  {
+    const repoRoot = mkRepoRoot();
+    const source = [
+      "/**",
+      " * Callers MUST NOT invoke flush() before the buffer has been initialized,",
+      " * otherwise the partial frame corrupts the downstream decoder.",
+      " */",
+      "export function flush() {}",
+    ].join("\n") + "\n";
+    writeFile(repoRoot, "src/flush.spec.ts", source);
+    commitAll(repoRoot);
+
+    const result = await alignFile({
+      repoRoot,
+      filePath: "src/flush.spec.ts",
+      sessionId: null,
+      mockDedupJudgePass1: async () => "different",
+      mockCreationJudgePass1: async () => {
+        throw new Error("creation judge must NOT be reached for a test file");
+      },
+    });
+    assert(result.blocksConsidered === 0, `Step 5: test file short-circuits before block extraction, got ${result.blocksConsidered}`);
+    assert(result.invsCreated === 0 && result.decsCreated === 0, "Step 5: no entity minted from a test file");
+    assert(result.haikuCalls === 0, "Step 5: no Haiku call for a test file");
+    console.log("  ✓ Step 5 — rule-shaped comment in a *.spec.ts is skipped whole");
   }
 
   cleanup();

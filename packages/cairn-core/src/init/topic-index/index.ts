@@ -12,8 +12,11 @@
 
 import { logger } from "../../logger.js";
 import {
+  anchorMapPath,
+  fileCandidatesMapPath,
   gcRejectedYaml,
   readRejectedYaml,
+  topicIndexPath,
   writeAnchorMap,
   writeFileCandidatesMap,
   writeRejectedYaml,
@@ -44,6 +47,14 @@ export interface BuildTopicIndexArgs {
    * statusline can render `phase 7-topic-index X/Y pairs`. Smokes opt out.
    */
   emitProgress?: boolean;
+  /**
+   * When true (default), the freshly-resolved index + anchor-map +
+   * file-candidates-map are written to disk and `_rejected.yaml` is
+   * GC'd. When false the resolve runs (the Haiku judge still fires — it
+   * IS the discovery), but no map is mutated: `cairn resync --recluster`
+   * uses this to preview a re-cluster without overwriting the live maps.
+   */
+  write?: boolean;
 }
 
 export interface BuildTopicIndexResult extends ResolveResult {
@@ -100,11 +111,10 @@ export async function buildTopicIndex(
   if (args.maxJudgeCalls !== undefined) resolveOpts.maxJudgeCalls = args.maxJudgeCalls;
   if (args.judgeConcurrency !== undefined) resolveOpts.judgeConcurrency = args.judgeConcurrency;
   if (onProgress !== undefined) resolveOpts.onProgress = onProgress;
+  const write = args.write !== false;
   try {
     const result = await resolveTopics(blocks, resolveOpts);
-    const topicIndexPath = writeTopicIndex(args.repoRoot, result.topicIndex);
-    const anchorMapPath = writeAnchorMap(args.repoRoot, result.anchorMap);
-    // Phase 7 extension:
+    // Phase 7 extension (write mode):
     //   - Write `file-candidates-map.yaml` so the read-enrich hook can
     //     do O(1) per-file candidate-count lookups instead of scanning
     //     the whole topic-index per Read.
@@ -112,15 +122,25 @@ export async function buildTopicIndex(
     //     dropping rejection records whose source has been deleted /
     //     renamed since the last build. Centralizing GC here keeps
     //     index maintenance owned by the index-builder.
-    const fileCandidatesMapAbs = writeFileCandidatesMap(args.repoRoot, result.topicIndex);
+    // Preview mode (write:false) resolves identically but mutates no map
+    // — the resync re-cluster previews before overwriting the live index.
+    const topicIndexAbs = write
+      ? writeTopicIndex(args.repoRoot, result.topicIndex)
+      : topicIndexPath(args.repoRoot);
+    const anchorMapAbs = write
+      ? writeAnchorMap(args.repoRoot, result.anchorMap)
+      : anchorMapPath(args.repoRoot);
+    const fileCandidatesMapAbs = write
+      ? writeFileCandidatesMap(args.repoRoot, result.topicIndex)
+      : fileCandidatesMapPath(args.repoRoot);
     const fileCandidates = perFileCandidateCounts(result.topicIndex);
-    const rejectedGcDropped = runRejectedGc(args.repoRoot, result.topicIndex);
+    const rejectedGcDropped = write ? runRejectedGc(args.repoRoot, result.topicIndex) : [];
     if (emitProgress) clearProgress(args.repoRoot);
     return finishResult({
       result,
       blocks,
-      topicIndexPath,
-      anchorMapPath,
+      topicIndexPath: topicIndexAbs,
+      anchorMapPath: anchorMapAbs,
       fileCandidatesMapPath: fileCandidatesMapAbs,
       fileCandidates,
       rejectedGcDropped,

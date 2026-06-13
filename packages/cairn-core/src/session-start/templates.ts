@@ -29,15 +29,15 @@ export const SESSION_START_HEADER = "# Cairn ground state — authoritative for 
  * `cairn_in_scope`).
  */
 export const CODE_CHANGE_CONTRACT =
-  "## Cairn — code-change contract (BLOCKING)\n\n" +
-  "Source mutations (`Edit`/`Write` on tracked files) require a tightened " +
-  "spec on disk at `.cairn/tasks/active/<task_id>/status.yaml`. Bypass → " +
-  "`PostToolUse` hook returns `decision: \"block\"`.\n\n" +
+  "## Cairn — code-change contract\n\n" +
   "**On any code-change prompt, invoke `Skill(cairn:cairn-direction)` " +
   "before reading or mutating source.** The skill drives the full flow: " +
   "preloads MCP tools + `AskUserQuestion`, gathers in-scope context via " +
   "`cairn_in_scope({path_globs, types?})`, tightens forks, allocates the " +
   "task via `cairn_task_create`, and dispatches implementation.\n\n" +
+  "Editing tracked source without an active task is allowed — Cairn surfaces " +
+  "a one-time reminder to `cairn_task_create` for non-trivial work, not a " +
+  "hard block. The discipline is yours to keep.\n\n" +
   "Code-change triggers: task verbs (build/add/fix/refactor/wire/remove), " +
   "bug reports, broken-behavior observations, modal verbs (should/must), " +
   "mission continuation (`continue`/`go`/`next` on an active mission).\n\n" +

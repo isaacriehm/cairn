@@ -4,6 +4,241 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.31.0] — 2026-06-13
+
+Capture precision — the durable fix for the invariant bloat the prune cleaned
+up after.
+
+### Changed
+
+- **Runtime invariant capture no longer auto-creates active INVs.** The Layer-A
+  sot-align creation judge over-labeled descriptions as `constraint`, minting a
+  largely-junk invariant store that `invariants prune` / migration `0006` had to
+  clean up after the fact. Now only a high-signal `decision` (shape-gated
+  chose/…/because, still reviewed as a DEC) auto-creates from a runtime edit. A
+  runtime `constraint` routes to the alignment-pending **candidate** surface,
+  where the operator promotes it to a real INV (`cairn_resolve_attention`
+  choice "b") or dismisses it — the same review-class discipline already applied
+  to ambiguous captures. This removes the bloat at the source rather than
+  pruning it afterward, and adds no second hot-path Haiku pass (no PostToolUse
+  latency). Rationale: invariant *enforcement* is unwired (`sensors.yaml`
+  `invariant-suite` is PLANNED, not run), so an auto-active runtime INV carries
+  no enforcement value — operator-confirmed capture is strictly higher quality.
+
+## [0.30.0] — 2026-06-13
+
+Anti-staleness, part 3. The config-drift sensor surfaces the gap between
+declared config and the grown tree; `cairn resync` is the operator-initiated
+verb that resolves it.
+
+### Added
+
+- **`cairn resync` + `cairn_resync` MCP tool.** Re-runs the config-drift
+  detector and turns each finding into a concrete `.cairn/config.yaml` edit:
+  add a grown dir to `componentDirs` (`config_uncovered_dir`), add a new file
+  type to `extensions` (`config_uncovered_ext`), add an ignored path to
+  `off_limits` (`config_gitignore_drift`), or drop a dead `componentDir`
+  (`config_orphan_path`). Workspaces are attributed by path prefix; `--area`
+  scopes to one subtree.
+
+  Dry-run by default (prints the proposed edits, mutates nothing). Apply
+  archives the pre-resync `config.yaml` to `.cairn/ground/.archive/`, edits via
+  the comment-preserving yaml Document API, and is idempotent on a clean delta.
+  The edit is a `review`-class change to committed config the operator commits;
+  derived state stays gitignored + per-clone, so there's no new multi-dev
+  conflict surface.
+
+- **`cairn resync` source rematch (the "free" re-discovery half).** Re-points a
+  ledger DEC/INV whose recorded `source_file` no longer exists but whose `§cite`
+  now lives in exactly one other file — the file was renamed and the cite moved
+  with its content, so the cite is the authoritative new home. This keeps
+  `cairn_in_scope`'s `source_file` match (the 0.27.0 fix) accurate after a
+  rename, recovering knowledge the entity-orphan pass would otherwise flag for
+  retirement. Deterministic (no LLM), committed-mode only (ghost has no cites);
+  ambiguous (0 or >1 citing files) is left to the orphan pass. Each re-pointed
+  entity is archived to `.cairn/ground/.archive/` before the edit; idempotent.
+
+- **`cairn resync --recluster` + `cairn_resync recluster:true` (the LLM
+  re-cluster half).** Re-runs Phase 7's topic-clustering over the grown tree:
+  re-walks every prose source, Haiku-judges fresh semantic-similarity
+  collisions, and rebuilds `topic-index.yaml` + `anchor-map.yaml`. The on-disk
+  judge cache makes it incremental for free — unchanged prose pairs hit the
+  cache (no quota burn), so only genuinely-new prose produces fresh judge calls
+  (`judge_calls_fresh` is the real cost). Opt-in and quota-gated: never on a
+  hook, never auto-run. Dry-run (the default) re-walks + judges and reports the
+  before/after topic counts but overwrites no map; apply archives the
+  pre-resync maps to `.cairn/ground/.archive/` first. The maps are gitignored,
+  per-clone derived state, so a re-cluster is recoverable and raises no
+  multi-dev conflict. The judge is an injected seam (same one Phase 7 exposes),
+  so the gate smoke drives a deterministic mock and burns zero quota.
+
+- **`cairn-resync` skill + `cairn_resync recurate:'walk'|'emit'` (re-curation
+  of a grown area into DEC/INV drafts).** Re-runs the curator over a single
+  scoped `area`: `recurate:'walk'` builds an area-scoped corpus + shard plan
+  (the curator walker gained an `area` filter, so re-curation is incremental —
+  not a full re-adoption); the `cairn-resync` skill dispatches the proven
+  `curator-map` / `curator-reduce` subagents over that plan; `recurate:'emit'`
+  writes each synthesized entry as a reviewable draft — DEC →
+  `decisions/_inbox/<id>.draft.md`, INV → `invariants/_inbox/<id>.draft.md`,
+  each `status: draft`. It rebuilds no ledger and graduates nothing; the
+  operator drains the drafts via cairn-attention. Opt-in, quota-gated, never
+  auto-applies to committed ground.
+
+- **INV drafts are now a first-class attention surface.** `cairn_resolve_attention`
+  gained an `invariant_draft` kind (accept graduates the draft to an active
+  `§INV` + rebuilds the invariants ledger; reject archives a `.rejected.md`
+  tombstone; edit returns the body) — the additive INV sibling of
+  `decision_draft`, kept separate so the tested DEC path (auto-restore,
+  source-strip) is untouched. SessionStart counts both `_inbox/` dirs toward the
+  attention nudge; cairn-attention lists and resolves both. `invariants/_inbox/`
+  is gitignored (per-clone draft queue, mirrors `decisions/_inbox/`). The
+  invariants ledger + id-scan already skip `_inbox/`, so draft INVs never leak
+  into active ground.
+
+  `domain_summary` is an init-time seed for the brand bodies, not live agent
+  context, so resync does not refresh it.
+
+## [0.29.0] — 2026-06-13
+
+Anti-staleness, part 2. Component discovery was bounded by `componentDirs` — a
+`@cairn` header in a file outside those dirs was invisible, so the store
+silently drifted as the codebase grew new areas.
+
+### Changed
+
+- **Component discovery is now self-locating.** In committed mode
+  `collectComponents` scans the whole git-walked tree for `@cairn` headers and
+  attributes each to a workspace by path prefix (longest `componentDir`, then
+  the workspace root = common prefix of its `componentDirs`). `componentDirs`
+  is now the *attribution + nag scope*, not the discovery boundary: a header in
+  a brand-new directory is covered with no config edit, and a single-app
+  project needs no `componentDirs` at all. Ghost mode enumerates the out-of-repo
+  registry directly (its entries are the source of truth), so a registered unit
+  outside any declared dir is still in the store.
+- **Missing-header nag stays scoped.** A unit-shaped file without a header is
+  flagged only inside a declared `componentDir` — files discovered elsewhere
+  are indexed if headered but never nagged, so adopting a repo without declaring
+  `componentDirs` can't flood the header-debt gate.
+
+(No migration: `0007-collapse-component-dirs` already collapsed leaf
+`componentDirs` to roots; this only changes discovery semantics.)
+
+## [0.28.0] — 2026-06-13
+
+Anti-staleness, part 1. Adoption ran one discovery pass and almost nothing
+re-derived it as the project grew — the system noticed what you *removed*
+(GC orphan sweep) but was blind to what you *added*. This lands the first
+half: a deterministic config-drift detector that converts silent config/tree
+drift into a surfaced nudge.
+
+### Added
+
+- **Config-drift GC pass (`config-drift`).** A new deterministic pass (no LLM)
+  in the 24h sweep that diffs the project's declared config
+  (`.cairn/config.yaml` `off_limits` + `components.*.componentDirs` /
+  `extensions`) against the current tree — the gap `scope-coverage`
+  (file-vs-DEC/INV) never covered. Four high-precision finding kinds:
+  - `config_orphan_path` — a declared `componentDir` that no longer exists.
+  - `config_gitignore_drift` — a repo `.gitignore` entry not covered by
+    `off_limits`, so the walk + capture still descend into a now-ignored area.
+  - `config_uncovered_dir` — a directory of ≥3 component-typed files sitting
+    outside every declared `componentDir` (a grown, unscoped area).
+  - `config_uncovered_ext` — a UI/code file type present under a `componentDir`
+    but absent from its configured `extensions` (silently unindexed).
+
+  Surface-only (the locked rule — sensors surface, never auto-mutate committed
+  config), capped at 50/kind and deduped per path. The autotriggered sweep
+  persists findings to `.cairn/baseline/config-drift-<ISO>.yaml`; they roll
+  into `attention_count` and surface through `cairn-attention` as one "your
+  project grew" group, each message naming the one-line config edit that
+  resolves it. `runtime-prune` reaps the snapshot family like any other.
+
+  Deferred (no clean deterministic source in the current adoption schema):
+  unmapped-domain detection (an LLM/resync naming call), workflow command-drift
+  (`workflow.md` carries no build/test/lint command set), and sensor
+  coverage-gap (`sensors.yaml` is generic, not language-keyed).
+
+## [0.27.0] — 2026-06-13
+
+Precision release. The Layer-A invariant capture was over-minting and the
+0.26.0 repair migrations under-firing, so adopted repos still carried a
+large junk-invariant corpus and machine-written brand marked as confirmed.
+This sharpens capture at the source, strengthens the prune, broadens the
+brand demote, and corrects an inaccurate SessionStart claim.
+
+### Fixed
+
+- **`cairn_in_scope` now finds captured invariants by their own file.** It
+  matched invariants only via a parent decision's `scope_globs` or the
+  init-built scope-index — but a Layer-A capture has no parent decision and
+  isn't added to that index at runtime, so a path-targeted lookup returned
+  *nothing* even when dozens of invariants documented files under that path.
+  The skill's "gather in-scope context" step came back empty and the agent
+  fell back to manual grep, defeating the point. It now also matches each
+  invariant's own `source_file` against the requested globs (verified on a
+  real adopted repo: a component-glob lookup went from 0 → 80 hits). This is
+  the single resolver behind `cairn_task_create` / `cairn_resume` scope too.
+- **SessionStart no longer claims a block that doesn't exist.** The
+  code-change contract was injected as `(BLOCKING)` with "bypass →
+  `PostToolUse` returns `decision: "block"`". No such block exists — writing
+  tracked source without an active task emits a once-per-session *hint*, and
+  PostToolUse runs after the write regardless. The text now describes the
+  real soft-reminder behavior, consistent with the inject-only hook
+  contract. The imperative to invoke the direction skill on code-change
+  prompts is unchanged.
+- **Layer-A capture skips test / fixture files.** A modal buried in a spec's
+  prose ("the contact *must* roll back") read as a rule, so test-fixture
+  comments were minted as "active invariants". The creation gate now skips
+  test/fixture/harness paths the same way it skips markdown — the single
+  largest source of junk capture.
+- **Adopted `.cairn/` files no longer ship Cairn-internal scaffolding.** The
+  seed templated `<project_name>` but never scrubbed the templates, so every
+  adopter's committed config carried references to Cairn-internal docs that
+  don't exist in their repo (`PLUGIN_ARCHITECTURE`, `FILESYSTEM_LAYOUT`,
+  `DOCS_SPEC`, `SYSTEM_OVERVIEW`), internal framing jargon, and a
+  "Project-extension placeholder" comment describing a substitution that had
+  already happened. The shipped templates (`workflow.md`, `sensors.yaml`,
+  `.gitignore`, the git hooks) are now scrubbed clean, and the `brand-setup`
+  writer no longer emits an internal-doc pointer into `personas.yaml`.
+- **Seeded files carry the real adoption time.** Templates shipped a fixed
+  template-author timestamp in `generated` / `verified-at`, so every adopter's
+  freshness metadata was a value the staleness system couldn't trust. The seed
+  now stamps the actual adoption time, and confirming brand interactively
+  re-stamps `verified-at` to when the operator confirmed it.
+
+### Added
+
+- **`0008-clean-adoption-scaffolding` migration (`safe`).** Converges existing
+  repos to the clean templates: scrubs the leaked internal-doc refs / jargon /
+  placeholder comments, and replaces the synthetic timestamps with each file's
+  real git first-commit (add) date — identical on every clone, so whoever runs
+  it first commits the canonical clean file and every other clone's `detect()`
+  short-circuits (no churn). Deterministic and idempotent; where git can't
+  resolve an add-date the stamp is left rather than fabricated.
+
+### Changed
+
+- **`cairn invariants prune` (and `0006`) gained a statement-scoped gate.**
+  The surgical pass kept any sot-align invariant whose multi-line body
+  contained a modal *anywhere*, so box-drawing separators and code-comment
+  descriptions survived on an incidental "must" three lines down. It now
+  retires an entry when it was captured from a test/fixture file, has a
+  separator / non-lexical title, or carries no constraint shape in its
+  *statement* (title + lead lines). Curated DEC/INV are still never touched,
+  and `--all` remains the full-reset escape hatch. Everything archives to
+  `.cairn/ground/.archive/` (recoverable).
+- **`0005-demote-autofilled-brand` now catches the co-generated cohort.**
+  The 0.26.0 detection only matched the mechanical fallback's fixed marker
+  strings, so a Haiku-derived `voice.md` / `personas.yaml` (worded freshly
+  each run) stayed `current` while the byte-identical overview/positioning
+  pair got demoted — a split, inconsistent state. Once that pair proves the
+  pass auto-filled brand, every confirmed doc sharing the same `generated`
+  timestamp is demoted too; a doc the operator hand-wrote later (different
+  timestamp) is spared.
+- **`0005` / `0006` `introducedIn` → `0.27.0`.** Both gained real logic
+  changes, so a repo that already ran the weaker 0.26.0 pass must
+  re-evaluate. `detect()` remains the idempotency backstop.
+
 ## [0.26.0] — 2026-06-12
 
 Migration release. Three content-repair migrations fix stale ground state

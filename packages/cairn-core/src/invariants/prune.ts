@@ -11,10 +11,12 @@
  * `capture_source: layer-a-sot-align` are eligible. Curated invariants
  * (init, curator, manual `record`/`propose`) are never touched.
  *
- *   surgical (default) — archive a sot-align invariant whose statement
- *                        carries no constraint shape (no modal/marker).
- *                        This mirrors the new creation gate: anything that
- *                        couldn't be minted today gets retired.
+ *   surgical (default) — archive a sot-align invariant that couldn't be
+ *                        minted today: captured from a test/fixture file,
+ *                        titled with a box-drawing separator, or carrying
+ *                        no constraint shape in its STATEMENT (title + lead
+ *                        lines — a modal buried deeper in incidental prose
+ *                        no longer rescues a description).
  *   all                — archive every sot-align invariant (full reset).
  *
  * Retirement reuses `archiveEntity` (move to `.cairn/ground/.archive/`,
@@ -33,7 +35,11 @@ import {
   writeInvariantsLedger,
   writeSotCache,
 } from "@isaacriehm/cairn-state";
-import { hasConstraintShape } from "../hooks/sot-align-common.js";
+import {
+  hasConstraintShape,
+  isNonLexicalLine,
+  isTestPath,
+} from "../hooks/sot-align-common.js";
 
 /** The runtime hook's stamp — the only capture_source this sweep retires. */
 const SOT_ALIGN_SOURCE = "layer-a-sot-align";
@@ -66,6 +72,22 @@ export interface PruneInvariantsResult {
   /** Eligible sot-align invariants kept (passed the constraint gate). */
   kept: number;
   dryRun: boolean;
+}
+
+/**
+ * The invariant's STATEMENT — its title plus the first two non-blank body
+ * lines. A real invariant carries its rule here; the surgical gate looks
+ * for constraint shape in this window, not in the whole captured block, so
+ * a modal buried in incidental prose deeper down can't keep a description
+ * alive as an "invariant".
+ */
+function statementOf(title: string, body: string): string {
+  const lead = body
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+    .slice(0, 2);
+  return [title, ...lead].join("\n");
 }
 
 export function pruneInvariants(
@@ -102,15 +124,29 @@ export function pruneInvariants(
     result.sotAlignTotal += 1;
 
     const title = typeof fm["title"] === "string" ? fm["title"] : "";
+    const sourceFile = typeof fm["source_file"] === "string" ? fm["source_file"] : "";
 
     let prune = false;
     let reason = "";
     if (mode === "all") {
       prune = true;
       reason = "full reset of sot-align invariants";
-    } else if (!hasConstraintShape(`${title}\n${body}`)) {
+    } else if (isTestPath(sourceFile)) {
+      // Test/fixture/harness comment lifted as an "invariant" — a buried
+      // modal ("must roll back") reads like a rule but describes test setup.
       prune = true;
-      reason = "no constraint shape — not a real invariant under the creation gate";
+      reason = "captured from a test/fixture file — not a product invariant";
+    } else if (isNonLexicalLine(title)) {
+      // Title is a box-drawing separator / pure punctuation — a capture
+      // artifact, never a rule statement.
+      prune = true;
+      reason = "separator/non-lexical title — not a rule statement";
+    } else if (!hasConstraintShape(statementOf(title, body))) {
+      // The constraint shape must sit in the STATEMENT (title + lead lines),
+      // not anywhere in the multi-line captured block. A description whose
+      // only modal is incidental prose three lines down is not an invariant.
+      prune = true;
+      reason = "no constraint shape in statement — not a real invariant under the creation gate";
     }
 
     if (!prune) {
