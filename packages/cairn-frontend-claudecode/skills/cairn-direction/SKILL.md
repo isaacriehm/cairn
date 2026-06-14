@@ -284,14 +284,14 @@ Cite alone. `cairn_invariant_get` / `cairn_decision_get` dereference
 the cite; frontmatter `title:` is the canonical phrase.
 
 ```ts
-// §INV-7086201                            // default — terse marker
-// §INV-7086201 (SSR cache, params block)  // allowed: one short clause
+// §INV-a1b2c3d                            // default — terse marker
+// §INV-a1b2c3d (SSR cache, params block)  // allowed: one short clause
                                            // only when the cite alone
                                            // is ambiguous
 ```
 
 Never restate the body or prepend `// AI:`. Restating the title
-(`// AI: §INV-7086201 — Query key must match …`) is the anti-pattern
+(`// AI: §INV-a1b2c3d — Query key must match …`) is the anti-pattern
 — the prose duplicates the frontmatter and rots when it's edited.
 
 ## Hard rules
