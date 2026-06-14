@@ -4,6 +4,42 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.0] — 2026-06-13
+
+Cite-repair — archiving a captured entity no longer strands its source cite.
+
+### Fixed
+
+- **Pruning an invariant now repairs the source cite it strands.** Minting a
+  ledger entity from a source comment strip-replaces the prose with a bare
+  `// §INV-<id>` cite. The invariant prune (the surgical core behind both
+  `cairn invariants prune` and migration `0006`) archived the entity and
+  rebuilt the ledger but never touched that cite, so a large prune left the
+  working tree full of `§INV-` tokens pointing at archived entities. The prune
+  now expands each pruned invariant's cite back to its captured prose as it
+  archives — resolution is scoped to the pruned ids, so cites to still-active
+  entities are never disturbed — and honors `--dry-run`. `PruneInvariantsResult`
+  gains `citesRepaired` / `sourceFilesRepaired`, surfaced in the CLI and the
+  `0006` migration detail.
+
+### Added
+
+- **Migration `0009-repair-archived-cites` (review-class).** Catch-up for repos
+  pruned before the fix above: `0006`'s `detect()` keys on how many invariants
+  still need pruning, so it won't re-fire once the junk corpus is already
+  archived — leaving the stranded cites in place. `0009` scans the working tree
+  for `§DEC-/§INV-` cites whose entity is gone from the live store but present
+  in `.cairn/ground/.archive/`. A **pure** cite line is expanded back to the
+  archived prose (self-documenting); an **inline** archived token — one that
+  shares the line with code or prose, so it can't be expanded — has the bare
+  token stripped when it's a text file or provably inside a comment. A token
+  sitting **bare in code** (e.g. inside a string literal or a test title) is
+  left and reported for manual review, since stripping it could change a value.
+  Cites to active entities and unknown ids are never touched. The repair loops
+  to convergence within a single apply, so a transient directory-walk skip
+  can't strand cites behind an advanced version pin. Idempotent via `detect()`;
+  surfaced for the operator and applied with `cairn migrate`.
+
 ## [0.31.0] — 2026-06-13
 
 Capture precision — the durable fix for the invariant bloat the prune cleaned

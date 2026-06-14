@@ -1,6 +1,6 @@
 {
   "name": "@isaacriehm/cairn-core",
-  "version": "0.31.0",
+  "version": "0.32.0",
   "description": "Cairn core — state + context layer. Curated `.cairn/ground/` (decisions, §INV invariants, canonical-map, brand, quality-grades), MCP server, init wizard, hook runners, sensors, GC drift sweep.",
   "author": "Isaac Riehm",
   "license": "MIT",
