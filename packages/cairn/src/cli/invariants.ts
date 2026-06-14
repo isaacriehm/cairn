@@ -59,6 +59,13 @@ function renderPrune(result: PruneInvariantsResult, mode: string): void {
   if (result.pruned.length > shown.length) {
     process.stdout.write(`    … +${result.pruned.length - shown.length} more\n`);
   }
+  if (result.citesRepaired > 0) {
+    const verbCite = result.dryRun ? "would repair" : "repaired";
+    process.stdout.write(
+      `  ${verbCite} ${result.citesRepaired} dangling §INV cite${result.citesRepaired === 1 ? "" : "s"} ` +
+        `in ${result.sourceFilesRepaired} source file${result.sourceFilesRepaired === 1 ? "" : "s"}\n`,
+    );
+  }
   if (!result.dryRun) {
     process.stdout.write(
       `\n  Archived to .cairn/ground/.archive/invariants/ (recoverable).\n` +

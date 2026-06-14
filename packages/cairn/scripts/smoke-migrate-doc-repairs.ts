@@ -9,6 +9,8 @@
  *   0008-clean-adoption-scaffolding  — leaked internal-doc refs / jargon /
  *                                       placeholder comments scrubbed +
  *                                       synthetic timestamps → real git add-date
+ *   0009-repair-archived-cites       — §DEC-/§INV- cites stranded by an
+ *                                       archive expanded back to archived prose
  *
  * Each migration is exercised via its own detect()/apply() (version-
  * independent: the runner only selects them once VERSION ≥ the ship line).
@@ -213,6 +215,28 @@ function main(): void {
     // out of scope: curated capture_source is never touched, modal or not
     seedInv("INV-cccccc1", "Curated", "A curated entry with no modal verb.", "init-source-comments");
 
+    // Source files carry the bare `§INV-` cites strip-replaced in at mint
+    // time. Pruning must expand the junk cites back to prose and leave the
+    // kept invariant's cite alone.
+    write(
+      repo,
+      "src/core/thing.ts",
+      [
+        "export class AiService {",
+        "  // §INV-aaaaaa1",
+        "  // §INV-aaaaaa2",
+        "  // §INV-bbbbbb1",
+        "  run() {}",
+        "}",
+        "",
+      ].join("\n"),
+    );
+    write(
+      repo,
+      "core/src/sms/sms-inbound.integration.spec.ts",
+      ["describe('inbound', () => {", "  // §INV-aaaaaa3", "  it('rolls back', () => {});", "});", ""].join("\n"),
+    );
+
     assert(m.detect(repo), "0006: should detect junk sot-align invariants");
     const r = m.apply(repo);
     assert(r.changed, "0006: apply should archive the junk ones");
@@ -228,8 +252,21 @@ function main(): void {
         `0006: ${junk} lands in .archive (recoverable)`,
       );
     }
+    // Source repair: junk cites expanded back to prose, no dangling token;
+    // the kept invariant's cite is untouched.
+    const thing = readFileSync(join(repo, "src/core/thing.ts"), "utf8");
+    assert(!thing.includes("§INV-aaaaaa1"), "0006: separator cite expanded out of source");
+    assert(!thing.includes("§INV-aaaaaa2"), "0006: buried-modal cite expanded out of source");
+    assert(thing.includes("Conference / Recording"), "0006: separator prose restored into source");
+    assert(thing.includes("§INV-bbbbbb1"), "0006: kept invariant's cite left intact");
+    const specSrc = readFileSync(join(repo, "core/src/sms/sms-inbound.integration.spec.ts"), "utf8");
+    assert(!specSrc.includes("§INV-aaaaaa3"), "0006: test-sourced cite expanded out of source");
+    assert(
+      (r.detail ?? "").includes("repaired 3 dangling §INV cite(s) in 2 source file(s)"),
+      `0006: apply detail reports cite repair, got "${r.detail}"`,
+    );
     assert(!m.detect(repo), "0006: re-detect is a no-op after prune");
-    console.log("  ✓ 0006 — separator/buried-modal/test-sourced junk archived; real + curated kept");
+    console.log("  ✓ 0006 — junk archived + dangling §INV cites repaired; real + curated kept");
   }
 
   // ── 0007 — collapse redundant nested componentDirs ──────────────────
@@ -457,6 +494,94 @@ function main(): void {
     assert(ngVoice.includes(SYNTH_BRAND), "0008: stamp left untouched when git can't resolve add-date");
 
     console.log("  ✓ 0008 — internal-doc refs / jargon / placeholder scrubbed; synthetic timestamps → git add-date; clean untouched; non-git leaves stamps");
+  }
+
+  // ── 0009 — repair §INV cites stranded by an archive (e.g. 0006 prune) ─
+  {
+    const m = migration("0009-repair-archived-cites");
+    const repo = mkRepo("cites");
+    const entityFm = (id: string, status: string, body: string): string =>
+      [
+        "---",
+        `id: ${id}`,
+        `title: ${id}`,
+        "type: invariant",
+        `status: ${status}`,
+        "audience: dual",
+        "sot_kind: ledger",
+        "sot_path: ledger",
+        `sot_content_hash: ${bodyContentHash(body)}`,
+        "capture_source: layer-a-sot-align",
+        "---",
+        "",
+        body,
+        "",
+      ].join("\n");
+    // Cite ids are the runtime hash shape (`[0-9a-f]{7,}`): archived, live,
+    // unknown. INV-aaaaaa1 was pruned → lives only in .archive/.
+    write(repo, ".cairn/ground/.archive/invariants/INV-aaaaaa1.md", entityFm("INV-aaaaaa1", "archived", "Recording is retained for ninety days."));
+    // INV-bbbbbb2 is still active → its cite must stay a cite.
+    write(repo, ".cairn/ground/invariants/INV-bbbbbb2.md", entityFm("INV-bbbbbb2", "active", "Tokens MUST expire after 15 minutes."));
+    // Another archived invariant, cited INLINE (shares a line with code).
+    write(repo, ".cairn/ground/.archive/invariants/INV-ddddddd.md", entityFm("INV-ddddddd", "archived", "Batch size capped at 500."));
+    // PURE-cite source: archived (expand), live (keep), unknown (keep).
+    write(
+      repo,
+      "src/app/svc.ts",
+      [
+        "export class Svc {",
+        "  // §INV-aaaaaa1",
+        "  // §INV-bbbbbb2",
+        "  // §INV-cccccc9",
+        "  run() {}",
+        "}",
+        "",
+      ].join("\n"),
+    );
+    // INLINE cites: token inside a trailing comment (strip), token with other
+    // comment text (strip token, keep text), and an active inline cite (keep).
+    write(
+      repo,
+      "src/app/inline.ts",
+      [
+        "const cap = 500; // §INV-ddddddd",
+        "const ttl = 900; // expiry note §INV-bbbbbb2",
+        "const batch = 1; // see §INV-ddddddd for the cap",
+        "",
+      ].join("\n"),
+    );
+    // Markdown prose: archived token in text (always safe to strip).
+    write(repo, "docs/notes.md", ["# Notes", "", "Recording window is fixed §INV-aaaaaa1 per policy.", ""].join("\n"));
+    // Bare-in-code: archived token NOT inside a comment → unsafe, must be left.
+    write(repo, "src/app/bare.ts", ['const ref = "§INV-ddddddd";', ""].join("\n"));
+
+    assert(m.detect(repo), "0009: should detect the stranded archived cite");
+    const r = m.apply(repo);
+    assert(r.changed, "0009: apply should repair the stranded cite");
+
+    const src = readFileSync(join(repo, "src/app/svc.ts"), "utf8");
+    assert(!src.includes("§INV-aaaaaa1"), "0009: pure archived cite expanded out of source");
+    assert(src.includes("Recording is retained for ninety days."), "0009: archived prose restored into source");
+    assert(src.includes("§INV-bbbbbb2"), "0009: active entity's pure cite left intact");
+    assert(src.includes("§INV-cccccc9"), "0009: unknown cite left verbatim (not in archive)");
+
+    const inl = readFileSync(join(repo, "src/app/inline.ts"), "utf8");
+    assert(!inl.includes("§INV-ddddddd"), "0009: inline archived tokens stripped");
+    assert(inl.includes("const cap = 500;"), "0009: code on the inline line preserved");
+    assert(inl.includes("expiry note"), "0009: other comment text preserved when stripping token");
+    assert(inl.includes("§INV-bbbbbb2"), "0009: active inline cite left intact");
+
+    const md = readFileSync(join(repo, "docs/notes.md"), "utf8");
+    assert(!md.includes("§INV-aaaaaa1"), "0009: archived token stripped from markdown prose");
+    assert(md.includes("Recording window is fixed") && md.includes("per policy."), "0009: markdown prose preserved");
+
+    const bare = readFileSync(join(repo, "src/app/bare.ts"), "utf8");
+    assert(bare.includes("§INV-ddddddd"), "0009: bare-in-code token left untouched (unsafe to strip)");
+    assert((r.detail ?? "").includes("bare-in-code"), `0009: apply detail reports bare-in-code skip, got "${r.detail}"`);
+
+    assert(!m.detect(repo), "0009: re-detect is a no-op after repair (bare-in-code aside)");
+    assert(!m.apply(repo).changed, "0009: re-apply is idempotent");
+    console.log("  ✓ 0009 — pure→prose, inline-in-comment stripped, markdown stripped, bare-in-code left + reported; active/unknown untouched");
   }
 
   cleanup();

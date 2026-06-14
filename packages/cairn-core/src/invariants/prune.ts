@@ -22,9 +22,16 @@
  * Retirement reuses `archiveEntity` (move to `.cairn/ground/.archive/`,
  * flip status, drop from the SoT cache) but defers the per-entity ledger
  * rebuild so a 700-entity sweep rebuilds once instead of O(n²).
+ *
+ * Source repair: minting an sot-align invariant strip-replaced the prose
+ * block in its `source_file` with a bare `// §INV-<id>` cite. Archiving the
+ * entity alone would strand that token, so after the sweep we expand each
+ * pruned cite back to its captured prose (the invariant body IS that prose)
+ * — scoped to the pruned ids, so live cites are untouched. The working tree
+ * is left with no `§INV-` token pointing at an archived entity.
  */
 
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   archiveEntity,
@@ -35,6 +42,7 @@ import {
   writeInvariantsLedger,
   writeSotCache,
 } from "@isaacriehm/cairn-state";
+import { expandCitesInText } from "../cites/expand.js";
 import {
   hasConstraintShape,
   isNonLexicalLine,
@@ -71,6 +79,15 @@ export interface PruneInvariantsResult {
   pruned: PrunedInvariant[];
   /** Eligible sot-align invariants kept (passed the constraint gate). */
   kept: number;
+  /**
+   * Source files whose dangling `§INV-` cite was repaired — the bare
+   * citation strip-replaced into source when the invariant was minted is
+   * expanded back to its captured prose so no token points at the archived
+   * entity. On dry-run this is the count that WOULD be repaired.
+   */
+  sourceFilesRepaired: number;
+  /** Individual `§INV-` cites expanded back to prose across those files. */
+  citesRepaired: number;
   dryRun: boolean;
 }
 
@@ -101,12 +118,18 @@ export function pruneInvariants(
     sotAlignTotal: 0,
     pruned: [],
     kept: 0,
+    sourceFilesRepaired: 0,
+    citesRepaired: 0,
     dryRun,
   };
   if (!existsSync(dir)) return result;
 
   const files = readdirSync(dir).filter((n) => n.endsWith(".md"));
   let archivedAny = false;
+  // Pruned invariants that left a bare `§INV-<id>` cite in their source.
+  // We expand each back to its captured prose (the invariant body IS that
+  // prose) so archiving doesn't leave a token pointing at a dead entity.
+  const citeRepairs: CiteRepair[] = [];
 
   for (const file of files) {
     result.scanned += 1;
@@ -171,6 +194,11 @@ export function pruneInvariants(
     }
 
     result.pruned.push({ id, title: title.slice(0, 100), reason });
+    if (sourceFile.length > 0) {
+      // The invariant body is the verbatim prose sot-align lifted from the
+      // comment; expanding the cite with it restores the original source.
+      citeRepairs.push({ id, sourceFile, body });
+    }
   }
 
   // One derived-state rebuild for the whole batch (archiveEntity deferred it).
@@ -190,5 +218,69 @@ export function pruneInvariants(
     }
   }
 
+  // Repair source: expand each pruned invariant's bare cite back to its
+  // prose so the working tree carries no `§INV-` token pointing at an
+  // archived entity. Runs on dry-run too (counts only — never writes).
+  const repaired = repairPrunedCites(opts.repoRoot, citeRepairs, dryRun);
+  result.sourceFilesRepaired = repaired.filesRepaired;
+  result.citesRepaired = repaired.citesRepaired;
+
   return result;
+}
+
+interface CiteRepair {
+  id: string;
+  /** Repo-relative path the cite was strip-replaced into. */
+  sourceFile: string;
+  /** The captured prose (invariant body) the cite expands back to. */
+  body: string;
+}
+
+/**
+ * Expand the bare `§INV-<id>` cites of pruned invariants back to their
+ * captured prose. The resolver is scoped to the pruned ids ONLY — any
+ * other cite in the same file resolves to `null` and is left verbatim, so
+ * live cites are never disturbed. Best-effort per file: an unreadable or
+ * unwritable file is skipped, not fatal.
+ */
+function repairPrunedCites(
+  repoRoot: string,
+  repairs: CiteRepair[],
+  dryRun: boolean,
+): { filesRepaired: number; citesRepaired: number } {
+  const bodyById = new Map<string, string>();
+  const idsByFile = new Map<string, Set<string>>();
+  for (const r of repairs) {
+    bodyById.set(r.id, r.body);
+    const set = idsByFile.get(r.sourceFile) ?? new Set<string>();
+    set.add(r.id);
+    idsByFile.set(r.sourceFile, set);
+  }
+
+  let filesRepaired = 0;
+  let citesRepaired = 0;
+  for (const [file, ids] of idsByFile) {
+    const abs = join(repoRoot, file);
+    if (!existsSync(abs)) continue;
+    let source: string;
+    try {
+      source = readFileSync(abs, "utf8");
+    } catch {
+      continue;
+    }
+    const out = expandCitesInText(source, (id) =>
+      ids.has(id) ? bodyById.get(id) ?? null : null,
+    );
+    if (out.expanded === 0 || out.text === source) continue;
+    citesRepaired += out.expanded;
+    filesRepaired += 1;
+    if (!dryRun) {
+      try {
+        writeFileSync(abs, out.text, "utf8");
+      } catch {
+        /* best-effort — `cairn uninstall` / expand-cites can finish the job */
+      }
+    }
+  }
+  return { filesRepaired, citesRepaired };
 }

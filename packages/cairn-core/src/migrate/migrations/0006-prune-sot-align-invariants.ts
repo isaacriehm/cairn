@@ -14,8 +14,10 @@
  * archiving those captured from a test/fixture file, titled with a
  * separator, or with no constraint shape in their statement — to
  * `.cairn/ground/.archive/` (recoverable), rebuilding the ledger once at
- * the end. Curated DEC/INV are never touched. For a full reset of the
- * legacy corpus the operator can run `cairn invariants prune --all`.
+ * the end. It then expands each archived invariant's bare `§INV-` cite in
+ * source back to its prose, so the working tree is left with no token
+ * pointing at a dead entity. Curated DEC/INV are never touched. For a full
+ * reset of the legacy corpus the operator can run `cairn invariants prune --all`.
  *
  * `review`-class: it archives committed ground state, so it surfaces for
  * the operator and applies via `cairn migrate`. The sharpened gate ships
@@ -47,11 +49,15 @@ export const pruneSotAlignInvariants: Migration = {
   apply(repoRoot: string): MigrationResult {
     const result = pruneInvariants({ repoRoot });
     const n = result.pruned.length;
+    const cites =
+      result.citesRepaired > 0
+        ? `; repaired ${result.citesRepaired} dangling §INV cite(s) in ${result.sourceFilesRepaired} source file(s)`
+        : "";
     return {
       changed: n > 0,
       detail:
         n > 0
-          ? `archived ${n} shapeless sot-align invariant(s) of ${result.sotAlignTotal} eligible (${result.kept} kept) → .cairn/ground/.archive/`
+          ? `archived ${n} shapeless sot-align invariant(s) of ${result.sotAlignTotal} eligible (${result.kept} kept) → .cairn/ground/.archive/${cites}`
           : "no junk sot-align invariants found",
     };
   },
