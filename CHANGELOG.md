@@ -4,6 +4,50 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.1] — 2026-06-16
+
+Adoption hardening — three independent fixes: silent curator drops, a
+ghost-blind `cairn join`, and a statusline shim skipped on Windows.
+
+### Fixed
+
+- **Phase 9c-emit now repairs normalizable titles instead of silently
+  dropping the entry.** The `curator-reduce` subagent is asked for titles
+  that are ≤80 chars and start with a capital, but the model does not comply
+  reliably — long descriptive titles, and titles that lead with a lowercase
+  code identifier, are routine. The emit validator treated both as hard,
+  silent drops, so an adoption could discard most of a freshly synthesized
+  DEC/INV ledger (each loss counted only as an opaque `title-length` /
+  `title-no-cap` tally and was never surfaced as a draft). A new
+  `normalizeFinalEntry` pre-pass runs before the quality gate: it truncates
+  an over-cap title at a word boundary to ≤80 chars (the body keeps the full
+  detail), strips a trailing `,` `:` `;`, and sentence-cases a lowercase
+  first letter. Genuinely broken titles — empty, `...`-truncated, or `{/*`
+  JSX-comment leakage — still hard-drop, since those signal failed synthesis
+  rather than a formatting slip. The shared 80-char cap is now the exported
+  `TITLE_CAP` constant, used by both the normalizer and the validator.
+
+- **`cairn join` no longer mis-locates a ghost repo as the home directory.**
+  The per-clone bootstrap located the repo root by walking up from the cwd for
+  any directory containing a `.cairn/`. A ghost-adopted repo keeps no in-repo
+  `.cairn/`, so the walk climbed straight past the project to Cairn's own
+  out-of-repo state root (`~/.cairn/`) and reported the home directory as the
+  repo — after which `set-hooks-path` failed against a path that has no
+  `git-hooks/`. Join now delegates to the ghost-aware `resolveRepoRoot`, which
+  only stops at an *adopted* `.cairn/` (one carrying a `config.yaml`) and
+  resolves ghost repos through the git-anchored global registry. It bit any
+  ghost repo nested under `$HOME`, not just on Windows.
+
+- **The statusline shim is no longer skipped over a path-separator mismatch.**
+  The SessionStart hook derives the plugin cache slug by testing whether
+  `CLAUDE_PLUGIN_ROOT` sits under `~/.claude/plugins/cache`. Claude Code injects
+  that variable forward-slashed even on Windows, while the comparison built the
+  cache root with `path.join` (OS-native backslashes there), so `startsWith`
+  failed, the slug came back null, and the shim — the only mid-turn render
+  channel during the long ingestion phases — was silently skipped with a
+  `cannot derive slug` warning. The comparison now normalizes both paths to
+  POSIX separators first.
+
 ## [0.32.0] — 2026-06-13
 
 Cite-repair — archiving a captured entity no longer strands its source cite.
