@@ -7,7 +7,8 @@
  * script runs it on every `npm install` / `pnpm install`).
  *
  * Steps:
- *   1. Locate the cairn-adopted repo root (walk up from cwd for `.cairn/`).
+ *   1. Locate the cairn-adopted repo root (ghost-aware `resolveRepoRoot`:
+ *      walk up for an adopted `.cairn/`, else resolve ghost via the registry).
  *   2. Verify the local CLI's version against `.cairn/config.yaml`'s
  *      `cairn_version`. Strict-equal for now (no semver spread); a mismatch
  *      returns kind="version-mismatch" without blocking — caller decides.
@@ -28,8 +29,9 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { join } from "node:path";
 import { seedAttestedCommits } from "../hooks/seed-attested.js";
+import { resolveRepoRoot } from "../session-start/build.js";
 import { VERSION } from "../index.js";
 import { rebuildDerived } from "../state/rebuild-derived.js";
 import { readConfigPin } from "../migrate/config-io.js";
@@ -84,7 +86,7 @@ export function runJoin(args: RunJoinArgs = {}): JoinResult {
   const cwd = args.cwd ?? process.cwd();
   const steps: JoinStep[] = [];
 
-  const repoRoot = args.repoRoot ?? findCairnRoot(cwd);
+  const repoRoot = args.repoRoot ?? resolveRepoRoot(cwd);
   if (repoRoot === null) {
     steps.push({
       step: "locate-repo",
@@ -220,18 +222,12 @@ export function runJoin(args: RunJoinArgs = {}): JoinResult {
 /* Step helpers                                                               */
 /* -------------------------------------------------------------------------- */
 
-function findCairnRoot(start: string): string | null {
-  let cur = resolve(start);
-  for (let i = 0; i < 80; i++) {
-    // Repo-root discovery probe: physical in-repo `.cairn/` (committed mode).
-    // Literal join is intentional — ghost resolves via the global registry.
-    if (existsSync(join(cur, ".cairn"))) return cur;
-    const parent = dirname(cur);
-    if (parent === cur) return null;
-    cur = parent;
-  }
-  return null;
-}
+// Repo-root discovery is delegated to `resolveRepoRoot` (session-start/build):
+// it walks up for an *adopted* `.cairn/` (one carrying `config.yaml`) and, for
+// ghost repos with no in-repo `.cairn/`, resolves the out-of-repo home via the
+// git-anchored global registry. The old bare-`.cairn/` walk matched ANY ancestor
+// `.cairn/`, so a ghost repo nested under `$HOME` climbed straight past the repo
+// to Cairn's own `~/.cairn/` state root and "located" the home dir as the repo.
 
 // Single `cairn_version` pin reader, shared with the migration runner + doctor.
 function readProjectVersion(repoRoot: string): string | null {

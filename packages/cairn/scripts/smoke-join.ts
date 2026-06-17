@@ -7,7 +7,6 @@
 
 import { execFileSync } from "node:child_process";
 import {
-  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -170,6 +169,28 @@ async function main(): Promise<void> {
   assert(after.scripts.prepare.startsWith("cairn join || true"), "cairn fragment first");
   assert(after.scripts.prepare.includes("husky install"), "existing husky preserved");
   console.log("  ✓ Step 8 — preserves existing prepare command");
+
+  step("Step 9 — walk-up stops at an adopted .cairn, never a bare parent .cairn");
+  // Regression guard: the old locate-repo walk matched ANY ancestor `.cairn/`,
+  // so a repo with no in-repo `.cairn/` nested under a directory that has one —
+  // e.g. Cairn's own `~/.cairn/` state root — got "located" as that parent.
+  // A bare `.cairn/` WITHOUT `config.yaml` (the shape of `~/.cairn/`) must not
+  // be mistaken for an adopted repo root.
+  const homeStandIn = mkRepoRoot();
+  mkdirSync(join(homeStandIn, ".cairn", "state"), { recursive: true });
+  writeFileSync(join(homeStandIn, ".cairn", "registry.yaml"), "repos: {}\n", "utf8");
+  const nestedRepo = join(homeStandIn, "project");
+  mkdirSync(nestedRepo, { recursive: true });
+  gitInit(nestedRepo);
+  const nested = runJoin({ cwd: nestedRepo });
+  assert(
+    nested.repoRoot !== homeStandIn,
+    `walk-up must not resolve the bare-.cairn parent (${homeStandIn}) as the repo root`,
+  );
+  assert(nested.repoRoot === null, "unadopted nested repo → no repoRoot");
+  const nestedLocate = nested.steps.find((s) => s.step === "locate-repo");
+  assert(nestedLocate?.status === "error", "locate-repo error, not a false parent hit");
+  console.log("  ✓ Step 9 — bare parent .cairn/ is not a false repo root");
 
   step("Cleanup");
   cleanup();
