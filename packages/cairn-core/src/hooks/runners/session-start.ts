@@ -102,11 +102,18 @@ function syncActiveVersionShim(warnings: string[]): void {
  * look like a plugin cache.
  */
 function pluginCacheSlug(pluginRoot: string): string | null {
-  const cacheRoot = join(homedir(), ".claude", "plugins", "cache");
-  if (!pluginRoot.startsWith(cacheRoot)) return null;
-  const rest = pluginRoot.slice(cacheRoot.length).replace(/^[\/\\]+/, "");
+  // Normalize separators before comparing. Claude Code injects
+  // `CLAUDE_PLUGIN_ROOT` forward-slashed even on Windows, but `join` yields
+  // OS-native backslashes there — so a raw `startsWith` against the joined
+  // cache root mismatches on `/` vs `\` and the slug never derives (the
+  // statusline shim is then silently skipped). Compare in POSIX form.
+  const toPosix = (p: string): string => p.replace(/\\/g, "/");
+  const root = toPosix(pluginRoot);
+  const cacheRoot = toPosix(join(homedir(), ".claude", "plugins", "cache"));
+  if (!root.startsWith(cacheRoot)) return null;
+  const rest = root.slice(cacheRoot.length).replace(/^\/+/, "");
   if (rest.length === 0) return null;
-  const parts = rest.split(/[\/\\]/).filter((p) => p.length > 0);
+  const parts = rest.split("/").filter((p) => p.length > 0);
   return parts.length > 0 ? (parts[0] ?? null) : null;
 }
 
