@@ -1,15 +1,29 @@
 /**
  * Curator pipeline — strict per-entry validators.
  *
- * Phase 9c-emit feeds every reducer-output entry through `validateEntry`
+ * Phase 9c-emit feeds every reducer-output entry through
+ * `normalizeFinalEntry` (cosmetic title repair) and then `validateEntry`
  * before writing it to `.cairn/ground/decisions/` or
  * `.cairn/ground/invariants/`. Operator's auto-accept directive
  * (curator plan §"Decision log" Q2) requires a high quality bar — when
  * an entry fails any check it is dropped silently with a counter
  * logged, never falling back to `_inbox/`.
  *
+ * IMPORTANT — normalize before you validate. The curator subagent is
+ * *asked* for ≤80-char, capitalized titles (see the `curator-reduce` /
+ * `curator-map` agent prompts) but does not comply reliably: long
+ * descriptive titles and titles that lead with a lowercase code
+ * identifier (`tsc …`, `loadConfig …`) are routine. Those are
+ * FORMATTING defects on otherwise well-synthesized entries, not quality
+ * failures — dropping them silently discarded the bulk of a good ledger
+ * (21 of 23 lost to `title-length` on one observed adoption). So the
+ * `title-length` / `title-no-cap` / `title-trailing-punct` reasons below
+ * now fire only as safety nets: `normalizeFinalEntry` repairs the
+ * normalizable cases first, and only genuinely broken titles (empty,
+ * `...`-truncated, `{/*` JSX leak) reach the hard drop.
+ *
  * Failure modes encoded by `rejectReason`:
- *   - `title-length`              — empty or > 80 chars
+ *   - `title-length`              — empty or > 80 chars (post-normalize)
  *   - `title-no-cap`              — does not start with an uppercase letter
  *   - `title-trailing-punct`      — ends in `,` `:` `;`
  *   - `title-truncated-or-jsx`    — ends in `...` or starts with `{/*` (JSX
@@ -52,12 +66,49 @@ export interface ValidationResult {
   rejectReason?: string;
 }
 
+/** Hard title length cap — shared by the normalizer and the validator. */
+export const TITLE_CAP = 80;
+
+/**
+ * Cosmetic pre-pass run by `9c-emit` BEFORE `validateEntry`. Repairs the
+ * title's normalizable defects so a well-synthesized entry with a
+ * slightly-off title is kept rather than silently dropped (see module
+ * header). Normalizes ONLY the title, only in lossless ways:
+ *
+ *   - collapse internal whitespace
+ *   - truncate an over-cap title at a word boundary to ≤ `TITLE_CAP` chars
+ *     (no marker — the body keeps the full detail)
+ *   - strip trailing `,` `:` `;`
+ *   - sentence-case a lowercase first letter (the exact symbol survives in
+ *     the body / evidence, so casing the title's lead letter is lossless)
+ *
+ * It deliberately leaves a `...`-truncated or `{/*`-prefixed title alone —
+ * those signal broken synthesis and stay hard drops in `validateEntry` —
+ * and an empty title stays empty (dropped as `title-length`). Body, scope,
+ * and evidence are untouched.
+ */
+export function normalizeFinalEntry(e: FinalEntry): FinalEntry {
+  return { ...e, title: normalizeTitle(e.title) };
+}
+
+function normalizeTitle(raw: string): string {
+  let t = raw.replace(/\s+/g, " ").trim();
+  if (t.length > TITLE_CAP) {
+    const slice = t.slice(0, TITLE_CAP);
+    const lastSpace = slice.lastIndexOf(" ");
+    t = (lastSpace > TITLE_CAP * 0.5 ? slice.slice(0, lastSpace) : slice).trimEnd();
+  }
+  t = t.replace(/[,:;]+$/, "").trimEnd();
+  if (/^[a-z]/.test(t)) t = t.charAt(0).toUpperCase() + t.slice(1);
+  return t;
+}
+
 export function validateEntry(e: FinalEntry): ValidationResult {
   // Title — order matters: catch the most-specific failure modes
   // (truncation / JSX leakage) BEFORE the generic capitalization check
   // so a JSX-prefixed title doesn't get reported as merely
   // `title-no-cap`.
-  if (e.title.length === 0 || e.title.length > 80) {
+  if (e.title.length === 0 || e.title.length > TITLE_CAP) {
     return { valid: false, rejectReason: "title-length" };
   }
   if (/\.\.\.$/.test(e.title) || /^\{\/\*/.test(e.title)) {

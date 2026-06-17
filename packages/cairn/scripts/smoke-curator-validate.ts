@@ -30,7 +30,9 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
   filterExistingEvidence,
+  normalizeFinalEntry,
   stripLineRange,
+  TITLE_CAP,
   validateEntry,
   type FinalEntry,
 } from "@isaacriehm/cairn-core";
@@ -305,7 +307,105 @@ function runSmoke(): void {
     console.log(`  ✓ ${c.name}`);
   }
 
-  console.log(`smoke-curator-validate — pass (${cases.length} cases)`);
+  runNormalizeCases();
+
+  console.log(
+    `smoke-curator-validate — pass (${cases.length} validate cases + normalize pipeline)`,
+  );
+}
+
+/**
+ * Emit-path regression guard. `9c-emit` runs `normalizeFinalEntry` BEFORE
+ * `validateEntry`, so the cosmetically-off titles that `validateEntry` drops
+ * in isolation (over-length, lowercase lead, trailing punct) must SURVIVE the
+ * real pipeline with a repaired title — while genuinely broken titles
+ * (`...`-truncated, `{/*` JSX leak, empty) must still drop. This is the
+ * regression that lost 21 of 23 entries to a silent `title-length` drop.
+ */
+function runNormalizeCases(): void {
+  // Evidence existence is soft (validateEntry never checks it), so these
+  // synthetic entries need no seeded files — they exercise title repair only.
+  const evReal = "core/src/auth/session.ts";
+  const base: FinalEntry = {
+    kind: "DEC",
+    title: "Cap login attempts to 5 per minute per IP",
+    body: cleanDecBody,
+    scope_globs: ["core/src/auth/**"],
+    evidence_files: [`${evReal}:1-5`],
+    topic_tags: ["auth"],
+  };
+
+  // Emit-equivalent: normalize, then gate.
+  const emit = (e: FinalEntry) => {
+    const n = normalizeFinalEntry(e);
+    return { entry: n, verdict: validateEntry(n) };
+  };
+
+  // 1) Over-length title → truncated to ≤ cap, survives.
+  const longTitle =
+    "Cap login attempts to 5 per IP per minute and also enforce per-user lockouts after 10 consecutive failures";
+  assert(longTitle.length > TITLE_CAP, "fixture sanity: long title must exceed cap");
+  {
+    const { entry, verdict } = emit({ ...base, title: longTitle });
+    assert(verdict.valid, `over-length title should survive normalize, got ${verdict.rejectReason}`);
+    assert(
+      entry.title.length <= TITLE_CAP,
+      `normalized title must be ≤${TITLE_CAP}, got ${entry.title.length}`,
+    );
+    assert(!/[,:;]$/.test(entry.title), "normalized title must not end in trailing punct");
+    console.log("  ✓ normalize recovers over-length title");
+  }
+
+  // 2) Lowercase code-identifier lead → sentence-cased, survives.
+  for (const lead of [
+    "loadConfig must be called before any reader touches the store",
+    "tsc must run from the repo root before any package build",
+    "shared-types must re-export the schema module for every package",
+  ]) {
+    const { entry, verdict } = emit({ ...base, kind: "INV", body: cleanInvBody, title: lead });
+    assert(verdict.valid, `lowercase-lead title should survive, got ${verdict.rejectReason}`);
+    assert(/^[A-Z]/.test(entry.title), `normalized title must start uppercase: "${entry.title}"`);
+    console.log(`  ✓ normalize recovers lowercase lead (${lead.split(" ")[0]})`);
+  }
+
+  // 3) Trailing comma / colon → stripped, survives. (base.title's word order
+  // is deliberately NOT a substring of cleanDecBody, so this exercises
+  // trailing-punct repair without tripping the title-pasted-in-body gate.)
+  for (const punct of [",", ":", ";"]) {
+    const { entry, verdict } = emit({ ...base, title: `${base.title}${punct}` });
+    assert(verdict.valid, `trailing '${punct}' title should survive, got ${verdict.rejectReason}`);
+    assert(!/[,:;]$/.test(entry.title), `trailing '${punct}' must be stripped: "${entry.title}"`);
+    console.log(`  ✓ normalize strips trailing '${punct}'`);
+  }
+
+  // 4) Combined over-length + lowercase lead → both repaired.
+  {
+    const { entry, verdict } = emit({
+      ...base,
+      title:
+        "the build toolchain must hoist a single lockfile and forbid nested lockfiles across the workspace tree",
+    });
+    assert(verdict.valid, `combined defect should survive, got ${verdict.rejectReason}`);
+    assert(entry.title.length <= TITLE_CAP && /^[A-Z]/.test(entry.title), "combined repair failed");
+    console.log("  ✓ normalize recovers combined over-length + lowercase lead");
+  }
+
+  // 5) Genuinely broken titles still drop AFTER normalize.
+  const stillDrops: Array<{ name: string; title: string; reason: string }> = [
+    { name: "ellipsis-truncated", title: "Reject login when the token has expired...", reason: "title-truncated-or-jsx" },
+    { name: "JSX leak", title: "{/* 02.2-04: Context column */}", reason: "title-truncated-or-jsx" },
+    { name: "empty", title: "", reason: "title-length" },
+    { name: "whitespace-only", title: "   ", reason: "title-length" },
+  ];
+  for (const d of stillDrops) {
+    const { verdict } = emit({ ...base, title: d.title });
+    assert(!verdict.valid, `"${d.name}" must still drop after normalize`);
+    assert(
+      verdict.rejectReason === d.reason,
+      `"${d.name}": expected ${d.reason}, got ${verdict.rejectReason}`,
+    );
+    console.log(`  ✓ normalize leaves "${d.name}" a hard drop (${d.reason})`);
+  }
 }
 
 try {

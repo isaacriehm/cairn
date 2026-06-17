@@ -2,8 +2,9 @@
  * Curator pipeline — Phase 9c-emit (v0.9.0).
  *
  * Reads `.cairn/init/curator/final.jsonl` (written by the
- * skill-driven curator-reduce subagent), validates each entry via
- * `validateEntry`, and writes survivors directly to ground:
+ * skill-driven curator-reduce subagent), repairs each entry's title via
+ * `normalizeFinalEntry`, validates it via `validateEntry`, and writes
+ * survivors directly to ground:
  *
  *   - DEC → `.cairn/ground/decisions/<id>.md` (status: accepted)
  *   - INV → `.cairn/ground/invariants/<id>.md` (status: active)
@@ -41,7 +42,12 @@ import {
   scanExistingInvariantIds,
 } from "../../decision-capture/id.js";
 import { logger } from "../../logger.js";
-import { filterExistingEvidence, validateEntry, type FinalEntry } from "./validate.js";
+import {
+  filterExistingEvidence,
+  normalizeFinalEntry,
+  validateEntry,
+  type FinalEntry,
+} from "./validate.js";
 
 const log = logger("init.curator.emit");
 
@@ -118,11 +124,17 @@ export async function runCuratorEmit(
       continue;
     }
 
-    const entry = coerceFinalEntry(parsed);
-    if (entry === null) {
+    const coerced = coerceFinalEntry(parsed);
+    if (coerced === null) {
       bumpDrop(dropReasons, "shape-mismatch");
       continue;
     }
+
+    // Repair normalizable title defects (over-length, lowercase lead,
+    // trailing punctuation) BEFORE the quality gate — the curator routinely
+    // emits good entries with cosmetically-off titles, and silently dropping
+    // them throws away the bulk of the ledger (see validate.ts header).
+    const entry = normalizeFinalEntry(coerced);
 
     const verdict = validateEntry(entry);
     if (!verdict.valid) {

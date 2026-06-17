@@ -1,7 +1,9 @@
 export {
   validateEntry,
+  normalizeFinalEntry,
   filterExistingEvidence,
   stripLineRange,
+  TITLE_CAP,
   type FinalEntry,
   type ValidationResult,
 } from "./validate.js";

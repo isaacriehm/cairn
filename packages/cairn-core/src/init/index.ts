@@ -245,8 +245,10 @@ export type {
 
 export {
   validateEntry,
+  normalizeFinalEntry,
   filterExistingEvidence,
   stripLineRange,
+  TITLE_CAP,
   type FinalEntry,
   type ValidationResult,
   runCuratorEmit,
