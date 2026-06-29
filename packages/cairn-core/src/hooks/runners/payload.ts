@@ -86,6 +86,16 @@ export function emitShapeB(context: string, hookEventName: HookEventName): never
 }
 
 /**
+ * Write Cursor's `sessionStart` output format and exit.
+ * Cursor expects `{ "additional_context": "..." }` at the top level
+ * (snake_case, no `hookSpecificOutput` envelope).
+ */
+export function emitCursorContext(context: string): never {
+  process.stdout.write(JSON.stringify({ additional_context: context }));
+  process.exit(0);
+}
+
+/**
  * Write a bare `{continue: true}` payload and exit. Use for hook
  * events that Claude Code 2.1+ refuses with a `hookSpecificOutput`
  * envelope (currently `Stop`, `SessionEnd`, and `PreCompact`).

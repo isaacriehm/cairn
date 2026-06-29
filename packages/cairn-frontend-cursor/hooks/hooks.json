@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook session-start"
+            "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook session-start --cursor"
           }
         ]
       }
@@ -26,16 +26,6 @@
           {
             "type": "command",
             "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook stop"
-          }
-        ]
-      }
-    ],
-    "beforeSubmitPrompt": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook user-prompt-submit"
           }
         ]
       }

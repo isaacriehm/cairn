@@ -43,6 +43,7 @@ import {
   readHookStdin,
   parseHookPayload,
   emitShapeB,
+  emitCursorContext,
   appendTelemetry,
 } from "./payload.js";
 import { spawn } from "node:child_process";
@@ -161,7 +162,7 @@ interface SessionStartShapeBOutput {
   };
 }
 
-export async function runSessionStartHook(): Promise<void> {
+export async function runSessionStartHook(opts?: { cursor?: boolean }): Promise<void> {
   const startedAt = Date.now();
   const raw = await readHookStdin();
   const payload = parseHookPayload(raw);
@@ -189,7 +190,11 @@ export async function runSessionStartHook(): Promise<void> {
     const shimNote = renderShimWarningsBanner(shimWarnings);
     const additionalContext =
       shimNote === null ? banner : banner.length === 0 ? shimNote : `${banner}\n\n${shimNote}`;
-    emitShapeB(additionalContext, "SessionStart");
+    if (opts?.cursor) {
+      emitCursorContext(additionalContext);
+    } else {
+      emitShapeB(additionalContext, "SessionStart");
+    }
     return;
   }
 
@@ -368,7 +373,11 @@ export async function runSessionStartHook(): Promise<void> {
     spawnDetachedDrain(repoRoot, sessionId);
   }
 
-  emitShapeB(additionalContext, "SessionStart");
+  if (opts?.cursor) {
+    emitCursorContext(additionalContext);
+  } else {
+    emitShapeB(additionalContext, "SessionStart");
+  }
 }
 
 /**

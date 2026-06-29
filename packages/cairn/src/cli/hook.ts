@@ -58,11 +58,13 @@ function usage(): never {
 }
 
 export async function hookCli(argv: string[]): Promise<void> {
-  const sub = argv[0];
+  const cursor = argv.includes("--cursor");
+  const args = argv.filter((a) => a !== "--cursor");
+  const sub = args[0];
   switch (sub) {
     case undefined:
     case "session-start":
-      await runSessionStartHook();
+      await runSessionStartHook({ cursor });
       return;
     case "session-end":
       await runSessionEndHook();

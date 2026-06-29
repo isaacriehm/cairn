@@ -2,18 +2,22 @@
 
 # Cairn
 
-**Persistent ground truth for Claude Code.**
+**Persistent ground truth for Claude Code and Cursor.**
 Stop AI agents from drifting.
 
 [![npm version](https://img.shields.io/npm/v/@isaacriehm/cairn?style=flat-square&logo=npm&color=CB3837)](https://www.npmjs.com/package/@isaacriehm/cairn)
 [![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-Plugin-D97706?style=flat-square)](https://claude.com/claude-code)
+[![Cursor Plugin](https://img.shields.io/badge/Cursor-Plugin-6366F1?style=flat-square)](https://cursor.com)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A522-brightgreen?style=flat-square)](https://nodejs.org)
 
 ```bash
+# Claude Code
 /plugin marketplace add isaacriehm/cairn
 /plugin install cairn@isaacriehm-cairn
 /reload-plugins
+
+# Cursor — install from the Cursor plugin marketplace
 ```
 
 [The Problem](#the-problem) · [What You Get](#what-you-get) · [Quick Start](#quick-start) · [Glossary](#glossary) · [How It Works](#how-it-works) · [Features](#features) · [Multi-Dev](#multi-developer-enforcement) · [Docs](#documentation)
@@ -25,7 +29,7 @@ Stop AI agents from drifting.
 A *cairn* is a stack of stones marking a trail. This project stacks the
 **decisions, invariants, and canonical references** that define your
 codebase into a single queryable ground state — so every Claude Code
-session starts with the same map.
+or Cursor Agent session starts with the same map.
 
 ## The Problem
 
@@ -75,7 +79,7 @@ a **CLI** for bootstrap and debug.
 
 ## Quick Start
 
-Inside Claude Code, in any project:
+### Claude Code
 
 ```bash
 /plugin marketplace add isaacriehm/cairn
@@ -83,10 +87,10 @@ Inside Claude Code, in any project:
 /reload-plugins
 ```
 
-(First registers the GitHub repo as a marketplace; second installs the
+First registers the GitHub repo as a marketplace; second installs the
 plugin; third loads it. The plugin ships a self-contained bundle —
 hooks, MCP server, and CLI all run from `dist/cli.mjs` inside the
-plugin cache. No `npx`, no `npm install -g`, no PATH dependency.)
+plugin cache. No `npx`, no `npm install -g`, no PATH dependency.
 
 **Recommended:** disable Claude Code's built-in auto-memory before
 adopting — Cairn is your memory layer and the two conflict:
@@ -95,10 +99,23 @@ adopting — Cairn is your memory layer and the two conflict:
 /memory → Disable Auto-Memory
 ```
 
-Open Claude Code in any project. The plugin auto-detects on session
-start and offers `[a] adopt now`. Pick `[a]` once. The pipeline streams
-inline so you watch what's happening — typically 2-15 minutes
-depending on repo size.
+### Cursor
+
+```
+Settings → Cursor → Plugins → Add from GitHub → isaacriehm/cairn
+```
+
+Or via the command palette: search **"Add Plugin from GitHub"**, enter
+`isaacriehm/cairn`. Cursor reads `.cursor-plugin/marketplace.json`
+from the repo root and installs `packages/cairn-frontend-cursor/`
+directly — same self-contained bundle, no npm install required.
+
+---
+
+Open Claude Code or Cursor in any project. The plugin auto-detects on
+session start and offers `[a] adopt now`. Pick `[a]` once. The
+pipeline streams inline — typically 2-15 minutes depending on repo
+size.
 
 When it finishes, your next session starts with the full ground state
 preloaded.
@@ -110,7 +127,7 @@ If you want `cairn` directly on your shell PATH (for `cairn doctor`,
 npm install -g @isaacriehm/cairn
 ```
 
-…but the plugin doesn't require it. Outside Claude Code, you can adopt
+…but the plugin doesn't require it. Outside the plugin, you can adopt
 via CLI instead:
 
 ```bash
@@ -279,8 +296,13 @@ state — it does **not** run the sensor sweep. Drift events log to
   trace / status-line`.
 - **Claude Code plugin** — manifest + 5 hook events (SessionStart,
   SessionEnd, Stop, UserPromptSubmit, PostToolUse — matchers
-  Read, Write|Edit, AskUserQuestion) + 3 skills + 1 reviewer agent +
-  3 commands.
+  Read, Write|Edit, AskUserQuestion) + 5 skills + 5 agents +
+  4 commands.
+- **Cursor plugin** — native Cursor Agent integration with the same
+  skills, agents, and commands as the Claude Code plugin. Hooks map
+  to Cursor's event names (`sessionStart`, `stop`, `postToolUse`).
+  MCP server is rooted to the project via `CAIRN_REPO_ROOT`.
+  Built by [Chris Muntean](https://github.com/chrismuntean).
 - **Cairn Lens** — VS Code / Cursor extension. Hover, gutter icons,
   code lens, optional DEC Explorer sidebar. Resolves `§INV-<hash>`,
   `§DEC-<hash>`, `TODO(TSK-…)` inline. Read-only — same ground state,
@@ -362,6 +384,7 @@ packages/
 ├── cairn-core/                  MCP server, sensors, hooks, init pipeline
 ├── cairn-state/                 ground-state schemas + low-level I/O
 ├── cairn-frontend-claudecode/   Claude Code plugin (manifest, hooks, skills, agents, commands)
+├── cairn-frontend-cursor/       Cursor plugin (manifest, mcp.json, hooks, rules, shared assets)
 └── cairn-lens/                  VS Code / Cursor extension (.vsix)
 ```
 
@@ -432,8 +455,9 @@ from the auto-invoke listing, still reachable via `/<name>`).
 
 ## Status
 
-Pre-1.0. The Claude Code plugin is the daily-driven surface; the CLI
-is the bootstrap and debug entrypoint. Issues + PRs welcome.
+Pre-1.0. The Claude Code and Cursor plugins are the daily-driven
+surfaces; the CLI is the bootstrap and debug entrypoint. Issues + PRs
+welcome.
 
 ## License
 
@@ -443,4 +467,6 @@ is the bootstrap and debug entrypoint. Issues + PRs welcome.
 
 <div align="center">
 <sub>Built with Claude Code. The plugin architecture takes cues from OpenAI's "harness lesson" on agent state — Cairn extends those ideas with explicit decisions, invariants, sensors, and a multi-developer enforcement layer for solo-or-small-team product engineering.</sub>
+
+<sub>Cursor plugin by <a href="https://github.com/chrismuntean">Chris Muntean</a>.</sub>
 </div>
