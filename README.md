@@ -16,8 +16,11 @@ Stop AI agents from drifting.
 /plugin marketplace add isaacriehm/cairn
 /plugin install cairn@isaacriehm-cairn
 /reload-plugins
+```
 
-# Cursor — install from the Cursor plugin marketplace
+```
+# Cursor
+Settings → Cursor → Plugins → Add from GitHub → isaacriehm/cairn
 ```
 
 [The Problem](#the-problem) · [What You Get](#what-you-get) · [Quick Start](#quick-start) · [Glossary](#glossary) · [How It Works](#how-it-works) · [Features](#features) · [Multi-Dev](#multi-developer-enforcement) · [Docs](#documentation)
