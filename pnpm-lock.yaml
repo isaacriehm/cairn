@@ -107,6 +107,12 @@ importers:
         specifier: ^0.28.0
         version: 0.28.0
 
+  packages/cairn-frontend-cursor:
+    devDependencies:
+      '@isaacriehm/cairn-frontend-claudecode':
+        specifier: workspace:*
+        version: link:../cairn-frontend-claudecode
+
   packages/cairn-lens:
     dependencies:
       '@isaacriehm/cairn-state':

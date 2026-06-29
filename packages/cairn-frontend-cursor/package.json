@@ -1,0 +1,30 @@
+{
+  "name": "@isaacriehm/cairn-frontend-cursor",
+  "version": "0.32.1",
+  "description": "Cursor plugin frontend for Cairn — agent integration layer.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "private": true,
+  "files": [
+    ".cursor-plugin",
+    "mcp.json",
+    "hooks",
+    "rules",
+    "skills",
+    "agents",
+    "commands",
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build:sync": "node scripts/sync-from-claudecode.mjs",
+    "build": "pnpm build:sync",
+    "typecheck": "echo 'no typecheck — cursor frontend is config-only'",
+    "clean": "rm -rf dist skills agents commands"
+  },
+  "devDependencies": {
+    "@isaacriehm/cairn-frontend-claudecode": "workspace:*"
+  }
+}

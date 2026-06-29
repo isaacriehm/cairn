@@ -1,0 +1,21 @@
+{
+  "name": "cairn",
+  "displayName": "Cairn",
+  "version": "0.32.1",
+  "description": "Cairn — state + context-loading layer for AI coding agents.",
+  "author": {
+    "name": "Isaac Riehm",
+    "url": "https://github.com/isaacriehm"
+  },
+  "homepage": "https://github.com/isaacriehm/cairn#readme",
+  "repository": "https://github.com/isaacriehm/cairn",
+  "license": "MIT",
+  "keywords": [
+    "agent-context",
+    "decisions",
+    "invariants",
+    "ground-state",
+    "ai-memory"
+  ],
+  "logo": "../../assets/logo.svg"
+}

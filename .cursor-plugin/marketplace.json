@@ -1,0 +1,12 @@
+{
+  "name": "cairn",
+  "owner": { "name": "Isaac Riehm" },
+  "metadata": { "description": "Cairn — ground state for AI coding agents" },
+  "plugins": [
+    {
+      "name": "cairn",
+      "source": "packages/cairn-frontend-cursor",
+      "description": "Cairn Cursor plugin — agent integration layer"
+    }
+  ]
+}

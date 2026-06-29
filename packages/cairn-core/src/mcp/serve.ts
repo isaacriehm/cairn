@@ -51,7 +51,14 @@ function parseArgs(argv: string[]): ParsedArgs {
   // and hook reads agree on a single state directory — never the launch
   // subdir. `resolve` is retained as the in-tree-less last resort inside
   // `resolveAnchorRoot`.
-  const fallback = resolveAnchorRoot(process.cwd());
+  //
+  // Cursor launches the MCP server with cwd = ~ (user home), so walking up
+  // from cwd finds ~/.cairn/ instead of the project. CAIRN_REPO_ROOT (set
+  // explicitly) and CURSOR_PROJECT_DIR (injected by Cursor) both short-circuit
+  // the walk when present.
+  const envRoot =
+    process.env["CAIRN_REPO_ROOT"] ?? process.env["CURSOR_PROJECT_DIR"];
+  const fallback = envRoot ? resolve(envRoot) : resolveAnchorRoot(process.cwd());
   return {
     repoRoot: repoRoot ?? fallback,
     sessionId,

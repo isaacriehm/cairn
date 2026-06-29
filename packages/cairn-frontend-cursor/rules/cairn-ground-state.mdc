@@ -1,0 +1,15 @@
+---
+description: Cairn ground-state awareness — decisions, invariants, and active tasks
+alwaysApply: true
+---
+
+This project uses Cairn for ground-state management. If `.cairn/` exists at
+the repo root:
+
+- Never invent architectural patterns; check `cairn_in_scope({path_globs})`
+  before making structural changes.
+- Before UI work, call `cairn_components_in_scope({path_globs})` — USE
+  existing components before EXTENDING, EXTEND before CREATE.
+- Record non-obvious choices with `cairn_record_decision`.
+- Use the `cairn-direction` skill for any code-change task to get a tightened
+  spec before implementing.

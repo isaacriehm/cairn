@@ -63,7 +63,8 @@ import { cairnDir } from "@isaacriehm/cairn-state";
  * the operator can diagnose via the SessionStart banner.
  */
 function syncActiveVersionShim(warnings: string[]): void {
-  const pluginRoot = process.env["CLAUDE_PLUGIN_ROOT"];
+  const pluginRoot =
+    process.env["CURSOR_PLUGIN_ROOT"] ?? process.env["CLAUDE_PLUGIN_ROOT"];
   if (typeof pluginRoot !== "string" || pluginRoot.length === 0) {
     warnings.push(
       "statusline_shim_skipped: CLAUDE_PLUGIN_ROOT not set (Claude Code did not inject env)",

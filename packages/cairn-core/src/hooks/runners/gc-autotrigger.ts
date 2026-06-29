@@ -89,7 +89,10 @@ export function runGcAutotriggerCheck(opts: GcAutotriggerOptions): GcAutotrigger
   const lastRunIso = prior ? prior.toISOString() : "";
   if (!triggered) return { triggered, reason, thresholdHours, lastRunIso };
 
-  const pluginRoot = opts.pluginRoot ?? process.env["CLAUDE_PLUGIN_ROOT"];
+  const pluginRoot =
+    opts.pluginRoot ??
+    process.env["CURSOR_PLUGIN_ROOT"] ??
+    process.env["CLAUDE_PLUGIN_ROOT"];
   if (typeof pluginRoot !== "string" || pluginRoot.length === 0) {
     return { triggered: false, reason: "no_plugin_root", thresholdHours, lastRunIso };
   }

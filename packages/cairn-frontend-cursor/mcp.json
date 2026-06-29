@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "cairn": {
+      "command": "node",
+      "args": ["${CURSOR_PLUGIN_ROOT}/dist/cli.mjs", "mcp", "serve"],
+      "env": {
+        "CAIRN_REPO_ROOT": "${CURSOR_PROJECT_DIR}"
+      }
+    }
+  }
+}

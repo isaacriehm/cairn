@@ -1,0 +1,64 @@
+{
+  "hooks": {
+    "sessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook session-start"
+          }
+        ]
+      }
+    ],
+    "sessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook session-end"
+          }
+        ]
+      }
+    ],
+    "stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook stop"
+          }
+        ]
+      }
+    ],
+    "beforeSubmitPrompt": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook user-prompt-submit"
+          }
+        ]
+      }
+    ],
+    "postToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook read-enrich"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook post-write"
+          }
+        ]
+      }
+    ]
+  }
+}
