@@ -11,15 +11,15 @@ Stop AI agents from drifting.
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A522-brightgreen?style=flat-square)](https://nodejs.org)
 
+### Claude Code
 ```bash
-# Claude Code
 /plugin marketplace add isaacriehm/cairn
 /plugin install cairn@isaacriehm-cairn
 /reload-plugins
 ```
 
+### Cursor
 ```
-# Cursor
 Settings → Cursor → Plugins → Add from GitHub → isaacriehm/cairn
 ```
 
