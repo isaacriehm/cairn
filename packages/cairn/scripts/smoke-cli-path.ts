@@ -51,6 +51,29 @@ try {
   rmSync(tmp, { recursive: true, force: true });
 }
 
+/* ── 1b. plugin-root env wins over argv[1] ─────────────────────────────── */
+
+const pluginBundle = join(repoRoot, "packages", "cairn-plugin", "dist", "cli.mjs");
+if (existsSync(pluginBundle)) {
+  const prev = process.env["CURSOR_PLUGIN_ROOT"];
+  process.env["CURSOR_PLUGIN_ROOT"] = join(repoRoot, "packages", "cairn-plugin");
+  const tmp2 = mkdtempSync(join(tmpdir(), "cairn-cli-path-plugin-"));
+  try {
+    const step = writeCliPathFile(tmp2);
+    const cliPath = join(tmp2, ".cairn", ".cli-path");
+    assert(step.status === "ok", "writeCliPathFile prefers CURSOR_PLUGIN_ROOT");
+    const content = readFileSync(cliPath, "utf8").trim();
+    assert(
+      content === `node "${pluginBundle}"`,
+      `plugin bundle path written: ${content}`,
+    );
+  } finally {
+    rmSync(tmp2, { recursive: true, force: true });
+    if (prev === undefined) delete process.env["CURSOR_PLUGIN_ROOT"];
+    else process.env["CURSOR_PLUGIN_ROOT"] = prev;
+  }
+}
+
 /* ── 2. Hook self-heal block — drift guard + behavior ───────────────────── */
 
 const SELF_HEAL = [

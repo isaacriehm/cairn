@@ -345,32 +345,75 @@ function chmodHooks(hooksDir: string): JoinStep {
   };
 }
 
-export function writeCliPathFile(repoRoot: string): JoinStep {
+/** Target path embedded in a `.cli-path` line (`node "…"` or `"…"`). */
+function cliPathTarget(invocation: string): string | null {
+  const quoted = invocation.match(/"([^"]+)"/);
+  if (!quoted) return null;
+  const target = quoted[1] ?? "";
+  if (target.endsWith(".mjs") || target.endsWith(".js") || target.endsWith(".cjs")) {
+    return target;
+  }
+  return null;
+}
+
+function cliPathTargetMissing(invocation: string): boolean {
+  const target = cliPathTarget(invocation);
+  return target !== null && !existsSync(target);
+}
+
+/**
+ * Canonical CLI invocation for git hooks. Prefer the live plugin bundle
+ * (`CURSOR_PLUGIN_ROOT` / `CLAUDE_PLUGIN_ROOT`) over `process.argv[1]` —
+ * argv can lag after a plugin package rename or cache rotation while the
+ * env var always reflects the hook's loaded install.
+ */
+function resolveCliInvocation(): string | null {
+  const pluginRoot =
+    process.env["CURSOR_PLUGIN_ROOT"] ?? process.env["CLAUDE_PLUGIN_ROOT"];
+  if (typeof pluginRoot === "string" && pluginRoot.length > 0) {
+    const bundle = join(pluginRoot, "dist", "cli.mjs");
+    if (existsSync(bundle)) {
+      return `node "${bundle}"`;
+    }
+  }
+
   const cliArgv = process.argv[1];
   if (typeof cliArgv !== "string" || cliArgv.length === 0) {
-    return {
-      step: "write-cli-path",
-      status: "skipped",
-      detail: "process.argv[1] empty — hooks will fall back to global cairn",
-    };
+    return null;
   }
   const isModule = /\.[mc]?js$/.test(cliArgv);
   // Quote the path so eval'ing the .cli-path content from a hook
   // survives a CLI install location with spaces (operators with
   // spaces anywhere in their home, or local-marketplace plugin caches
   // resolved through symlinked dev paths).
-  const invocation = isModule ? `node "${cliArgv}"` : `"${cliArgv}"`;
+  return isModule ? `node "${cliArgv}"` : `"${cliArgv}"`;
+}
+
+export function writeCliPathFile(repoRoot: string): JoinStep {
+  const invocation = resolveCliInvocation();
+  if (invocation === null) {
+    return {
+      step: "write-cli-path",
+      status: "skipped",
+      detail: "no CLI entry resolved — hooks will fall back to global cairn",
+    };
+  }
   const path = cairnDir(repoRoot, ".cli-path");
   const desired = `${invocation}\n`;
   // SessionStart calls this every session, but the CLI invocation rarely
   // changes — skip the mkdir + write when the file already matches (hot path).
+  // Re-write when the recorded target is missing (plugin upgrade rotated the
+  // cache dir) even if argv[1] still matches the stale line.
   try {
-    if (existsSync(path) && readFileSync(path, "utf8") === desired) {
-      return {
-        step: "write-cli-path",
-        status: "skipped",
-        detail: `cli invocation unchanged: ${invocation}`,
-      };
+    if (existsSync(path)) {
+      const existing = readFileSync(path, "utf8");
+      if (existing === desired && !cliPathTargetMissing(existing.trim())) {
+        return {
+          step: "write-cli-path",
+          status: "skipped",
+          detail: `cli invocation unchanged: ${invocation}`,
+        };
+      }
     }
     mkdirSync(cairnDir(repoRoot), { recursive: true });
     writeFileSync(path, desired, "utf8");
