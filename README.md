@@ -110,8 +110,8 @@ Settings → Cursor → Plugins → Add from GitHub → isaacriehm/cairn
 
 Or via the command palette: search **"Add Plugin from GitHub"**, enter
 `isaacriehm/cairn`. Cursor reads `.cursor-plugin/marketplace.json`
-from the repo root and installs `packages/cairn-frontend-cursor/`
-directly — same self-contained bundle, no npm install required.
+from the repo root and installs `packages/cairn-plugin/`
+directly — same self-contained bundle as Claude Code, no npm install required.
 
 ---
 
@@ -301,11 +301,9 @@ state — it does **not** run the sensor sweep. Drift events log to
   SessionEnd, Stop, UserPromptSubmit, PostToolUse — matchers
   Read, Write|Edit, AskUserQuestion) + 5 skills + 5 agents +
   4 commands.
-- **Cursor plugin** — native Cursor Agent integration with the same
-  skills, agents, and commands as the Claude Code plugin. Hooks map
-  to Cursor's event names (`sessionStart`, `stop`, `postToolUse`).
-  MCP server is rooted to the project via `CAIRN_REPO_ROOT`.
-  Built by [Chris Muntean](https://github.com/chrismuntean).
+- **Cursor plugin** — same `cairn-plugin` package, dual manifest
+  (`.cursor-plugin/` + `hooks.cursor.json` + `mcp.json` + `rules/`). Shared
+  skills, agents, commands, and `dist/` — no duplicate sync tree.
 - **Cairn Lens** — VS Code / Cursor extension. Hover, gutter icons,
   code lens, optional DEC Explorer sidebar. Resolves `§INV-<hash>`,
   `§DEC-<hash>`, `TODO(TSK-…)` inline. Read-only — same ground state,
@@ -386,8 +384,7 @@ packages/
 ├── cairn/                       umbrella + CLI bin (`cairn …`)
 ├── cairn-core/                  MCP server, sensors, hooks, init pipeline
 ├── cairn-state/                 ground-state schemas + low-level I/O
-├── cairn-frontend-claudecode/   Claude Code plugin (manifest, hooks, skills, agents, commands)
-├── cairn-frontend-cursor/       Cursor plugin (manifest, mcp.json, hooks, rules, shared assets)
+├── cairn-plugin/   Claude Code + Cursor plugin (dual manifest, one dist/)
 └── cairn-lens/                  VS Code / Cursor extension (.vsix)
 ```
 

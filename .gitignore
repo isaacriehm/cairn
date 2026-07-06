@@ -6,6 +6,8 @@ node_modules/
 dist/
 *.tsbuildinfo
 *.tgz
+!packages/cairn-plugin/dist/
+!packages/cairn-plugin/dist/**
 
 # Env / secrets
 .env

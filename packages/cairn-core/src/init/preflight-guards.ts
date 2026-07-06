@@ -119,7 +119,7 @@ function checkWorkspaceMarker(
  *
  *   1. `packages/cairn-core/package.json` exists AND its `name` field
  *      is `@isaacriehm/cairn-core`.
- *   2. `packages/cairn-frontend-claudecode/package.json` exists.
+ *   2. `packages/cairn-plugin/package.json` exists.
  *   3. `pnpm-workspace.yaml` at the root.
  *
  * The package.json `name` check is what actually identifies the repo
@@ -127,7 +127,7 @@ function checkWorkspaceMarker(
  */
 export function isCairnSourceRepo(repoRoot: string): boolean {
   if (!existsSync(join(repoRoot, "pnpm-workspace.yaml"))) return false;
-  if (!existsSync(join(repoRoot, "packages", "cairn-frontend-claudecode", "package.json"))) {
+  if (!existsSync(join(repoRoot, "packages", "cairn-plugin", "package.json"))) {
     return false;
   }
   const corePkgPath = join(repoRoot, "packages", "cairn-core", "package.json");

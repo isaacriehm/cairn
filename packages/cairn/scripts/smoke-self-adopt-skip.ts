@@ -80,7 +80,7 @@ function mkSelfAdoptRepo(): string {
   // Simulate the Cairn source repo by seeding the markers
   // `isCairnSourceRepo()` looks for: pnpm-workspace.yaml +
   // packages/cairn-core/package.json (with name @isaacriehm/cairn-core)
-  // + packages/cairn-frontend-claudecode/package.json.
+  // + packages/cairn-plugin/package.json.
   const dir = mkRepo();
   writeFileSync(
     join(dir, "pnpm-workspace.yaml"),
@@ -91,11 +91,11 @@ function mkSelfAdoptRepo(): string {
     join(dir, "packages", "cairn-core", "package.json"),
     JSON.stringify({ name: "@isaacriehm/cairn-core", version: "0.0.0" }),
   );
-  mkdirSync(join(dir, "packages", "cairn-frontend-claudecode"), {
+  mkdirSync(join(dir, "packages", "cairn-plugin"), {
     recursive: true,
   });
   writeFileSync(
-    join(dir, "packages", "cairn-frontend-claudecode", "package.json"),
+    join(dir, "packages", "cairn-plugin", "package.json"),
     JSON.stringify({ name: "cairn-fixture-frontend", version: "0.0.0" }),
   );
   return dir;

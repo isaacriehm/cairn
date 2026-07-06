@@ -24,7 +24,7 @@ npm install -g @isaacriehm/cairn
 | `cairn scope` | Scope-index commands (rebuild, etc.). |
 | `cairn status-line` | Format the per-session Claude Code status line. |
 
-The Claude Code plugin (`@isaacriehm/cairn-frontend-claudecode`) is the
+The Claude Code plugin (`@isaacriehm/cairn-plugin`) is the
 primary operator surface; this CLI is what the plugin shells out to and
 what new contributors run when bootstrapping a clone.
 

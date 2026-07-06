@@ -16,7 +16,7 @@
       "entry": ["scripts/*.ts"],
       "project": "src/**/*.ts"
     },
-    "packages/cairn-frontend-claudecode": {
+    "packages/cairn-plugin": {
       "entry": ["src/bundle-entry.ts"],
       "project": "src/**/*.ts",
       "ignoreDependencies": ["@isaacriehm/cairn-core"]

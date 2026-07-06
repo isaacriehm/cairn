@@ -33,7 +33,7 @@ jobs:
 
       - name: Smoke gate (cairn)
         run: |
-          for s in plugin-layout resolve-attention stop-hook events session-state \
+          for s in plugin-layout cursor-plugin-layout cursor-plugin-bundle cursor-hook-format resolve-attention stop-hook events session-state \
                    status-line session-start handoff scope-index read-enrich init \
                    ingestion-baseline gc lock source-comments rules-merge join \
                    bypass-detection bootstrap-guard e2e-adoption e2e-daily-flow \

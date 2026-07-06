@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Bin entrypoint — `node cairn-core/dist/hooks/session-start.js`.
- * Plugin manifest references this directly so cairn-frontend-claudecode
+ * Plugin manifest references this directly so cairn-plugin
  * doesn't depend on the `cairn` umbrella CLI being on PATH.
  */
 

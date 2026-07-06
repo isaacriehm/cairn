@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import { resolveMcpRepoRoot } from "@isaacriehm/cairn-core";
 import { logger, createContext, startMcpServer } from "@isaacriehm/cairn-core";
 
 const log = logger("cli.mcp");
@@ -48,10 +48,8 @@ export async function mcpCli(argv: string[]): Promise<void> {
 
   const repoRoot =
     typeof flags["repo-root"] === "string"
-      ? resolve(flags["repo-root"])
-      : process.env["CAIRN_REPO_ROOT"]
-        ? resolve(process.env["CAIRN_REPO_ROOT"])
-        : process.cwd();
+      ? resolveMcpRepoRoot(flags["repo-root"])
+      : resolveMcpRepoRoot();
   const runId = typeof flags["run-id"] === "string" ? flags["run-id"] : undefined;
 
   const ctx = createContext({

@@ -32,6 +32,7 @@ import {
   runStopHook,
   runUserPromptSubmitHook,
   runWriteGuardian,
+  setCursorHookMode,
 } from "@isaacriehm/cairn-core";
 
 function usage(): never {
@@ -48,6 +49,9 @@ function usage(): never {
       "  ask-user-blocked      PostToolUse on AskUserQuestion — auto-stamp blocked_on: operator\n" +
       "  pre-commit-align      git pre-commit — Layer B detection-only drift log\n" +
       "\n" +
+      "Options:\n" +
+      "  --cursor              Cursor hook JSON on all events (auto-detected via CURSOR_PLUGIN_ROOT)\n" +
+      "\n" +
       "Claude Code hooks read a JSON payload on stdin and emit the\n" +
       "Shape-B response on stdout (wired by the plugin's hooks/hooks.json).\n" +
       "The git pre-commit-align variant is invoked by the bundled\n" +
@@ -60,6 +64,9 @@ function usage(): never {
 export async function hookCli(argv: string[]): Promise<void> {
   const cursor = argv.includes("--cursor");
   const args = argv.filter((a) => a !== "--cursor");
+  if (cursor) {
+    setCursorHookMode(true);
+  }
   const sub = args[0];
   switch (sub) {
     case undefined:

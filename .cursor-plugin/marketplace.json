@@ -5,8 +5,8 @@
   "plugins": [
     {
       "name": "cairn",
-      "source": "packages/cairn-frontend-cursor",
-      "description": "Cairn Cursor plugin — agent integration layer"
+      "source": "packages/cairn-plugin",
+      "description": "Cairn — Claude Code + Cursor Agent plugin (shared skills, agents, dist)"
     }
   ]
 }

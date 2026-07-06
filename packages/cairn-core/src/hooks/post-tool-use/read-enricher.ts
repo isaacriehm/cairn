@@ -15,7 +15,6 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { resolve, relative } from "node:path";
-import { z } from "zod";
 import {
   componentsInScope,
   getDecisionsLedger,
@@ -33,9 +32,12 @@ import type {
 import {
   readHookStdin,
   parseHookPayload,
-  emitShapeB,
+  resolveHookCwd,
   appendTelemetry,
+  normalizePostToolUse,
+  pickToolResponseContent,
 } from "../runners/payload.js";
+import { emitPostToolUseOutput } from "../hook-platform.js";
 import { resolveRepoRoot } from "../../session-start/index.js";
 import { scanCitations, type ScannedCitations } from "./citation-scanner.js";
 import { buildLegend } from "./legend-builder.js";
@@ -45,36 +47,6 @@ import { logger } from "../../logger.js";
 const MAX_CONTENT_BYTES = 512_000;
 const BINARY_SAMPLE_BYTES = 1024;
 const BINARY_THRESHOLD = 0.05;
-
-const ClaudePostToolUsePayloadSchema = z.object({
-  session_id: z.string().optional(),
-  transcript_path: z.string().optional(),
-  cwd: z.string().optional(),
-  hook_event_name: z.string().optional(),
-  tool_name: z.string().optional(),
-  tool_input: z.object({
-    file_path: z.string().optional(),
-  }).optional(),
-  tool_response: z.object({
-    content: z.string().optional(),
-    text: z.string().optional(),
-    output: z.string().optional(),
-    file: z.object({
-      content: z.string().optional(),
-      text: z.string().optional(),
-    }).passthrough().optional(),
-  }).passthrough().optional(),
-}).passthrough();
-
-type ClaudePostToolUsePayload = z.infer<typeof ClaudePostToolUsePayloadSchema>;
-
-interface PostToolUseShapeBOutput {
-  continue: boolean;
-  hookSpecificOutput: {
-    hookEventName: "PostToolUse";
-    additionalContext: string;
-  };
-}
 
 const log = logger("hooks.post-tool-use.read-enricher");
 
@@ -88,16 +60,30 @@ export async function runReadEnricher(): Promise<void> {
   let sessionForTrace: string | null = null;
   try {
     const raw = await readHookStdin();
-    const payload = parsePayload(raw);
+    const hookPayload = parseHookPayload(raw);
+    const payload = normalizePostToolUse(hookPayload);
     sessionForTrace = payload.session_id ?? null;
 
     if (payload.tool_name !== "Read") {
       outcome = { skip: "non-read-tool", tool_name: payload.tool_name };
-      emitShapeB("", "PostToolUse");
+      emitPostToolUseOutput("");
       return;
     }
     const filePath = payload.tool_input?.file_path;
-    const content = pickContent(payload.tool_response);
+    let content = pickToolResponseContent(payload.tool_response);
+    if (content === undefined || content.length === 0) {
+      const cwdEarly = resolveHookCwd(hookPayload);
+      if (filePath !== undefined) {
+        const abs = resolve(cwdEarly, filePath);
+        if (existsSync(abs)) {
+          try {
+            content = readFileSync(abs, "utf8");
+          } catch {
+            /* fall through */
+          }
+        }
+      }
+    }
     if (filePath === undefined || content === undefined || content.length === 0) {
       outcome = {
         skip: "no-content",
@@ -105,23 +91,23 @@ export async function runReadEnricher(): Promise<void> {
         content_present: content !== undefined,
         content_chars: content?.length ?? 0,
       };
-      emitShapeB("", "PostToolUse");
+      emitPostToolUseOutput("");
       return;
     }
 
-    const cwd = payload.cwd ?? process.cwd();
+    const cwd = resolveHookCwd(hookPayload);
     const repoRoot = resolveRepoRoot(cwd);
     repoRootForTrace = repoRoot;
     if (repoRoot === null) {
       outcome = { skip: "not-adopted", cwd };
-      emitShapeB("", "PostToolUse");
+      emitPostToolUseOutput("");
       return;
     }
 
     const relPath = relative(repoRoot, resolve(cwd, filePath));
     if (isBinary(content)) {
       outcome = { skip: "binary", path: relPath };
-      emitShapeB("", "PostToolUse");
+      emitPostToolUseOutput("");
       return;
     }
 
@@ -223,12 +209,12 @@ export async function runReadEnricher(): Promise<void> {
       legend_chars: combined.length,
     };
 
-    emitShapeB(combined, "PostToolUse");
+    emitPostToolUseOutput(combined);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     outcome = { error: message };
     log.error({ err: message }, "read-enricher hook failed");
-    emitShapeB("", "PostToolUse");
+    emitPostToolUseOutput("");
   } finally {
     if (repoRootForTrace !== null) {
       appendTelemetry({
@@ -242,37 +228,6 @@ export async function runReadEnricher(): Promise<void> {
       });
     }
   }
-}
-
-function parsePayload(text: string): ClaudePostToolUsePayload {
-  if (text.trim().length === 0) return {};
-  try {
-    const raw: unknown = JSON.parse(text);
-    const result = ClaudePostToolUsePayloadSchema.safeParse(raw);
-    return result.success ? result.data : {};
-  } catch {
-    return {};
-  }
-}
-
-function pickContent(
-  resp: ClaudePostToolUsePayload["tool_response"],
-): string | undefined {
-  if (resp === undefined) return undefined;
-  // Claude Code's Read tool wraps the body as `tool_response.file.content`.
-  // Check the nested file shape FIRST so it wins over any same-named key
-  // at the top level.
-  if (resp.file !== undefined) {
-    const f = resp.file;
-    if (typeof f.content === "string" && f.content.length > 0) return f.content;
-    if (typeof f.text === "string" && f.text.length > 0) return f.text;
-  }
-  
-  if (typeof resp.content === "string" && resp.content.length > 0) return resp.content;
-  if (typeof resp.text === "string" && resp.text.length > 0) return resp.text;
-  if (typeof resp.output === "string" && resp.output.length > 0) return resp.output;
-
-  return undefined;
 }
 
 function isBinary(content: string): boolean {

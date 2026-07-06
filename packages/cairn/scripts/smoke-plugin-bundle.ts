@@ -4,7 +4,7 @@
  * dist/cli.mjs builds and runs without npm/npx/PATH dependencies.
  *
  * The bundle is what the Claude Code plugin marketplace clones along
- * with the rest of `packages/cairn-frontend-claudecode/`. Its existence,
+ * with the rest of `packages/cairn-plugin/`. Its existence,
  * shebang, --version response, and co-located templates dir are
  * load-bearing for the v0.2.0 architectural reset (handoff §A).
  */
@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "..", "..", "..");
-const PLUGIN_ROOT = join(REPO_ROOT, "packages", "cairn-frontend-claudecode");
+const PLUGIN_ROOT = join(REPO_ROOT, "packages", "cairn-plugin");
 const BUNDLE_PATH = join(PLUGIN_ROOT, "dist", "cli.mjs");
 const TEMPLATES_DIR = join(PLUGIN_ROOT, "dist", "templates");
 const CORE_PKG_JSON = join(REPO_ROOT, "packages", "cairn-core", "package.json");

@@ -1,3 +1,4 @@
+export { resolveMcpRepoRoot } from "./repo-root.js";
 export { startMcpServer } from "./server.js";
 export type { StartServerOptions } from "./server.js";
 export { createContext } from "./context.js";

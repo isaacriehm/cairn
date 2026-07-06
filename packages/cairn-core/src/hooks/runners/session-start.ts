@@ -42,10 +42,15 @@ import { readDeferState } from "../defer.js";
 import {
   readHookStdin,
   parseHookPayload,
+  resolveHookCwd,
   emitShapeB,
-  emitCursorContext,
   appendTelemetry,
 } from "./payload.js";
+import {
+  emitCursorSessionStart,
+  isCursorHook,
+  isCursorOnlyHook,
+} from "../hook-platform.js";
 import { spawn } from "node:child_process";
 import { cairnDir } from "@isaacriehm/cairn-state";
 
@@ -64,11 +69,14 @@ import { cairnDir } from "@isaacriehm/cairn-state";
  * the operator can diagnose via the SessionStart banner.
  */
 function syncActiveVersionShim(warnings: string[]): void {
+  if (isCursorOnlyHook()) {
+    return;
+  }
   const pluginRoot =
     process.env["CURSOR_PLUGIN_ROOT"] ?? process.env["CLAUDE_PLUGIN_ROOT"];
   if (typeof pluginRoot !== "string" || pluginRoot.length === 0) {
     warnings.push(
-      "statusline_shim_skipped: CLAUDE_PLUGIN_ROOT not set (Claude Code did not inject env)",
+      "statusline_shim_skipped: plugin root env not set (CLAUDE_PLUGIN_ROOT / CURSOR_PLUGIN_ROOT)",
     );
     return;
   }
@@ -81,7 +89,7 @@ function syncActiveVersionShim(warnings: string[]): void {
   const slug = pluginCacheSlug(pluginRoot) ?? localDevSlug(pluginRoot);
   if (slug === null) {
     warnings.push(
-      `statusline_shim_skipped: cannot derive slug from CLAUDE_PLUGIN_ROOT (${pluginRoot})`,
+      `statusline_shim_skipped: cannot derive Claude plugin cache slug from ${pluginRoot}`,
     );
     return;
   }
@@ -168,10 +176,21 @@ export async function runSessionStartHook(opts?: { cursor?: boolean }): Promise<
   const payload = parseHookPayload(raw);
   const payloadSessionId = payload.session_id ?? null;
   const source = payload.source ?? null;
-  const cwdInput = payload.cwd ?? process.cwd();
+  const cursor = opts?.cursor ?? isCursorHook();
+  const cwdInput = resolveHookCwd(payload);
   const repoRoot = resolveRepoRoot(cwdInput);
   const shimWarnings: string[] = [];
   syncActiveVersionShim(shimWarnings);
+
+  const emitSessionStart = (context: string, adoptedRoot: string | null): void => {
+    if (cursor) {
+      const env =
+        adoptedRoot !== null ? { CAIRN_REPO_ROOT: adoptedRoot } : undefined;
+      emitCursorSessionStart(context, env);
+    } else {
+      emitShapeB(context, "SessionStart");
+    }
+  };
 
   if (repoRoot === null) {
     // Repos NOT adopted: show the banner suggesting `cairn init` if it
@@ -190,11 +209,7 @@ export async function runSessionStartHook(opts?: { cursor?: boolean }): Promise<
     const shimNote = renderShimWarningsBanner(shimWarnings);
     const additionalContext =
       shimNote === null ? banner : banner.length === 0 ? shimNote : `${banner}\n\n${shimNote}`;
-    if (opts?.cursor) {
-      emitCursorContext(additionalContext);
-    } else {
-      emitShapeB(additionalContext, "SessionStart");
-    }
+    emitSessionStart(additionalContext, null);
     return;
   }
 
@@ -335,7 +350,7 @@ export async function runSessionStartHook(opts?: { cursor?: boolean }): Promise<
   const midAdoptionBanner = renderMidAdoptionBanner(repoRoot);
   const migrationBanner =
     migrationResult !== null ? renderMigrationBanner(migrationResult) : null;
-  const staleStatuslineBanner = renderStaleStatuslineBanner();
+  const staleStatuslineBanner = cursor ? null : renderStaleStatuslineBanner();
   const banners = [
     bootstrapBanner,
     resumeBanner,
@@ -373,11 +388,7 @@ export async function runSessionStartHook(opts?: { cursor?: boolean }): Promise<
     spawnDetachedDrain(repoRoot, sessionId);
   }
 
-  if (opts?.cursor) {
-    emitCursorContext(additionalContext);
-  } else {
-    emitShapeB(additionalContext, "SessionStart");
-  }
+  emitSessionStart(additionalContext, repoRoot);
 }
 
 /**

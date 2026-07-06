@@ -91,28 +91,6 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
 
-  packages/cairn-frontend-claudecode:
-    dependencies:
-      '@isaacriehm/cairn':
-        specifier: workspace:*
-        version: link:../cairn
-      '@isaacriehm/cairn-core':
-        specifier: workspace:*
-        version: link:../cairn-core
-    devDependencies:
-      '@types/node':
-        specifier: ^25.9.2
-        version: 25.9.2
-      esbuild:
-        specifier: ^0.28.0
-        version: 0.28.0
-
-  packages/cairn-frontend-cursor:
-    devDependencies:
-      '@isaacriehm/cairn-frontend-claudecode':
-        specifier: workspace:*
-        version: link:../cairn-frontend-claudecode
-
   packages/cairn-lens:
     dependencies:
       '@isaacriehm/cairn-state':
@@ -140,6 +118,22 @@ importers:
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
+
+  packages/cairn-plugin:
+    dependencies:
+      '@isaacriehm/cairn':
+        specifier: workspace:*
+        version: link:../cairn
+      '@isaacriehm/cairn-core':
+        specifier: workspace:*
+        version: link:../cairn-core
+    devDependencies:
+      '@types/node':
+        specifier: ^25.9.2
+        version: 25.9.2
+      esbuild:
+        specifier: ^0.28.0
+        version: 0.28.0
 
   packages/cairn-state:
     dependencies:

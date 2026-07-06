@@ -10,7 +10,7 @@
  * spec-delta on SessionStart).
  *
  * Locks two contracts:
- *   1. NO file under packages/cairn-frontend-claudecode/ (skills,
+ *   1. NO file under packages/cairn-plugin/ (skills,
  *      agents, commands, hooks, manifest, README) contains the literal
  *      `caveman` (case-insensitive). The single template-string match
  *      via comments stays out of shipped artifacts.
@@ -26,7 +26,7 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "..", "..", "..");
-const FRONTEND_DIR = join(REPO_ROOT, "packages", "cairn-frontend-claudecode");
+const FRONTEND_DIR = join(REPO_ROOT, "packages", "cairn-plugin");
 
 const SHIPPED_BODIES = [
   "skills/cairn-adopt/SKILL.md",

@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * smoke-plugin-layout — verifies cairn-frontend-claudecode shape
+ * smoke-plugin-layout — verifies cairn-plugin shape
  * and that all hook/MCP bin paths resolve to existing dist files.
  *
  * Spec: PLUGIN_ARCHITECTURE §4 (manifest), §9 (MCP), §10 (hooks).
@@ -13,7 +13,7 @@ import * as core from "@isaacriehm/cairn-core";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "..", "..", "..");
-const PLUGIN_ROOT = join(REPO_ROOT, "packages", "cairn-frontend-claudecode");
+const PLUGIN_ROOT = join(REPO_ROOT, "packages", "cairn-plugin");
 
 function assert(cond: unknown, message: string): asserts cond {
   if (!cond) {

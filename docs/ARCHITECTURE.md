@@ -21,7 +21,7 @@ top of a curated, queryable ground state at `.cairn/ground/`.
 ```
 ┌────────────────────────────────────────────────────────────────────┐
 │  FRONTEND (UX surface — pluggable)                                 │
-│    cairn-frontend-claudecode   — Claude Code plugin (primary)      │
+│    cairn-plugin   — Claude Code + Cursor Agent plugin │
 │    cairn-lens                  — VS Code / Cursor extension        │
 └────────────────────────────────────────┬───────────────────────────┘
                                          │ MCP server + hooks
@@ -153,7 +153,7 @@ direct bin entrypoints under `cairn-core/dist/hooks/<event>.js` for
 flexibility — the published plugin shells out to `cairn hook <event>`
 instead so the binary stays the contract.
 
-### 3.3 `cairn-frontend-claudecode` — Claude Code plugin
+### 3.3 `cairn-plugin` — Claude Code + Cursor Agent plugin
 
 Plugin manifest, `.mcp.json` (registers `cairn mcp serve`), `hooks.json`
 (SessionStart, SessionEnd, Stop, PostToolUse), skills (`cairn-adopt`,

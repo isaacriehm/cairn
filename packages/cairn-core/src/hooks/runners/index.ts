@@ -29,7 +29,21 @@ export {
   CAIRN_HOOK_VERSION,
   emitShapeB,
   parseHookPayload,
+  resolveHookCwd,
   readHookStdin,
   appendTelemetry,
+  normalizePostToolUse,
+  pickWrittenContent,
+  pickToolResponseContent,
 } from "./payload.js";
-export type { ClaudeHookPayload } from "./payload.js";
+export type { ClaudeHookPayload, NormalizedPostToolUsePayload } from "./payload.js";
+export {
+  setCursorHookMode,
+  isCursorHook,
+  isCursorOnlyHook,
+  emitCursorSessionStart,
+  emitPostToolUseOutput,
+  writePostToolUseOutput,
+  writePostToolUseBlock,
+  emitStopOutput,
+} from "../hook-platform.js";

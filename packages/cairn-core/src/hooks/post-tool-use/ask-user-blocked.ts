@@ -21,7 +21,8 @@ import { z } from "zod";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { resolveRepoRoot } from "../../session-start/index.js";
 import { findCurrentActiveTask } from "../../tasks/index.js";
-import { readHookStdin } from "../runners/payload.js";
+import { readHookStdin, parseHookPayload, resolveHookCwd } from "../runners/payload.js";
+import { writePostToolUseOutput } from "../hook-platform.js";
 import { logger } from "../../logger.js";
 import { cairnDir } from "@isaacriehm/cairn-state";
 
@@ -49,44 +50,33 @@ function parsePayload(text: string): Payload {
   }
 }
 
-function emitShapeB(additionalContext: string): void {
-  const out = {
-    continue: true,
-    hookSpecificOutput: {
-      hookEventName: "PostToolUse",
-      additionalContext,
-    },
-  };
-  process.stdout.write(JSON.stringify(out));
-  process.stdout.write("\n");
-}
-
 export async function runAskUserBlockedHook(): Promise<void> {
   try {
     const raw = await readHookStdin();
+    const hookPayload = parseHookPayload(raw);
     const payload = parsePayload(raw);
 
     if (payload.tool_name !== "AskUserQuestion") {
-      emitShapeB("");
+      writePostToolUseOutput("");
       return;
     }
 
-    const cwd = payload.cwd ?? process.cwd();
+    const cwd = resolveHookCwd(hookPayload);
     const repoRoot = resolveRepoRoot(cwd);
     if (repoRoot === null) {
-      emitShapeB("");
+      writePostToolUseOutput("");
       return;
     }
 
     const taskId = findCurrentActiveTask(repoRoot);
     if (taskId === null) {
-      emitShapeB("");
+      writePostToolUseOutput("");
       return;
     }
 
     const statusPath = cairnDir(repoRoot, "tasks", "active", taskId, "status.yaml");
     if (!existsSync(statusPath)) {
-      emitShapeB("");
+      writePostToolUseOutput("");
       return;
     }
 
@@ -94,17 +84,17 @@ export async function runAskUserBlockedHook(): Promise<void> {
     try {
       parsed = parseYaml(readFileSync(statusPath, "utf8"));
     } catch {
-      emitShapeB("");
+      writePostToolUseOutput("");
       return;
     }
     if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-      emitShapeB("");
+      writePostToolUseOutput("");
       return;
     }
     const status = parsed as Record<string, unknown>;
 
     if (status["blocked_on"] === "operator") {
-      emitShapeB("");
+      writePostToolUseOutput("");
       return;
     }
 
@@ -118,12 +108,12 @@ export async function runAskUserBlockedHook(): Promise<void> {
       );
     }
 
-    emitShapeB("");
+    writePostToolUseOutput("");
   } catch (err) {
     log.warn(
       { err: err instanceof Error ? err.message : String(err) },
       "ask-user-blocked hook failed; degrading to no-op",
     );
-    emitShapeB("");
+    writePostToolUseOutput("");
   }
 }

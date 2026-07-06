@@ -18,7 +18,7 @@ import { createContext } from "./context.js";
 import { startMcpServer } from "./server.js";
 import { logger } from "../logger.js";
 import { runMigrations } from "../migrate/index.js";
-import { resolveAnchorRoot } from "../session-start/index.js";
+import { resolveMcpRepoRoot } from "./repo-root.js";
 
 const log = logger("mcp.serve");
 
@@ -45,20 +45,8 @@ function parseArgs(argv: string[]): ParsedArgs {
       i += 1;
     }
   }
-  // When `--repo-root` is omitted, infer the anchor root. Critical for
-  // subdir / worktree-cwd launches: `resolveAnchorRoot` collapses to the
-  // adopted `.cairn/` (or, failing that, the git repo root) so MCP writes
-  // and hook reads agree on a single state directory — never the launch
-  // subdir. `resolve` is retained as the in-tree-less last resort inside
-  // `resolveAnchorRoot`.
-  //
-  // Cursor launches the MCP server with cwd = ~ (user home), so walking up
-  // from cwd finds ~/.cairn/ instead of the project. CAIRN_REPO_ROOT (set
-  // explicitly) and CURSOR_PROJECT_DIR (injected by Cursor) both short-circuit
-  // the walk when present.
-  const envRoot =
-    process.env["CAIRN_REPO_ROOT"] ?? process.env["CURSOR_PROJECT_DIR"];
-  const fallback = envRoot ? resolve(envRoot) : resolveAnchorRoot(process.cwd());
+  // When `--repo-root` is omitted, infer the anchor root (see resolveMcpRepoRoot).
+  const fallback = resolveMcpRepoRoot();
   return {
     repoRoot: repoRoot ?? fallback,
     sessionId,

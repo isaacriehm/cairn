@@ -4,6 +4,47 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Cursor Agent plugin** — dual manifest in `cairn-plugin`
+  (`.cursor-plugin/`, `hooks.cursor.json`, `mcp.json`, `rules/`). GitHub
+  install via `.cursor-plugin/marketplace.json`. Shared skills/agents/dist
+  with Claude Code — no separate sync package.
+- **Cursor hook platform** in `cairn-core` — `resolveHookCwd` (uses
+  `CURSOR_PROJECT_DIR` / `workspace_roots`), `resolveMcpRepoRoot`,
+  `normalizePostToolUse` (Cursor `tool_output` / field aliases),
+  Cursor JSON emitters for sessionStart/postToolUse/stop per
+  [Cursor hooks docs](https://cursor.com/docs/hooks).
+- **Smokes:** `smoke:cursor-plugin-layout`, `smoke:cursor-plugin-bundle`,
+  `smoke:cursor-hook-format`.
+
+### Fixed
+
+- **MCP repo root under Cursor** — `cairn mcp serve` (bundled CLI path) now
+  resolves project root via `CURSOR_PROJECT_DIR` when `CURSOR_PLUGIN_ROOT`
+  is set, with `resolveAnchorRoot` collapse (not bare `cwd` walk from `~`).
+- **SessionStart repo root under Cursor** — hooks use `workspace_roots` /
+  `CURSOR_PROJECT_DIR`, not hook `process.cwd()`.
+- **Hook stdout format** — postToolUse/stop emit Cursor `{ additional_context }`
+  / `{ followup_message }` when `CURSOR_PLUGIN_ROOT` is present; stop
+  follow-ups gated on `status === "completed"` and `loop_count`.
+- **postToolUse payload normalizer** — Cursor `tool_output` JSON, `path`→
+  `file_path`, `contents`→`content`, StrReplace→Edit; read-enricher disk
+  fallback; post-write uses `tool_input` body not `tool_response`.
+- **Stop telemetry** — `appendTelemetry` runs before `emitStopOutput` (was
+  dead after `process.exit`).
+- **SessionEnd cwd** — uses `resolveHookCwd`, not raw `payload.cwd`.
+
+### Changed
+
+- **Renamed `cairn-frontend-claudecode` → `cairn-plugin`** (`@isaacriehm/cairn-plugin`).
+  Hard cutover — no shim folder.
+- **Removed `cairn-frontend-cursor` package** — Cursor manifest, hooks, MCP config,
+  and rules now live in `cairn-plugin` alongside Claude Code.
+  One copy of skills, agents, commands, and `dist/`.
+
 ## [0.32.1] — 2026-06-16
 
 Adoption hardening — three independent fixes: silent curator drops, a

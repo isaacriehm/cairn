@@ -68,11 +68,12 @@ import {
 import { markShownIds } from "../../session/index.js";
 import { runGcAutotriggerCheck } from "./gc-autotrigger.js";
 import {
-  emitShapeB,
   parseHookPayload,
   readHookStdin,
+  resolveHookCwd,
   appendTelemetry,
 } from "./payload.js";
+import { emitStopOutput } from "../hook-platform.js";
 
 /** Init in progress means `.cairn/init-state.json` exists at repoRoot. */
 function isInitInProgress(repoRoot: string): boolean {
@@ -293,7 +294,7 @@ export async function runStopHook(): Promise<void> {
   const raw = await readHookStdin();
   const payload = parseHookPayload(raw);
   const sessionId = typeof payload.session_id === "string" ? payload.session_id : null;
-  const cwdInput = typeof payload.cwd === "string" ? payload.cwd : process.cwd();
+  const cwdInput = resolveHookCwd(payload);
   const transcriptPath = typeof payload.transcript_path === "string" ? payload.transcript_path : null;
   const repoRoot = resolveRepoRoot(cwdInput);
   const warnings: string[] = [];
@@ -655,34 +656,30 @@ export async function runStopHook(): Promise<void> {
     }
   }
 
-  const out: StopBlockOutput | StopPassOutput =
-    emitReason.length > 0
-      ? {
-          decision: "block",
-          reason: clampReason(emitReason),
-          ...(systemMessage.length > 0 ? { systemMessage } : {}),
-        }
-      : {
-          continue: true,
-          ...(systemMessage.length > 0 ? { systemMessage } : {}),
-        };
-  process.stdout.write(JSON.stringify(out) + "\n");
+  if (repoRoot !== null) {
+    appendTelemetry({
+      repoRoot,
+      sessionId,
+      kind: "stop",
+      durationMs: Date.now() - startedAt,
+      source: payload.source ?? "unknown",
+      warnings,
+      extra: {
+        events_drained: drained.length,
+        pending_reviews: pendingReviews.length,
+        bypassed_commits: bypassed.length,
+        decision: reason.length > 0 ? "block" : "continue",
+        ...(reason.length > 0 ? { reason } : {}),
+        ...(systemMessage.length > 0 ? { systemMessage } : {}),
+      },
+    });
+  }
 
-  appendTelemetry({
-    repoRoot: repoRoot!,
-    sessionId,
-    kind: "stop",
-    durationMs: Date.now() - startedAt,
-    source: payload.source ?? "unknown",
-    warnings,
-    extra: {
-      events_drained: drained.length,
-      pending_reviews: pendingReviews.length,
-      bypassed_commits: bypassed.length,
-      decision: reason.length > 0 ? "block" : "continue",
-      ...(reason.length > 0 ? { reason } : {}),
-      ...(systemMessage.length > 0 ? { systemMessage } : {}),
-    },
+  emitStopOutput({
+    reason: clampReason(emitReason),
+    ...(systemMessage.length > 0 ? { systemMessage } : {}),
+    ...(typeof payload.status === "string" ? { status: payload.status } : {}),
+    ...(typeof payload.loop_count === "number" ? { loop_count: payload.loop_count } : {}),
   });
 }
 

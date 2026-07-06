@@ -17,7 +17,6 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, relative, resolve, dirname, join } from "node:path";
-import { z } from "zod";
 import { cairnDir,
   getScopeIndexEntry,
   matchAnyGlob,
@@ -25,8 +24,12 @@ import { cairnDir,
 import {
   readHookStdin,
   parseHookPayload,
-  emitShapeB,
+  resolveHookCwd,
   appendTelemetry,
+  emitShapeB,
+  normalizePostToolUse,
+  pickWrittenContent,
+  type NormalizedPostToolUsePayload,
 } from "../runners/payload.js";
 import { resolveRepoRoot } from "../../session-start/index.js";
 import { readCopySafetyConfig } from "./allowlist-reader.js";
@@ -34,24 +37,6 @@ import { scanForCopyLeakage } from "./copy-scanner.js";
 import type { CopyIssue } from "./copy-scanner.js";
 import { buildLegend, type ScopeIndexHint } from "./legend-builder.js";
 import { logger } from "../../logger.js";
-
-const ClaudePostToolUsePayloadSchema = z.object({
-  session_id: z.string().optional(),
-  transcript_path: z.string().optional(),
-  cwd: z.string().optional(),
-  hook_event_name: z.string().optional(),
-  tool_name: z.string().optional(),
-  tool_input: z.object({
-    file_path: z.string().optional(),
-    // Write writes `content`; Edit writes `new_string`. The copy-leakage
-    // scan needs the body that landed on disk — NOT `tool_response`, which
-    // for a Write is just a "File created…" status string.
-    content: z.string().optional(),
-    new_string: z.string().optional(),
-  }).passthrough().optional(),
-}).passthrough();
-
-type ClaudePostToolUsePayload = z.infer<typeof ClaudePostToolUsePayloadSchema>;
 
 const log = logger("hooks.post-tool-use.write-guardian");
 
@@ -70,7 +55,8 @@ export async function runWriteGuardian(): Promise<void> {
   let sessionForTrace: string | null = null;
   try {
     const raw = await readHookStdin();
-    const payload = parsePayload(raw);
+    const hookPayload = parseHookPayload(raw);
+    const payload = normalizePostToolUse(hookPayload);
     sessionForTrace = payload.session_id ?? null;
 
     if (payload.tool_name !== "Write" && payload.tool_name !== "Edit") {
@@ -91,7 +77,7 @@ export async function runWriteGuardian(): Promise<void> {
       return;
     }
 
-    const cwd = payload.cwd ?? process.cwd();
+    const cwd = resolveHookCwd(hookPayload);
     const repoRoot = resolveRepoRoot(cwd);
     repoRootForTrace = repoRoot;
     if (repoRoot === null) {
@@ -144,7 +130,7 @@ export function executeWriteGuardian(args: {
   repoRoot: string;
   relPath: string;
   content: string;
-  payload: ClaudePostToolUsePayload;
+  payload: NormalizedPostToolUsePayload;
 }): GuardianResult {
   const { repoRoot, relPath, content, payload } = args;
   const filePath = relPath;
@@ -200,37 +186,6 @@ export function executeWriteGuardian(args: {
   const block =
     sections.join("\n\n") + "\n\nWrite succeeded. Review before committing.";
   return { kind: "hint", message: block };
-}
-
-function parsePayload(text: string): ClaudePostToolUsePayload {
-  if (text.trim().length === 0) return {};
-  try {
-    const raw: unknown = JSON.parse(text);
-    const result = ClaudePostToolUsePayloadSchema.safeParse(raw);
-    return result.success ? result.data : {};
-  } catch {
-    return {};
-  }
-}
-
-/**
- * The body that landed on disk: Write carries it as `content`, Edit as the
- * `new_string` replacement. Read from `tool_input` — `tool_response` holds
- * the tool's status string ("File created…"), not the file body, so scanning
- * it silently finds nothing.
- */
-function pickWrittenContent(
-  toolName: string | undefined,
-  input: ClaudePostToolUsePayload["tool_input"],
-): string | undefined {
-  if (input === undefined) return undefined;
-  if (toolName === "Write") {
-    return typeof input.content === "string" ? input.content : undefined;
-  }
-  // Edit (and MultiEdit-shaped payloads) carry the replacement text.
-  if (typeof input.new_string === "string") return input.new_string;
-  if (typeof input.content === "string") return input.content;
-  return undefined;
 }
 
 function renderCopySafetySection(filename: string, issues: CopyIssue[]): string {

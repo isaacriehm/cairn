@@ -1,0 +1,63 @@
+{
+  "hooks": {
+    "sessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook session-start --cursor"
+          }
+        ]
+      }
+    ],
+    "sessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook session-end --cursor"
+          }
+        ]
+      }
+    ],
+    "stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook stop --cursor"
+          }
+        ]
+      }
+    ],
+    "postToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook read-enrich --cursor"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|StrReplace",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook post-write --cursor"
+          }
+        ]
+      },
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook ask-user-blocked --cursor"
+          }
+        ]
+      }
+    ]
+  }
+}

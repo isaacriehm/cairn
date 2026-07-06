@@ -11,6 +11,7 @@ import {
   emitContinue,
   parseHookPayload,
   readHookStdin,
+  resolveHookCwd,
   appendTelemetry,
 } from "./payload.js";
 
@@ -19,7 +20,7 @@ export async function runSessionEndHook(): Promise<void> {
   const raw = await readHookStdin();
   const payload = parseHookPayload(raw);
   const sessionId = typeof payload.session_id === "string" ? payload.session_id : null;
-  const cwdInput = typeof payload.cwd === "string" ? payload.cwd : process.cwd();
+  const cwdInput = resolveHookCwd(payload);
   const repoRoot = resolveRepoRoot(cwdInput);
 
   let removed = false;

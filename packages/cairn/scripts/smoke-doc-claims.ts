@@ -39,7 +39,7 @@ function makeRepo(): string {
   const root = mkdtempSync(join(tmpdir(), "cairn-smoke-doc-claims-"));
   cleanups.push(root);
 
-  const seedPackages = ["cairn", "cairn-core", "cairn-state", "cairn-frontend-claudecode", "cairn-lens"] as const;
+  const seedPackages = ["cairn", "cairn-core", "cairn-state", "cairn-plugin", "cairn-lens"] as const;
   for (const name of seedPackages) {
     const dir = resolve(root, "packages", name);
     mkdirSync(dir, { recursive: true });
@@ -59,7 +59,7 @@ function makeRepo(): string {
     `export const allTools = [\n  fooTool,\n  barTool,\n];\n`,
   );
 
-  const hooksDir = resolve(root, "packages", "cairn-frontend-claudecode", "hooks");
+  const hooksDir = resolve(root, "packages", "cairn-plugin", "hooks");
   mkdirSync(hooksDir, { recursive: true });
   writeFileSync(
     join(hooksDir, "hooks.json"),

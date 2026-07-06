@@ -23,7 +23,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 /**
  * dist/init/seed.js → walk up to package root, then into templates/.
  * The Claude Code plugin bundle co-locates templates beside the bundle
- * (packages/cairn-frontend-claudecode/dist/templates/) — esbuild
+ * (packages/cairn-plugin/dist/templates/) — esbuild
  * --define flips the lookup so the bundled binary finds them as a
  * sibling of dist/cli.cjs rather than two levels up from a per-module
  * dist file.

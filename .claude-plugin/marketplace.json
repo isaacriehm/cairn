@@ -11,7 +11,7 @@
   "plugins": [
     {
       "name": "cairn",
-      "source": "./packages/cairn-frontend-claudecode",
+      "source": "./packages/cairn-plugin",
       "description": "Cairn — state + context-loading layer for AI coding agents. Auto-adopt, daily-flow tightener, reviewer subagent, multi-dev enforcement.",
       "version": "0.32.1",
       "author": {

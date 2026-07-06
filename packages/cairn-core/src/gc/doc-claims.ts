@@ -244,7 +244,7 @@ function countHookEvents(repoRoot: string): number {
   const file = resolve(
     repoRoot,
     "packages",
-    "cairn-frontend-claudecode",
+    "cairn-plugin",
     "hooks",
     "hooks.json",
   );

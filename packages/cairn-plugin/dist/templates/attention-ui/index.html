@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cairn ⬡ Attention</title>
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="hex">⬡</span>
+      <span class="name">cairn attention</span>
+    </div>
+    <div class="counters" id="counters"></div>
+    <div class="actions">
+      <button id="bulk-high" class="ghost" title="Auto-accept high-confidence drafts">
+        accept high-confidence
+      </button>
+      <button id="done" class="primary" title="Finish triage and resume Claude Code">
+        I'm done
+      </button>
+    </div>
+  </header>
+
+  <main class="grid">
+    <aside class="left" id="clusters">
+      <h2>clusters</h2>
+      <div id="cluster-list" class="cluster-list"></div>
+    </aside>
+
+    <section class="center" id="drafts-pane">
+      <h2 id="pane-title">drafts</h2>
+      <div id="draft-list" class="draft-list"></div>
+      <div id="empty-state" class="empty hidden">
+        Inbox is clear. Nothing left to triage.
+      </div>
+    </section>
+
+    <aside class="right">
+      <h2>shortcuts</h2>
+      <ul class="keys">
+        <li><kbd>j</kbd> / <kbd>k</kbd> — next / prev</li>
+        <li><kbd>a</kbd> — accept</li>
+        <li><kbd>r</kbd> — reject</li>
+        <li><kbd>e</kbd> — edit</li>
+        <li><kbd>m</kbd> — merge cluster</li>
+        <li><kbd>?</kbd> — toggle this</li>
+      </ul>
+      <div class="status" id="status-line">ready</div>
+    </aside>
+  </main>
+
+  <script type="module" src="/static/app.js"></script>
+</body>
+</html>

@@ -6,7 +6,7 @@ supersedes-parts-of: ARCHITECTURE.md, INIT_SPEC.md, MCP_SURFACE.md, FILESYSTEM_L
 purpose: Lock the plugin form factor — adoption, daily flow, state, concurrency, distribution
 ---
 
-# Plugin Architecture — `cairn-frontend-claudecode`
+# Plugin Architecture — `cairn-plugin`
 
 > **This is a technical implementation spec.** If you're trying to *use*
 > Cairn rather than modify it, start with the user guide:
@@ -30,9 +30,9 @@ Operator never types `cairn <subcommand>` for ongoing work. Only `cairn init` (t
 
 ## §2 Form factor + agnosticism
 
-Claude Code is the **primary** frontend. The layered architecture preserves platform agnosticism: `cairn-core` remains pure state + MCP server (any MCP client works). Frontends are sibling packages. Future Cursor / Copilot / Windsurf / etc. integrations become additional sibling packages — `cairn-frontend-cursor`, `cairn-frontend-copilot` — without rewriting the core.
+Claude Code is the **primary** frontend. The layered architecture preserves platform agnosticism: `cairn-core` remains pure state + MCP server (any MCP client works). The agent plugin package ships dual manifests (`.claude-plugin/` + `.cursor-plugin/`) with shared skills, agents, commands, and `dist/` — no duplicated sync tree.
 
-Single-vendor lock-in is rejected at the architecture level even while we ship Claude Code as the only live frontend in v0.
+Single-vendor lock-in is rejected at the architecture level; the agent plugin ships dual manifests for Claude Code and Cursor Agent from one package.
 
 ## §3 Package layout
 
@@ -40,7 +40,10 @@ Single-vendor lock-in is rejected at the architecture level even while we ship C
 packages/
   cairn/                              — umbrella + CLI bin (`cairn init`, `cairn join`, `cairn hook X`, …)
   cairn-core/                         — state + MCP + sensors + GC + hook runners + init pipeline
-  cairn-frontend-claudecode/          — Claude Code plugin (.claude-plugin/plugin.json)
+  cairn-plugin/          — Claude Code + Cursor Agent plugin
+                                        (.claude-plugin + .cursor-plugin,
+                                         hooks.json + hooks.cursor.json,
+                                         .mcp.json + mcp.json, shared dist/)
   cairn-lens/                         — VS Code / Cursor IDE extension (parallel surface)
 ```
 
@@ -54,10 +57,10 @@ the public repo.
 
 ## §4 Plugin manifest + components
 
-Lives at `packages/cairn-frontend-claudecode/`:
+Lives at `packages/cairn-plugin/`:
 
 ```
-packages/cairn-frontend-claudecode/
+packages/cairn-plugin/
 ├── .claude-plugin/
 │   └── plugin.json                   — manifest (name, version, repo, etc.)
 ├── .mcp.json                         — registers cairn-core MCP server (stdio)
@@ -792,10 +795,10 @@ The following decisions were made during drafting and folded into the relevant s
 
 The plugin pivot landed across ten steps. Per-step deliverables:
 
-1. **Repo unification** — four workspace packages live under `packages/*` (`cairn`, `cairn-core`, `cairn-frontend-claudecode`, `cairn-lens`). The internal in-memory test adapter `cairn-frontend-stub` was deleted post-pivot.
+1. **Repo unification** — four workspace packages live under `packages/*` (`cairn`, `cairn-core`, `cairn-plugin`, `cairn-lens`). The internal in-memory test adapter `cairn-frontend-stub` was deleted post-pivot.
 2. **Tier-1 Haiku subprocess** — `claude --model haiku` subprocess + JSON-schema output replaces the pre-pivot local-classifier backend. (The earlier Tier-0 prompt-classifier and backend tightener modules were both purged in v0.2.1; routing + tightening are now main-Claude judgment via the `cairn-direction` skill. Haiku is the lowest active backend tier.)
 3. **Flock + per-session state partition + invalidation events** — `cairn-core/src/lock.ts`, `.cairn/sessions/<id>/`, `.cairn/events/`. Every write tool wraps in flock; per-session marker + Stop-hook poll cursor.
-4. **Plugin scaffold** — `cairn-frontend-claudecode/` manifest, `.mcp.json`, `hooks/hooks.json`, hook bin entrypoints under `cairn-core/dist/hooks/`.
+4. **Plugin scaffold** — `cairn-plugin/` manifest, `.mcp.json`, `hooks/hooks.json`, hook bin entrypoints under `cairn-core/dist/hooks/`.
 5. **Skills + slash commands** — cairn-adopt, cairn-direction, cairn-attention; `/cairn-init`, `/cairn-direction`.
 6. **Reviewer subagent + `cairn_resolve_attention` + Stop scan** — `agents/reviewer.md`, MCP tool for inline A/B/C resolution, Stop hook scans for tasks pending review.
 7. **Heavy adoption pipeline** — Phase 9 source-comment ingestion, Phase 10 rules merge, Phase 12 strip-replace primitives.

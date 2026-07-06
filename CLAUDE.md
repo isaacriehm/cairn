@@ -110,7 +110,7 @@ cairn/
     ├── cairn/                       — umbrella + CLI bin (`cairn init/join/hook/...`)
     ├── cairn-core/                  — MCP server + sensors + hook runners + init pipeline
     ├── cairn-state/                 — ground-state schemas + low-level I/O
-    ├── cairn-frontend-claudecode/   — Claude Code plugin (manifest + hooks + skills + agents + commands)
+    ├── cairn-plugin/   — Claude Code + Cursor Agent plugin (dual manifest, shared dist)
     └── cairn-lens/                  — VS Code / Cursor extension (.vsix)
 ```
 

@@ -62,7 +62,7 @@ import { createHash } from "node:crypto";
 import { dirname, join, relative } from "node:path";
 import { stringify as stringifyYaml } from "yaml";
 import { z } from "zod";
-import { readHookStdin } from "../runners/payload.js";
+import { readHookStdin, parseHookPayload, resolveHookCwd, normalizePostToolUse, type NormalizedPostToolUsePayload } from "../runners/payload.js";
 import { resolveRepoRoot } from "../../session-start/index.js";
 import { runClaude } from "../../claude/index.js";
 import { cairnDir,
@@ -1631,7 +1631,8 @@ function summarize(result: AlignFileResult): string {
 export async function runSotAlign(): Promise<void> {
   try {
     const raw = await readHookStdin();
-    const payload = parsePayload(raw);
+    const hookPayload = parseHookPayload(raw);
+    const payload = normalizePostToolUse(hookPayload);
     const tool = payload.tool_name;
     if (tool !== "Write" && tool !== "Edit") {
       emitShapeB("");
@@ -1642,7 +1643,7 @@ export async function runSotAlign(): Promise<void> {
       emitShapeB("");
       return;
     }
-    const cwd = typeof payload.cwd === "string" && payload.cwd.length > 0 ? payload.cwd : process.cwd();
+    const cwd = resolveHookCwd(hookPayload);
     const repoRoot = resolveRepoRoot(cwd);
     if (repoRoot === null) {
       emitShapeB("");
@@ -1661,7 +1662,7 @@ export async function runSotAlign(): Promise<void> {
 }
 
 export async function executeSotAlign(
-  payload: ClaudePostToolUsePayload,
+  payload: NormalizedPostToolUsePayload,
   repoRoot: string,
 ): Promise<string> {
   const filePath = payload.tool_input?.file_path;

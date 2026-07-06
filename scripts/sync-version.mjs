@@ -7,9 +7,10 @@
  * Every other version field in the repo is synced from there:
  *
  *   - packages/cairn-core/package.json
- *   - packages/cairn-frontend-claudecode/package.json
+ *   - packages/cairn-plugin/package.json
  *   - packages/cairn-lens/package.json
- *   - packages/cairn-frontend-claudecode/.claude-plugin/plugin.json
+ *   - packages/cairn-plugin/.claude-plugin/plugin.json
+ *   - packages/cairn-plugin/.cursor-plugin/plugin.json
  *   - .claude-plugin/marketplace.json   (metadata.version + plugins[].version)
  *
  * Usage:
@@ -39,9 +40,10 @@ const TARGETS = [
   pkgJsonTarget("packages/cairn/package.json"),
   pkgJsonTarget("packages/cairn-core/package.json"),
   pkgJsonTarget("packages/cairn-state/package.json"),
-  pkgJsonTarget("packages/cairn-frontend-claudecode/package.json"),
+  pkgJsonTarget("packages/cairn-plugin/package.json"),
   pkgJsonTarget("packages/cairn-lens/package.json"),
-  pkgJsonTarget("packages/cairn-frontend-claudecode/.claude-plugin/plugin.json"),
+  pkgJsonTarget("packages/cairn-plugin/.claude-plugin/plugin.json"),
+  pkgJsonTarget("packages/cairn-plugin/.cursor-plugin/plugin.json"),
   {
     path: ".claude-plugin/marketplace.json",
     get: (json) => [
