@@ -119,4 +119,5 @@ export type {
   RunGcBatchOptions,
   RunGcSweepOptions,
 } from "./sweep.js";
-export { walkSourceTree, SOURCE_TREE_SKIP_DIRS } from "./walk-source.js";
+export { walkSourceTree } from "./walk-source.js";
+export { SOURCE_SKIP_DIRS } from "../paths/skip-dirs.js";

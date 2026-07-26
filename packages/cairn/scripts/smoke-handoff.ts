@@ -10,42 +10,17 @@
  *      path has no git history.
  */
 
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { buildHandoffBlock, buildSpecDelta } from "@isaacriehm/cairn-core";
-
-const cleanups: string[] = [];
-
-function assert(cond: unknown, message: string): asserts cond {
-  if (!cond) {
-    console.error(`✗ ${message}`);
-    process.exit(1);
-  }
-}
-
-function cleanup(): void {
-  for (const path of cleanups.reverse()) {
-    try {
-      rmSync(path, { recursive: true, force: true });
-    } catch {
-      // best-effort
-    }
-  }
-}
-
-function mkFixture(): string {
-  const dir = mkdtempSync(join(tmpdir(), "cairn-smoke-handoff-"));
-  cleanups.push(dir);
-  return dir;
-}
+import { assert, cleanup, mkRepo } from "./lib/smoke-harness.js";
 
 async function runSmoke(): Promise<void> {
   console.log("smoke-handoff — start");
 
   // ── Step 1 — no .cairn/tasks/active/ → null ────────────────────
   {
-    const repoRoot = mkFixture();
+    const repoRoot = mkRepo("cairn-smoke-handoff-");
     mkdirSync(join(repoRoot, ".cairn"), { recursive: true });
     const result = await buildHandoffBlock(repoRoot);
     assert(
@@ -57,7 +32,7 @@ async function runSmoke(): Promise<void> {
 
   // ── Step 2 — buildSpecDelta with empty taskScopePaths → null ─────
   {
-    const repoRoot = mkFixture();
+    const repoRoot = mkRepo("cairn-smoke-handoff-");
     mkdirSync(join(repoRoot, ".cairn"), { recursive: true });
     const result = await buildSpecDelta(repoRoot, []);
     assert(
@@ -69,7 +44,7 @@ async function runSmoke(): Promise<void> {
 
   // ── Step 3 — buildSpecDelta on path with no git history → null ───
   {
-    const repoRoot = mkFixture();
+    const repoRoot = mkRepo("cairn-smoke-handoff-");
     mkdirSync(join(repoRoot, ".cairn"), { recursive: true });
     // No git init — path has no history. Should return null.
     const result = await buildSpecDelta(repoRoot, ["src/foo.ts"]);

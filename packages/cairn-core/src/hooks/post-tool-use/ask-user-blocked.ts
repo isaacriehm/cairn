@@ -22,7 +22,11 @@ import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { resolveRepoRoot } from "../../session-start/index.js";
 import { findCurrentActiveTask } from "../../tasks/index.js";
 import { readHookStdin, parseHookPayload, resolveHookCwd } from "../runners/payload.js";
-import { writePostToolUseOutput } from "../hook-platform.js";
+import {
+  resolveAgentHost,
+  writePostToolUseOutput,
+  type HookRunOptions,
+} from "../hook-platform.js";
 import { logger } from "../../logger.js";
 import { cairnDir } from "@isaacriehm/cairn-state";
 
@@ -50,33 +54,34 @@ function parsePayload(text: string): Payload {
   }
 }
 
-export async function runAskUserBlockedHook(): Promise<void> {
+export async function runAskUserBlockedHook(options: HookRunOptions = {}): Promise<void> {
+  const host = resolveAgentHost(options.host);
   try {
     const raw = await readHookStdin();
     const hookPayload = parseHookPayload(raw);
     const payload = parsePayload(raw);
 
     if (payload.tool_name !== "AskUserQuestion") {
-      writePostToolUseOutput("");
+      writePostToolUseOutput(host, "");
       return;
     }
 
     const cwd = resolveHookCwd(hookPayload);
     const repoRoot = resolveRepoRoot(cwd);
     if (repoRoot === null) {
-      writePostToolUseOutput("");
+      writePostToolUseOutput(host, "");
       return;
     }
 
     const taskId = findCurrentActiveTask(repoRoot);
     if (taskId === null) {
-      writePostToolUseOutput("");
+      writePostToolUseOutput(host, "");
       return;
     }
 
     const statusPath = cairnDir(repoRoot, "tasks", "active", taskId, "status.yaml");
     if (!existsSync(statusPath)) {
-      writePostToolUseOutput("");
+      writePostToolUseOutput(host, "");
       return;
     }
 
@@ -84,17 +89,17 @@ export async function runAskUserBlockedHook(): Promise<void> {
     try {
       parsed = parseYaml(readFileSync(statusPath, "utf8"));
     } catch {
-      writePostToolUseOutput("");
+      writePostToolUseOutput(host, "");
       return;
     }
     if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-      writePostToolUseOutput("");
+      writePostToolUseOutput(host, "");
       return;
     }
     const status = parsed as Record<string, unknown>;
 
     if (status["blocked_on"] === "operator") {
-      writePostToolUseOutput("");
+      writePostToolUseOutput(host, "");
       return;
     }
 
@@ -108,12 +113,12 @@ export async function runAskUserBlockedHook(): Promise<void> {
       );
     }
 
-    writePostToolUseOutput("");
+    writePostToolUseOutput(host, "");
   } catch (err) {
     log.warn(
       { err: err instanceof Error ? err.message : String(err) },
       "ask-user-blocked hook failed; degrading to no-op",
     );
-    writePostToolUseOutput("");
+    writePostToolUseOutput(host, "");
   }
 }

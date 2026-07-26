@@ -8,7 +8,8 @@
  *   1. First call (no marker)           → triggered, reason=first_run.
  *   2. Marker fresh (within threshold)  → suppressed, reason=fresh.
  *   3. Marker stale (>= threshold)      → triggered, reason=threshold_passed.
- *   4. No CLAUDE_PLUGIN_ROOT             → triggered=false, reason=no_plugin_root.
+ *   4. Codex PLUGIN_ROOT                 → resolves the shared bundle.
+ *   5. No host plugin root               → triggered=false, reason=no_plugin_root.
  *   5. Plugin root missing dist/cli.mjs  → triggered=false, reason=no_cli_bundle.
  *   6. Test spawner records argv shape  → cmd=node, args contain `gc sweep`,
  *      `--repo-root`, repoRoot.
@@ -154,7 +155,34 @@ async function main(): Promise<void> {
     pass("thresholdHours=1 triggers when marker is 2h old");
   }
 
-  header("Step 7 — no CLAUDE_PLUGIN_ROOT → no_plugin_root");
+  header("Step 7 — Codex PLUGIN_ROOT resolves the bundle");
+  {
+    rmSync(resolve(repo, ".cairn/.gc-last-run"));
+    const priorPluginRoot = process.env["PLUGIN_ROOT"];
+    const priorCursorRoot = process.env["CURSOR_PLUGIN_ROOT"];
+    const priorClaudeRoot = process.env["CLAUDE_PLUGIN_ROOT"];
+    process.env["PLUGIN_ROOT"] = pluginRoot;
+    delete process.env["CURSOR_PLUGIN_ROOT"];
+    delete process.env["CLAUDE_PLUGIN_ROOT"];
+    try {
+      r = runGcAutotriggerCheck({
+        repoRoot: repo,
+        now: baseTime,
+        spawner: recorder,
+      });
+    } finally {
+      if (priorPluginRoot === undefined) delete process.env["PLUGIN_ROOT"];
+      else process.env["PLUGIN_ROOT"] = priorPluginRoot;
+      if (priorCursorRoot === undefined) delete process.env["CURSOR_PLUGIN_ROOT"];
+      else process.env["CURSOR_PLUGIN_ROOT"] = priorCursorRoot;
+      if (priorClaudeRoot === undefined) delete process.env["CLAUDE_PLUGIN_ROOT"];
+      else process.env["CLAUDE_PLUGIN_ROOT"] = priorClaudeRoot;
+    }
+    if (!r.triggered) fail(`Codex plugin root should trigger, got ${r.reason}`);
+    pass("PLUGIN_ROOT → shared bundle");
+  }
+
+  header("Step 8 — no host plugin root → no_plugin_root");
   {
     rmSync(resolve(repo, ".cairn/.gc-last-run"));
     r = runGcAutotriggerCheck({
@@ -168,7 +196,7 @@ async function main(): Promise<void> {
     pass("missing plugin root → no_plugin_root");
   }
 
-  header("Step 8 — plugin root without dist/cli.mjs → no_cli_bundle");
+  header("Step 9 — plugin root without dist/cli.mjs → no_cli_bundle");
   {
     const emptyPlugin = mkdtempSync(join(tmpdir(), "cairn-smoke-gc-empty-plugin-"));
     cleanups.push(emptyPlugin);

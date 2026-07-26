@@ -1,62 +1,29 @@
 {
+  "version": 1,
   "hooks": {
     "sessionStart": [
       {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook session-start --cursor"
-          }
-        ]
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook session-start --host cursor"
       }
     ],
     "sessionEnd": [
       {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook session-end --cursor"
-          }
-        ]
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook session-end --host cursor"
       }
     ],
     "stop": [
       {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook stop --cursor"
-          }
-        ]
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook stop --host cursor"
       }
     ],
     "postToolUse": [
       {
         "matcher": "Read",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook read-enrich --cursor"
-          }
-        ]
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook read-enrich --host cursor"
       },
       {
-        "matcher": "Write|StrReplace",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook post-write --cursor"
-          }
-        ]
-      },
-      {
-        "matcher": "AskUserQuestion",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook ask-user-blocked --cursor"
-          }
-        ]
+        "matcher": "Write",
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook post-write --host cursor"
       }
     ]
   }

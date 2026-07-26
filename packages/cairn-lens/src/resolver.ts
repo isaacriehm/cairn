@@ -14,11 +14,10 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
-  statSync,
   writeFileSync,
 } from "node:fs";
-import { execFileSync } from "node:child_process";
-import { dirname, join, relative, resolve } from "node:path";
+import { join, relative } from "node:path";
+import { resolveRepoRoot } from "@isaacriehm/cairn-core";
 import {
   buildDecisionsLedger,
   buildInvariantsLedger,
@@ -126,58 +125,12 @@ export interface GovernedBlock {
   status: string;
 }
 
-/**
- * Ghost resolution (§3.7): when no in-tree `.cairn/` exists, the repo may be
- * ghost-adopted with state out-of-repo. Resolve the git toplevel and return it
- * only when the global registry has it ghost-registered (keyed on root-commit
- * inside `isGhost`). Returns null for a non-adopted repo. vscode-free so the
- * smoke harness can exercise it directly.
- */
-function resolveGhostRepoRoot(cwd: string): string | null {
-  let top: string;
-  try {
-    top = execFileSync("git", ["-C", cwd, "rev-parse", "--show-toplevel"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-  } catch {
-    return null;
-  }
-  if (top.length === 0) return null;
-  try {
-    return isGhost(top) ? top : null;
-  } catch {
-    return null;
-  }
-}
-
 export class LensResolver {
   constructor(public readonly repoRoot: string) {}
 
-  /**
-   * Resolve the cairn repo root for a file. **Committed:** walk up looking for
-   * an in-tree `.cairn/` and return the dir containing it (byte-identical to the
-   * original behavior). **Ghost (§3.7):** there is no in-tree `.cairn/` — the
-   * state lives out-of-repo — so fall back to the git toplevel and accept it
-   * only when the global registry has it ghost-registered. Without this the lens
-   * finds nothing in a ghost repo and the whole extension stays inert.
-   */
+  /** Delegates to cairn-core `resolveRepoRoot` (worktree-aware, ghost-aware). */
   static resolveRepoRoot(cwd: string): string | null {
-    let dir = resolve(cwd);
-    for (let i = 0; i < 12; i++) {
-      const probe = join(dir, ".cairn");
-      if (existsSync(probe)) {
-        try {
-          if (statSync(probe).isDirectory()) return dir;
-        } catch {
-          // fall through
-        }
-      }
-      const parent = dirname(dir);
-      if (parent === dir) break;
-      dir = parent;
-    }
-    return resolveGhostRepoRoot(cwd);
+    return resolveRepoRoot(cwd);
   }
 
   /**

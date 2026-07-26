@@ -36,37 +36,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { extname, join } from "node:path";
-
-const DEFAULT_OFF_LIMITS_DIRS = new Set<string>([
-  ".git",
-  "node_modules",
-  "dist",
-  "build",
-  "target",
-  "out",
-  "__pycache__",
-  "vendor",
-  ".venv",
-  ".direnv",
-  ".cache",
-  "coverage",
-  ".next",
-  ".turbo",
-  ".nuxt",
-  ".svelte-kit",
-  ".astro",
-  ".parcel-cache",
-  ".vercel",
-  ".netlify",
-  ".pytest_cache",
-  ".mypy_cache",
-  ".ruff_cache",
-  ".tox",
-  ".gradle",
-  ".idea",
-  ".vscode",
-  ".cairn",
-]);
+import { SOURCE_SKIP_DIRS } from "../paths/skip-dirs.js";
 
 /**
  * Per-pass + total caps. Per-pass caps keep the mapper prompt focused; the
@@ -339,7 +309,7 @@ function filterGitListing(
   // Single sweep — partition each path into pass1 (high-signal) or pass2.
   for (const rel of args.fromGit) {
     const segs = rel.split("/");
-    if (segs.some((s) => DEFAULT_OFF_LIMITS_DIRS.has(s))) continue;
+    if (segs.some((s) => SOURCE_SKIP_DIRS.has(s))) continue;
     if (isHighSignalPath(rel)) {
       if (pass1.length >= args.pass1Cap) {
         pass1Hit = true;
@@ -391,7 +361,7 @@ function walkFilesystem(args: ListFilesArgs): ListFilesResult {
       continue;
     }
     for (const name of entries) {
-      if (DEFAULT_OFF_LIMITS_DIRS.has(name)) continue;
+      if (SOURCE_SKIP_DIRS.has(name)) continue;
       const abs = join(cur.abs, name);
       const rel = cur.rel === "" ? name : `${cur.rel}/${name}`;
       let s;

@@ -38,8 +38,8 @@ export interface GcAutotriggerOptions {
    */
   spawner?: (argv: GcAutotriggerArgv) => void;
   /**
-   * Override CLAUDE_PLUGIN_ROOT; defaults to process.env. Required for
-   * tests that don't set the real env var.
+   * Override the active host's plugin root; defaults to process.env.
+   * Required for tests that don't set a real plugin environment.
    */
   pluginRoot?: string;
 }
@@ -92,6 +92,7 @@ export function runGcAutotriggerCheck(opts: GcAutotriggerOptions): GcAutotrigger
   const pluginRoot =
     opts.pluginRoot ??
     process.env["CURSOR_PLUGIN_ROOT"] ??
+    process.env["PLUGIN_ROOT"] ??
     process.env["CLAUDE_PLUGIN_ROOT"];
   if (typeof pluginRoot !== "string" || pluginRoot.length === 0) {
     return { triggered: false, reason: "no_plugin_root", thresholdHours, lastRunIso };

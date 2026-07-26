@@ -48,6 +48,7 @@ function runSmoke(): void {
   {
     const repoRoot = mkFixture();
     mkdirSync(join(repoRoot, ".cairn"), { recursive: true });
+    writeFileSync(join(repoRoot, ".cairn", "config.yaml"), "version: 1\n", "utf8");
     const nested = join(repoRoot, "src", "deep");
     mkdirSync(nested, { recursive: true });
     const resolved = LensResolver.resolveRepoRoot(nested);

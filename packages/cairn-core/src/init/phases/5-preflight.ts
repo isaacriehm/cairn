@@ -22,28 +22,11 @@ import { discoverRuleSources } from "../rules-merge/discover.js";
 import { parseRuleSections } from "../rules-merge/parse-sections.js";
 import { readCalibration, type EtaPhase } from "../eta-calibration.js";
 import { advancePhase, isSelfAdoptState } from "./orchestrator.js";
+import { DOC_SKIP_DIRS } from "../../paths/skip-dirs.js";
 import type { PhaseResult, PhaseState } from "./types.js";
 
 /** Hard upper bound on jaccard pair-judge calls (matches phase 7 cap). */
 const JACCARD_PAIR_CAP = 200;
-
-/** Skip dirs for the markdown walk — match the source walker's set. */
-const DOC_SKIP_DIRS = new Set<string>([
-  ".git",
-  "node_modules",
-  "dist",
-  "build",
-  "target",
-  "out",
-  "vendor",
-  ".venv",
-  ".direnv",
-  ".cache",
-  "coverage",
-  ".next",
-  ".turbo",
-  ".cairn",
-]);
 
 export interface PreflightUnits {
   docFiles: number;

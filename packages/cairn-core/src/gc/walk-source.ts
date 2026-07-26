@@ -7,20 +7,7 @@
  */
 
 import { walkFs } from "@isaacriehm/cairn-state";
-
-/** Directories the scan never descends into. */
-export const SOURCE_TREE_SKIP_DIRS = new Set([
-  ".git",
-  ".cairn",
-  "node_modules",
-  ".pnpm-store",
-  "dist",
-  "build",
-  ".next",
-  ".turbo",
-  ".cache",
-  "coverage",
-]);
+import { SOURCE_SKIP_DIRS } from "../paths/skip-dirs.js";
 
 /**
  * Walk every file in repoRoot, yielding repo-relative paths sorted
@@ -30,7 +17,7 @@ export function walkSourceTree(repoRoot: string): string[] {
   const out: string[] = [];
   walkFs({
     dir: repoRoot,
-    skipDirs: SOURCE_TREE_SKIP_DIRS,
+    skipDirs: SOURCE_SKIP_DIRS,
     onFile: (rel) => {
       out.push(rel);
     },

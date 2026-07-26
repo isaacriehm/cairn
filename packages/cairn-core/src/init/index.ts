@@ -1,6 +1,5 @@
 export {
   detectAll,
-  detectEnvironment,
   detectHookCapability,
   detectOriginUrl,
   detectProjectSlug,
@@ -9,9 +8,7 @@ export {
 } from "./detect.js";
 export {
   installInitCancelHandlers,
-  startProgress,
   startSpinner,
-  withSpinner,
 } from "./visual.js";
 export { applyBrandAnswers, runBrandSetup } from "./brand-setup.js";
 export { detectComponentsConfig, ensureComponentsConfig } from "./detect-components.js";
@@ -45,7 +42,6 @@ export type {
   RunBaselineAuditArgs,
 } from "./baseline-audit.js";
 export {
-  discoverDocs,
   runDocsIngestion,
   runStage1FileFilter,
 } from "./ingest-docs.js";
@@ -130,7 +126,6 @@ export {
   MAPPER_OUTPUT_SCHEMA,
   MAPPER_SYSTEM_PROMPT,
   runMapper,
-  validateMapperOutput,
 } from "./mapper.js";
 export type {
   MapperKeyModule,
@@ -160,12 +155,9 @@ export type { MergeArgs } from "./mapper-merge.js";
 export { seedCairnLayout, templatesRoot } from "./seed.js";
 export type { SeedOptions, SeedResult } from "./seed.js";
 export {
-  editYaml,
-  freeTextWithDefault,
   squareIntoSquareHole,
   yesNo,
   type Choice,
-  type EditorOptions,
   type PromptMode,
   type PromptOptions,
 } from "./prompts.js";

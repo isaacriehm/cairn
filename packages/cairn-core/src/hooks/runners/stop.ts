@@ -73,7 +73,11 @@ import {
   resolveHookCwd,
   appendTelemetry,
 } from "./payload.js";
-import { emitStopOutput } from "../hook-platform.js";
+import {
+  emitStopOutput,
+  resolveAgentHost,
+  type HookRunOptions,
+} from "../hook-platform.js";
 
 /** Init in progress means `.cairn/init-state.json` exists at repoRoot. */
 function isInitInProgress(repoRoot: string): boolean {
@@ -289,8 +293,9 @@ interface PendingReview {
   spec_path: string;
 }
 
-export async function runStopHook(): Promise<void> {
+export async function runStopHook(options: HookRunOptions = {}): Promise<void> {
   const startedAt = Date.now();
+  const host = resolveAgentHost(options.host);
   const raw = await readHookStdin();
   const payload = parseHookPayload(raw);
   const sessionId = typeof payload.session_id === "string" ? payload.session_id : null;
@@ -675,7 +680,7 @@ export async function runStopHook(): Promise<void> {
     });
   }
 
-  emitStopOutput({
+  emitStopOutput(host, {
     reason: clampReason(emitReason),
     ...(systemMessage.length > 0 ? { systemMessage } : {}),
     ...(typeof payload.status === "string" ? { status: payload.status } : {}),

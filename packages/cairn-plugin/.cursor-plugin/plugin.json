@@ -17,5 +17,5 @@
     "ground-state",
     "ai-memory"
   ],
-  "hooks": "hooks/hooks.cursor.json"
+  "hooks": "./hooks/hooks.cursor.json"
 }

@@ -11,42 +11,13 @@
 
 import {
   mkdirSync,
-  mkdtempSync,
   readFileSync,
-  rmSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { runConfigDrift, writeConfigDriftBaseline } from "@isaacriehm/cairn-core";
-
-const cleanups: string[] = [];
-
-function assert(cond: unknown, message: string): asserts cond {
-  if (!cond) {
-    console.error(`✗ ${message}`);
-    cleanup();
-    process.exit(1);
-  }
-}
-
-function cleanup(): void {
-  for (const p of cleanups.reverse()) {
-    try {
-      rmSync(p, { recursive: true, force: true });
-    } catch {
-      // best-effort
-    }
-  }
-}
-
-function mkRepo(tag: string): string {
-  const dir = mkdtempSync(join(tmpdir(), `cairn-smoke-cfgdrift-${tag}-`));
-  cleanups.push(dir);
-  mkdirSync(join(dir, ".cairn"), { recursive: true });
-  return dir;
-}
+import { assert, cleanup, mkRepo } from "./lib/smoke-harness.js";
 
 function write(repo: string, rel: string, content: string): void {
   const abs = join(repo, rel);
@@ -83,7 +54,7 @@ function main(): void {
   console.log("smoke-config-drift — start");
 
   // ── Drifted fixture — all four kinds fire ───────────────────────────
-  const repo = mkRepo("drift");
+  const repo = mkRepo("cairn-smoke-cfgdrift-drift-", { cairn: true });
   write(repo, ".cairn/config.yaml", DRIFTED_CONFIG);
   // .gitignore ignores build/ which off_limits doesn't cover (node_modules/ +
   // dist/ ARE covered → not flagged).
@@ -137,7 +108,7 @@ function main(): void {
   console.log("  ✓ baseline persisted in sensor-audit shape (hard findings)");
 
   // ── Clean repo — silent ─────────────────────────────────────────────
-  const clean = mkRepo("clean");
+  const clean = mkRepo("cairn-smoke-cfgdrift-clean-", { cairn: true });
   write(
     clean,
     ".cairn/config.yaml",

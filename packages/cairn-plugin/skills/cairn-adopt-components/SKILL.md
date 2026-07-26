@@ -13,6 +13,14 @@ allowed-tools: Skill(cairn:cairn-attention), Task(component-annotator), Task(com
 
 # Skill: cairn-adopt-components
 
+## Host portability
+
+This skill is shared by Claude Code, Cursor, and Codex. Use the host's
+structured question UI when available; otherwise ask the same concise A/B/C
+question in chat and pause. Named subagent briefs live under `../../agents/`:
+dispatch by name where supported, or read the brief and pass it to the host's
+native subagent tool. Execute inline only when no subagent tool exists.
+
 You are backfilling Cairn's **component store** into an already-adopted
 project — the one-time work the adoption pipeline does for fresh repos,
 applied to a repo that predates the store. The goal: every component
@@ -20,8 +28,9 @@ file carries a `@cairn` registry header, the derived index is built, and
 `@singleton` headers become §INVs. Spec: `docs/PLUGIN_ARCHITECTURE.md`
 §6 (the component trio 9d→9e→9f) and `docs/COMPONENT_STORE_PLAN.md`.
 
-This skill drives the bundled CLI internally
-(`node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" components …`). **Never
+This skill drives the bundled `dist/cli.mjs` internally using the plugin-root
+variable supplied by the active host (`PLUGIN_ROOT`, `CURSOR_PLUGIN_ROOT`, or
+`CLAUDE_PLUGIN_ROOT`). **Never
 surface a CLI subcommand to the operator** (Plugin spec §11) — the chat
 shows progress + consent gates, not commands.
 

@@ -205,10 +205,6 @@ export function stalenessLogPath(repoRoot: string): string {
   return join(stalenessDir(repoRoot), "log.jsonl");
 }
 
-export function stalenessCurrentPath(repoRoot: string): string {
-  return join(stalenessDir(repoRoot), "current.json");
-}
-
 /**
  * Layer A live-hook deferred-block log. PostToolUse Write/Edit appends
  * one rich record per block when the per-Write Haiku cap is exceeded

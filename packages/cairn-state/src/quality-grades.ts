@@ -1,11 +1,8 @@
-import { type Dirent, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import { getLogger } from "./logger.js";
-import { qualityGradesPath, runsTerminalDir } from "./paths.js";
+import { type Dirent, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { parse as parseYaml } from "yaml";
+import { runsTerminalDir } from "./paths.js";
 import { type QualityGrade, type QualityGrades } from "./schemas.js";
-
-const log = getLogger();
 
 interface SensorResult {
   sensor: string;
@@ -73,18 +70,6 @@ export function buildQualityGrades(opts: QualityGradesOptions): QualityGrades {
   }
   modules.sort((a, b) => a.score - b.score); // weakest first
   return { version: 1, generated: new Date().toISOString(), modules };
-}
-
-export function writeQualityGrades(opts: QualityGradesOptions): {
-  grades: QualityGrades;
-  path: string;
-} {
-  const grades = buildQualityGrades(opts);
-  const path = qualityGradesPath(opts.repoRoot);
-  mkdirSync(resolve(path, ".."), { recursive: true });
-  writeFileSync(path, stringifyYaml(grades), "utf8");
-  log.debug({ path, modules: grades.modules.length }, "wrote quality grades");
-  return { grades, path };
 }
 
 function listRecentRuns(dir: string, limit: number): string[] {

@@ -63,6 +63,12 @@ import { dirname, join, relative } from "node:path";
 import { stringify as stringifyYaml } from "yaml";
 import { z } from "zod";
 import { readHookStdin, parseHookPayload, resolveHookCwd, normalizePostToolUse, type NormalizedPostToolUsePayload } from "../runners/payload.js";
+import {
+  resolveAgentHost,
+  writePostToolUseOutput,
+  type AgentHost,
+  type HookRunOptions,
+} from "../hook-platform.js";
 import { resolveRepoRoot } from "../../session-start/index.js";
 import { runClaude } from "../../claude/index.js";
 import { cairnDir,
@@ -1580,24 +1586,8 @@ function pushAlignBlip(
 /* Hook runner — `cairn hook sot-align`                                       */
 /* -------------------------------------------------------------------------- */
 
-interface PostToolUseShapeBOutput {
-  continue: boolean;
-  hookSpecificOutput: {
-    hookEventName: "PostToolUse";
-    additionalContext: string;
-  };
-}
-
-function emitShapeB(additionalContext: string): void {
-  const out: PostToolUseShapeBOutput = {
-    continue: true,
-    hookSpecificOutput: {
-      hookEventName: "PostToolUse",
-      additionalContext,
-    },
-  };
-  process.stdout.write(JSON.stringify(out));
-  process.stdout.write("\n");
+function emitPostToolUse(host: AgentHost, additionalContext: string): void {
+  writePostToolUseOutput(host, additionalContext);
 }
 
 function parsePayload(text: string): ClaudePostToolUsePayload {
@@ -1628,36 +1618,37 @@ function summarize(result: AlignFileResult): string {
   return `cairn:sot-align — ${parts.join(" · ")}`;
 }
 
-export async function runSotAlign(): Promise<void> {
+export async function runSotAlign(options: HookRunOptions = {}): Promise<void> {
+  const host = resolveAgentHost(options.host);
   try {
     const raw = await readHookStdin();
     const hookPayload = parseHookPayload(raw);
     const payload = normalizePostToolUse(hookPayload);
     const tool = payload.tool_name;
     if (tool !== "Write" && tool !== "Edit") {
-      emitShapeB("");
+      emitPostToolUse(host, "");
       return;
     }
     const filePath = payload.tool_input?.file_path;
     if (typeof filePath !== "string" || filePath.length === 0) {
-      emitShapeB("");
+      emitPostToolUse(host, "");
       return;
     }
     const cwd = resolveHookCwd(hookPayload);
     const repoRoot = resolveRepoRoot(cwd);
     if (repoRoot === null) {
-      emitShapeB("");
+      emitPostToolUse(host, "");
       return;
     }
 
     const result = await executeSotAlign(payload, repoRoot);
-    emitShapeB(result);
+    emitPostToolUse(host, result);
   } catch (err) {
     log.warn(
       { err: err instanceof Error ? err.message : String(err) },
       "Layer A hook failed; degrading to no-op",
     );
-    emitShapeB("");
+    emitPostToolUse(host, "");
   }
 }
 

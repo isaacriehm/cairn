@@ -14,6 +14,14 @@ allowed-tools: Skill(cairn:cairn-attention), Task(curator-map), Task(curator-red
 
 # Skill: cairn-resync
 
+## Host portability
+
+This skill is shared by Claude Code, Cursor, and Codex. Resolve Cairn MCP
+tools with the host's native discovery mechanism and use its structured
+question UI, falling back to a concise A/B/C chat question. Named curator
+briefs live under `../../agents/`; dispatch them natively after reading the
+brief, or execute inline only when the host has no subagent capability.
+
 You are running Cairn's operator-initiated re-discovery so committed
 ground state catches up to a tree that has grown or been restructured
 since adoption.

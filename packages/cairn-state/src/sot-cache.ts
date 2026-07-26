@@ -47,21 +47,9 @@ export function setSotCacheEntry(cache: SotCache, decId: string, entry: SotCache
   return { ...cache, entries: { ...cache.entries, [decId]: entry } };
 }
 
-export function getSotCacheEntry(cache: SotCache, decId: string): SotCacheEntry | null {
-  return cache.entries[decId] ?? null;
-}
-
 export function deleteSotCacheEntry(cache: SotCache, decId: string): SotCache {
   if (cache.entries[decId] === undefined) return cache;
   const entries = { ...cache.entries };
   delete entries[decId];
   return { ...cache, entries };
-}
-
-/**
- * Iterate all entries. Layer A's pre-filter pass calls this on each
- * Write to compute Jaccard against every cached DEC body.
- */
-export function sotCacheEntries(cache: SotCache): SotCacheEntry[] {
-  return Object.values(cache.entries);
 }

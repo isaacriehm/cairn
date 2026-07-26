@@ -20,7 +20,6 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { stringify as stringifyYaml } from "yaml";
-import { z } from "zod";
 import type { McpContext } from "../context.js";
 import { cairnDir,
   anchorMapPath,
@@ -58,7 +57,8 @@ import { cairnDir,
 import { writeInvalidationEvent } from "../../events/index.js";
 import { withWriteLock } from "../../lock.js";
 import { requireBootstrap } from "../bootstrap-guard.js";
-import { mcpError } from "./types.js";
+import { mcpError } from "../errors.js";
+import { resolveAttentionInput } from "../schemas.js";
 import type { ToolDef } from "./types.js";
 import {
   parseDraftMeta,
@@ -77,30 +77,6 @@ import { scanBypassedCommits } from "../../hooks/bypass-detection.js";
 import { logger } from "../../logger.js";
 
 const log = logger("mcp.tools.resolve-attention");
-
-const resolveAttentionInput = {
-  kind: z.enum([
-    "decision_draft",
-    "baseline_finding",
-    "invalidation_event",
-    "drift",
-    "bypass",
-    "review",
-    "conflict",
-    "alignment_pending",
-  ]),
-  item_id: z.string().optional(),
-  // Batch form: resolve many items with the SAME kind + choice in one call.
-  // The cairn-attention "defer all" path otherwise issues one MCP round-trip
-  // per finding (dozens on a fresh adoption's baseline backlog). Pass
-  // `item_ids` to collapse that to a single call. Mutually exclusive-ish with
-  // `item_id`: when both appear, `item_ids` wins and `item_id` is ignored.
-  item_ids: z.array(z.string()).optional(),
-  choice: z.enum(["a", "b", "c", "d"]),
-  rationale: z.string().optional(),
-  defer_hours: z.number().optional(),
-  flagged_items: z.array(z.string()).optional(),
-};
 
 type AttentionKind =
   | "decision_draft"
@@ -221,6 +197,7 @@ function resolveStopSignal(
       const state = writeDeferState(ctx.repoRoot, kind, {
         flagged_shas: kind === "bypass" ? flagged : [],
         flagged_task_ids: kind === "review" ? flagged : [],
+        ...(input.defer_hours !== undefined ? { hours: input.defer_hours } : {}),
       });
       return {
         ok: true,

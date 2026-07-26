@@ -16,7 +16,10 @@ depends-on:
 > [Quick reference](guide/reference.md) for the everyday tool list, or
 > [Working with decisions](guide/decisions.md) for query patterns.
 
-The MCP server exposes structured retrieval, append-only writes, and history-explicit access for any registered coding agent (Claude Code, Codex). Lives in `packages/cairn-core/src/mcp/` and is started by `cairn mcp serve` (stdio transport).
+The MCP server exposes structured retrieval, append-only writes, and
+history-explicit access for any registered coding agent (Claude Code,
+Cursor, or Codex). It lives in `packages/cairn-core/src/mcp/` and is
+started by `cairn mcp serve` over stdio.
 
 ## Why MCP, not raw tools
 
@@ -43,7 +46,10 @@ Adopters register the server via `.mcp.json` (created by `cairn init`):
 }
 ```
 
-`cairn mcp serve` reads `--repo-root <path>` (defaults to `CAIRN_REPO_ROOT` env or `cwd`) and speaks MCP over stdio. Codex equivalent in `~/.codex/config`. Same binary serves both clients.
+`cairn mcp serve` reads `--repo-root <path>` (defaults to the active
+host's project-root input, `CAIRN_REPO_ROOT`, or `cwd`) and speaks MCP
+over stdio. The agent plugin ships host-native MCP registration for all
+three clients; the same binary serves each.
 
 ---
 
@@ -319,8 +325,9 @@ Used post-run for cost analysis and to detect agents over-querying (a smell).
 
 | Client | Status |
 |--------|--------|
-| Claude Code | Primary client; settings.json registration |
-| Codex | Secondary client; same server, same tools |
+| Claude Code | First-class plugin client; `.mcp.json` registration |
+| Cursor | First-class plugin client; `mcp.json` registration |
+| Codex Desktop + CLI | First-class plugin client; `.mcp.codex.json` registration |
 | Future | Generic MCP transport — any MCP-aware client |
 
 ---
@@ -331,7 +338,7 @@ Deliberate omissions, with reasons:
 
 | Omitted | Reason |
 |---------|--------|
-| `cairn_grep(query)` | Agents use Claude Code's native Grep + Cairn's canonical-zone walkers. An MCP grep would duplicate the agent's existing tool surface without adding access. |
+| `cairn_grep(query)` | Agents use their host's native search plus Cairn's canonical-zone walkers. An MCP grep would duplicate the existing tool surface without adding access. |
 | `cairn_decision_update` | Decisions are append-only via supersedes chain. No in-place edits — to remove one, `cairn_retire_decision` archives it. |
 | `cairn_invariant_disable` | Invariants are superseded with new entries, not disabled in place. To remove a rotted one, `cairn_retire_invariant` archives it. |
 | `cairn_run_create` / `cairn_record_run_event` / `cairn_drop_task` | Runtime concerns — run lifecycle and task queuing are owned by `cairn-runtime`, not the core MCP surface. |

@@ -12,27 +12,43 @@ purpose: Lock the plugin form factor — adoption, daily flow, state, concurrenc
 > Cairn rather than modify it, start with the user guide:
 > [Adopting Cairn](guide/adoption.md) and [Using Cairn day to day](guide/daily-flow.md).
 
-The plugin pivot: Cairn is shipped as a Claude Code plugin. The operator installs once at user level. From then on, opening Claude Code in any project activates Cairn. After a one-time visual adoption pass, Cairn runs invisibly — surfacing only via inline A/B/C prompts when it needs operator input.
+The plugin pivot: Cairn is shipped as one agent plugin with first-class
+Claude Code, Cursor, and Codex adapters. The operator installs once in the
+host they use. After a one-time visual adoption pass, Cairn runs invisibly,
+surfacing only via the host's structured question UI or concise A/B/C chat
+fallback when it needs operator input.
 
 ## §1 Vision
 
-Cairn becomes the **project maintainer**. After install + adoption, the operator just uses Claude Code normally and Cairn:
+Cairn becomes the **project maintainer**. After install + adoption, the
+operator uses their coding agent normally and Cairn:
 
 1. Intercepts vague prompts, asks **genuinely good questions** (not UX trivia) about forks that materially change the spec.
 2. Tightens the prompt into a structured spec via iterative dialogue.
-3. **Chunks complex tasks** and dispatches them as Claude Code subagents — each subagent inherits MCP tools and reads the tightened spec.
+3. **Chunks complex tasks** and dispatches them with the host's native
+   subagent surface—each subagent inherits or receives Cairn's MCP context
+   and reads the tightened spec.
 4. **Reviews and attests** at task completion via a bundled reviewer subagent.
 5. **Enforces constraints** with the sensor sweep at two gates: the pre-commit git hook (canonical backstop, blocks on hard findings) + CI (`cairn sensor-run --diff … --strict`). The plugin Stop hook surfaces in-session signals (stalled tasks, attention, bypasses) but does not run the sweep.
 6. **Captures decisions** the reviewer surfaces from the diff, auto-accepted into the ledger by default (verify-then-accept; §7.6) — review rides the PR diff, with dedup-fallback drafts surfaced inline next session.
 7. **Detects drift** between ground state and the working tree (GC sweep), surfaces remediation inline.
 
-Operator never types `cairn <subcommand>` for ongoing work. Only `cairn init` (terminal-side bootstrap) remains as a CLI surface; the in-Claude-Code path is the `/cairn-init` slash command + the auto-invoked `cairn-adopt` skill.
+Operator never types `cairn <subcommand>` for ongoing work. Only
+`cairn init` (terminal-side bootstrap) remains as a CLI surface. The shared
+`cairn-adopt` skill is the portable in-agent path; Claude Code also exposes
+the `/cairn-init` convenience command.
 
 ## §2 Form factor + agnosticism
 
-Claude Code is the **primary** frontend. The layered architecture preserves platform agnosticism: `cairn-core` remains pure state + MCP server (any MCP client works). The agent plugin package ships dual manifests (`.claude-plugin/` + `.cursor-plugin/`) with shared skills, agents, commands, and `dist/` — no duplicated sync tree.
+Claude Code, Cursor, and Codex are the supported everyday frontends. The
+layered architecture preserves platform agnosticism: `cairn-core` remains
+pure state + MCP server. The agent plugin package ships thin
+`.claude-plugin/`, `.cursor-plugin/`, and `.codex-plugin/` manifests with
+one shared skills/agents/runtime tree.
 
-Single-vendor lock-in is rejected at the architecture level; the agent plugin ships dual manifests for Claude Code and Cursor Agent from one package.
+Single-vendor lock-in is rejected at the architecture level. Host-specific
+code is limited to manifests, environment wiring, and hook payload
+serialization; workflow and ground-state logic never forks three ways.
 
 ## §3 Package layout
 
@@ -40,10 +56,10 @@ Single-vendor lock-in is rejected at the architecture level; the agent plugin sh
 packages/
   cairn/                              — umbrella + CLI bin (`cairn init`, `cairn join`, `cairn hook X`, …)
   cairn-core/                         — state + MCP + sensors + GC + hook runners + init pipeline
-  cairn-plugin/          — Claude Code + Cursor Agent plugin
-                                        (.claude-plugin + .cursor-plugin,
-                                         hooks.json + hooks.cursor.json,
-                                         .mcp.json + mcp.json, shared dist/)
+  cairn-plugin/                       — Claude Code + Cursor + Codex plugin
+                                        (three thin manifests,
+                                         host hook/MCP configs,
+                                         shared skills + agents + dist/)
   cairn-lens/                         — VS Code / Cursor IDE extension (parallel surface)
 ```
 
@@ -63,9 +79,17 @@ Lives at `packages/cairn-plugin/`:
 packages/cairn-plugin/
 ├── .claude-plugin/
 │   └── plugin.json                   — manifest (name, version, repo, etc.)
+├── .cursor-plugin/
+│   └── plugin.json                   — Cursor manifest
+├── .codex-plugin/
+│   └── plugin.json                   — Codex Desktop/CLI manifest
 ├── .mcp.json                         — registers cairn-core MCP server (stdio)
+├── .mcp.codex.json                   — Codex bundled MCP server
+├── mcp.json                          — Cursor bundled MCP server
 ├── hooks/
-│   └── hooks.json                    — SessionStart, Stop, PostToolUse[read-enrich]
+│   ├── hooks.json                    — Claude Code hooks
+│   ├── hooks.cursor.json             — Cursor native v1 hooks
+│   └── hooks.codex.json              — Codex hooks
 ├── skills/
 │   ├── cairn-adopt/SKILL.md             — first-time adoption flow
 │   ├── cairn-adopt-components/SKILL.md  — backfill the component store into an adopted repo
@@ -78,7 +102,12 @@ packages/cairn-plugin/
 └── package.json                      — workspace package, depends on cairn-core
 ```
 
-Component locations follow Claude Code's auto-discovery defaults (`skills/`, `commands/`, `agents/` at plugin root). MCP and hooks declared via dedicated files (`.mcp.json`, `hooks/hooks.json`) rather than inline in `plugin.json` for editability.
+Shared component locations follow the common plugin layout. Claude Code
+discovers `skills/`, `commands/`, and `agents/`; Codex loads the same
+`skills/` plus MCP and hooks declared by `.codex-plugin/plugin.json`;
+Cursor loads the same skills/runtime through its manifest and native v1
+hook file. Agent briefs remain readable by hosts whose plugin manifest
+does not register named agents directly.
 
 `plugin.json` minimum:
 
@@ -98,10 +127,15 @@ Component locations follow Claude Code's auto-discovery defaults (`skills/`, `co
 ## §5 Distribution
 
 - **v0 → v1**: GitHub URL distribution.
-  - User runs `/plugin marketplace add isaacriehm/cairn` once
-  - Then `/plugin install cairn@isaacriehm-cairn`
+  - Claude Code: `/plugin marketplace add isaacriehm/cairn`, then
+    `/plugin install cairn@isaacriehm-cairn`
+  - Cursor: Plugins → Add from GitHub → `isaacriehm/cairn`
+  - Codex CLI: `codex plugin marketplace add isaacriehm/cairn`, then
+    `codex plugin add cairn@cairn`; Codex Desktop reads the same repo
+    marketplace.
   - Tag `v0.1.0`, `v0.2.0`, … on each release; users pull via `/plugin update cairn@isaacriehm-cairn`
-- **v1.0.0 milestone**: evaluate moving to the official Anthropic plugin marketplace for first-class discovery + auto-update by default.
+- **v1.0.0 milestone**: evaluate first-class publication in the supported
+  vendor directories.
 
 Pre-publish (operator's call, not now): wipe history + push current clean working tree as the initial commit of the public repo. The private repo stays as authoritative dev backup.
 

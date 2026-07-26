@@ -22,10 +22,6 @@ import { RejectedYaml, type RejectedEntry } from "./schemas.js";
 
 const log = getLogger();
 
-export function emptyRejectedYaml(): RejectedYaml {
-  return { version: 1, generated: new Date().toISOString(), rejected: [] };
-}
-
 /**
  * Read `_rejected.yaml` and return a slug-keyed Map for O(1) lookups.
  * Missing file → empty Map. Malformed file → empty Map + warn (the
@@ -73,26 +69,6 @@ export function writeRejectedYaml(
   writeFileSafe(path, stringifyYaml(next));
   log.debug({ path, count: next.rejected.length }, "wrote _rejected.yaml");
   return path;
-}
-
-/**
- * Append (or refresh) a rejection record. Dedup by slug — first writer
- * wins the `reason` string; subsequent writes update `rejected_at`
- * only. Returns the merged Map without persisting; callers handle the
- * write so concurrent paths can batch under a single lock.
- */
-export function appendRejected(
-  current: Map<string, RejectedEntry>,
-  entry: RejectedEntry,
-): Map<string, RejectedEntry> {
-  const next = new Map(current);
-  const existing = next.get(entry.slug);
-  if (existing === undefined) {
-    next.set(entry.slug, entry);
-  } else {
-    next.set(entry.slug, { ...existing, rejected_at: entry.rejected_at });
-  }
-  return next;
 }
 
 /**

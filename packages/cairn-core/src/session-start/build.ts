@@ -21,6 +21,11 @@ import { cairnDir,
   readMissionState,
   readRoadmap,
 } from "@isaacriehm/cairn-state";
+import {
+  listPendingDrafts,
+  readLatestBaselineAudit,
+  type AttentionDraftEntry,
+} from "../attention/surface.js";
 import { allPhaseTasksDone } from "../missions/cursor.js";
 import { loadSensorRegistry } from "../sensors/catalog.js";
 import {
@@ -339,14 +344,13 @@ export async function buildSessionStartContext(
   // attestation cross-check, not actionable attention. Surfacing
   // 500+ soft findings as "⚑ N pending" gives the operator a count
   // they can't drain item-by-item.
-  const latestBaseline = readLatestBaselineAudit(args.repoRoot, warnings);
+  const latestBaseline = readLatestBaselineAudit(args.repoRoot, { warnings });
   // Config-drift (24h GC pass) writes its own baseline family; its findings are
   // actionable nudges, so roll them into the same hard-findings count.
-  const latestConfigDrift = readLatestBaselineAudit(
-    args.repoRoot,
+  const latestConfigDrift = readLatestBaselineAudit(args.repoRoot, {
     warnings,
-    "config-drift-",
-  );
+    prefix: "config-drift-",
+  });
   counts.baselineFindings =
     (latestBaseline?.hardFindings ?? 0) + (latestConfigDrift?.hardFindings ?? 0);
 
@@ -1013,55 +1017,6 @@ function renderQualityGradesSection(grades: QualityGrade[]): string | null {
   return lines.join("\n");
 }
 
-interface DraftEntry {
-  id: string;
-  title: string;
-  capture_source: string | null;
-  decided_at: string | null;
-}
-
-function listPendingDrafts(repoRoot: string, warnings: string[]): DraftEntry[] {
-  // Both DEC (`decisions/_inbox/`) and INV (`invariants/_inbox/`) drafts are
-  // operator-pending review items: init-curator + manual record_decision write
-  // the former, resync re-curation writes both. The id prefix (DEC-/INV-)
-  // tells the operator which is which; cairn-attention dispatches on it.
-  const dirs = [
-    cairnDir(repoRoot, "ground", "decisions", "_inbox"),
-    cairnDir(repoRoot, "ground", "invariants", "_inbox"),
-  ];
-  const out: DraftEntry[] = [];
-  for (const dir of dirs) {
-    if (!existsSync(dir)) continue;
-    let entries: Dirent[];
-    try {
-      entries = readdirSync(dir, { withFileTypes: true, encoding: "utf8" });
-    } catch {
-      continue;
-    }
-    for (const e of entries) {
-      if (!e.isFile()) continue;
-      if (!e.name.endsWith(".draft.md")) continue;
-      const abs = join(dir, e.name);
-      let text: string;
-      try {
-        text = readFileSync(abs, "utf8");
-      } catch (err) {
-        warnings.push(`draft ${e.name} unreadable: ${err instanceof Error ? err.message : String(err)}`);
-        continue;
-      }
-      const parsed = parseFrontmatter(text);
-      const fm = (parsed.frontmatter ?? {}) as Record<string, unknown>;
-      const id = typeof fm["id"] === "string" ? (fm["id"] as string) : e.name.replace(/\.draft\.md$/, "");
-      const title = typeof fm["title"] === "string" ? (fm["title"] as string) : "(untitled draft)";
-      const captureSource = typeof fm["capture_source"] === "string" ? (fm["capture_source"] as string) : null;
-      const decidedAt = typeof fm["decided_at"] === "string" ? (fm["decided_at"] as string) : null;
-      out.push({ id, title, capture_source: captureSource, decided_at: decidedAt });
-    }
-  }
-  out.sort((a, b) => a.id.localeCompare(b.id));
-  return out;
-}
-
 interface OnboardingArgs {
   repoRoot: string;
   pendingDrafts: number;
@@ -1069,7 +1024,7 @@ interface OnboardingArgs {
 }
 
 function renderFirstSessionOnboarding(args: OnboardingArgs): string | null {
-  const audit = readLatestBaselineAudit(args.repoRoot, args.warnings);
+  const audit = readLatestBaselineAudit(args.repoRoot, { warnings: args.warnings });
   if (audit === null) return null;
 
   const projectName = readProjectSlug(args.repoRoot) ?? basename(args.repoRoot);
@@ -1142,90 +1097,6 @@ function renderFirstSessionOnboarding(args: OnboardingArgs): string | null {
   return lines.join("\n");
 }
 
-interface BaselineSummary {
-  runAt: string | null;
-  totalFindings: number;
-  /** Only `severity: hard` findings — these are real action items. */
-  hardFindings: number;
-  /**
-   * `severity: soft` findings — inventory for the attestation cross-check,
-   * NOT actionable attention. Excluded from `attention_count` so the
-   * statusline doesn't surface 500+ commented-block matches as "pending"
-   * when the operator can't action them individually.
-   */
-  softFindings: number;
-  filesScanned: number;
-}
-
-function readLatestBaselineAudit(
-  repoRoot: string,
-  warnings: string[],
-  prefix = "sensor-audit-",
-): BaselineSummary | null {
-  const dir = cairnDir(repoRoot, "baseline");
-  if (!existsSync(dir)) return null;
-  let entries: string[];
-  try {
-    entries = readdirSync(dir, { encoding: "utf8" });
-  } catch (err) {
-    warnings.push(
-      `baseline dir read failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return null;
-  }
-  const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const re = new RegExp(`^${escaped}.*\\.yaml$`);
-  const matching = entries
-    .filter((name) => re.test(name))
-    .sort();
-  const latest = matching.at(-1);
-  if (latest === undefined) return null;
-  const abs = join(dir, latest);
-  try {
-    const parsed = parseYaml(readFileSync(abs, "utf8")) as Record<string, unknown>;
-    const runAt =
-      typeof parsed["run_at"] === "string" ? (parsed["run_at"] as string) : null;
-    const totalFindings =
-      typeof parsed["total_findings"] === "number"
-        ? (parsed["total_findings"] as number)
-        : 0;
-    const filesScanned =
-      typeof parsed["files_scanned"] === "number"
-        ? (parsed["files_scanned"] as number)
-        : 0;
-    const { hard, soft } = countFindingsBySeverity(parsed["sensors"]);
-    return { runAt, totalFindings, hardFindings: hard, softFindings: soft, filesScanned };
-  } catch (err) {
-    warnings.push(
-      `baseline audit unreadable: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return null;
-  }
-}
-
-/**
- * Walk the audit's `sensors[].findings[]` and tally by severity. Defensive
- * against schema drift — anything that isn't string `"hard"` or `"soft"`
- * is silently ignored rather than counted under the wrong bucket.
- */
-function countFindingsBySeverity(sensorsRaw: unknown): { hard: number; soft: number } {
-  let hard = 0;
-  let soft = 0;
-  if (!Array.isArray(sensorsRaw)) return { hard, soft };
-  for (const sensor of sensorsRaw) {
-    if (typeof sensor !== "object" || sensor === null) continue;
-    const findings = (sensor as Record<string, unknown>)["findings"];
-    if (!Array.isArray(findings)) continue;
-    for (const f of findings) {
-      if (typeof f !== "object" || f === null) continue;
-      const sev = (f as Record<string, unknown>)["severity"];
-      if (sev === "hard") hard += 1;
-      else if (sev === "soft") soft += 1;
-    }
-  }
-  return { hard, soft };
-}
-
 function readActiveSensorIds(repoRoot: string, warnings: string[]): string[] {
   try {
     const reg = loadSensorRegistry(repoRoot);
@@ -1271,7 +1142,7 @@ function humanizeMinutes(minutes: number): string {
   return `${days} day${days === 1 ? "" : "s"} ago`;
 }
 
-function renderPendingDraftsSection(drafts: DraftEntry[]): string | null {
+function renderPendingDraftsSection(drafts: AttentionDraftEntry[]): string | null {
   if (drafts.length === 0) return null;
   const lines: string[] = [];
   // Both DEC and INV drafts surface here (the id prefix disambiguates each row);

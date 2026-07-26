@@ -92,7 +92,6 @@ import {
 } from "./visual.js";
 import {
   runMapper,
-  validateMapperOutput,
   type MapperOutput,
   type MapperResult,
 } from "./mapper.js";

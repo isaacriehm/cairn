@@ -16,12 +16,9 @@
 import {
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
-  rmSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import {
@@ -32,26 +29,7 @@ import {
   uninstallCairn,
   writeScopeIndex,
 } from "@isaacriehm/cairn-core";
-
-const cleanups: string[] = [];
-
-function assert(cond: unknown, message: string): asserts cond {
-  if (!cond) {
-    console.error(`✗ ${message}`);
-    cleanup();
-    process.exit(1);
-  }
-}
-
-function cleanup(): void {
-  for (const p of cleanups.reverse()) {
-    try {
-      rmSync(p, { recursive: true, force: true });
-    } catch {
-      /* best-effort */
-    }
-  }
-}
+import { assert, cleanup, mkRepo } from "./lib/smoke-harness.js";
 
 function gitConfigGet(repo: string, key: string): string | null {
   try {
@@ -64,8 +42,7 @@ function gitConfigGet(repo: string, key: string): string | null {
 /** Build a fully adopted repo: config, a decision, a cited source file, the
  *  plugin-absent rule + import, and Cairn's git-hook path. */
 function mkAdoptedRepo(): { repo: string; decId: string } {
-  const repo = mkdtempSync(join(tmpdir(), "cairn-smoke-uninstall-"));
-  cleanups.push(repo);
+  const repo = mkRepo("cairn-smoke-uninstall-");
   execFileSync("git", ["init", "-q", "--initial-branch=main"], { cwd: repo });
   execFileSync("git", ["config", "user.email", "smoke@example.com"], { cwd: repo });
   execFileSync("git", ["config", "user.name", "Smoke"], { cwd: repo });

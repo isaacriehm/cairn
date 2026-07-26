@@ -1,0 +1,10 @@
+{
+  "cairn": {
+    "command": "node",
+    "args": [
+      "${PLUGIN_ROOT}/dist/cli.mjs",
+      "mcp",
+      "serve"
+    ]
+  }
+}

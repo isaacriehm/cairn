@@ -26,11 +26,15 @@ import {
   parseHookPayload,
   resolveHookCwd,
   appendTelemetry,
-  emitShapeB,
   normalizePostToolUse,
   pickWrittenContent,
   type NormalizedPostToolUsePayload,
 } from "../runners/payload.js";
+import {
+  resolveAgentHost,
+  writePostToolUseOutput,
+  type HookRunOptions,
+} from "../hook-platform.js";
 import { resolveRepoRoot } from "../../session-start/index.js";
 import { readCopySafetyConfig } from "./allowlist-reader.js";
 import { scanForCopyLeakage } from "./copy-scanner.js";
@@ -48,7 +52,8 @@ export interface GuardianResult {
 /**
  * Hook entry point.
  */
-export async function runWriteGuardian(): Promise<void> {
+export async function runWriteGuardian(options: HookRunOptions = {}): Promise<void> {
+  const host = resolveAgentHost(options.host);
   const ts = new Date().toISOString();
   let outcome: Record<string, unknown> = { skip: "unknown" };
   let repoRootForTrace: string | null = null;
@@ -61,7 +66,7 @@ export async function runWriteGuardian(): Promise<void> {
 
     if (payload.tool_name !== "Write" && payload.tool_name !== "Edit") {
       outcome = { skip: "non-write-tool", tool_name: payload.tool_name };
-      emitShapeB("", "PostToolUse");
+      writePostToolUseOutput(host, "");
       return;
     }
 
@@ -73,7 +78,7 @@ export async function runWriteGuardian(): Promise<void> {
         file_path: filePath ?? null,
         content_present: content !== undefined,
       };
-      emitShapeB("", "PostToolUse");
+      writePostToolUseOutput(host, "");
       return;
     }
 
@@ -82,7 +87,7 @@ export async function runWriteGuardian(): Promise<void> {
     repoRootForTrace = repoRoot;
     if (repoRoot === null) {
       outcome = { skip: "not-adopted", cwd };
-      emitShapeB("", "PostToolUse");
+      writePostToolUseOutput(host, "");
       return;
     }
 
@@ -102,15 +107,15 @@ export async function runWriteGuardian(): Promise<void> {
     };
 
     if (result.kind === "none") {
-      emitShapeB("", "PostToolUse");
+      writePostToolUseOutput(host, "");
     } else {
-      emitShapeB(result.message ?? "", "PostToolUse");
+      writePostToolUseOutput(host, result.message ?? "");
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     outcome = { error: message };
     log.error({ err: message }, "write-guardian hook failed");
-    emitShapeB("", "PostToolUse");
+    writePostToolUseOutput(host, "");
   } finally {
     if (repoRootForTrace !== null) {
       appendTelemetry({

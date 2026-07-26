@@ -30,6 +30,7 @@ import {
   type CommentKind,
   type CommentLang,
 } from "@isaacriehm/cairn-state";
+import { SOURCE_SKIP_DIRS } from "../../paths/skip-dirs.js";
 export type { CommentBlock, CommentKind, CommentLang };
 
 /**
@@ -38,37 +39,6 @@ export type { CommentBlock, CommentKind, CommentLang };
  * `commentLang` is `"unknown"` is listed but skipped during extraction.
  */
 const SOURCE_EXTENSIONS = new Set<string>(knownExtensions());
-
-const SKIP_DIRS = new Set<string>([
-  ".git",
-  "node_modules",
-  "dist",
-  "build",
-  "target",
-  "out",
-  "__pycache__",
-  "vendor",
-  ".venv",
-  ".direnv",
-  ".cache",
-  "coverage",
-  ".next",
-  ".turbo",
-  ".nuxt",
-  ".svelte-kit",
-  ".astro",
-  ".parcel-cache",
-  ".vercel",
-  ".netlify",
-  ".pytest_cache",
-  ".mypy_cache",
-  ".ruff_cache",
-  ".tox",
-  ".gradle",
-  ".idea",
-  ".vscode",
-  ".cairn",
-]);
 
 /** Lower bound: only consider blocks above one of these. */
 const MIN_LINES = 4;
@@ -193,8 +163,8 @@ function listFromFs(repoRoot: string): string[] {
     dir: repoRoot,
     repoRoot,
     onDir: (rel: string, abs: string, ent: import("node:fs").Dirent) => {
-      if (ent.name.startsWith(".") && SKIP_DIRS.has(ent.name)) return false;
-      if (SKIP_DIRS.has(ent.name)) return false;
+      if (ent.name.startsWith(".") && SOURCE_SKIP_DIRS.has(ent.name)) return false;
+      if (SOURCE_SKIP_DIRS.has(ent.name)) return false;
       return true;
     },
     onFile: (rel: string) => {
@@ -206,7 +176,7 @@ function listFromFs(repoRoot: string): string[] {
 
 function pathInSkipDir(rel: string): boolean {
   const segs = rel.split(/[\\/]/);
-  for (const s of segs) if (SKIP_DIRS.has(s)) return true;
+  for (const s of segs) if (SOURCE_SKIP_DIRS.has(s)) return true;
   return false;
 }
 

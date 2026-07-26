@@ -9,40 +9,17 @@ import { execFileSync } from "node:child_process";
 import {
   appendFileSync,
   mkdirSync,
-  mkdtempSync,
-  rmSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  renderBypassHint,
   scanBypassedCommits,
+  renderBypassHint,
 } from "@isaacriehm/cairn-core";
-
-const cleanups: string[] = [];
-
-function assert(cond: unknown, message: string): asserts cond {
-  if (!cond) {
-    console.error(`✗ ${message}`);
-    cleanup();
-    process.exit(1);
-  }
-}
-
-function cleanup(): void {
-  for (const path of cleanups.reverse()) {
-    try {
-      rmSync(path, { recursive: true, force: true });
-    } catch {
-      // best-effort
-    }
-  }
-}
+import { assert, cleanup, mkRepo as mkTempDir } from "./lib/smoke-harness.js";
 
 function mkRepo(): string {
-  const dir = mkdtempSync(join(tmpdir(), "cairn-smoke-bypass-"));
-  cleanups.push(dir);
+  const dir = mkTempDir("cairn-smoke-bypass-");
   execFileSync("git", ["init", "-q", "--initial-branch=main"], { cwd: dir });
   execFileSync("git", ["config", "user.email", "smoke@example.com"], { cwd: dir });
   execFileSync("git", ["config", "user.name", "Smoke"], { cwd: dir });
@@ -69,8 +46,7 @@ function step(label: string): void {
 
 async function main(): Promise<void> {
   step("Step 1 — non-git dir → no bypassed");
-  const tmp = mkdtempSync(join(tmpdir(), "cairn-smoke-bypass-empty-"));
-  cleanups.push(tmp);
+  const tmp = mkTempDir("cairn-smoke-bypass-empty-");
   const r1 = scanBypassedCommits(tmp);
   assert(r1.bypassed.length === 0, "no bypassed in non-git dir");
   assert(r1.inspected === 0, "inspected = 0");
@@ -138,8 +114,7 @@ async function main(): Promise<void> {
   // it must NOT be flagged. Only local, unpushed work is a bypass
   // candidate (`git log HEAD --not --remotes`).
   const teamRepo = mkRepo();
-  const bare = mkdtempSync(join(tmpdir(), "cairn-smoke-bypass-remote-"));
-  cleanups.push(bare);
+  const bare = mkTempDir("cairn-smoke-bypass-remote-");
   execFileSync("git", ["init", "-q", "--bare", bare]);
   const shared = commit(teamRepo, "shared (on remote, not attested)");
   execFileSync("git", ["remote", "add", "origin", bare], { cwd: teamRepo });

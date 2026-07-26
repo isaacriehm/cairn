@@ -12,16 +12,17 @@ generated: 2026-05-05
 > [Core concepts](guide/concepts.md).
 
 Cairn is **state management + context loading for AI coding agents**. The
-Claude Code plugin is the primary surface that adopters interact with; the
-CLI provides bootstrap and debug entrypoints. Everything else is built on
-top of a curated, queryable ground state at `.cairn/ground/`.
+shared Claude Code, Cursor, and Codex plugin is the primary surface that
+adopters interact with; the CLI provides bootstrap and debug entrypoints.
+Everything else is built on a curated, queryable ground state at
+`.cairn/ground/`.
 
 ## §1 Three layers, five packages
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐
 │  FRONTEND (UX surface — pluggable)                                 │
-│    cairn-plugin   — Claude Code + Cursor Agent plugin │
+│    cairn-plugin   — Claude Code + Cursor + Codex plugin             │
 │    cairn-lens                  — VS Code / Cursor extension        │
 └────────────────────────────────────────┬───────────────────────────┘
                                          │ MCP server + hooks
@@ -45,9 +46,9 @@ top of a curated, queryable ground state at `.cairn/ground/`.
 ```
 
 Each layer installs independently. The minimum useful install is
-`cairn-core` + the Claude Code plugin — adopters point Claude Code at the
-plugin, the plugin invokes the CLI for hook runners and the MCP server, and
-ground state lives in `.cairn/`.
+`cairn-core` + one supported agent host—adopters install the shared plugin,
+the host invokes the CLI for hook runners and the MCP server, and ground
+state lives in `.cairn/`.
 
 ## §2 Why this split
 
@@ -153,12 +154,14 @@ direct bin entrypoints under `cairn-core/dist/hooks/<event>.js` for
 flexibility — the published plugin shells out to `cairn hook <event>`
 instead so the binary stays the contract.
 
-### 3.3 `cairn-plugin` — Claude Code + Cursor Agent plugin
+### 3.3 `cairn-plugin` — Claude Code + Cursor + Codex plugin
 
-Plugin manifest, `.mcp.json` (registers `cairn mcp serve`), `hooks.json`
-(SessionStart, SessionEnd, Stop, PostToolUse), skills (`cairn-adopt`,
-`cairn-direction`, `cairn-attention`), agents (reviewer subagent), slash
-commands (`/cairn-init`, `/cairn-direction`).
+Thin host manifests and hook/MCP adapters for Claude Code, Cursor, and
+Codex, all backed by one `dist/cli.mjs`, one MCP server, and one copy of
+the shared skills and agent briefs. Host-specific protocol serialization
+stops at the hook-platform boundary; ground-state and workflow logic do
+not fork by host. Claude-only slash commands and status-line integration
+remain accurately scoped extensions.
 
 ### 3.4 `cairn-lens` — VS Code / Cursor extension
 

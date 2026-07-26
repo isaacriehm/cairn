@@ -13,8 +13,7 @@
  */
 
 import { execSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   PHASE_IDS,
@@ -25,30 +24,10 @@ import {
   type PhaseId,
   type PhaseState,
 } from "@isaacriehm/cairn-core";
+import { assert, cleanup, mkRepo } from "./lib/smoke-harness.js";
 
-const cleanups: string[] = [];
-
-function assert(cond: unknown, message: string): asserts cond {
-  if (!cond) {
-    console.error(`✗ ${message}`);
-    cleanup();
-    process.exit(1);
-  }
-}
-
-function cleanup(): void {
-  for (const path of cleanups.reverse()) {
-    try {
-      rmSync(path, { recursive: true, force: true });
-    } catch {
-      // best-effort
-    }
-  }
-}
-
-function mkRepo(): string {
-  const dir = mkdtempSync(join(tmpdir(), "cairn-smoke-init-mcp-tools-"));
-  cleanups.push(dir);
+function mkGitRepo(): string {
+  const dir = mkRepo("cairn-smoke-init-mcp-tools-");
   execSync("git init -q", { cwd: dir });
   execSync('git config user.email smoke@example.com', { cwd: dir });
   execSync('git config user.name "smoke"', { cwd: dir });
@@ -109,7 +88,7 @@ async function runSmoke(): Promise<void> {
   // no state echo (state lives on disk so MCP responses stay under
   // the spillover-to-file token cap on real monorepos).
   {
-    const repo = mkRepo();
+    const repo = mkGitRepo();
     const tool = findTool("cairn_init_resume");
     const result = (await tool.handler(mkCtx(repo), {})) as {
       status: string;
@@ -131,7 +110,7 @@ async function runSmoke(): Promise<void> {
   // on disk, not in the echo. Smoke verifies the on-disk state
   // captures the phase output.
   {
-    const repo = mkRepo();
+    const repo = mkGitRepo();
     const ctx = mkCtx(repo);
     const tool = findTool("cairn_init_run");
     const state = freshPhaseState(repo);
@@ -163,7 +142,7 @@ async function runSmoke(): Promise<void> {
   // Skill default: callers pass { phase, answer? } — wrapper loads
   // state from .cairn/init-state.json.
   {
-    const repo = mkRepo();
+    const repo = mkGitRepo();
     const ctx = mkCtx(repo);
     const tool = findTool("cairn_init_run");
     // Run 1-detect with explicit state to seed disk; then call 2-walker
@@ -194,7 +173,7 @@ async function runSmoke(): Promise<void> {
   // ── Step 3c — cairn_init_run with no disk state and no state arg
   // returns VALIDATION_FAILED rather than crashing.
   {
-    const repo = mkRepo();
+    const repo = mkGitRepo();
     const ctx = mkCtx(repo);
     const tool = findTool("cairn_init_run");
     const payload = (await tool.handler(ctx, { phase: "1-detect" })) as {
@@ -218,7 +197,7 @@ async function runSmoke(): Promise<void> {
   // mapper run with whatever shape the caller sent in. Verify disk
   // state is unchanged after an error response.
   {
-    const repo = mkRepo();
+    const repo = mkGitRepo();
     const ctx = mkCtx(repo);
     const tool = findTool("cairn_init_run");
     // Seed disk with valid 1-detect output.
@@ -247,7 +226,7 @@ async function runSmoke(): Promise<void> {
 
   // ── Step 4 — wrong-phase state rejected with VALIDATION_FAILED ──
   {
-    const repo = mkRepo();
+    const repo = mkGitRepo();
     const ctx = mkCtx(repo);
     const tool = findTool("cairn_init_run");
     const state: PhaseState = {
@@ -271,8 +250,8 @@ async function runSmoke(): Promise<void> {
 
   // ── Step 5 — repoRoot mismatch rejected ─────────────────────────
   {
-    const repoA = mkRepo();
-    const repoB = mkRepo();
+    const repoA = mkGitRepo();
+    const repoB = mkGitRepo();
     const ctx = mkCtx(repoA);
     const tool = findTool("cairn_init_run");
     const state = freshPhaseState(repoB); // different repo

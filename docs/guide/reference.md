@@ -8,15 +8,15 @@ the other guides; this is the cheat sheet.
 
 ## CLI commands
 
-The CLI is `cairn`. Installed at user level via the Claude Code
-plugin (bundled, accessed via `node "$(cat ~/.claude/plugins/cache/isaacriehm-cairn/.active-version-path)" <subcommand>`)
-or directly via `npm install -g @isaacriehm/cairn`.
+The CLI is `cairn`. Every host plugin ships the same bundled
+`dist/cli.mjs`; it can also be installed directly with
+`npm install -g @isaacriehm/cairn`.
 
 ### Bootstrap and adoption
 
 | Command                        | What                                                                  | When                                                                   |
 | ------------------------------ | --------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `cairn init`                   | Run the 13-phase adoption pipeline from a terminal.                   | When you'd rather drive adoption from a shell than from Claude Code.   |
+| `cairn init`                   | Run the 13-phase adoption pipeline from a terminal.                   | When you'd rather drive adoption from a shell than from an agent chat. |
 | `cairn join`                   | Bootstrap this clone — set `core.hooksPath`, verify CLI version.      | First time on a clone. Idempotent — safe to re-run.                    |
 | `cairn doctor`                 | Health check — ledger integrity, hook installation, version pin. Exits 0 on advisory warnings (errors → 1). | When something feels off; safe as a CI health gate.   |
 | `cairn doctor --strict`        | Same health check, but exit 2 when any warning is present.            | When you want warnings to hard-fail a CI job.                          |
@@ -69,11 +69,11 @@ or directly via `npm install -g @isaacriehm/cairn`.
 | ---------------------------------------- | ------------------------------------------------------------------------ |
 | `cairn mcp serve`                        | Start the MCP server (stdio). Registered by the plugin via `.mcp.json`.  |
 | `cairn mcp call <tool> '<json>'`         | Call an MCP tool from a shell with a JSON payload.                       |
-| `cairn hook session-start`               | Hook runner for the SessionStart event.                                  |
-| `cairn hook stop`                        | Hook runner for the Stop event.                                          |
-| `cairn hook post-tool-use/read`          | PostToolUse(Read) — citation enrichment.                                 |
-| `cairn hook post-tool-use/write`         | PostToolUse(Write\|Edit) — scope-index sync.                             |
-| `cairn hook session-end`                 | Hook runner for SessionEnd.                                              |
+| `cairn hook session-start --host <host>` | SessionStart runner for `claude-code`, `cursor`, or `codex`.              |
+| `cairn hook stop --host <host>`          | Host-native Stop runner.                                                  |
+| `cairn hook read-enrich --host <host>`   | PostToolUse(Read) citation enrichment.                                    |
+| `cairn hook post-write --host <host>`    | PostToolUse(Write/Edit/apply_patch) shared write pipeline.                 |
+| `cairn hook session-end --host <host>`   | SessionEnd runner where the host exposes that event.                      |
 
 ---
 

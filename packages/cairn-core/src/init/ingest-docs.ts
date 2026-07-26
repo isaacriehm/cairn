@@ -44,7 +44,6 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
-  statSync,
   writeFileSync,
 } from "node:fs";
 import { join, relative } from "node:path";
@@ -59,7 +58,6 @@ import {
   readRejectedYaml,
   readTopicIndex,
   setTopic,
-  walkFs,
   writeFileCandidatesMap,
   writeTopicIndex,
   type AnchorMap,
@@ -99,20 +97,6 @@ const SECTION_TIMEOUT_MS = 120_000;
 const CAPTURE_SOURCE = "init-docs-ingest";
 /** Decided-by stamp on every Stage 2/3 emit. */
 const DECIDED_BY = "cairn-init";
-
-/** Subdirs we never descend into when discovering candidate doc files. */
-const SKIP_DIRS = new Set([
-  ".cairn",
-  "node_modules",
-  ".git",
-  "dist",
-  "build",
-  "out",
-  ".next",
-  ".turbo",
-  ".cache",
-  "coverage",
-]);
 
 /* -------------------------------------------------------------------------- */
 /* Public types                                                               */
@@ -200,42 +184,6 @@ export interface RunDocsIngestionArgs {
   existingDecIds?: Set<string>;
   /** Progress callback fired once per completed batch. */
   onChunkProgress?: (row: ChunkProgressRow) => void;
-}
-
-/* -------------------------------------------------------------------------- */
-/* Discovery (still useful for sanity checks + external callers)              */
-/* -------------------------------------------------------------------------- */
-
-export function discoverDocs(repoRoot: string): DocCandidate[] {
-  const docsDir = join(repoRoot, "docs");
-  if (!existsSync(docsDir)) return [];
-  const out: DocCandidate[] = [];
-  walkFs({
-    dir: docsDir,
-    repoRoot,
-    skipDirs: SKIP_DIRS,
-    onFile: (rel: string, abs: string, ent: Dirent) => {
-      if (!ent.name.endsWith(".md")) return;
-      let st;
-      try {
-        st = statSync(abs);
-      } catch {
-        return;
-      }
-      out.push({
-        path: rel,
-        size: st.size,
-        group: dirGroup(rel),
-      });
-    },
-  });
-  return out;
-}
-
-function dirGroup(rel: string): string {
-  const parts = rel.split("/");
-  if (parts.length <= 1) return "(root)";
-  return `${parts[0]}/`;
 }
 
 /* -------------------------------------------------------------------------- */

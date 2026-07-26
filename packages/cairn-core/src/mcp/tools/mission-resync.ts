@@ -12,8 +12,8 @@
  * operator gates the apply step via `cairn_mission_resync_accept`.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { isAbsolute, join, resolve as pathResolve } from "node:path";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   appendMissionJournal,
   findActiveMission,
@@ -25,6 +25,8 @@ import { requireBootstrap } from "../bootstrap-guard.js";
 import { mcpError } from "../errors.js";
 import { missionResyncInput } from "../schemas.js";
 import { draftRoadmapFromSpec, stubRoadmap } from "../../missions/index.js";
+import { readSpecSource } from "../../missions/spec-io.js";
+import { mapMissionCliError } from "./mission-cli-error.js";
 import type { ToolDef } from "./types.js";
 
 interface Input {
@@ -47,22 +49,11 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
   }
 
   const specPath = input.spec_path ?? roadmap.frontmatter.spec_path;
-  const absSpec = isAbsolute(specPath) ? specPath : pathResolve(ctx.repoRoot, specPath);
-  if (!absSpec.startsWith(ctx.repoRoot)) {
-    return mcpError("PATH_OUTSIDE_REPO", `${specPath} resolves outside the repo`);
-  }
-  if (!existsSync(absSpec)) {
-    return mcpError("FILE_NOT_FOUND", `Spec doc not found: ${specPath}`);
-  }
-
   let source: string;
   try {
-    source = readFileSync(absSpec, "utf8");
+    source = readSpecSource(ctx.repoRoot, specPath);
   } catch (err) {
-    return mcpError(
-      "INTERNAL_ERROR",
-      `Failed to read spec doc: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    return mapMissionCliError(err);
   }
 
   let newPhases;

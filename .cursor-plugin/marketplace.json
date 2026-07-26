@@ -5,8 +5,8 @@
   "plugins": [
     {
       "name": "cairn",
-      "source": "packages/cairn-plugin",
-      "description": "Cairn — Claude Code + Cursor Agent plugin (shared skills, agents, dist)"
+      "source": "./packages/cairn-plugin",
+      "description": "Cairn — Claude Code, Cursor, and Codex plugin (shared skills and runtime)"
     }
   ]
 }

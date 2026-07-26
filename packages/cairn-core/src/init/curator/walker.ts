@@ -39,20 +39,10 @@ import {
 import { walkFs } from "@isaacriehm/cairn-state";
 import type { Dirent } from "node:fs";
 import { readMapperOutputFile } from "../phases/mapper-output-io.js";
+import { DOC_SKIP_DIRS } from "../../paths/skip-dirs.js";
 
 const MIN_DOC_PARAGRAPH_CHARS = 80;
 const SOURCE_FILE_CAP = 5_000;
-const SKIP_DIRS = new Set([
-  ".git",
-  "node_modules",
-  "dist",
-  "build",
-  "target",
-  "out",
-  ".next",
-  ".turbo",
-  ".cairn",
-]);
 
 export interface RunCuratorWalkerArgs {
   repoRoot: string;
@@ -300,7 +290,7 @@ function discoverDocsForCurator(repoRoot: string): string[] {
       repoRoot,
       onDir: (_rel: string, _abs: string, ent: Dirent) => {
         if (ent.name.startsWith(".")) return false;
-        if (SKIP_DIRS.has(ent.name)) return false;
+        if (DOC_SKIP_DIRS.has(ent.name)) return false;
         return true;
       },
       onFile: (rel: string, abs: string, ent: Dirent) => {

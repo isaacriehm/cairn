@@ -2,12 +2,13 @@
 
 # Cairn
 
-**Persistent ground truth for Claude Code and Cursor.**
+**Persistent ground truth for Claude Code, Cursor, and Codex.**
 Stop AI agents from drifting.
 
 [![npm version](https://img.shields.io/npm/v/@isaacriehm/cairn?style=flat-square&logo=npm&color=CB3837)](https://www.npmjs.com/package/@isaacriehm/cairn)
 [![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-Plugin-D97706?style=flat-square)](https://claude.com/claude-code)
 [![Cursor Plugin](https://img.shields.io/badge/Cursor-Plugin-6366F1?style=flat-square)](https://cursor.com)
+[![Codex Plugin](https://img.shields.io/badge/Codex-Plugin-111827?style=flat-square)](https://developers.openai.com/codex/)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A522-brightgreen?style=flat-square)](https://nodejs.org)
 
@@ -23,6 +24,12 @@ Stop AI agents from drifting.
 Settings → Cursor → Plugins → Add from GitHub → isaacriehm/cairn
 ```
 
+### Codex CLI
+```bash
+codex plugin marketplace add isaacriehm/cairn
+codex plugin add cairn@cairn
+```
+
 [The Problem](#the-problem) · [What You Get](#what-you-get) · [Quick Start](#quick-start) · [Glossary](#glossary) · [How It Works](#how-it-works) · [Features](#features) · [Multi-Dev](#multi-developer-enforcement) · [Docs](#documentation)
 
 </div>
@@ -31,8 +38,8 @@ Settings → Cursor → Plugins → Add from GitHub → isaacriehm/cairn
 
 A *cairn* is a stack of stones marking a trail. This project stacks the
 **decisions, invariants, and canonical references** that define your
-codebase into a single queryable ground state — so every Claude Code
-or Cursor Agent session starts with the same map.
+codebase into a single queryable ground state — so every Claude Code,
+Cursor, or Codex session starts with the same map.
 
 ## The Problem
 
@@ -76,8 +83,8 @@ pre-commit and again at CI.
 paths instead of the agent grepping vaguely or fabricating them.
 
 Plus four runtime layers that keep those stores live: an **MCP
-server** (29 typed tools), a **Claude Code plugin** (skills + hooks +
-reviewer agent), **sensors** (stub-catalog + decision-assertions), and
+server** (typed tools), a **shared agent plugin** (skills + hooks +
+reviewer briefs), **sensors** (stub-catalog + decision-assertions), and
 a **CLI** for bootstrap and debug.
 
 ## Quick Start
@@ -113,9 +120,23 @@ Or via the command palette: search **"Add Plugin from GitHub"**, enter
 from the repo root and installs `packages/cairn-plugin/`
 directly — same self-contained bundle as Claude Code, no npm install required.
 
+### Codex Desktop and CLI
+
+```bash
+codex plugin marketplace add isaacriehm/cairn
+codex plugin add cairn@cairn
+```
+
+The repo marketplace lives at `.agents/plugins/marketplace.json`. Codex
+Desktop and the CLI load the same `.codex-plugin/plugin.json`, shared
+skills, MCP server, hook runtime, and committed bundle. In Codex Desktop,
+restart after adding the repo source, open **Plugins**, select **Cairn**,
+and install it. Review and trust the bundled hooks when Codex prompts;
+plugin hooks do not run before that explicit trust step.
+
 ---
 
-Open Claude Code or Cursor in any project. The plugin auto-detects on
+Open Claude Code, Cursor, or Codex in any project. The plugin auto-detects on
 session start and offers `[a] adopt now`. Pick `[a]` once. The
 pipeline streams inline — typically 2-15 minutes depending on repo
 size.
@@ -301,9 +322,16 @@ state — it does **not** run the sensor sweep. Drift events log to
   SessionEnd, Stop, UserPromptSubmit, PostToolUse — matchers
   Read, Write|Edit, AskUserQuestion) + 5 skills + 5 agents +
   4 commands.
-- **Cursor plugin** — same `cairn-plugin` package, dual manifest
-  (`.cursor-plugin/` + `hooks.cursor.json` + `mcp.json` + `rules/`). Shared
-  skills, agents, commands, and `dist/` — no duplicate sync tree.
+- **Cursor plugin** — same `cairn-plugin` package, thin host manifest
+  (`.cursor-plugin/` + native v1 `hooks.cursor.json` + `mcp.json` +
+  `rules/`).
+- **Codex plugin** — `.codex-plugin/` manifest + `PLUGIN_ROOT` hooks +
+  bundled MCP config. Works in Codex Desktop and CLI. Codex handles
+  multi-file `apply_patch` calls through the same guardian/alignment
+  pipeline.
+- **One implementation** — all three adapters call the same shared skills,
+  hook runners, MCP server, agents, and `dist/`; only the host manifests
+  and protocol serializers differ.
 - **Cairn Lens** — VS Code / Cursor extension. Hover, gutter icons,
   code lens, optional DEC Explorer sidebar. Resolves `§INV-<hash>`,
   `§DEC-<hash>`, `TODO(TSK-…)` inline. Read-only — same ground state,
@@ -384,7 +412,7 @@ packages/
 ├── cairn/                       umbrella + CLI bin (`cairn …`)
 ├── cairn-core/                  MCP server, sensors, hooks, init pipeline
 ├── cairn-state/                 ground-state schemas + low-level I/O
-├── cairn-plugin/   Claude Code + Cursor plugin (dual manifest, one dist/)
+├── cairn-plugin/   Claude Code + Cursor + Codex plugin (thin manifests, one dist/)
 └── cairn-lens/                  VS Code / Cursor extension (.vsix)
 ```
 
@@ -418,13 +446,13 @@ git clone https://github.com/isaacriehm/cairn
 cd cairn
 pnpm install
 pnpm build
-pnpm smokes        # 38-smoke gate. all green on a clean tree.
+pnpm smokes        # default smoke gate; all green on a clean tree
 ```
 
 Other root scripts: `pnpm typecheck`, `pnpm clean`, `pnpm smokes:all`
 (every declared smoke), `pnpm smoke:llm-prompt-eval` (opt-in
 real-Haiku regression — burns quota). See
-[`CLAUDE.md`](CLAUDE.md#common-commands) for the full table.
+[`AGENTS.md`](AGENTS.md#common-commands) for the full table.
 
 ## Troubleshooting
 
@@ -455,7 +483,7 @@ from the auto-invoke listing, still reachable via `/<name>`).
 
 ## Status
 
-Pre-1.0. The Claude Code and Cursor plugins are the daily-driven
+Pre-1.0. The Claude Code, Cursor, and Codex plugins are the daily-driven
 surfaces; the CLI is the bootstrap and debug entrypoint. Issues + PRs
 welcome.
 
@@ -466,7 +494,7 @@ welcome.
 ---
 
 <div align="center">
-<sub>Built with Claude Code. The plugin architecture takes cues from OpenAI's "harness lesson" on agent state — Cairn extends those ideas with explicit decisions, invariants, sensors, and a multi-developer enforcement layer for solo-or-small-team product engineering.</sub>
+<sub>Built with Claude Code and Codex. The plugin architecture takes cues from OpenAI's "harness lesson" on agent state — Cairn extends those ideas with explicit decisions, invariants, sensors, and a multi-developer enforcement layer for solo-or-small-team product engineering.</sub>
 
 <sub>Cursor plugin by <a href="https://github.com/chrismuntean">Chris Muntean</a>.</sub>
 </div>

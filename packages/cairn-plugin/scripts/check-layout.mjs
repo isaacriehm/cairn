@@ -100,15 +100,15 @@ if (hooksFile) {
     // `"…"` the shell splits on whitespace and `node` fails to
     // resolve the module path.
     const ALLOWED = new Set([
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook session-start',
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook session-end',
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook stop',
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook user-prompt-submit',
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook read-enrich',
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook write-guard',
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook sot-align',
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook post-write',
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook ask-user-blocked',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook session-start --host claude-code',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook session-end --host claude-code',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook stop --host claude-code',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook user-prompt-submit --host claude-code',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook read-enrich --host claude-code',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook write-guard --host claude-code',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook sot-align --host claude-code',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook post-write --host claude-code',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook ask-user-blocked --host claude-code',
     ]);
     const visit = (event, entries) => {
       for (const entry of entries) {
@@ -291,8 +291,8 @@ function checkSkillListingCap(path, label) {
 // ── Cursor plugin (shared package — no duplicated skills/dist) ───────
 const cursorManifest = readJson(join(PKG_ROOT, ".cursor-plugin", "plugin.json"));
 if (cursorManifest) {
-  if (cursorManifest.hooks !== "hooks/hooks.cursor.json") {
-    fail('.cursor-plugin/plugin.json: hooks must be "hooks/hooks.cursor.json"');
+  if (cursorManifest.hooks !== "./hooks/hooks.cursor.json") {
+    fail('.cursor-plugin/plugin.json: hooks must be "./hooks/hooks.cursor.json"');
   }
 }
 
@@ -308,20 +308,23 @@ if (cursorMcp) {
 
 const cursorHooks = readJson(join(PKG_ROOT, "hooks", "hooks.cursor.json"));
 if (cursorHooks) {
+  if (cursorHooks.version !== 1) {
+    fail("hooks.cursor.json: version must be 1");
+  }
   const CURSOR_ALLOWED = new Set([
-    'node "${CURSOR_PLUGIN_ROOT}/dist/cli.mjs" hook session-start --cursor',
-    'node "${CURSOR_PLUGIN_ROOT}/dist/cli.mjs" hook session-end --cursor',
-    'node "${CURSOR_PLUGIN_ROOT}/dist/cli.mjs" hook stop --cursor',
-    'node "${CURSOR_PLUGIN_ROOT}/dist/cli.mjs" hook read-enrich --cursor',
-    'node "${CURSOR_PLUGIN_ROOT}/dist/cli.mjs" hook post-write --cursor',
-    'node "${CURSOR_PLUGIN_ROOT}/dist/cli.mjs" hook ask-user-blocked --cursor',
+    'node "${CURSOR_PLUGIN_ROOT}/dist/cli.mjs" hook session-start --host cursor',
+    'node "${CURSOR_PLUGIN_ROOT}/dist/cli.mjs" hook session-end --host cursor',
+    'node "${CURSOR_PLUGIN_ROOT}/dist/cli.mjs" hook stop --host cursor',
+    'node "${CURSOR_PLUGIN_ROOT}/dist/cli.mjs" hook read-enrich --host cursor',
+    'node "${CURSOR_PLUGIN_ROOT}/dist/cli.mjs" hook post-write --host cursor',
   ]);
   for (const event of ["sessionStart", "sessionEnd", "stop", "postToolUse"]) {
     for (const entry of cursorHooks.hooks?.[event] ?? []) {
-      for (const hook of entry.hooks ?? []) {
-        if (!CURSOR_ALLOWED.has(hook.command)) {
-          fail(`hooks.cursor.json: ${event}: unexpected command ${hook.command}`);
-        }
+      if (entry.hooks !== undefined) {
+        fail(`hooks.cursor.json: ${event}: Cursor v1 entries must not use nested hooks`);
+      }
+      if (!CURSOR_ALLOWED.has(entry.command)) {
+        fail(`hooks.cursor.json: ${event}: unexpected command ${entry.command}`);
       }
     }
   }
@@ -329,6 +332,51 @@ if (cursorHooks) {
 
 if (!existsSync(join(PKG_ROOT, "rules", "cairn-ground-state.mdc"))) {
   fail("rules/cairn-ground-state.mdc required for Cursor");
+}
+
+// ── Codex plugin (same skills/runtime, native package metadata) ─────
+const codexManifest = readJson(join(PKG_ROOT, ".codex-plugin", "plugin.json"));
+if (codexManifest) {
+  if (codexManifest.skills !== "./skills/") {
+    fail('.codex-plugin/plugin.json: skills must be "./skills/"');
+  }
+  if (codexManifest.mcpServers !== "./.mcp.codex.json") {
+    fail('.codex-plugin/plugin.json: mcpServers must be "./.mcp.codex.json"');
+  }
+  if (codexManifest.hooks !== "./hooks/hooks.codex.json") {
+    fail('.codex-plugin/plugin.json: hooks must be "./hooks/hooks.codex.json"');
+  }
+}
+
+const codexMcp = readJson(join(PKG_ROOT, ".mcp.codex.json"));
+if (codexMcp) {
+  const server = codexMcp.cairn;
+  const expected = ["${PLUGIN_ROOT}/dist/cli.mjs", "mcp", "serve"];
+  if (server?.command !== "node" || JSON.stringify(server?.args) !== JSON.stringify(expected)) {
+    fail(`.mcp.codex.json: cairn must invoke ${JSON.stringify(expected)} with node`);
+  }
+}
+
+const codexHooks = readJson(join(PKG_ROOT, "hooks", "hooks.codex.json"));
+if (codexHooks) {
+  for (const event of ["SessionStart", "Stop", "UserPromptSubmit", "PostToolUse"]) {
+    const groups = codexHooks.hooks?.[event];
+    if (!Array.isArray(groups) || groups.length === 0) {
+      fail(`hooks.codex.json: hooks.${event} must be a non-empty array`);
+      continue;
+    }
+    for (const group of groups) {
+      for (const hook of group.hooks ?? []) {
+        if (
+          typeof hook.command !== "string" ||
+          !hook.command.includes("${PLUGIN_ROOT}/dist/cli.mjs") ||
+          !hook.command.endsWith("--host codex")
+        ) {
+          fail(`hooks.codex.json: ${event}: invalid command ${hook.command}`);
+        }
+      }
+    }
+  }
 }
 
 if (errors.length > 0) {

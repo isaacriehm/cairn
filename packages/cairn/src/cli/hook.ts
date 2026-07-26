@@ -1,10 +1,10 @@
 /**
- * `cairn hook <event>` — Claude Code hook runners (umbrella CLI form).
+ * `cairn hook <event>` — shared agent-host hook runners (umbrella CLI form).
  *
  * The plugin manifest invokes the bin entrypoints in
  * `cairn-core/dist/hooks/<event>.js` directly; this CLI subcommand is
  * the equivalent path for adopters running the umbrella CLI without the
- * plugin (e.g. terminal-side debug). Both routes call the same runners.
+ * plugin (e.g. terminal-side debug). Every host route calls the same runners.
  *
  *   cairn hook session-start
  *   cairn hook session-end         cleanup per-session state dir
@@ -17,11 +17,12 @@
  *
  * PreToolUse is intentionally NOT supported — bricks the session if the hook fails.
  * `pre-commit-align` is invoked from the bundled `.cairn/git-hooks/pre-commit`
- * shell hook (different mechanism from Claude Code PreToolUse) and is
+ * shell hook (different mechanism from agent lifecycle hooks) and is
  * detection-only — never modifies the commit, never blocks.
  */
 
 import {
+  AGENT_HOSTS,
   runAskUserBlockedHook,
   runPostWriteHook,
   runPreCommitAlign,
@@ -32,7 +33,8 @@ import {
   runStopHook,
   runUserPromptSubmitHook,
   runWriteGuardian,
-  setCursorHookMode,
+  resolveAgentHost,
+  type AgentHost,
 } from "@isaacriehm/cairn-core";
 
 function usage(): never {
@@ -50,10 +52,10 @@ function usage(): never {
       "  pre-commit-align      git pre-commit — Layer B detection-only drift log\n" +
       "\n" +
       "Options:\n" +
-      "  --cursor              Cursor hook JSON on all events (auto-detected via CURSOR_PLUGIN_ROOT)\n" +
+      "  --host <host>         claude-code | cursor | codex (auto-detected when omitted)\n" +
       "\n" +
-      "Claude Code hooks read a JSON payload on stdin and emit the\n" +
-      "Shape-B response on stdout (wired by the plugin's hooks/hooks.json).\n" +
+      "Agent hooks read a JSON payload on stdin and emit the host-native\n" +
+      "response on stdout (wired by the installed plugin manifest).\n" +
       "The git pre-commit-align variant is invoked by the bundled\n" +
       "`.cairn/git-hooks/pre-commit` shell hook with no payload and\n" +
       "always exits 0.\n",
@@ -62,40 +64,49 @@ function usage(): never {
 }
 
 export async function hookCli(argv: string[]): Promise<void> {
-  const cursor = argv.includes("--cursor");
-  const args = argv.filter((a) => a !== "--cursor");
-  if (cursor) {
-    setCursorHookMode(true);
+  const hostFlag = argv.indexOf("--host");
+  let explicitHost: AgentHost | undefined;
+  const args = [...argv];
+  if (hostFlag >= 0) {
+    const value = args[hostFlag + 1];
+    if (!AGENT_HOSTS.includes(value as AgentHost)) {
+      console.error(`cairn hook: invalid host "${value ?? ""}"`);
+      usage();
+    }
+    explicitHost = value as AgentHost;
+    args.splice(hostFlag, 2);
   }
+  const host = resolveAgentHost(explicitHost);
+  const options = { host };
   const sub = args[0];
   switch (sub) {
     case undefined:
     case "session-start":
-      await runSessionStartHook({ cursor });
+      await runSessionStartHook(options);
       return;
     case "session-end":
-      await runSessionEndHook();
+      await runSessionEndHook(options);
       return;
     case "stop":
-      await runStopHook();
+      await runStopHook(options);
       return;
     case "user-prompt-submit":
-      await runUserPromptSubmitHook();
+      await runUserPromptSubmitHook(options);
       return;
     case "read-enrich":
-      await runReadEnricher();
+      await runReadEnricher(options);
       return;
     case "write-guard":
-      await runWriteGuardian();
+      await runWriteGuardian(options);
       return;
     case "sot-align":
-      await runSotAlign();
+      await runSotAlign(options);
       return;
     case "post-write":
-      await runPostWriteHook();
+      await runPostWriteHook(options);
       return;
     case "ask-user-blocked":
-      await runAskUserBlockedHook();
+      await runAskUserBlockedHook(options);
       return;
     case "pre-commit-align":
       await runPreCommitAlign();

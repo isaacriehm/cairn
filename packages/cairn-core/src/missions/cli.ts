@@ -5,7 +5,6 @@
  */
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { isAbsolute, resolve as pathResolve } from "node:path";
 import {
   appendMissionJournal,
   archiveMission,
@@ -32,6 +31,7 @@ import {
 } from "@isaacriehm/cairn-state";
 import { advancePhase } from "./cursor.js";
 import { draftRoadmapFromSpec, stubRoadmap } from "./draft.js";
+import { deriveTitleFromSpec, readSpecSource } from "./spec-io.js";
 
 export interface MissionStartArgs {
   repoRoot: string;
@@ -45,6 +45,7 @@ export interface MissionStartResult {
   spec_path: string;
   exit_gate: MissionExitGate;
   phases: MissionPhase[];
+  truncated: boolean;
   llm_used: boolean;
 }
 
@@ -52,14 +53,7 @@ export async function runMissionStart(args: MissionStartArgs): Promise<MissionSt
   if (findActiveMission(args.repoRoot) !== null) {
     throw new Error("An active mission already exists; close or abort it before starting another.");
   }
-  const abs = isAbsolute(args.specPath) ? args.specPath : pathResolve(args.repoRoot, args.specPath);
-  if (!abs.startsWith(args.repoRoot)) {
-    throw new Error(`${args.specPath} resolves outside the repo`);
-  }
-  if (!existsSync(abs)) {
-    throw new Error(`Spec doc not found: ${args.specPath}`);
-  }
-  const source = readFileSync(abs, "utf8");
+  const source = readSpecSource(args.repoRoot, args.specPath);
   const proposedTitle = deriveTitleFromSpec(source, args.specPath);
 
   if (args.noLlm === true) {
@@ -68,6 +62,7 @@ export async function runMissionStart(args: MissionStartArgs): Promise<MissionSt
       spec_path: args.specPath,
       exit_gate: args.exitGate,
       phases: stubRoadmap(),
+      truncated: false,
       llm_used: false,
     };
   }
@@ -84,6 +79,7 @@ export async function runMissionStart(args: MissionStartArgs): Promise<MissionSt
     spec_path: args.specPath,
     exit_gate: args.exitGate,
     phases: draft.phases,
+    truncated: draft.truncated,
     llm_used: true,
   };
 }
@@ -106,10 +102,7 @@ export function runMissionAccept(args: MissionAcceptArgs): MissionAcceptResult {
   if (findActiveMission(args.repoRoot) !== null) {
     throw new Error("An active mission already exists; close or abort it before starting another.");
   }
-  const abs = isAbsolute(args.specPath) ? args.specPath : pathResolve(args.repoRoot, args.specPath);
-  if (!existsSync(abs)) {
-    throw new Error(`Spec doc not found: ${args.specPath}`);
-  }
+  const specSource = readSpecSource(args.repoRoot, args.specPath);
   const startedAt = new Date().toISOString();
   const missionId = deriveMissionId({ title: args.title, spec_path: args.specPath, started_at: startedAt });
   const frontmatter: MissionRoadmapFrontmatter = {
@@ -121,7 +114,7 @@ export function runMissionAccept(args: MissionAcceptArgs): MissionAcceptResult {
     phases: args.phases,
   };
   writeRoadmap(args.repoRoot, missionId, frontmatter, `# Mission — ${args.title}\n\nSpec: \`${args.specPath}\`.\n`);
-  writeMissionSpec(args.repoRoot, missionId, readFileSync(abs, "utf8"));
+  writeMissionSpec(args.repoRoot, missionId, specSource);
   const phaseProgress = initialPhaseProgress(frontmatter);
   const firstPhase = nextPendingPhase(frontmatter, {
     mission_id: missionId,
@@ -300,12 +293,6 @@ export function listMissions(repoRoot: string): { active: string[]; done: string
     active: listActiveMissionIds(repoRoot),
     done: listDoneMissionIds(repoRoot),
   };
-}
-
-function deriveTitleFromSpec(source: string, fallback: string): string {
-  const m = source.match(/^#\s+(.+?)\s*$/m);
-  const raw = m?.[1] ?? fallback.replace(/^.*\//, "").replace(/\.[a-z]+$/i, "");
-  return raw.slice(0, 60);
 }
 
 /**

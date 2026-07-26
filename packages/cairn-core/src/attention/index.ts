@@ -21,3 +21,15 @@ export {
   type RestoreResult,
   type RestoreState,
 } from "./restore.js";
+
+export {
+  countFindingsBySeverity,
+  listPendingDrafts,
+  readLatestBaselineAudit,
+  readLatestBaselineDetail,
+  type AttentionDraftEntry,
+  type BaselineAuditDetail,
+  type BaselineAuditSummary,
+  type BaselineFindingRow,
+  type ReadBaselineOptions,
+} from "./surface.js";

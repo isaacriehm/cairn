@@ -8,12 +8,9 @@
 import { execFileSync } from "node:child_process";
 import {
   mkdirSync,
-  mkdtempSync,
   readFileSync,
-  rmSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   inspectJoinState,
@@ -22,31 +19,10 @@ import {
   runJoin,
   seedCairnLayout,
 } from "@isaacriehm/cairn-core";
-
-const cleanups: string[] = [];
-
-function assert(cond: unknown, message: string): asserts cond {
-  if (!cond) {
-    console.error(`✗ ${message}`);
-    cleanup();
-    process.exit(1);
-  }
-}
-
-function cleanup(): void {
-  for (const path of cleanups.reverse()) {
-    try {
-      rmSync(path, { recursive: true, force: true });
-    } catch {
-      // best-effort
-    }
-  }
-}
+import { assert, cleanup, mkRepo } from "./lib/smoke-harness.js";
 
 function mkRepoRoot(): string {
-  const dir = mkdtempSync(join(tmpdir(), "cairn-smoke-join-"));
-  cleanups.push(dir);
-  return dir;
+  return mkRepo("cairn-smoke-join-");
 }
 
 function gitInit(repoRoot: string): void {

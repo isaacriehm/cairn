@@ -1,9 +1,10 @@
 /**
- * Shared MCP repo-root resolution for Cursor and Claude Code plugin hosts.
+ * Shared MCP repo-root resolution for Claude Code, Cursor, and Codex.
  *
  * Cursor launches MCP with cwd = ~; hooks inject CURSOR_PROJECT_DIR (always)
- * and mcp.json sets CAIRN_REPO_ROOT from it. When CURSOR_PLUGIN_ROOT is set,
- * prefer CURSOR_PROJECT_DIR over a stale shell CAIRN_REPO_ROOT.
+ * and mcp.json sets CAIRN_REPO_ROOT from it. Codex and Claude Code launch
+ * local stdio servers in the active project cwd. When CURSOR_PLUGIN_ROOT is
+ * set, prefer CURSOR_PROJECT_DIR over a stale shell CAIRN_REPO_ROOT.
  */
 
 import { resolve } from "node:path";

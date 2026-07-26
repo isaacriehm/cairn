@@ -88,7 +88,11 @@ function runSmoke(): void {
     );
     assert(existsSync(sensorsYaml), `Step 4: missing template ${sensorsYaml}`);
     assert(existsSync(stubsYaml), `Step 4: missing template ${stubsYaml}`);
-    console.log("  ✓ Step 4 — dist/templates/.cairn/config/{sensors,stub-patterns}.yaml present");
+    const cairnRule = join(TEMPLATES_DIR, ".claude", "rules", "cairn.md");
+    assert(existsSync(cairnRule), `Step 4: missing template ${cairnRule}`);
+    console.log(
+      "  ✓ Step 4 — dist/templates/.cairn/config/{sensors,stub-patterns}.yaml + .claude/rules/cairn.md present",
+    );
   }
 
   // ── Step 5 — bundle resolves the templates dir post-bundling ─────

@@ -11,6 +11,14 @@ when_to_use: |
 
 # Skill: cairn-attention
 
+## Host portability
+
+This skill is shared by Claude Code, Cursor, and Codex. Resolve Cairn MCP
+tools with the host's native discovery mechanism. `AskUserQuestion` means the
+host's structured question UI; when that UI is unavailable, ask the identical
+concise A/B/C question in chat and pause. References to restarting a client
+mean restarting the active host.
+
 You are surfacing Cairn's pending-attention queue inline so the
 operator can resolve drafts and findings without leaving the chat.
 Spec: `docs/PLUGIN_ARCHITECTURE.md` §11.
@@ -25,7 +33,7 @@ SessionStart's auto-bootstrap failed — call `cairn_bootstrap_retry`
 once to retry inline. On `ok: true`, fall through to Step 0.7. On
 `ok: false`, surface the `failed_steps` list to the operator and
 end the turn (the `remediation` field of the error envelope cites
-this same tool plus a Claude Code restart as the recovery paths).
+this same tool plus an agent-client restart as the recovery paths).
 Never reference `cli.mjs` or `cairn join` directly in the chat
 surface — Plugin spec §11 forbids exposing CLI subcommands to the
 operator.

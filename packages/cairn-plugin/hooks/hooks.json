@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook session-start"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook session-start --host claude-code"
           }
         ]
       }
@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook session-end"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook session-end --host claude-code"
           }
         ]
       }
@@ -25,7 +25,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook stop"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook stop --host claude-code"
           }
         ]
       }
@@ -35,7 +35,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook user-prompt-submit"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook user-prompt-submit --host claude-code"
           }
         ]
       }
@@ -46,7 +46,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook read-enrich"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook read-enrich --host claude-code"
           }
         ]
       },
@@ -55,7 +55,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook post-write"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook post-write --host claude-code"
           }
         ]
       },
@@ -64,7 +64,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook ask-user-blocked"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook ask-user-blocked --host claude-code"
           }
         ]
       }

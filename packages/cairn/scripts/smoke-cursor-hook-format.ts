@@ -2,7 +2,7 @@
 /** smoke-cursor-hook-format — Cursor hook stdout + repo-root resolution */
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,6 +23,34 @@ function assert(cond: unknown, message: string): asserts cond {
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
 console.log("smoke-cursor-hook-format — start");
+
+{
+  const hooksPath = join(
+    REPO_ROOT,
+    "packages",
+    "cairn-plugin",
+    "hooks",
+    "hooks.cursor.json",
+  );
+  const config = JSON.parse(readFileSync(hooksPath, "utf8")) as {
+    version?: number;
+    hooks?: Record<string, Array<Record<string, unknown>>>;
+  };
+  assert(config.version === 1, "Cursor hooks config must declare version: 1");
+  for (const event of ["sessionStart", "sessionEnd", "stop", "postToolUse"]) {
+    const entries = config.hooks?.[event];
+    assert(Array.isArray(entries) && entries.length > 0, `Cursor ${event} hooks required`);
+    for (const entry of entries) {
+      assert(typeof entry.command === "string", `Cursor ${event} command must be flat`);
+      assert(!("hooks" in entry), `Cursor ${event} must not use Claude nested hook groups`);
+      assert(
+        entry.command.includes("--host cursor"),
+        `Cursor ${event} command must select the Cursor adapter`,
+      );
+    }
+  }
+  console.log("  ✓ hooks config uses Cursor's native v1 schema");
+}
 
 {
   const cwd = resolveHookCwd({ workspace_roots: ["/tmp/ws-root"] });
@@ -56,7 +84,7 @@ console.log("smoke-cursor-hook-format — start");
     workspace_roots: [dir],
     hook_event_name: "sessionStart",
   });
-  const result = spawnSync("node", [bundle, "hook", "session-start", "--cursor"], {
+  const result = spawnSync("node", [bundle, "hook", "session-start", "--host", "cursor"], {
     input: payload,
     encoding: "utf8",
     timeout: 15_000,
@@ -69,7 +97,7 @@ console.log("smoke-cursor-hook-format — start");
   assert(result.status === 0, `session-start failed: ${result.stderr}`);
   const out = JSON.parse(result.stdout.trim()) as Record<string, unknown>;
   assert("additional_context" in out || Object.keys(out).length === 0, "Cursor sessionStart JSON shape");
-  console.log("  ✓ session-start --cursor emits Cursor JSON");
+  console.log("  ✓ session-start --host cursor emits Cursor JSON");
 }
 
 {
@@ -107,7 +135,7 @@ console.log("smoke-cursor-hook-format — start");
     workspace_roots: [dir],
     hook_event_name: "stop",
   });
-  const result = spawnSync("node", [bundle, "hook", "stop", "--cursor"], {
+  const result = spawnSync("node", [bundle, "hook", "stop", "--host", "cursor"], {
     input: payload,
     encoding: "utf8",
     timeout: 15_000,
@@ -121,9 +149,9 @@ console.log("smoke-cursor-hook-format — start");
   const out = JSON.parse(result.stdout.trim()) as Record<string, unknown>;
   assert(
     !("decision" in out) && !("hookSpecificOutput" in out),
-    "stop --cursor must not emit Claude Code envelope",
+    "stop --host cursor must not emit Claude Code envelope",
   );
-  console.log("  ✓ stop --cursor emits Cursor JSON");
+  console.log("  ✓ stop --host cursor emits Cursor JSON");
 }
 
 {
@@ -136,7 +164,7 @@ console.log("smoke-cursor-hook-format — start");
     workspace_roots: [dir],
     hook_event_name: "postToolUse",
   });
-  const result = spawnSync("node", [bundle, "hook", "read-enrich", "--cursor"], {
+  const result = spawnSync("node", [bundle, "hook", "read-enrich", "--host", "cursor"], {
     input: payload,
     encoding: "utf8",
     timeout: 15_000,
@@ -148,8 +176,8 @@ console.log("smoke-cursor-hook-format — start");
   });
   assert(result.status === 0, `read-enrich failed: ${result.stderr}`);
   const out = JSON.parse(result.stdout.trim()) as Record<string, unknown>;
-  assert(!("hookSpecificOutput" in out), "read-enrich --cursor must not emit Shape-B");
-  console.log("  ✓ read-enrich --cursor accepts tool_output payload");
+  assert(!("hookSpecificOutput" in out), "read-enrich --host cursor must not emit Shape-B");
+  console.log("  ✓ read-enrich --host cursor accepts tool_output payload");
 }
 
 console.log("smoke-cursor-hook-format — pass");

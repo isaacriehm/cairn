@@ -4,26 +4,13 @@ import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import type { McpContext } from "../context.js";
 import { groundDir } from "@isaacriehm/cairn-state";
-import { mcpError } from "./types.js";
+import { mcpError } from "../errors.js";
+import {
+  canonicalForTopicInput,
+  canonicalMapTopicsFileSchema,
+  type CanonicalMapTopicEntry,
+} from "../schemas.js";
 import type { ToolDef } from "./types.js";
-import { z } from "zod";
-
-const TopicEntrySchema = z.object({
-  topic: z.string(),
-  canonical_path: z.string(),
-  audience: z.string().optional(),
-});
-
-const TopicsFileSchema = z.object({
-  version: z.number(),
-  topics: z.array(TopicEntrySchema),
-});
-
-type TopicEntry = z.infer<typeof TopicEntrySchema>;
-
-const canonicalForTopicInput = {
-  topic: z.string(),
-};
 
 interface Input {
   topic: string;
@@ -38,11 +25,11 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     );
   }
 
-  let list: TopicEntry[] = [];
+  let list: CanonicalMapTopicEntry[] = [];
   try {
     const raw = readFileSync(file, "utf8");
     const parsed = parseYaml(raw);
-    const result = TopicsFileSchema.safeParse(parsed);
+    const result = canonicalMapTopicsFileSchema.safeParse(parsed);
     if (result.success) {
       list = result.data.topics;
     }
@@ -60,7 +47,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
   const absPath = join(ctx.repoRoot, entry.canonical_path);
   if (!existsSync(absPath)) {
     return mcpError(
-      "CANONICAL_SOURCE_MISSING",
+      "FILE_NOT_FOUND",
       `Authoritative source for "${input.topic}" missing at ${entry.canonical_path}. Re-run cairn scope rebuild.`,
     );
   }

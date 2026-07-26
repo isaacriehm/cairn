@@ -8,7 +8,7 @@
  * resolution + ghost-correct path routing (both vscode-free, so the smoke
  * exercises them directly off the built dist):
  *
- *   - `resolveRepoRoot` finds a ghost repo via the git toplevel + registry
+ *   - `resolveRepoRoot` finds a ghost repo via git-common-dir + registry
  *     (even from a nested subdir, with NO in-tree `.cairn/`).
  *   - the resolver's ledger / scope-index / staleness paths resolve to the
  *     OUT-OF-REPO state home, never `<repoRoot>/.cairn`.
@@ -76,6 +76,8 @@ async function main(): Promise<void> {
   /* ── Ghost repo — state out-of-repo, NO in-tree .cairn ──────────────────── */
   gitInit(ghostRepo);
   registerGhostRepo(ghostRepo);
+  mkdirSync(cairnDir(ghostRepo), { recursive: true });
+  writeFileSync(cairnDir(ghostRepo, "config.yaml"), "version: 1\n", "utf8");
   // Seed durable ground state out-of-repo (what a ghost session would write).
   mkdirSync(cairnDir(ghostRepo, "staleness"), { recursive: true });
   writeFileSync(
@@ -90,11 +92,19 @@ async function main(): Promise<void> {
   assert(!existsSync(join(ghostRepo, ".cairn")), "ghost repo has NO in-tree .cairn/");
 
   // Resolution from the repo root AND a nested subdir → the ghost repo root.
-  // (git --show-toplevel canonicalizes symlinks — on macOS tmpdir that is the
-  // /private-prefixed realpath — so compare against the canonical form.)
+  // Core resolves via `git-common-dir`; on macOS tmpdir that may be the
+  // /private-prefixed realpath — compare both sides canonically.
   const ghostReal = realpathSync(ghostRepo);
-  assert(LensResolver.resolveRepoRoot(ghostRepo) === ghostReal, "resolveRepoRoot finds the ghost repo (git toplevel + registry)");
-  assert(LensResolver.resolveRepoRoot(nested) === ghostReal, "resolveRepoRoot resolves a nested subdir to the ghost repo root");
+  const resolvedRoot = LensResolver.resolveRepoRoot(ghostRepo);
+  assert(
+    resolvedRoot !== null && realpathSync(resolvedRoot) === ghostReal,
+    "resolveRepoRoot finds the ghost repo (git-common-dir + registry)",
+  );
+  const resolvedNested = LensResolver.resolveRepoRoot(nested);
+  assert(
+    resolvedNested !== null && realpathSync(resolvedNested) === ghostReal,
+    "resolveRepoRoot resolves a nested subdir to the ghost repo root",
+  );
 
   // Resolver paths land OUT-OF-REPO, never <repoRoot>/.cairn.
   const r = new LensResolver(ghostRepo);
@@ -139,6 +149,7 @@ async function main(): Promise<void> {
   /* ── Committed control — walk-up still wins ─────────────────────────────── */
   gitInit(committedRepo); // NOT ghost-registered
   mkdirSync(join(committedRepo, ".cairn", "ground"), { recursive: true });
+  writeFileSync(join(committedRepo, ".cairn", "config.yaml"), "version: 1\n", "utf8");
   const cNested = join(committedRepo, "src");
   mkdirSync(cNested, { recursive: true });
   assert(LensResolver.resolveRepoRoot(committedRepo) === committedRepo, "committed: resolveRepoRoot returns the in-tree .cairn dir");

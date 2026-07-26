@@ -1,0 +1,40 @@
+{
+  "name": "cairn",
+  "version": "0.32.1",
+  "description": "Cairn — persistent ground state and context continuity for AI coding agents.",
+  "author": {
+    "name": "Isaac Riehm",
+    "url": "https://github.com/isaacriehm"
+  },
+  "homepage": "https://github.com/isaacriehm/cairn#readme",
+  "repository": "https://github.com/isaacriehm/cairn",
+  "license": "MIT",
+  "keywords": [
+    "agent-context",
+    "decisions",
+    "invariants",
+    "ground-state",
+    "ai-memory"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.codex.json",
+  "hooks": "./hooks/hooks.codex.json",
+  "interface": {
+    "displayName": "Cairn",
+    "shortDescription": "Persistent ground state for coding agents",
+    "longDescription": "Keep project decisions, invariants, active work, and context synchronized across Codex tasks.",
+    "developerName": "Isaac Riehm",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/isaacriehm/cairn",
+    "defaultPrompt": [
+      "Adopt this repository with Cairn.",
+      "Show me the current Cairn direction and attention items."
+    ],
+    "brandColor": "#6B5B3E",
+    "screenshots": []
+  }
+}

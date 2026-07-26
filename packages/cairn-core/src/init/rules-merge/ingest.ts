@@ -42,28 +42,19 @@ import { cairnDir,
   bodyContentHash,
   conflictsDir,
   emptyAnchorMap,
-  emptySotBindings,
-  emptySotCache,
   emptyTopicIndex,
   readAnchorMap,
-  readSotBindings,
-  readSotCache,
   readTopicIndex,
-  setSotCacheEntry,
   topicSlug,
-  writeAnchorMap,
-  writeSotBindings,
-  writeSotCache,
-  writeTopicIndex,
   writeDecisionsLedger,
   writeInvariantsLedger,
   type AnchorMap,
-  type SotBindings,
   type SotCache,
   type SotCacheEntry,
   type TopicIndex,
 } from "@isaacriehm/cairn-state";
 import { logger } from "../../logger.js";
+import { persistGroundState } from "../../state/persist-ground.js";
 import { jaccard, tokenize } from "../../text/jaccard.js";
 import { emitFromTopicIndex, type EmitClassification } from "../sot-emit.js";
 import { discoverRuleSources } from "./discover.js";
@@ -800,63 +791,6 @@ function readEmittedBody(repoRoot: string, id: string): string | null {
   const fmMatch = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
   if (fmMatch === null) return raw.trim();
   return raw.slice(fmMatch[0].length).trim();
-}
-
-/* -------------------------------------------------------------------------- */
-/* Helpers                                                                    */
-/* -------------------------------------------------------------------------- */
-
-interface PersistGroundStateArgs {
-  repoRoot: string;
-  topicIndex: TopicIndex;
-  anchorMap: AnchorMap;
-  bindings: SotBindings;
-  cache: SotCache;
-}
-
-function persistGroundState(args: PersistGroundStateArgs): void {
-  const { repoRoot } = args;
-  // Re-read each ground-state file right before write so concurrent
-  // writers (phase 8 / 7b) don't get clobbered. parallel-678 runs the
-  // three phases sequentially under v0.5.0; this merge is defense in
-  // depth for the individual phase tools.
-  const freshTopic = readTopicIndex(repoRoot);
-  const baseTopic = Object.keys(freshTopic.topics).length > 0 ? freshTopic : emptyTopicIndex();
-  for (const [slug, entry] of Object.entries(args.topicIndex.topics)) {
-    baseTopic.topics[slug] = entry;
-  }
-  baseTopic.generated = new Date().toISOString();
-  writeTopicIndex(repoRoot, baseTopic);
-
-  const freshAnchor = readAnchorMap(repoRoot);
-  const baseAnchor = Object.keys(freshAnchor.anchors).length > 0 ? freshAnchor : emptyAnchorMap();
-  for (const [slug, anchor] of Object.entries(args.anchorMap.anchors)) {
-    baseAnchor.anchors[slug] = anchor;
-  }
-  baseAnchor.generated = new Date().toISOString();
-  writeAnchorMap(repoRoot, baseAnchor);
-
-  const freshBindings = readSotBindings(repoRoot);
-  const baseBindings =
-    Object.keys(freshBindings.forward).length > 0 ? freshBindings : emptySotBindings();
-  for (const [decId, sotPath] of Object.entries(args.bindings.forward)) {
-    baseBindings.forward[decId] = sotPath;
-  }
-  for (const [sotPath, decIds] of Object.entries(args.bindings.reverse)) {
-    const seen = new Set(baseBindings.reverse[sotPath] ?? []);
-    for (const id of decIds) seen.add(id);
-    baseBindings.reverse[sotPath] = Array.from(seen);
-  }
-  baseBindings.generated = new Date().toISOString();
-  writeSotBindings(repoRoot, baseBindings);
-
-  const freshCache = readSotCache(repoRoot);
-  let baseCache = Object.keys(freshCache.entries).length > 0 ? freshCache : emptySotCache();
-  for (const [decId, entry] of Object.entries(args.cache.entries)) {
-    baseCache = setSotCacheEntry(baseCache, decId, entry);
-  }
-  baseCache.generated = new Date().toISOString();
-  writeSotCache(repoRoot, baseCache);
 }
 
 function stripLeadingHeading(body: string): string {

@@ -70,7 +70,7 @@ function runSmoke(): void {
     console.log("  ✓ Step 1 — plugin.json shape");
   }
 
-  // ── Step 2 — .mcp.json wires cairn MCP via bundled cli.cjs ───────
+  // ── Step 2 — .mcp.json wires cairn MCP via bundled cli.mjs ───────
   {
     const mcp = readJson<McpShape>(join(PLUGIN_ROOT, ".mcp.json"));
     assert(mcp.mcpServers?.cairn !== undefined, "Step 2: mcpServers.cairn required");
@@ -81,7 +81,7 @@ function runSmoke(): void {
       Array.isArray(server.args) && server.args.length === expected.length && server.args.every((a, i) => a === expected[i]),
       `Step 2: cairn.args must be ${JSON.stringify(expected)}, got ${JSON.stringify(server.args)}`,
     );
-    console.log("  ✓ Step 2 — .mcp.json invokes bundled cli.cjs mcp serve");
+    console.log("  ✓ Step 2 — .mcp.json invokes bundled cli.mjs mcp serve");
   }
 
   // ── Step 3 — hooks.json wires SessionStart, SessionEnd, Stop, PostToolUse ──
@@ -98,15 +98,15 @@ function runSmoke(): void {
     // surrounding `"…"` the shell splits on whitespace and `node`
     // fails to resolve the module path.
     const ALLOWED = new Set([
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook session-start',
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook session-end',
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook stop',
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook user-prompt-submit',
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook read-enrich',
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook write-guard',
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook sot-align',
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook post-write',
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook ask-user-blocked',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook session-start --host claude-code',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook session-end --host claude-code',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook stop --host claude-code',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook user-prompt-submit --host claude-code',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook read-enrich --host claude-code',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook write-guard --host claude-code',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook sot-align --host claude-code',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook post-write --host claude-code',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook ask-user-blocked --host claude-code',
     ]);
     for (const event of ["SessionStart", "SessionEnd", "Stop", "PostToolUse"] as const) {
       for (const entry of hooks[event]) {
@@ -125,7 +125,7 @@ function runSmoke(): void {
     const hasWriteMatcher = matchers.some((m) => /Write|Edit/.test(m));
     assert(hasReadMatcher, "Step 3: PostToolUse must match Read|Grep|Glob");
     assert(hasWriteMatcher, "Step 3: PostToolUse must match Write|Edit");
-    console.log("  ✓ Step 3 — hooks.json invokes bundled cli.cjs hook <event>");
+    console.log("  ✓ Step 3 — hooks.json invokes bundled cli.mjs hook <event>");
   }
 
   // ── Step 4 — component dirs exist ────────────────────────────────
@@ -140,8 +140,10 @@ function runSmoke(): void {
   {
     const expected = [
       "cairn-adopt",
-      "cairn-direction",
+      "cairn-adopt-components",
       "cairn-attention",
+      "cairn-direction",
+      "cairn-resync",
     ];
     for (const slug of expected) {
       const path = join(PLUGIN_ROOT, "skills", slug, "SKILL.md");
@@ -161,7 +163,12 @@ function runSmoke(): void {
 
   // ── Step 4c — required slash commands present ───────────────────
   {
-    const expected = ["cairn-init.md", "cairn-direction.md", "cairn-statusline-setup.md"];
+    const expected = [
+      "cairn-init.md",
+      "cairn-direction.md",
+      "cairn-resume.md",
+      "cairn-statusline-setup.md",
+    ];
     for (const filename of expected) {
       const path = join(PLUGIN_ROOT, "commands", filename);
       assert(existsSync(path), `Step 4c: missing command ${filename}`);
@@ -175,20 +182,29 @@ function runSmoke(): void {
     console.log(`  ✓ Step 4c — ${expected.length} slash commands present`);
   }
 
-  // ── Step 4d — agents/reviewer.md present + valid frontmatter ───
+  // ── Step 4d — required agents present + valid frontmatter ────────
   {
-    const reviewerPath = join(PLUGIN_ROOT, "agents", "reviewer.md");
-    assert(existsSync(reviewerPath), "Step 4d: missing agents/reviewer.md");
-    const text = readFileSync(reviewerPath, "utf8");
-    assert(text.startsWith("---\n"), "Step 4d: reviewer.md must start with frontmatter");
-    const end = text.indexOf("\n---", 4);
-    assert(end !== -1, "Step 4d: reviewer.md frontmatter not terminated");
-    const fm = text.slice(4, end);
-    assert(/^name:\s*\S/m.test(fm), "Step 4d: reviewer.md frontmatter missing name");
-    assert(/^description:\s*\S/m.test(fm), "Step 4d: reviewer.md frontmatter missing description");
-    const body = text.slice(end + 4).trim();
-    assert(body.length > 200, `Step 4d: reviewer.md body looks empty (${body.length} chars)`);
-    console.log("  ✓ Step 4d — agents/reviewer.md present + valid");
+    const expected = [
+      "reviewer.md",
+      "component-annotator.md",
+      "component-registrar.md",
+      "curator-map.md",
+      "curator-reduce.md",
+    ];
+    for (const filename of expected) {
+      const agentPath = join(PLUGIN_ROOT, "agents", filename);
+      assert(existsSync(agentPath), `Step 4d: missing agents/${filename}`);
+      const text = readFileSync(agentPath, "utf8");
+      assert(text.startsWith("---\n"), `Step 4d: ${filename} must start with frontmatter`);
+      const end = text.indexOf("\n---", 4);
+      assert(end !== -1, `Step 4d: ${filename} frontmatter not terminated`);
+      const fm = text.slice(4, end);
+      assert(/^name:\s*\S/m.test(fm), `Step 4d: ${filename} frontmatter missing name`);
+      assert(/^description:\s*\S/m.test(fm), `Step 4d: ${filename} frontmatter missing description`);
+      const body = text.slice(end + 4).trim();
+      assert(body.length > 200, `Step 4d: ${filename} body looks empty (${body.length} chars)`);
+    }
+    console.log(`  ✓ Step 4d — ${expected.length} agents present + valid`);
   }
 
   // ── Step 5 — every hook bin export accepts payload via stdin ─────

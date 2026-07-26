@@ -45,6 +45,7 @@ import {
   runPhase9aWalker,
   runPhase9bCurate,
   runPhase9cEmit,
+  runPhase9dCompWalk,
   runPhase10RulesMerge,
   type PhaseResult,
   type PhaseState,
@@ -166,12 +167,26 @@ async function main(): Promise<void> {
     const state = selfAdoptState(repo, "9c-emit");
     const result = await runPhase9cEmit(state);
     const { state: next, nextPhase } = expectComplete(result, "Step 3");
-    if (nextPhase !== "10-rules-merge")
-      fail(`Step 3: expected nextPhase=10-rules-merge, got ${String(nextPhase)}`);
+    if (nextPhase !== "9d-comp-walk")
+      fail(`Step 3: expected nextPhase=9d-comp-walk, got ${String(nextPhase)}`);
     const out = next.outputs["9c-emit"] as { skipped?: string } | undefined;
     if (out?.skipped !== "self-adopt")
       fail(`Step 3: expected skipped=self-adopt, got ${JSON.stringify(out)}`);
-    pass("phase 9c-emit stamped skipped=self-adopt + advanced to 10-rules-merge");
+    pass("phase 9c-emit stamped skipped=self-adopt + advanced to 9d-comp-walk");
+  }
+
+  header("Step 4 — Phase 9d-comp-walk short-circuits on is_self_adopt");
+  {
+    const repo = mkRepo();
+    const state = selfAdoptState(repo, "9d-comp-walk");
+    const result = await runPhase9dCompWalk(state);
+    const { state: next, nextPhase } = expectComplete(result, "Step 4");
+    if (nextPhase !== "10-rules-merge")
+      fail(`Step 4: expected nextPhase=10-rules-merge, got ${String(nextPhase)}`);
+    const out = next.outputs["9d-comp-walk"] as { skipped?: string } | undefined;
+    if (out?.skipped !== "self-adopt")
+      fail(`Step 4: expected skipped=self-adopt, got ${JSON.stringify(out)}`);
+    pass("phase 9d-comp-walk stamped skipped=self-adopt + advanced to 10-rules-merge");
   }
 
   header("Step 5 — Phase 8 + 10 stamp merged-into-9-curator regardless of self-adopt");

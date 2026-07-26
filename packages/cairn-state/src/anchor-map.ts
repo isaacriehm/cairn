@@ -47,14 +47,3 @@ export function writeAnchorMap(repoRoot: string, map: AnchorMap): string {
 export function setAnchor(map: AnchorMap, slug: string, entry: AnchorMapEntry): AnchorMap {
   return { ...map, anchors: { ...map.anchors, [slug]: entry } };
 }
-
-export function getAnchor(map: AnchorMap, slug: string): AnchorMapEntry | null {
-  return map.anchors[slug] ?? null;
-}
-
-export function deleteAnchor(map: AnchorMap, slug: string): AnchorMap {
-  if (map.anchors[slug] === undefined) return map;
-  const anchors = { ...map.anchors };
-  delete anchors[slug];
-  return { ...map, anchors };
-}

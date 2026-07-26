@@ -8,7 +8,7 @@ expect, what's automatic, and what you should pay attention to.
 The short version of a normal session looks like this:
 
 ```
-You open Claude Code in the project
+You open Claude Code, Cursor, or Codex in the project
    └─ SessionStart hook injects in-scope DECs/§INVs as context
 
 You type a prompt
@@ -37,7 +37,7 @@ Everything else is the system maintaining itself.
 
 ## Session start
 
-When you open Claude Code in a Cairn-adopted project, the
+When you open a supported agent in a Cairn-adopted project, the
 `SessionStart` hook fires before you type anything. It does five
 things, all in milliseconds:
 
@@ -50,7 +50,7 @@ things, all in milliseconds:
    resolution) is rebuilt by walking source citations like `// §INV-a3f7b2c`
    in your tree. Catches files moved by `git checkout`.
 3. **Builds the SessionStart context.** This is the block of text
-   injected into Claude's prompt before your first message. It
+   injected into the agent's context before your first message. It
    contains:
    - One-line summary per in-scope DEC for files you've touched in
      the last 5 commits.
@@ -59,9 +59,10 @@ things, all in milliseconds:
      alerts).
    - The active task title (if you have a `.cairn/tasks/active/<id>/`
      mid-flight).
-4. **Refreshes the status-line badge.** The `⬡ cairn` badge in your
-   Claude Code status row updates with current attention count,
-   bypass count, and active task.
+4. **Refreshes host UI state.** Claude Code's optional `⬡ cairn`
+   status-line badge updates with current attention count, bypass count,
+   and active task. Cursor and Codex receive the same state through
+   session context rather than the Claude-specific status-line setting.
 5. **Auto-invokes follow-up skills.** If `attention_count > 0`, the
    `cairn-attention` skill is staged to fire after your first message.
    If `.cairn/` is missing, `cairn-adopt` triggers instead.
@@ -72,7 +73,7 @@ The model sees the in-scope decisions for files you've recently
 touched **before you type anything**. So if you spent yesterday
 working in `src/auth/`, today's session opens with `DEC-a3f7b2c` (auth
 token expiry) and `INV-a3f7b2c` (request-id header) already in the
-prompt. You don't have to remind Claude what the rules are; they're
+prompt. You don't have to remind the agent what the rules are; they're
 part of the conversation from message zero.
 
 The SessionStart context is **scope-aware, not exhaustive**. A
@@ -92,7 +93,7 @@ attention banner. Something like:
 ⬡ cairn  ⚑ 3 pending  TSK-2026-05-08-token-expiry
 ```
 
-If pending count is > 0, your first reply from Claude after typing
+If pending count is > 0, your first agent reply after typing
 anything may include the `cairn-attention` skill engaging — see the
 "Running cairn attention" section below.
 

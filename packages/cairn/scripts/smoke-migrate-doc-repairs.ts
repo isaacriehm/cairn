@@ -21,41 +21,16 @@ import { execFileSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   readdirSync,
-  rmSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { MIGRATIONS, bodyContentHash } from "@isaacriehm/cairn-core";
+import { assert, cleanup, mkRepo } from "./lib/smoke-harness.js";
 
-const cleanups: string[] = [];
-
-function assert(cond: unknown, message: string): asserts cond {
-  if (!cond) {
-    console.error(`✗ ${message}`);
-    cleanup();
-    process.exit(1);
-  }
-}
-
-function cleanup(): void {
-  for (const p of cleanups.reverse()) {
-    try {
-      rmSync(p, { recursive: true, force: true });
-    } catch {
-      // best-effort
-    }
-  }
-}
-
-function mkRepo(tag: string): string {
-  const dir = mkdtempSync(join(tmpdir(), `cairn-smoke-migrepair-${tag}-`));
-  cleanups.push(dir);
-  mkdirSync(join(dir, ".cairn"), { recursive: true });
-  return dir;
+function mkFixture(tag: string): string {
+  return mkRepo(`cairn-smoke-migrepair-${tag}-`, { cairn: true });
 }
 
 function write(repo: string, rel: string, content: string): void {
@@ -99,7 +74,7 @@ function main(): void {
   {
     const m = migration("0005-demote-autofilled-brand");
 
-    const repo = mkRepo("brand");
+    const repo = mkFixture("brand");
     // Mechanical-fallback voice → auto.
     write(repo, ".cairn/ground/brand/voice.md", `---\nstatus: current\n---\n\n# Voice\n\n${VOICE_FALLBACK}\n`);
     // overview === positioning (auto-fill wrote the same summary to both).
@@ -124,7 +99,7 @@ function main(): void {
     // share the auto-filled pair's `generated` stamp → demoted via channel 2.
     // (This is the case the 0.26.0 marker-only detection missed.)
     const T = "2026-05-04T00:00:00Z";
-    const repoC = mkRepo("brand-cohort");
+    const repoC = mkFixture("brand-cohort");
     const same = "A freshly-worded but machine-written domain summary.";
     write(repoC, ".cairn/ground/brand/overview.md", `---\nstatus: current\ngenerated: ${T}\n---\n\n# Overview\n\n${same}\n`);
     write(repoC, ".cairn/ground/product/positioning.md", `---\nstatus: current\ngenerated: ${T}\n---\n\n# Positioning\n\n${same}\n`);
@@ -139,7 +114,7 @@ function main(): void {
 
     // Timestamp guard: an operator who hand-wrote voice.md LATER (different
     // `generated`) keeps it confirmed even though the pair is auto-filled.
-    const repoG = mkRepo("brand-guard");
+    const repoG = mkFixture("brand-guard");
     write(repoG, ".cairn/ground/brand/overview.md", `---\nstatus: current\ngenerated: ${T}\n---\n\n# Overview\n\n${same}\n`);
     write(repoG, ".cairn/ground/product/positioning.md", `---\nstatus: current\ngenerated: ${T}\n---\n\n# Positioning\n\n${same}\n`);
     write(repoG, ".cairn/ground/brand/voice.md", `---\nstatus: current\ngenerated: 2026-09-01T12:00:00Z\n---\n\n# Voice\n\nHand-tuned voice the operator wrote a month later.\n`);
@@ -151,7 +126,7 @@ function main(): void {
     assert(/status:\s*draft/.test(guardOverview), "0005: the auto-filled pair is still demoted");
 
     // Control: operator-written brand (no marker, divergent pair) is untouched.
-    const repo2 = mkRepo("brand-real");
+    const repo2 = mkFixture("brand-real");
     write(repo2, ".cairn/ground/brand/voice.md", `---\nstatus: current\n---\n\n# Voice\n\nWe write like a pirate. Arrr.\n`);
     write(repo2, ".cairn/ground/brand/overview.md", `---\nstatus: current\n---\n\n# Overview\n\nA pirate-themed treasure tracker.\n`);
     write(repo2, ".cairn/ground/product/positioning.md", `---\nstatus: current\n---\n\n# Positioning\n\nFor swashbucklers managing loot.\n`);
@@ -162,7 +137,7 @@ function main(): void {
   // ── 0006 — archive junk sot-align invariants, keep the real ones ────
   {
     const m = migration("0006-prune-sot-align-invariants");
-    const repo = mkRepo("inv");
+    const repo = mkFixture("inv");
     const invDir = ".cairn/ground/invariants";
     const seedInv = (
       id: string,
@@ -272,7 +247,7 @@ function main(): void {
   // ── 0007 — collapse redundant nested componentDirs ──────────────────
   {
     const m = migration("0007-collapse-component-dirs");
-    const repo = mkRepo("dirs");
+    const repo = mkFixture("dirs");
     write(
       repo,
       ".cairn/config.yaml",
@@ -312,7 +287,7 @@ function main(): void {
     assert(!m.apply(repo).changed, "0007: re-apply is idempotent");
 
     // Control: non-overlapping dirs → nothing to do.
-    const repo2 = mkRepo("dirs-clean");
+    const repo2 = mkFixture("dirs-clean");
     write(
       repo2,
       ".cairn/config.yaml",
@@ -331,7 +306,7 @@ function main(): void {
 
     // Full fixture as a REAL git repo so the timestamp swap can resolve the
     // file's git add-date (the non-git fallback leaves the stamp untouched).
-    const repo = mkRepo("scaffolding");
+    const repo = mkFixture("scaffolding");
     write(
       repo,
       ".cairn/config/workflow.md",
@@ -461,7 +436,7 @@ function main(): void {
     assert(!m.apply(repo).changed, "0008: re-apply is idempotent");
 
     // Control: a clean .cairn/ (already converged) is not flagged.
-    const repo2 = mkRepo("scaffolding-clean");
+    const repo2 = mkFixture("scaffolding-clean");
     write(
       repo2,
       ".cairn/config/workflow.md",
@@ -476,7 +451,7 @@ function main(): void {
 
     // Non-git fallback: comment scrubs still apply, synthetic stamp LEFT
     // (never fabricated) when git can't resolve an add-date.
-    const repo3 = mkRepo("scaffolding-nogit");
+    const repo3 = mkFixture("scaffolding-nogit");
     write(
       repo3,
       ".cairn/config/sensors.yaml",
@@ -499,7 +474,7 @@ function main(): void {
   // ── 0009 — repair §INV cites stranded by an archive (e.g. 0006 prune) ─
   {
     const m = migration("0009-repair-archived-cites");
-    const repo = mkRepo("cites");
+    const repo = mkFixture("cites");
     const entityFm = (id: string, status: string, body: string): string =>
       [
         "---",

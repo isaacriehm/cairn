@@ -43,13 +43,13 @@ import {
   readHookStdin,
   parseHookPayload,
   resolveHookCwd,
-  emitShapeB,
   appendTelemetry,
 } from "./payload.js";
 import {
-  emitCursorSessionStart,
-  isCursorHook,
-  isCursorOnlyHook,
+  emitSessionStartOutput,
+  resolveAgentHost,
+  type AgentHost,
+  type HookRunOptions,
 } from "../hook-platform.js";
 import { spawn } from "node:child_process";
 import { cairnDir } from "@isaacriehm/cairn-state";
@@ -68,12 +68,11 @@ import { cairnDir } from "@isaacriehm/cairn-state";
  * `CLAUDE_PLUGIN_ROOT` not set → silent skip with explicit warning so
  * the operator can diagnose via the SessionStart banner.
  */
-function syncActiveVersionShim(warnings: string[]): void {
-  if (isCursorOnlyHook()) {
+function syncActiveVersionShim(warnings: string[], host: AgentHost): void {
+  if (host !== "claude-code") {
     return;
   }
-  const pluginRoot =
-    process.env["CURSOR_PLUGIN_ROOT"] ?? process.env["CLAUDE_PLUGIN_ROOT"];
+  const pluginRoot = process.env["CLAUDE_PLUGIN_ROOT"];
   if (typeof pluginRoot !== "string" || pluginRoot.length === 0) {
     warnings.push(
       "statusline_shim_skipped: plugin root env not set (CLAUDE_PLUGIN_ROOT / CURSOR_PLUGIN_ROOT)",
@@ -170,26 +169,22 @@ interface SessionStartShapeBOutput {
   };
 }
 
-export async function runSessionStartHook(opts?: { cursor?: boolean }): Promise<void> {
+export async function runSessionStartHook(opts: HookRunOptions = {}): Promise<void> {
   const startedAt = Date.now();
+  const host = resolveAgentHost(opts.host);
   const raw = await readHookStdin();
   const payload = parseHookPayload(raw);
   const payloadSessionId = payload.session_id ?? null;
   const source = payload.source ?? null;
-  const cursor = opts?.cursor ?? isCursorHook();
   const cwdInput = resolveHookCwd(payload);
   const repoRoot = resolveRepoRoot(cwdInput);
   const shimWarnings: string[] = [];
-  syncActiveVersionShim(shimWarnings);
+  syncActiveVersionShim(shimWarnings, host);
 
   const emitSessionStart = (context: string, adoptedRoot: string | null): void => {
-    if (cursor) {
-      const env =
-        adoptedRoot !== null ? { CAIRN_REPO_ROOT: adoptedRoot } : undefined;
-      emitCursorSessionStart(context, env);
-    } else {
-      emitShapeB(context, "SessionStart");
-    }
+    const env =
+      adoptedRoot !== null ? { CAIRN_REPO_ROOT: adoptedRoot } : undefined;
+    emitSessionStartOutput(host, context, env);
   };
 
   if (repoRoot === null) {
@@ -350,7 +345,8 @@ export async function runSessionStartHook(opts?: { cursor?: boolean }): Promise<
   const midAdoptionBanner = renderMidAdoptionBanner(repoRoot);
   const migrationBanner =
     migrationResult !== null ? renderMigrationBanner(migrationResult) : null;
-  const staleStatuslineBanner = cursor ? null : renderStaleStatuslineBanner();
+  const staleStatuslineBanner =
+    host === "claude-code" ? renderStaleStatuslineBanner() : null;
   const banners = [
     bootstrapBanner,
     resumeBanner,
@@ -812,4 +808,3 @@ function renderAdoptionBanner(cwd: string): string {
   );
   return lines.join("\n");
 }
-

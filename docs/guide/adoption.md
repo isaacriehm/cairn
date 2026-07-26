@@ -2,8 +2,8 @@
 
 Adoption is the one-time pass that turns an existing project into a
 Cairn-managed project. It runs once. Afterwards, Cairn runs invisibly
-on every Claude Code session in the repo — the [daily flow](daily-flow.md)
-takes over.
+in every supported agent session in the repo—the
+[daily flow](daily-flow.md) takes over.
 
 This page walks through what actually happens when you adopt, so you
 know what to expect, what's automatic, and what you'll be asked to
@@ -15,8 +15,11 @@ decide.
 
 ### Prerequisites
 
-- **Claude Code installed and working.** Cairn is a Claude Code
-  plugin; it runs inside a Claude Code session.
+- **Claude Code, Cursor, or Codex installed and working.** Cairn ships a
+  native plugin adapter for each.
+- **The `claude` CLI available.** Cairn's adoption classifiers currently
+  call explicit Haiku/Sonnet aliases through `claude --print`, regardless
+  of which agent hosts the chat.
 - **Project is in git.** Adoption assumes `git` and at least one
   commit. If your repo isn't initialized, the preflight will offer
   to run `git init` for you.
@@ -37,8 +40,8 @@ decide.
 - An existing `docs/` folder. If you have one, Cairn ingests it.
   If you don't, adoption still works — you'll just have fewer
   initial DEC drafts.
-- An MCP host setup. The plugin registers itself; nothing in
-  `~/.claude/` to edit by hand.
+- A manual MCP host setup. Each plugin manifest registers the shared
+  server for its host.
 
 ### What to expect
 
@@ -62,6 +65,8 @@ SessionStart re-prompts to resume.
 ---
 
 ## Installing the plugin
+
+### Claude Code
 
 Three commands inside Claude Code, in any project:
 
@@ -87,6 +92,23 @@ What each does:
 
 After this, opening Claude Code in a non-adopted project will offer
 the adopt prompt within a few seconds of your first message.
+
+### Cursor
+
+Open **Settings → Cursor → Plugins → Add from GitHub**, enter
+`isaacriehm/cairn`, and install Cairn.
+
+### Codex Desktop and CLI
+
+```bash
+codex plugin marketplace add isaacriehm/cairn
+codex plugin add cairn@cairn
+```
+
+Codex Desktop reads the same `.agents/plugins/marketplace.json`. Restart
+after adding the source, open **Plugins**, install Cairn, then review and
+trust its bundled hooks. Desktop and CLI share the same plugin manifest,
+skills, MCP configuration, hooks, and local Codex config.
 
 ### Disabling Claude Code's built-in auto-memory
 
@@ -141,9 +163,9 @@ Your first interaction. The skill renders:
 days). `[c]` records a `decline-never` and never re-prompts unless
 you explicitly run `/cairn-init`.
 
-### Phase 0.5 — status-line wiring (one-time per machine)
+### Phase 0.5 — Claude Code status-line wiring (one-time per machine)
 
-If your `~/.claude/settings.json` doesn't have the Cairn status-line
+On Claude Code, if your `~/.claude/settings.json` doesn't have the Cairn status-line
 wired yet, adoption offers to add it:
 
 > Cairn's statusline shows live progress during the long adoption
@@ -158,7 +180,8 @@ wired yet, adoption offers to add it:
 9-source-comments can take 20+ minutes on large monorepos and
 without the status-line you'd be staring at a frozen prompt. After
 the wire and `/exit`, the next session's SessionStart auto-resumes
-adoption — you don't lose state.
+adoption—you don't lose state. Cursor and Codex skip this host-specific
+phase; all core adoption state and chat surfaces remain available.
 
 ### Phase 1 — detect
 

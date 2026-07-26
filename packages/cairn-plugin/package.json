@@ -1,7 +1,7 @@
 {
   "name": "@isaacriehm/cairn-plugin",
   "version": "0.32.1",
-  "description": "Agent plugin frontend for Cairn — Claude Code + Cursor (shared skills, agents, dist).",
+  "description": "Agent plugin frontend for Cairn — Claude Code, Cursor, and Codex (shared skills and runtime).",
   "type": "module",
   "engines": {
     "node": ">=22"
@@ -10,7 +10,9 @@
   "files": [
     ".claude-plugin",
     ".cursor-plugin",
+    ".codex-plugin",
     ".mcp.json",
+    ".mcp.codex.json",
     "mcp.json",
     "hooks",
     "rules",

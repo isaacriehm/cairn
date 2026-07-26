@@ -179,11 +179,6 @@ export function hasComponentConfig(config: NormalizedComponentsConfig): boolean 
   return config.workspaces.some((ws) => ws.componentDirs.length > 0);
 }
 
-/** True for monorepo configs (more than one workspace). */
-export function isMonorepoComponents(config: NormalizedComponentsConfig): boolean {
-  return config.workspaces.length > 1;
-}
-
 /* -------------------------------------------------------------------------- */
 /* Header parsing                                                             */
 /* -------------------------------------------------------------------------- */
@@ -574,7 +569,7 @@ const FORMAT_LEGEND = [
 ];
 
 /** Filesystem-safe slice slug for a workspace name. */
-export function sliceSlug(name: string): string {
+function sliceSlug(name: string): string {
   return name.replace(/[^a-zA-Z0-9_-]+/g, "-");
 }
 
@@ -868,13 +863,6 @@ function toLedgerEntry(c: ComponentRecord): ComponentLedgerEntry {
   };
   if (c.tags.status) entry.status = c.tags.status;
   return entry;
-}
-
-/** Collect + project the component registry into ledger entries. */
-export function buildComponentsLedger(repoRoot: string): ComponentLedgerEntry[] {
-  const config = loadComponentsConfig(repoRoot);
-  const { components } = collectComponents(repoRoot, config);
-  return components.map(toLedgerEntry);
 }
 
 /* -------------------------------------------------------------------------- */

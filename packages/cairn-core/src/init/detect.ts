@@ -320,12 +320,6 @@ export function detectHookCapability(repoRoot: string): HookCapabilityResult {
   return { can_hook: true };
 }
 
-export function detectEnvironment(): string {
-  if (process.env["GITHUB_ACTIONS"] === "true") return "github-actions";
-  if (process.env["VERCEL"] === "true") return "vercel";
-  return "local";
-}
-
 function isDirectory(path: string): boolean {
   try {
     return statSync(path).isDirectory();

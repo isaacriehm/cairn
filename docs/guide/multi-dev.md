@@ -80,7 +80,14 @@ This project uses Cairn. Install:
     /plugin install cairn@isaacriehm-cairn
     /reload-plugins
 
-  CLI only (if you don't use Claude Code):
+  Codex plugin:
+    codex plugin marketplace add isaacriehm/cairn
+    codex plugin add cairn@cairn
+
+  Cursor plugin:
+    Settings → Cursor → Plugins → Add from GitHub
+
+  CLI only:
     npm install -g @isaacriehm/cairn
 
 After installing, run `cairn join` from this clone, or just
@@ -97,7 +104,7 @@ sensor sweep.
 
 Two layers catch this:
 
-1. **Plugin degraded mode.** If they open the project in Claude Code
+1. **Plugin degraded mode.** If they open the project in a supported agent
    with the Cairn plugin enabled but `core.hooksPath` is unset, the
    SessionStart hook detects it and surfaces:
    ```
@@ -110,7 +117,7 @@ Two layers catch this:
    The MCP write tools refuse with `BOOTSTRAP_REQUIRED` until
    bootstrap completes.
 2. **Pre-commit failure.** If they bypass the plugin entirely (use
-   git from the terminal without ever opening Claude Code), the
+   git from the terminal without ever opening an agent client), the
    first `git commit` fails because `core.hooksPath` is unset and
    the project's pre-commit hook never ran:
    ```
@@ -141,7 +148,11 @@ Install Cairn:
 /plugin install cairn@isaacriehm-cairn
 /reload-plugins
 
-# Option B: CLI only
+# Option B: Codex plugin
+codex plugin marketplace add isaacriehm/cairn
+codex plugin add cairn@cairn
+
+# Option C: CLI only
 npm install -g @isaacriehm/cairn
 ```
 
@@ -159,7 +170,7 @@ on every commit.
 - The pre-commit hook runs sensors against your staged diff.
 - The CI gate (`.github/workflows/cairn-check.yml`) verifies on PR.
 - Recorded decisions in `.cairn/ground/decisions/` are loaded into
-  every Claude Code session you run in this project.
+  every supported agent session you run in this project.
 
 If you're new to Cairn, read the [user guide](docs/guide/concepts.md)
 or the [README](README.md).

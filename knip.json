@@ -26,5 +26,5 @@
       "project": "src/**/*.ts"
     }
   },
-  "ignoreBinaries": ["package"]
+  "ignoreBinaries": ["package", "codex"]
 }

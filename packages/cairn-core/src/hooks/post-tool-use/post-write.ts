@@ -6,11 +6,24 @@
  * by running both logically sequential tasks in a single process.
  */
 
+import { existsSync, readFileSync } from "node:fs";
 import { relative, resolve } from "node:path";
 import { resolveRepoRoot } from "../../session-start/index.js";
 import { appendTouched } from "../../session/index.js";
-import { readHookStdin, parseHookPayload, resolveHookCwd, normalizePostToolUse, pickWrittenContent } from "../runners/payload.js";
-import { writePostToolUseBlock, writePostToolUseOutput } from "../hook-platform.js";
+import {
+  extractWrittenPaths,
+  normalizePostToolUse,
+  parseHookPayload,
+  pickWrittenContent,
+  readHookStdin,
+  resolveHookCwd,
+} from "../runners/payload.js";
+import {
+  resolveAgentHost,
+  writePostToolUseBlock,
+  writePostToolUseOutput,
+  type HookRunOptions,
+} from "../hook-platform.js";
 import { executeSotAlign } from "./sot-align.js";
 import { executeWriteGuardian } from "./write-guardian.js";
 import { runComponentFreshness } from "../../components/freshness.js";
@@ -18,96 +31,109 @@ import { logger } from "../../logger.js";
 
 const log = logger("hooks.post-tool-use.post-write");
 
-export async function runPostWriteHook(): Promise<void> {
+export async function runPostWriteHook(options: HookRunOptions = {}): Promise<void> {
+  const host = resolveAgentHost(options.host);
   try {
     const raw = await readHookStdin();
     const hookPayload = parseHookPayload(raw);
     const payload = normalizePostToolUse(hookPayload);
 
     const tool = payload.tool_name;
-    if (tool !== "Write" && tool !== "Edit") {
-      writePostToolUseOutput("");
+    if (tool !== "Write" && tool !== "Edit" && tool !== "apply_patch") {
+      writePostToolUseOutput(host, "");
       return;
     }
 
-    const filePath = payload.tool_input?.file_path;
-    if (filePath === undefined || filePath.length === 0) {
-      writePostToolUseOutput("");
+    const filePaths = extractWrittenPaths(tool, payload.tool_input);
+    if (filePaths.length === 0) {
+      writePostToolUseOutput(host, "");
       return;
     }
 
     const cwd = resolveHookCwd(hookPayload);
     const repoRoot = resolveRepoRoot(cwd);
     if (repoRoot === null) {
-      writePostToolUseOutput("");
+      writePostToolUseOutput(host, "");
       return;
     }
 
-    const content = pickWrittenContent(payload.tool_name, payload.tool_input) ?? "";
-    // filePath from the Claude Code payload is absolute. Guardian's
-    // gitignore / glob / scope-index lookups all expect a repo-relative
-    // path, so normalize here before handing it over.
-    const relPath = relative(repoRoot, resolve(cwd, filePath));
-
-    // Stage-3 (D6): record the touched path so the Stop capture-gate can
-    // later filter to component-dir files missing a @cairn header. Best-
-    // effort, before the guard block — PostToolUse fires after the write
-    // landed, so the file is on disk regardless of the guard hint.
     const sessionId =
       typeof payload.session_id === "string" && payload.session_id.length > 0
         ? payload.session_id
         : null;
-    if (sessionId !== null) {
+
+    const sections: string[] = [];
+    const blocks: string[] = [];
+    for (const filePath of filePaths) {
+      const absolutePath = resolve(cwd, filePath);
+      const relPath = relative(repoRoot, absolutePath);
+      const content =
+        tool === "apply_patch"
+          ? existsSync(absolutePath)
+            ? readFileSync(absolutePath, "utf8")
+            : ""
+          : pickWrittenContent(payload.tool_name, payload.tool_input) ?? "";
+      const filePayload =
+        tool === "apply_patch"
+          ? {
+              ...payload,
+              tool_name: "Edit",
+              tool_input: {
+                ...payload.tool_input,
+                file_path: filePath,
+                content,
+              },
+            }
+          : payload;
+
+      // Record every path changed by a multi-file Codex apply_patch.
+      if (sessionId !== null) {
+        try {
+          appendTouched(repoRoot, sessionId, relPath);
+        } catch {
+          // best-effort — never affect the write
+        }
+      }
+
+      const guard = executeWriteGuardian({
+        repoRoot,
+        relPath,
+        content,
+        payload: filePayload,
+      });
+      if (guard.kind === "block") {
+        blocks.push(guard.message ?? `blocked: ${relPath}`);
+        continue;
+      }
+      if (guard.message) sections.push(guard.message);
+
+      const alignSummary = await executeSotAlign(filePayload, repoRoot);
+      if (alignSummary.length > 0) sections.push(alignSummary);
+
+      // Ghost component freshness gate (§3.8.1). Deterministic and
+      // best-effort; committed repos pay nothing.
       try {
-        appendTouched(repoRoot, sessionId, relPath);
-      } catch {
-        // best-effort — never affect the write
+        const freshness = runComponentFreshness(repoRoot, relPath);
+        if (freshness.hint) sections.push(freshness.hint);
+      } catch (err) {
+        log.warn(
+          { err: err instanceof Error ? err.message : String(err), relPath },
+          "component freshness gate threw; ignoring",
+        );
       }
     }
 
-    const guard = executeWriteGuardian({
-      repoRoot,
-      relPath,
-      content,
-      payload,
-    });
-    if (guard.kind === "block") {
-      writePostToolUseBlock(guard.message ?? "blocked");
+    if (blocks.length > 0) {
+      writePostToolUseBlock(host, blocks.join("\n\n"));
       return;
     }
-
-    // 2. Run SoT Align (hint only)
-    const alignSummary = await executeSotAlign(payload, repoRoot);
-
-    // 3. Ghost component freshness gate (§3.8.1). Deterministic, NO LLM —
-    //    detects an identity-relevant change to a registered headerless
-    //    component and flags it for a (deferred) re-confirm. `isGhost`-gated
-    //    inside, so committed repos pay nothing. Best-effort: a failure here
-    //    must never affect the Write.
-    let freshnessHint = "";
-    try {
-      const fr = runComponentFreshness(repoRoot, relPath);
-      if (fr.hint) freshnessHint = fr.hint;
-    } catch (err) {
-      log.warn(
-        { err: err instanceof Error ? err.message : String(err) },
-        "component freshness gate threw; ignoring",
-      );
-    }
-
-    // 4. Merge and Emit
-    const sections: string[] = [];
-    if (guard.message) sections.push(guard.message);
-    if (alignSummary.length > 0) sections.push(alignSummary);
-    if (freshnessHint.length > 0) sections.push(freshnessHint);
-
-    writePostToolUseOutput(sections.join("\n\n"));
+    writePostToolUseOutput(host, [...new Set(sections)].join("\n\n"));
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     log.warn(
       { err: message },
       "Post-write hook failed; degrading to no-op",
     );
-    writePostToolUseOutput("");
+    writePostToolUseOutput(host, "");
   }
 }

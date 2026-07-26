@@ -37,7 +37,11 @@ import {
   normalizePostToolUse,
   pickToolResponseContent,
 } from "../runners/payload.js";
-import { emitPostToolUseOutput } from "../hook-platform.js";
+import {
+  emitPostToolUseOutput,
+  resolveAgentHost,
+  type HookRunOptions,
+} from "../hook-platform.js";
 import { resolveRepoRoot } from "../../session-start/index.js";
 import { scanCitations, type ScannedCitations } from "./citation-scanner.js";
 import { buildLegend } from "./legend-builder.js";
@@ -53,7 +57,8 @@ const log = logger("hooks.post-tool-use.read-enricher");
 /**
  * Hook entry point.
  */
-export async function runReadEnricher(): Promise<void> {
+export async function runReadEnricher(options: HookRunOptions = {}): Promise<void> {
+  const host = resolveAgentHost(options.host);
   const ts = new Date().toISOString();
   let outcome: Record<string, unknown> = { skip: "unknown" };
   let repoRootForTrace: string | null = null;
@@ -66,7 +71,7 @@ export async function runReadEnricher(): Promise<void> {
 
     if (payload.tool_name !== "Read") {
       outcome = { skip: "non-read-tool", tool_name: payload.tool_name };
-      emitPostToolUseOutput("");
+      emitPostToolUseOutput(host, "");
       return;
     }
     const filePath = payload.tool_input?.file_path;
@@ -91,7 +96,7 @@ export async function runReadEnricher(): Promise<void> {
         content_present: content !== undefined,
         content_chars: content?.length ?? 0,
       };
-      emitPostToolUseOutput("");
+      emitPostToolUseOutput(host, "");
       return;
     }
 
@@ -100,14 +105,14 @@ export async function runReadEnricher(): Promise<void> {
     repoRootForTrace = repoRoot;
     if (repoRoot === null) {
       outcome = { skip: "not-adopted", cwd };
-      emitPostToolUseOutput("");
+      emitPostToolUseOutput(host, "");
       return;
     }
 
     const relPath = relative(repoRoot, resolve(cwd, filePath));
     if (isBinary(content)) {
       outcome = { skip: "binary", path: relPath };
-      emitPostToolUseOutput("");
+      emitPostToolUseOutput(host, "");
       return;
     }
 
@@ -209,12 +214,12 @@ export async function runReadEnricher(): Promise<void> {
       legend_chars: combined.length,
     };
 
-    emitPostToolUseOutput(combined);
+    emitPostToolUseOutput(host, combined);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     outcome = { error: message };
     log.error({ err: message }, "read-enricher hook failed");
-    emitPostToolUseOutput("");
+    emitPostToolUseOutput(host, "");
   } finally {
     if (repoRootForTrace !== null) {
       appendTelemetry({

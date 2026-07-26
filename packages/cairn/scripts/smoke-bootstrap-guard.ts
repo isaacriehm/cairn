@@ -15,11 +15,9 @@ import { execFileSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
-  mkdtempSync,
-  rmSync,
+  readFileSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   allTools,
@@ -29,31 +27,10 @@ import {
   requireBootstrap,
   runJoin,
 } from "@isaacriehm/cairn-core";
-
-const cleanups: string[] = [];
-
-function assert(cond: unknown, message: string): asserts cond {
-  if (!cond) {
-    console.error(`✗ ${message}`);
-    cleanup();
-    process.exit(1);
-  }
-}
-
-function cleanup(): void {
-  for (const path of cleanups.reverse()) {
-    try {
-      rmSync(path, { recursive: true, force: true });
-    } catch {
-      // best-effort
-    }
-  }
-}
+import { assert, cleanup, mkRepo } from "./lib/smoke-harness.js";
 
 function mkdir(): string {
-  const dir = mkdtempSync(join(tmpdir(), "cairn-smoke-guard-"));
-  cleanups.push(dir);
-  return dir;
+  return mkRepo("cairn-smoke-guard-");
 }
 
 function gitInit(repoRoot: string): void {

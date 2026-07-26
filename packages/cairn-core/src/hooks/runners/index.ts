@@ -33,17 +33,27 @@ export {
   readHookStdin,
   appendTelemetry,
   normalizePostToolUse,
+  extractWrittenPaths,
   pickWrittenContent,
   pickToolResponseContent,
 } from "./payload.js";
 export type { ClaudeHookPayload, NormalizedPostToolUsePayload } from "./payload.js";
 export {
-  setCursorHookMode,
-  isCursorHook,
-  isCursorOnlyHook,
-  emitCursorSessionStart,
+  AGENT_HOSTS,
+  resolveAgentHost,
+  serializeSessionStart,
+  serializePostToolUse,
+  serializeStop,
+  buildStopResult,
+  emitSessionStartOutput,
   emitPostToolUseOutput,
   writePostToolUseOutput,
   writePostToolUseBlock,
   emitStopOutput,
+} from "../hook-platform.js";
+export type {
+  AgentHost,
+  HookResult,
+  HookRunOptions,
+  StopInput,
 } from "../hook-platform.js";

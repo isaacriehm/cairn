@@ -2,53 +2,28 @@
  * `cairn attention` — show pending operator review items.
  *
  * Reads two sources from the adopted project:
- *   1. `.cairn/ground/decisions/_inbox/*.draft.md`  — DEC drafts awaiting confirm
+ *   1. `.cairn/ground/decisions/_inbox/*.draft.md` and
+ *      `.cairn/ground/invariants/_inbox/*.draft.md` — DEC/INV drafts awaiting confirm
  *   2. `.cairn/baseline/sensor-audit-*.yaml` (latest) — pre-Cairn sensor findings
  *
  * Prints a structured summary; exits 0 when there are no pending items, 2 when
  * any are present (so scripts can branch on attention).
  */
 
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import {
-  type Dirent,
-  existsSync,
-  readFileSync,
-  readdirSync,
-} from "node:fs";
-import { join, resolve } from "node:path";
-import { parse as parseYaml } from "yaml";
-import { cairnDir,
   isAdopted,
-  parseFrontmatterRecord,
+  listPendingDrafts,
+  readLatestBaselineDetail,
   restoreDec,
   runAttentionUndo,
+  type AttentionDraftEntry,
+  type BaselineAuditDetail,
+  type BaselineFindingRow,
   type UndoArgs,
   type UndoResult,
 } from "@isaacriehm/cairn-core";
-
-interface DraftEntry {
-  id: string;
-  title: string;
-  sourceFile: string | null;
-  captureSource: string | null;
-  rationale: string | null;
-}
-
-interface BaselineFinding {
-  sensor_id: string;
-  path: string;
-  line: number;
-  message: string;
-  severity: "hard" | "soft";
-}
-
-interface BaselineSummary {
-  path: string;
-  runAt: string | null;
-  totalFindings: number;
-  filesScanned: number;
-  bySensor: Map<string, BaselineFinding[]>;
-}
 
 const FINDINGS_PER_SENSOR = 3;
 
@@ -76,133 +51,6 @@ function ensureAdopted(repoRoot: string): void {
   }
 }
 
-function readFrontmatter(text: string): Record<string, unknown> {
-  // Reuse the canonical CRLF-tolerant parser so a draft saved with Windows
-  // line endings still keys correctly (single source of frontmatter truth).
-  return parseFrontmatterRecord(text).fm;
-}
-
-function listDrafts(repoRoot: string): DraftEntry[] {
-  const dir = cairnDir(repoRoot, "ground", "decisions", "_inbox");
-  if (!existsSync(dir)) return [];
-  let entries: Dirent[];
-  try {
-    entries = readdirSync(dir, { withFileTypes: true, encoding: "utf8" });
-  } catch {
-    return [];
-  }
-  const out: DraftEntry[] = [];
-  for (const e of entries) {
-    if (!e.isFile() || !e.name.endsWith(".draft.md")) continue;
-    const abs = join(dir, e.name);
-    let text: string;
-    try {
-      text = readFileSync(abs, "utf8");
-    } catch {
-      continue;
-    }
-    const fm = readFrontmatter(text);
-    const id =
-      typeof fm["id"] === "string"
-        ? (fm["id"] as string)
-        : e.name.replace(/\.draft\.md$/, "");
-    const title =
-      typeof fm["title"] === "string"
-        ? (fm["title"] as string)
-        : "(untitled draft)";
-    const sourceFile =
-      typeof fm["sourceFile"] === "string" ? (fm["sourceFile"] as string) : null;
-    const captureSource =
-      typeof fm["capture_source"] === "string"
-        ? (fm["capture_source"] as string)
-        : null;
-    const rationale =
-      typeof fm["proposedRationale"] === "string"
-        ? (fm["proposedRationale"] as string)
-        : null;
-    out.push({ id, title, sourceFile, captureSource, rationale });
-  }
-  out.sort((a, b) => a.id.localeCompare(b.id));
-  return out;
-}
-
-import { z } from "zod";
-
-const BaselineFindingSchema = z.object({
-  path: z.string().optional(),
-  line: z.number().optional(),
-  message: z.string().optional(),
-  severity: z.enum(["hard", "soft"]).optional(),
-}).passthrough();
-
-const BaselineSensorSchema = z.object({
-  sensor_id: z.string().optional(),
-  findings: z.array(BaselineFindingSchema).optional(),
-}).passthrough();
-
-const BaselineAuditSchema = z.object({
-  run_at: z.string().optional(),
-  total_findings: z.number().optional(),
-  files_scanned: z.number().optional(),
-  sensors: z.array(BaselineSensorSchema).optional(),
-}).passthrough();
-
-function readLatestBaseline(repoRoot: string): BaselineSummary | null {
-  const dir = cairnDir(repoRoot, "baseline");
-  if (!existsSync(dir)) return null;
-  let entries: string[];
-  try {
-    entries = readdirSync(dir, { encoding: "utf8" });
-  } catch {
-    return null;
-  }
-  const matching = entries
-    .filter((name) => /^sensor-audit-.*\.yaml$/.test(name))
-    .sort();
-  const latest = matching.at(-1);
-  if (latest === undefined) return null;
-  const abs = join(dir, latest);
-  let parsed: unknown;
-  try {
-    parsed = parseYaml(readFileSync(abs, "utf8"));
-  } catch {
-    return null;
-  }
-  const result = BaselineAuditSchema.safeParse(parsed);
-  if (!result.success) return null;
-  
-  const obj = result.data;
-  const runAt = obj.run_at ?? null;
-  const totalFindings = obj.total_findings ?? 0;
-  const filesScanned = obj.files_scanned ?? 0;
-  const bySensor = new Map<string, BaselineFinding[]>();
-  if (obj.sensors !== undefined) {
-    for (const r of obj.sensors) {
-      const sensorId = r.sensor_id ?? "";
-      if (sensorId.length === 0) continue;
-      const findingsRaw = r.findings ?? [];
-      const findings: BaselineFinding[] = [];
-      for (const fr of findingsRaw) {
-        findings.push({
-          sensor_id: sensorId,
-          path: fr.path ?? "",
-          line: fr.line ?? 0,
-          message: fr.message ?? "",
-          severity: fr.severity === "hard" ? "hard" : "soft",
-        });
-      }
-      if (findings.length > 0) bySensor.set(sensorId, findings);
-    }
-  }
-  return {
-    path: abs.startsWith(repoRoot) ? abs.slice(repoRoot.length + 1) : abs,
-    runAt,
-    totalFindings,
-    filesScanned,
-    bySensor,
-  };
-}
-
 function shortenAge(iso: string | null): string {
   if (iso === null) return "";
   const t = Date.parse(iso);
@@ -215,18 +63,21 @@ function shortenAge(iso: string | null): string {
   return ` (${days}d ago)`;
 }
 
-function renderDraftsSection(drafts: DraftEntry[]): void {
+function renderDraftsSection(drafts: AttentionDraftEntry[]): void {
   process.stdout.write(
-    `  Decision drafts pending confirm — ${drafts.length}\n`,
+    `  Decision / invariant drafts pending confirm — ${drafts.length}\n`,
   );
   for (const d of drafts) {
-    const tag = d.captureSource !== null ? ` [${d.captureSource}]` : "";
+    const tag = d.capture_source !== null ? ` [${d.capture_source}]` : "";
     process.stdout.write(`    • ${d.id}${tag}  ${d.title}\n`);
-    if (d.sourceFile !== null) {
-      process.stdout.write(`        from ${d.sourceFile}\n`);
+    if (d.source_file !== null) {
+      process.stdout.write(`        from ${d.source_file}\n`);
     }
-    if (d.rationale !== null && d.rationale.length > 0) {
-      const cap = d.rationale.length > 140 ? `${d.rationale.slice(0, 137)}…` : d.rationale;
+    if (d.proposed_rationale !== null && d.proposed_rationale.length > 0) {
+      const cap =
+        d.proposed_rationale.length > 140
+          ? `${d.proposed_rationale.slice(0, 137)}…`
+          : d.proposed_rationale;
       process.stdout.write(`        ${cap}\n`);
     }
   }
@@ -235,19 +86,17 @@ function renderDraftsSection(drafts: DraftEntry[]): void {
   );
 }
 
-function renderBaselineSection(summary: BaselineSummary): void {
+function renderBaselineSection(summary: BaselineAuditDetail): void {
   const age = shortenAge(summary.runAt);
   process.stdout.write(
     `  Baseline sensor findings — ${summary.totalFindings} (across ${summary.filesScanned} files)${age}\n`,
   );
-  process.stdout.write(`    audit: ${summary.path}\n`);
+  process.stdout.write(`    audit: ${summary.auditPath}\n`);
   for (const [sensorId, findings] of summary.bySensor) {
     process.stdout.write(`    ${sensorId} — ${findings.length}\n`);
     const head = findings.slice(0, FINDINGS_PER_SENSOR);
     for (const f of head) {
-      const loc = f.line > 0 ? `:${f.line}` : "";
-      const msg = f.message.length > 80 ? `${f.message.slice(0, 77)}…` : f.message;
-      process.stdout.write(`      ${f.path}${loc}  ${msg}\n`);
+      renderFindingLine(f);
     }
     if (findings.length > head.length) {
       process.stdout.write(
@@ -258,6 +107,12 @@ function renderBaselineSection(summary: BaselineSummary): void {
   process.stdout.write(
     "\n  These are pre-Cairn violations. Address them before starting new work, or accept as debt.\n",
   );
+}
+
+function renderFindingLine(f: BaselineFindingRow): void {
+  const loc = f.line > 0 ? `:${f.line}` : "";
+  const msg = f.message.length > 80 ? `${f.message.slice(0, 77)}…` : f.message;
+  process.stdout.write(`      ${f.path}${loc}  ${msg}\n`);
 }
 
 async function restoreCli(repoRoot: string, argv: string[]): Promise<void> {
@@ -387,7 +242,7 @@ export async function attentionCli(argv: string[]): Promise<void> {
       "Usage: cairn attention [--repo <path>]\n" +
         "       cairn attention restore <DEC-id> [--repo <path>]\n" +
         "       cairn attention undo [--since <duration>] [--dry-run] [--repo <path>]\n" +
-        "  Default: list DEC drafts pending confirm + latest baseline sensor findings.\n" +
+        "  Default: list DEC/INV drafts pending confirm + latest baseline sensor findings.\n" +
         "  restore: move a previously rejected or accepted DEC back to _inbox/<id>.draft.md\n" +
         "    so the operator can re-evaluate via cairn-attention. Accepted-to-draft\n" +
         "    keeps the inline `// §DEC-<hash>` source cite (re-accept is idempotent).\n" +
@@ -419,8 +274,8 @@ export async function attentionCli(argv: string[]): Promise<void> {
   const repoRoot = parseRepoFlag(argv);
   ensureAdopted(repoRoot);
 
-  const drafts = listDrafts(repoRoot);
-  const baseline = readLatestBaseline(repoRoot);
+  const drafts = listPendingDrafts(repoRoot);
+  const baseline = readLatestBaselineDetail(repoRoot);
 
   process.stdout.write(`  ⬡ cairn attention — ${repoRoot}\n\n`);
 

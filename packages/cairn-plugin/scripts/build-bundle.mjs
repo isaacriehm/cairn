@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * build-bundle — esbuild the cairn CLI into a single self-contained
- * dist/cli.mjs that the Claude Code plugin invokes via
- * `node ${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs <subcommand>`.
+ * dist/cli.mjs that the Claude Code, Cursor, and Codex plugins invoke
+ * from their respective plugin roots.
  *
  * Self-contained = the plugin marketplace clone runs the bundle without
  * any `npm install -g`, npx, or PATH dependency. Replaces the v0.1.x
@@ -20,7 +20,7 @@
  */
 
 import { build } from "esbuild";
-import { cpSync, readFileSync, rmSync, statSync } from "node:fs";
+import { cpSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -61,6 +61,12 @@ await build({
     __CAIRN_VERSION__: JSON.stringify(VERSION),
   },
 });
+
+// Some minified dependency templates contain whitespace-only lines. Keep the
+// committed artifact diff-clean without changing any executable content.
+const bundlePath = resolve(PKG_ROOT, "dist/cli.mjs");
+const bundle = readFileSync(bundlePath, "utf8");
+writeFileSync(bundlePath, bundle.replace(/[ \t]+$/gm, ""));
 
 // Mirror cairn-core/templates/ → plugin/dist/templates/ so cairn-core's
 // runtime template lookups resolve under the bundled layout.

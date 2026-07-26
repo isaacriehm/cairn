@@ -17,43 +17,20 @@
 import {
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   readdirSync,
-  rmSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
   bodyContentHash,
   buildInvariantsLedger,
   pruneInvariants,
 } from "@isaacriehm/cairn-core";
+import { assert, cleanup, mkRepo } from "./lib/smoke-harness.js";
 
-const cleanups: string[] = [];
-
-function assert(cond: unknown, message: string): asserts cond {
-  if (!cond) {
-    console.error(`✗ ${message}`);
-    cleanup();
-    process.exit(1);
-  }
-}
-
-function cleanup(): void {
-  for (const path of cleanups.reverse()) {
-    try {
-      rmSync(path, { recursive: true, force: true });
-    } catch {
-      /* best-effort */
-    }
-  }
-}
-
-function mkRepo(): string {
-  const dir = mkdtempSync(join(tmpdir(), "cairn-smoke-inv-prune-"));
-  cleanups.push(dir);
+function mkInvPruneRepo(): string {
+  const dir = mkRepo("cairn-smoke-inv-prune-");
   mkdirSync(join(dir, ".cairn", "ground", "invariants"), { recursive: true });
   return dir;
 }
@@ -138,7 +115,7 @@ function main(): void {
 
   // ── Step 1 — surgical prune ──────────────────────────────────────
   {
-    const repo = mkRepo();
+    const repo = mkInvPruneRepo();
     seedAll(repo);
     const r = pruneInvariants({ repoRoot: repo, mode: "surgical" });
 
@@ -178,7 +155,7 @@ function main(): void {
 
   // ── Step 2 — --all prunes every sot-align INV, curated survives ──
   {
-    const repo = mkRepo();
+    const repo = mkInvPruneRepo();
     seedAll(repo);
     const r = pruneInvariants({ repoRoot: repo, mode: "all" });
     const prunedIds = new Set(r.pruned.map((p) => p.id));
@@ -192,7 +169,7 @@ function main(): void {
 
   // ── Step 3 — dry-run changes nothing ─────────────────────────────
   {
-    const repo = mkRepo();
+    const repo = mkInvPruneRepo();
     seedAll(repo);
     const before = new Set(activeFiles(repo));
     const srcBefore = readFileSync(join(repo, SRC), "utf8");

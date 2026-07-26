@@ -1,15 +1,15 @@
 /**
- * Shared utilities for Claude Code hook runners — stdin reader,
- * payload parser, Shape-B emitter, telemetry sink.
+ * Shared utilities for Claude Code, Cursor, and Codex hook runners —
+ * stdin reader, payload normalization, telemetry, and compatibility output.
  *
- * Spec: Claude Code hook contract (Shape-B JSON on stdout).
+ * Claude Code and Codex accept Shape-B compatibility output; Cursor uses
+ * its native v1 response envelopes at the host boundary.
  */
 
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { z } from "zod";
 import { cairnDir } from "@isaacriehm/cairn-state";
-import { emitCursorSessionStart } from "../hook-platform.js";
 
 export const CAIRN_HOOK_VERSION = "0.2.0";
 
@@ -32,7 +32,8 @@ export type ClaudeHookPayload = z.infer<typeof ClaudeHookPayloadSchema>;
 /**
  * Resolve the adopted-project cwd for hook runners.
  * Cursor injects CURSOR_PROJECT_DIR on every hook; sessionStart also
- * carries workspace_roots when cwd is absent.
+ * carries workspace_roots when cwd is absent. Claude Code and Codex
+ * normally provide cwd directly.
  */
 export function resolveHookCwd(payload: ClaudeHookPayload): string {
   if (typeof payload.cwd === "string" && payload.cwd.length > 0) {
@@ -82,6 +83,7 @@ export type PostToolInput = {
   content?: string;
   new_string?: string;
   old_string?: string;
+  command?: string;
   [key: string]: unknown;
 };
 
@@ -188,6 +190,51 @@ export function pickWrittenContent(
   return undefined;
 }
 
+/**
+ * Files written by a completed agent tool call. Codex's `apply_patch` can
+ * update multiple paths in one call, so callers must process the complete
+ * patch rather than pretending it is a single Claude-style Edit.
+ */
+export function extractWrittenPaths(
+  toolName: string | undefined,
+  input: PostToolInput | undefined,
+): string[] {
+  if (input === undefined) return [];
+  if (toolName !== "apply_patch") {
+    return typeof input.file_path === "string" && input.file_path.length > 0
+      ? [input.file_path]
+      : [];
+  }
+  if (typeof input.command !== "string") return [];
+
+  const paths: string[] = [];
+  const seen = new Set<string>();
+  let pendingPath: string | undefined;
+  const flushPending = (): void => {
+    if (pendingPath === undefined || pendingPath.length === 0 || seen.has(pendingPath)) return;
+    seen.add(pendingPath);
+    paths.push(pendingPath);
+  };
+
+  for (const line of input.command.split(/\r?\n/)) {
+    const fileMatch = /^\*\*\* (Add|Update|Delete) File: (.+)$/.exec(line);
+    if (fileMatch !== null) {
+      flushPending();
+      pendingPath =
+        fileMatch[1] === "Delete"
+          ? undefined
+          : fileMatch[2]?.trim();
+      continue;
+    }
+    const moveMatch = /^\*\*\* Move to: (.+)$/.exec(line);
+    if (moveMatch !== null && pendingPath !== undefined) {
+      pendingPath = moveMatch[1]?.trim();
+    }
+  }
+  flushPending();
+  return paths;
+}
+
 /** Extract readable text from a postToolUse tool_response object. */
 export function pickToolResponseContent(
   resp: PostToolResponse | undefined,
@@ -244,11 +291,6 @@ export function emitShapeB(context: string, hookEventName: HookEventName): never
   };
   process.stdout.write(JSON.stringify(payload));
   process.exit(0);
-}
-
-/** Write Cursor sessionStart output and exit. */
-export function emitCursorContext(context: string): never {
-  emitCursorSessionStart(context);
 }
 
 /**

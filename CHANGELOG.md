@@ -8,6 +8,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Codex Desktop + CLI plugin** — repo marketplace at
+  `.agents/plugins/marketplace.json`, `.codex-plugin/plugin.json`, bundled
+  MCP registration, trusted lifecycle hooks, and shared portable skills.
+  The isolated CLI smoke adds the marketplace, discovers Cairn, and installs
+  it without touching the operator's real Codex home.
+- **Tri-host hook boundary** — explicit `claude-code | cursor | codex`
+  selection, one normalized internal result contract, and host-native
+  SessionStart/PostToolUse/Stop serializers. Codex multi-file
+  `apply_patch` calls pass every surviving path through the shared write
+  guardian and alignment pipeline.
 - **Cursor Agent plugin** — dual manifest in `cairn-plugin`
   (`.cursor-plugin/`, `hooks.cursor.json`, `mcp.json`, `rules/`). GitHub
   install via `.cursor-plugin/marketplace.json`. Shared skills/agents/dist
@@ -22,6 +32,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Cursor plugin hooks now use Cursor's native v1 schema.** The contributed
+  config used lower-camel event names around Claude-style nested matcher
+  groups, a combination Cursor does not load. Entries are now flat
+  `{ matcher?, command }` records under `version: 1`, and the self-referential
+  smoke has been replaced with a contract check.
+- **Removed mutable global host mode.** Hook runners now receive an explicit
+  host instead of relying on `setCursorHookMode()` call order.
 - **MCP repo root under Cursor** — `cairn mcp serve` (bundled CLI path) now
   resolves project root via `CURSOR_PROJECT_DIR` when `CURSOR_PLUGIN_ROOT`
   is set, with `resolveAnchorRoot` collapse (not bare `cwd` walk from `~`).
@@ -44,6 +61,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Removed `cairn-frontend-cursor` package** — Cursor manifest, hooks, MCP config,
   and rules now live in `cairn-plugin` alongside Claude Code.
   One copy of skills, agents, commands, and `dist/`.
+- **Portable agent instructions** — `AGENTS.md` is the shared repository
+  entrypoint and `CLAUDE.md` imports it. Shared Cairn skills define native
+  question, tool-discovery, and subagent fallbacks for all three hosts.
 
 ## [0.32.1] — 2026-06-16
 

@@ -14,12 +14,12 @@ plugin-era architecture (post v0.2.0; daemon / orchestrator code purged).
 Cairn = persistent ground state + context-loading layer for AI coding
 agents. It curates `.cairn/ground/` (decisions, §INV invariants,
 canonical-map, brand, quality-grades), exposes that state via an MCP
-server, and ships a Claude Code plugin that wires adoption + the daily
-flow inline.
+server, and ships one Claude Code, Cursor, and Codex plugin package that
+wires adoption + the daily flow inline.
 
-The Claude Code plugin is the primary surface. The CLI (`cairn ...`) is
+The shared agent plugin is the primary surface. The CLI (`cairn ...`) is
 the bootstrap and debug entrypoint. There is **no separate orchestration
-runtime** — the plugin uses Claude Code's built-in subagent dispatch.
+runtime**—each client uses its native subagent dispatch.
 
 ---
 
@@ -27,24 +27,24 @@ runtime** — the plugin uses Claude Code's built-in subagent dispatch.
 
 | Surface        | Package                 | Purpose                                                                                                                                                                                     |
 | -------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Plugin**     | `cairn-plugin`          | Claude Code manifest + Cursor manifest + hook bins + skills + commands + the reviewer subagent. The everyday surface.                                                                       |
+| **Plugin**     | `cairn-plugin`          | Thin Claude Code, Cursor, and Codex manifests + host hook/MCP adapters + shared skills, agent briefs, and runtime. The everyday surface.                                                     |
 | **MCP server** | `cairn-core/src/mcp/`   | 20 tools — graph reads (`cairn_in_scope`, `cairn_invariant_get`, …), writes (`cairn_record_decision`, `cairn_resolve_attention`, `cairn_archive`), init phase tools (`cairn_init_phase_*`). |
 | **CLI**        | `cairn` (umbrella)      | `cairn init`, `cairn join`, `cairn doctor`, `cairn scope rebuild`, `cairn trace`, `cairn hook <name>`. Bootstrap + debug.                                                                   |
 | **Lens**       | `cairn-lens`            | VS Code / Cursor extension. Resolves `§INV-<hash>` / `§DEC-<hash>` / `TODO(TSK-…)` tokens inline. Hover + decoration + CodeLens.                                                            |
-| **Hook bins**  | `cairn-core/src/hooks/` | Thin entrypoints called by Claude Code at hook events; delegate to runners in `hooks/runners/`.                                                                                             |
+| **Hook bins**  | `cairn-core/src/hooks/` | Shared hook runners called by all three clients; one host adapter serializes the protocol-native response.                                                                                 |
 
 ```mermaid
 graph TB
   subgraph Operator
-    CC[Claude Code session]
-    Editor[Cursor / VS Code]
+    Agent[Claude Code / Cursor / Codex]
+    Editor[VS Code / Cursor Lens]
     Term[Terminal]
   end
 
   subgraph "Plugin: cairn-plugin"
     Skills[Skills: cairn-adopt, cairn-direction,<br/>cairn-attention, cairn-statusline-setup, cairn-bootstrap]
     Cmds[Slash commands: /cairn-init, /cairn-direction]
-    Agent[Subagent: reviewer]
+    Reviewer[Agent brief: reviewer]
     HookBins[Hook bins: session-start, stop,<br/>post-tool-use/read, post-tool-use/write, session-end]
     MCP[(MCP stdio:<br/>20 cairn_* tools)]
   end
@@ -68,17 +68,17 @@ graph TB
     Haiku[claude --print Haiku]
   end
 
-  CC -->|hook events| HookBins
-  CC -->|tool calls| MCP
-  CC -.skill auto-invoke.-> Skills
+  Agent -->|hook events| HookBins
+  Agent -->|tool calls| MCP
+  Agent -.skill auto-invoke.-> Skills
   Term -->|cairn ...| Init
   Editor -->|extension| Ground
   Skills --> Cmds
-  Skills --> Agent
+  Skills --> Reviewer
   HookBins --> Runners
   MCP --> Tools
   Cmds --> MCP
-  Agent --> MCP
+  Reviewer --> MCP
   Runners --> Ground
   Runners --> Trace
   Tools --> Ground
@@ -133,7 +133,7 @@ flowchart TD
 sequenceDiagram
   autonumber
   participant Op as Operator
-  participant CC as Claude Code
+  participant Agent as Agent host
   participant SS as SessionStart hook
   participant CD as cairn-direction skill
   participant MCP as MCP server
@@ -141,28 +141,28 @@ sequenceDiagram
   participant Stop as Stop hook
   participant Disk as .cairn/ ground
 
-  Op->>CC: claude --dangerously-skip-permissions
-  CC->>SS: hook fires
+  Op->>Agent: open Claude Code, Cursor, or Codex
+  Agent->>SS: hook fires
   SS->>Disk: rescan scope-index<br/>rebuild decisions ledger<br/>rebuild invariants ledger
   SS->>Disk: writeStatusJson + readActiveTaskSummary
-  SS-->>CC: additionalContext (ground state header, pending drafts, …)
+  SS-->>Agent: host-native context (ground state header, pending drafts, …)
 
-  Op->>CC: 'login endpoint isn't enforcing 24h expiry…'
-  CC->>CD: skill auto-invokes (verb-led OR bug-report OR observation)
+  Op->>Agent: 'login endpoint isn't enforcing 24h expiry…'
+  Agent->>CD: skill auto-invokes (verb-led OR bug-report OR observation)
   CD->>MCP: cairn_in_scope({path_globs})
   CD->>MCP: cairn_search({query})
-  CD->>Op: AskUserQuestion (clarifying, ≤3)
+  CD->>Op: host-native structured question or A/B/C fallback
   Op-->>CD: answers
   CD->>Disk: write .cairn/tasks/active/TSK-NNNN/spec.tightened.md
   CD->>Disk: write .cairn/tasks/active/TSK-NNNN/status.yaml
-  CD->>CC: dispatch block (subagent briefs) OR inline implement
+  CD->>Agent: dispatch block (subagent briefs) OR inline implement
 
   alt multi-chunk
-    CC->>Sub: Task(subagent=cairn:reviewer)
+    Agent->>Sub: native subagent dispatch with reviewer brief
     Sub->>MCP: cairn_record_decision (if any)
     Sub->>Disk: write attestation.yaml
   else single-chunk
-    CC->>CC: implement directly
+    Agent->>Agent: implement directly
     Note over CC: PostToolUse(Write/Edit) fires per file<br/>scope-index single-file sync runs deterministically
   end
 
@@ -227,11 +227,11 @@ sequenceDiagram
 
 | Hook                       | Fires when                  | Effect                                                                                                                                                                                                                                                  |
 | -------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SessionStart`             | Claude Code session opens   | Builds `additionalContext` (ground state summary, pending drafts, bypass count). Refreshes `status.json`. **Rebuilds:** scope-index (rescan source citations), decisions ledger, invariants ledger. GCs stale sessions + events. Syncs statusline shim. |
-| `PostToolUse(Read)`        | Agent reads a file          | Scans content for `§INV-`/`§DEC-`/`TODO(TSK-…)` cite tokens. Builds the `┌─ cairn citations ─┐` legend block, prepended via Shape-B `additionalContext`.                                                                                                |
-| `PostToolUse(Write\|Edit)` | Agent writes a file         | Two passes: (a) copy-safety scan if file is in `copy-safety` globs; (b) **deterministic scope-index sync** for the just-written content. Both surfaced via Shape-B; never blocks the write.                                                             |
-| `Stop`                     | End of every assistant turn | Scans pending reviews, bypass commits, draft inbox. Emits cross-session events marker. Returns `decision: block + reason` when a surface is present (Claude sees the hint inline).                                                                      |
-| `SessionEnd`               | Session closes              | Cleans the per-session dir.                                                                                                                                                                                                                             |
+| `SessionStart`             | Agent session opens         | Builds host-native context (ground state summary, pending drafts, bypass count). Refreshes `status.json`. **Rebuilds:** scope-index, decisions ledger, invariants ledger. GCs stale sessions + events. Syncs the Claude-only statusline shim. |
+| `PostToolUse(Read)`        | Agent reads a file          | Scans content for `§INV-`/`§DEC-`/`TODO(TSK-…)` cite tokens and emits the citation legend through the host adapter. |
+| `PostToolUse(Write\|Edit\|apply_patch)` | Agent writes files | Runs copy-safety, alignment, and freshness through one pipeline. Codex multi-file patches are expanded into every surviving written path. |
+| `Stop`                     | End of every assistant turn | Scans pending reviews, bypass commits, and draft inbox; serializes continuation in the host-native form. |
+| `SessionEnd`               | Session closes where supported | Cleans the per-session dir. |
 | `commit-msg` (git hook)    | `git commit` runs           | Appends commit SHA to `.attested-commits`. `--no-verify` bypasses; bypass-detection picks it up next SessionStart.                                                                                                                                      |
 
 **Hook bins NOT used:** `PreToolUse` is forbidden (bricks the session — durable lesson from earlier rounds).
@@ -259,8 +259,8 @@ sequenceDiagram
 | Phase 8 docs-ingest      | Haiku per doc                  | Canonical-map topic naming + summary                                                                   | **No** — semantic naming                                                                                                   |
 | Phase 9 source-comments  | Haiku per batch                | Classify essay block as rationale/constraint/citation/license/other; rewrite into DEC title / INV body | **No** — classification + prose rewrite                                                                                    |
 | Phase 10 rules-merge     | Haiku per section              | Semantic merge of overlapping CLAUDE.md/AGENTS.md rules                                                | **No** — conflict detection                                                                                                |
-| `cairn-direction` skill  | Main Claude (the agent itself) | Spec tightening from loose prompt                                                                      | **No** — operator-facing dialog                                                                                            |
-| `cairn-attention` skill  | Main Claude                    | DEC draft accept/reject/edit dialog                                                                    | **No** — operator-facing dialog                                                                                            |
+| `cairn-direction` skill  | Main agent | Spec tightening from loose prompt                                                                      | **No** — operator-facing dialog                                                                                            |
+| `cairn-attention` skill  | Main agent | DEC draft accept/reject/edit dialog                                                                    | **No** — operator-facing dialog                                                                                            |
 | `reviewer` subagent      | Sonnet                         | Cross-attestation of subagent diffs                                                                    | **No** — judgment                                                                                                          |
 
 **No longer LLM (was, isn't anymore):**
@@ -270,7 +270,8 @@ sequenceDiagram
 - Mapper baseline globs — pre-filled by `inferGlobsFromDetection` (NestJS / Drizzle / Prisma / Rails / etc. conventions). Mapper LLM still allowed to add project-specific gaps.
 - Decision extractor (`runDecisionExtractor`) — entire daemon-era Tier-1 path purged. Operator-driven DEC creation flows through `cairn-direction` + `cairn_record_decision`.
 - Tier-0 prompt classifier — purged. `cairn-direction`'s `when_to_use` gate handles routing.
-- Spec tightener backend module — purged. The `cairn-direction` skill IS the tightener now (main Claude does the work via AskUserQuestion).
+- Spec tightener backend module — purged. The `cairn-direction` skill is
+  the tightener now; the main agent uses its host-native question surface.
 
 ---
 

@@ -34,6 +34,7 @@ import {
 } from "./annotate-surface.js";
 import { buildWorkingHeader } from "../../context/index.js";
 import { getSeenFingerprint, setSeenFingerprint } from "../../session/index.js";
+import type { HookRunOptions } from "../hook-platform.js";
 
 const MAX_FILE_BYTES = 512_000;
 // Match `@<path>` only when `@` follows whitespace or is at start of
@@ -101,7 +102,7 @@ function safeRead(absPath: string): string | null {
   }
 }
 
-export async function runUserPromptSubmitHook(): Promise<void> {
+export async function runUserPromptSubmitHook(_options: HookRunOptions = {}): Promise<void> {
   try {
     const raw = await readHookStdin();
     const payload = parsePayload(raw);

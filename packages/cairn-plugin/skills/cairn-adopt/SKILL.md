@@ -2,7 +2,7 @@
 name: cairn-adopt
 description: One-time Cairn adoption pipeline for a new project.
 when_to_use: |
-  Use when operator opens Claude Code in project without `.cairn/`
+  Use when operator opens a supported coding agent in a project without `.cairn/`
   AND Cairn not declined. Drives one-time adoption inline via
   cairn_init_run MCP tool as state machine — each phase returns
   complete (advance) or needs_input (AskUserQuestion, thread answer,
@@ -11,6 +11,20 @@ allowed-tools: Skill(cairn:cairn-attention), Task(curator-map), Task(curator-red
 ---
 
 # Skill: cairn-adopt
+
+## Host portability
+
+This skill is shared by Claude Code, Cursor, and Codex. Tool names in this
+file describe capabilities, not a required vendor API:
+
+- Resolve Cairn MCP tools with the host's native tool-discovery mechanism.
+  `ToolSearch(...)` is the Claude Code spelling; Codex and Cursor use their
+  equivalent discovery surface.
+- `AskUserQuestion` means the host's structured question UI. If unavailable,
+  ask the same concise A/B/C question in chat and pause for the answer.
+- Named subagents live under `../../agents/`. Claude Code may dispatch them
+  by name; other hosts read the matching brief and pass it to their native
+  subagent tool. If the host has no subagent tool, execute the brief inline.
 
 You are guiding the operator through one-time Cairn adoption for the
 current project. Adoption is **visual, comprehensive, and one-time** —

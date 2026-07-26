@@ -27,7 +27,7 @@ const manifest = readJson<{ name: string; version: string; logo?: string; hooks?
 );
 assert(manifest.name === "cairn", "plugin name must be cairn");
 assert(manifest.logo === undefined, "plugin must not reference missing logo asset");
-assert(manifest.hooks === "hooks/hooks.cursor.json", "cursor manifest must point at hooks.cursor.json");
+assert(manifest.hooks === "./hooks/hooks.cursor.json", "cursor manifest must point at hooks.cursor.json");
 
 const mcp = readJson<{ mcpServers: { cairn: { env: Record<string, string> } } }>(
   join(PLUGIN_ROOT, "mcp.json"),

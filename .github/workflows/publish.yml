@@ -163,6 +163,8 @@ jobs:
             ## Installs
 
             - **Claude Code plugin** (recommended): `/plugin marketplace add isaacriehm/cairn` then `/plugin install cairn@isaacriehm-cairn`
+            - **Cursor plugin**: Settings → Cursor → Plugins → Add from GitHub → `isaacriehm/cairn`
+            - **Codex plugin**: `codex plugin marketplace add isaacriehm/cairn` then `codex plugin add cairn@cairn`
             - **CLI**: `npm install -g @isaacriehm/cairn`
             - **Library**: `npm install @isaacriehm/cairn-core`
             - **Editor extension** (Cairn Lens): download the `.vsix` below

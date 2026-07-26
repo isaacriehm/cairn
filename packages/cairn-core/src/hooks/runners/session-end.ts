@@ -14,9 +14,14 @@ import {
   resolveHookCwd,
   appendTelemetry,
 } from "./payload.js";
+import {
+  resolveAgentHost,
+  type HookRunOptions,
+} from "../hook-platform.js";
 
-export async function runSessionEndHook(): Promise<void> {
+export async function runSessionEndHook(options: HookRunOptions = {}): Promise<void> {
   const startedAt = Date.now();
+  const host = resolveAgentHost(options.host);
   const raw = await readHookStdin();
   const payload = parseHookPayload(raw);
   const sessionId = typeof payload.session_id === "string" ? payload.session_id : null;
@@ -45,5 +50,9 @@ export async function runSessionEndHook(): Promise<void> {
     });
   }
 
+  if (host === "cursor") {
+    process.stdout.write("{}");
+    return;
+  }
   emitContinue();
 }

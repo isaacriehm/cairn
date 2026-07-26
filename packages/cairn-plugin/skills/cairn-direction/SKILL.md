@@ -20,6 +20,16 @@ when_to_use: |
 
 # Skill: cairn-direction
 
+## Host portability
+
+This skill is shared by Claude Code, Cursor, and Codex. Resolve Cairn MCP
+tools with the host's native discovery mechanism. `AskUserQuestion` means the
+host's structured question UI; if unavailable, ask the same concise A/B/C
+question in chat and pause. Dispatch plans use the host's native subagent
+tool. When a named Cairn role is required, read its brief under
+`../../agents/` and pass that brief to the native subagent; execute inline
+only when the host has no subagent capability.
+
 Convert loose operator prompts into tightened specs + dispatched
 work. Long-form playbooks live in `docs/PLUGIN_ARCHITECTURE.md` §11
 (rejection capture, pivot, mission scope, dispatch block,
@@ -311,5 +321,5 @@ Never restate the body or prepend `// AI:`. Restating the title
   `exit_gate: "auto"` → suppress non-blocking `AskUserQuestion`.
 - Populate `in_scope_decisions` + `in_scope_invariants` whenever
   Step 1 named matches.
-- Chat voice from `.cairn/ground/brand/voice.md` when present;
-  spec file content is full English.
+- Match the project's chat-reply voice from `.cairn/ground/brand/voice.md`
+  when present; spec file content is full English.

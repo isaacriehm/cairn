@@ -1,10 +1,9 @@
 /**
- * Init visual primitives — chalk-coloured icons, ora spinners, cli-progress
- * bars. All helpers degrade gracefully when stdout isn't a TTY (smokes, CI).
+ * Init visual primitives — chalk-coloured icons and ora spinners.
+ * All helpers degrade gracefully when stdout isn't a TTY (smokes, CI).
  */
 
 import chalk from "chalk";
-import { SingleBar, Presets } from "cli-progress";
 import ora, { type Ora } from "ora";
 
 // ── Cancellation registry ─────────────────────────────────────────────
@@ -179,124 +178,6 @@ export function startSpinner(text: string): SpinnerHandle {
       spinner.stop();
     },
   };
-}
-
-/** Long-task wrapper: spinner + result. Spinner shows duration on success. */
-export async function withSpinner<T>(
-  startText: string,
-  task: () => Promise<T>,
-  opts: {
-    /** Custom message on success (default: derived from elapsed). */
-    successText?: (result: T, durationMs: number) => string;
-    /** Custom message on failure (default: error message). */
-    failText?: (err: unknown) => string;
-  } = {},
-): Promise<T> {
-  const spinner = startSpinner(startText);
-  const t0 = Date.now();
-  try {
-    const result = await task();
-    const ms = Date.now() - t0;
-    const text = opts.successText
-      ? opts.successText(result, ms)
-      : `${startText.replace(/\.+$/, "")} (${formatDuration(ms)})`;
-    spinner.succeed(text);
-    return result;
-  } catch (err) {
-    const text = opts.failText
-      ? opts.failText(err)
-      : err instanceof Error
-        ? err.message
-        : String(err);
-    spinner.fail(text);
-    throw err;
-  }
-}
-
-function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
-  const s = Math.round(ms / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  const rem = s % 60;
-  return `${m}m${rem}s`;
-}
-
-/** Progress-bar handle for byte-counted downloads. */
-interface ProgressHandle {
-  set(current: number, payload?: Record<string, unknown>): void;
-  stop(success: boolean, finalLabel?: string): void;
-}
-
-export function startProgress(opts: {
-  label: string;
-  total: number;
-}): ProgressHandle {
-  const tty = process.stdout.isTTY === true;
-  if (!tty) {
-    process.stdout.write(`  ${opts.label}…\n`);
-    return {
-      set: () => {
-        // no-op in non-TTY
-      },
-      stop: (success, finalLabel) => {
-        if (finalLabel !== undefined) {
-          process.stdout.write(
-            `  ${icon(success ? "ok" : "err")}  ${finalLabel}\n`,
-          );
-        }
-      },
-    };
-  }
-  process.stdout.write(`  ${opts.label}\n`);
-  const bar = new SingleBar(
-    {
-      format: `  {bar} {percentage}%  {valueMb}MB / {totalMb}MB  {speedMb}MB/s`,
-      barCompleteChar: "█",
-      barIncompleteChar: "░",
-      hideCursor: true,
-      clearOnComplete: false,
-      stopOnComplete: false,
-    },
-    Presets.shades_classic,
-  );
-  bar.start(opts.total, 0, {
-    valueMb: "0",
-    totalMb: bytesToMb(opts.total),
-    speedMb: "0.0",
-  });
-  const unregister = registerCleanup(() => {
-    try {
-      bar.stop();
-    } catch {
-      // best-effort
-    }
-  });
-  return {
-    set: (current, payload) => {
-      bar.update(current, {
-        valueMb: bytesToMb(current),
-        totalMb: bytesToMb(opts.total),
-        speedMb:
-          payload !== undefined && typeof payload["speedMb"] === "string"
-            ? payload["speedMb"]
-            : "—",
-      });
-    },
-    stop: (success, finalLabel) => {
-      unregister();
-      bar.stop();
-      if (finalLabel !== undefined) {
-        process.stdout.write(
-          `  ${icon(success ? "ok" : "err")}  ${finalLabel}\n`,
-        );
-      }
-    },
-  };
-}
-
-function bytesToMb(b: number): string {
-  return (b / 1_048_576).toFixed(0);
 }
 
 export const c = {

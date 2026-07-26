@@ -134,10 +134,10 @@
     "smoke:staleness": "tsx scripts/smoke-staleness.ts"
   },
   "dependencies": {
+    "@isaacriehm/cairn-core": "workspace:*",
     "@isaacriehm/cairn-state": "workspace:*"
   },
   "devDependencies": {
-    "@isaacriehm/cairn-core": "workspace:*",
     "@types/node": "^25.9.2",
     "@types/vscode": "~1.96.0",
     "@vscode/vsce": "^3.9.2",

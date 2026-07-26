@@ -11,6 +11,7 @@
  *   - packages/cairn-lens/package.json
  *   - packages/cairn-plugin/.claude-plugin/plugin.json
  *   - packages/cairn-plugin/.cursor-plugin/plugin.json
+ *   - packages/cairn-plugin/.codex-plugin/plugin.json
  *   - .claude-plugin/marketplace.json   (metadata.version + plugins[].version)
  *
  * Usage:
@@ -44,6 +45,7 @@ const TARGETS = [
   pkgJsonTarget("packages/cairn-lens/package.json"),
   pkgJsonTarget("packages/cairn-plugin/.claude-plugin/plugin.json"),
   pkgJsonTarget("packages/cairn-plugin/.cursor-plugin/plugin.json"),
+  pkgJsonTarget("packages/cairn-plugin/.codex-plugin/plugin.json"),
   {
     path: ".claude-plugin/marketplace.json",
     get: (json) => [

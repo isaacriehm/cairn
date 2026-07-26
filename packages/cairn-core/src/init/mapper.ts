@@ -19,7 +19,7 @@
  * proposals are persisted to the on-disk Claude cache; re-running
  * `cairn init` only re-issues the failed slice(s).
  *
- * Public surface (`MapperOutput`, `MapperResult`, validators, prompt + schema
+ * Public surface (`MapperOutput`, `MapperResult`, prompt + schema
  * constants) is consumed by both this orchestrator and the standalone
  * `cairn scope rebuild` command.
  */
@@ -102,41 +102,6 @@ const MAPPER_SLICE_CAP = 50;
 // ── Re-exports — `cairn scope rebuild` and other consumers import these. ──
 
 export { MAPPER_OUTPUT_SCHEMA, MAPPER_SYSTEM_PROMPT, buildMapperUserPrompt };
-
-function isMapperOutput(value: unknown): value is MapperOutput {
-  if (typeof value !== "object" || value === null) return false;
-  const v = value as Record<string, unknown>;
-  if (
-    !(
-      typeof v["domain_summary"] === "string" &&
-      Array.isArray(v["key_modules"]) &&
-      Array.isArray(v["off_limits_globs"]) &&
-      typeof v["notes"] === "string"
-    )
-  ) {
-    return false;
-  }
-  const scopeIdxRaw = v["scope_index"];
-  if (scopeIdxRaw !== undefined) {
-    if (typeof scopeIdxRaw !== "object" || scopeIdxRaw === null) return false;
-    const filesRaw = (scopeIdxRaw as Record<string, unknown>)["files"];
-    if (typeof filesRaw !== "object" || filesRaw === null) return false;
-  }
-  return true;
-}
-
-export function validateMapperOutput(value: unknown): MapperOutput {
-  if (!isMapperOutput(value)) {
-    throw new Error(
-      `mapper output failed shape validation: ${JSON.stringify(value).slice(0, 200)}`,
-    );
-  }
-  const out = value as MapperOutput & { scope_index?: MapperOutput["scope_index"] };
-  if (out.scope_index === undefined) {
-    out.scope_index = { files: {} };
-  }
-  return out as MapperOutput;
-}
 
 // ── Orchestrator ────────────────────────────────────────────────────────────
 

@@ -115,6 +115,54 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     }
   }
 
+  if (wantKinds.has("run")) {
+    for (const zone of ["active", "terminal"] as const) {
+      const runsDir = cairnDir(ctx.repoRoot, "runs", zone);
+      if (!existsSync(runsDir)) continue;
+      for (const e of readdirSync(runsDir, { withFileTypes: true, encoding: "utf8" })) {
+        if (!e.isDirectory()) continue;
+        const runDir = join(runsDir, e.name);
+        const runId = e.name;
+        let title = runId;
+        const parts: string[] = [runId];
+        const metaPath = join(runDir, "meta.json");
+        if (existsSync(metaPath)) {
+          try {
+            const meta = JSON.parse(readFileSync(metaPath, "utf8")) as {
+              run_id?: string;
+              task_id?: string;
+            };
+            if (typeof meta.run_id === "string") title = meta.run_id;
+            if (typeof meta.task_id === "string") parts.push(meta.task_id);
+          } catch {
+            // unreadable meta; search run id only
+          }
+        }
+        for (const name of ["mcp-calls.jsonl", "sensor-results.yaml"] as const) {
+          const artifact = join(runDir, name);
+          if (existsSync(artifact)) {
+            try {
+              parts.push(readFileSync(artifact, "utf8"));
+            } catch {
+              // skip unreadable artifact
+            }
+          }
+        }
+        const blob = parts.join("\n").toLowerCase();
+        if (!blob.includes(q)) continue;
+        const titleHit = title.toLowerCase().includes(q) || runId.toLowerCase().includes(q);
+        const bodyHit = !titleHit;
+        out.push({
+          id: runId,
+          kind: "run",
+          title,
+          path: relative(ctx.repoRoot, runDir).replace(/\\/g, "/"),
+          score: Math.min(1, 0.5 + (titleHit ? 0.25 : 0) + (bodyHit ? 0.25 : 0)),
+        });
+      }
+    }
+  }
+
   if (wantKinds.has("doc")) {
     const docsRoot = join(ctx.repoRoot, "docs");
     if (existsSync(docsRoot)) walkDocs(docsRoot, ctx.repoRoot, q, out);

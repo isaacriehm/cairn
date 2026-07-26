@@ -6,7 +6,7 @@
  * non-interactively.
  */
 
-import { confirm, editor, input, select } from "@inquirer/prompts";
+import { confirm, select } from "@inquirer/prompts";
 
 export type PromptMode = "interactive" | "auto";
 
@@ -56,22 +56,6 @@ export async function squareIntoSquareHole<T extends string>(
   return answer;
 }
 
-interface FreeTextOptions {
-  mode: PromptMode;
-  prompt: string;
-  defaultValue: string;
-  /** When mode === "auto" returns this directly. Defaults to defaultValue. */
-  auto?: string;
-}
-
-export async function freeTextWithDefault(opts: FreeTextOptions): Promise<string> {
-  if (opts.mode === "auto") return opts.auto ?? opts.defaultValue;
-  return input({
-    message: opts.prompt,
-    default: opts.defaultValue,
-  });
-}
-
 interface YesNoOptions {
   mode: PromptMode;
   prompt: string;
@@ -85,26 +69,6 @@ export async function yesNo(opts: YesNoOptions): Promise<boolean> {
   return confirm({
     message: opts.prompt,
     default: opts.defaultYes ?? false,
-  });
-}
-
-export interface EditorOptions {
-  mode: PromptMode;
-  prompt: string;
-  initial: string;
-  /** File extension (e.g. ".yaml") so $EDITOR picks up syntax highlighting. */
-  postfix?: string;
-  /** When mode === "auto" returns this directly. Defaults to `initial`. */
-  auto?: string;
-}
-
-export async function editYaml(opts: EditorOptions): Promise<string> {
-  if (opts.mode === "auto") return opts.auto ?? opts.initial;
-  return editor({
-    message: opts.prompt,
-    default: opts.initial,
-    postfix: opts.postfix ?? ".yaml",
-    waitForUserInput: false,
   });
 }
 

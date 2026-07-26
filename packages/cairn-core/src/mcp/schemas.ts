@@ -17,6 +17,19 @@ export const canonicalForTopicInput = {
   topic: z.string().min(1),
 };
 
+export const canonicalMapTopicEntrySchema = z.object({
+  topic: z.string(),
+  canonical_path: z.string(),
+  audience: z.string().optional(),
+});
+
+export const canonicalMapTopicsFileSchema = z.object({
+  version: z.number(),
+  topics: z.array(canonicalMapTopicEntrySchema),
+});
+
+export type CanonicalMapTopicEntry = z.infer<typeof canonicalMapTopicEntrySchema>;
+
 export const invariantGetInput = {
   // Relaxed: accept any ID-shape so the handler can return a friendly
   // redirect when callers pass a DEC- id by mistake.

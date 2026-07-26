@@ -25,6 +25,14 @@ export {
   type TaskCompletionLink,
 } from "./task-link.js";
 export {
+  deriveTitleFromSpec,
+  resolveMissionSpecPath,
+  resolveSpecAbsPath,
+  readSpecSource,
+  SpecIoError,
+  type SpecIoErrorCode,
+} from "./spec-io.js";
+export {
   listMissions,
   loadDraftFromFile,
   previewRoadmap,
