@@ -26,7 +26,7 @@ export interface BrandAnswers {
   /**
    * Q2 → product/personas.yaml. Single-sentence freeform answer from the
    * interactive prompt path; collapses into one `name: primary` persona.
-   * Auto-derive (Haiku) populates `personas` instead and leaves this empty
+   * Auto-derive (fast model) populates `personas` instead and leaves this empty
    * — see `derivedToBrandAnswers`.
    */
   mainUsers: string;

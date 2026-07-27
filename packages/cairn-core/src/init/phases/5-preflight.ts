@@ -1,5 +1,5 @@
 /**
- * Phase 5-preflight — count the units the long Haiku phases will
+ * Phase 5-preflight — count the units the long fast model phases will
  * process (markdown paragraphs, essay-class comment blocks, rule
  * sections, jaccard pair estimate), then compute an aggregate ETA
  * by multiplying counts against the per-machine calibration cache.
@@ -218,7 +218,7 @@ function countRuleH2(repoRoot: string): number {
     try {
       const body = readFileSync(src.absPath, "utf8");
       const sections = parseRuleSections(body);
-      // Phase 10 issues one Haiku call per H2 (level 2). H3 sections
+      // Phase 10 issues one fast model call per H2 (level 2). H3 sections
       // ride along inside their parent H2's classification, so they
       // don't add to the call count.
       total += sections.filter((s) => s.level === 2).length;

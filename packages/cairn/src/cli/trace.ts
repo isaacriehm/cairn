@@ -213,7 +213,7 @@ export async function traceCli(argv: string[]): Promise<void> {
         "Filters:",
         "  --session <id>     filter by Claude Code session id",
         "  --repo <path>      filter by repo root (absolute)",
-        "  --source <name>    hook | mcp | claude | init-phase | subagent",
+        "  --source <name>    hook | mcp | model | claude | init-phase | subagent",
         "  --kind <substr>    substring match on kind",
         "  --since <ISO>      only rows at or after timestamp",
         "  --errors-only      only failing events",

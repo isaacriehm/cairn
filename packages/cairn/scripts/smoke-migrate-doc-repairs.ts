@@ -95,7 +95,7 @@ function main(): void {
     assert(!m.detect(repo), "0005: re-detect is a no-op after demotion");
     assert(!m.apply(repo).changed, "0005: re-apply is idempotent");
 
-    // Co-generation cohort: Haiku-derived voice/personas carry NO marker but
+    // Co-generation cohort: fast model-derived voice/personas carry NO marker but
     // share the auto-filled pair's `generated` stamp → demoted via channel 2.
     // (This is the case the 0.26.0 marker-only detection missed.)
     const T = "2026-05-04T00:00:00Z";

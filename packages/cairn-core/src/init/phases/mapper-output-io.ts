@@ -75,7 +75,7 @@ export function readMapperOutputFile(repoRoot: string): MapperResult | null {
 export interface MapperResultPersisted {
   output: Omit<MapperOutput, "scope_index">;
   duration_ms: number;
-  tier: "sonnet";
+  tier: "capable";
   model: string;
   slices_detected: number;
   truncated_at_slice_cap: boolean;

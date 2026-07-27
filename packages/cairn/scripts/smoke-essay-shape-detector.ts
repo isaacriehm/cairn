@@ -8,7 +8,7 @@
  * Layer A's `executeSotAlign` reads `tool_input.{old_string,
  * new_string, content}` and skips alignFile when neither contains
  * essay-class shape. Variable renames, type tweaks, and single-line
- * bugfixes thus skip the per-edit Haiku dedup pass.
+ * bugfixes thus skip the per-edit fast model dedup pass.
  */
 
 import assert from "node:assert/strict";
@@ -112,7 +112,7 @@ for (const c of cases) {
 // Edge case: trailing inline comment with /** literal in a string.
 // The regex `/\*\*[\s\S]*?\*/` will match a literal `/**...*/` inside
 // a string. This is a documented false-positive — we accept it
-// because (a) it's rare in real code and (b) the cost of the Haiku
+// because (a) it's rare in real code and (b) the cost of the fast model
 // pass is bounded. Verify the test case above to make this explicit:
 const fpText = "const note = '/** literal in string */';";
 if (containsEssayClassShape(fpText) === true) {

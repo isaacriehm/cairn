@@ -19,10 +19,10 @@ export function mapMissionCliError(err: unknown): McpErrorPayload {
         "An active mission already exists. Close or abort it before starting another (one active mission per repo).",
       );
     }
-    if (err.message.includes("Haiku failed")) {
+    if (err.message.includes("fast model failed")) {
       return mcpError(
         "MISSION_DRAFT_FAILED",
-        "Haiku failed to parse the spec doc. Retry, or pass `no_llm: true` to write a single-phase stub roadmap and hand-edit it.",
+        "fast model failed to parse the spec doc. Retry, or pass `no_llm: true` to write a single-phase stub roadmap and hand-edit it.",
       );
     }
     return mcpError("INTERNAL_ERROR", err.message);

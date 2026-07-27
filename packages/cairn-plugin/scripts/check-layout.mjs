@@ -72,7 +72,13 @@ if (mcp) {
     if (server.command !== "node") {
       fail(`.mcp.json: cairn.command must be 'node', got ${server.command}`);
     }
-    const expected = ["${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs", "mcp", "serve"];
+    const expected = [
+      "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs",
+      "mcp",
+      "serve",
+      "--model-provider",
+      "claude",
+    ];
     if (!Array.isArray(server.args) || server.args.length !== expected.length || server.args.some((a, i) => a !== expected[i])) {
       fail(`.mcp.json: cairn.args must be ${JSON.stringify(expected)}, got ${JSON.stringify(server.args)}`);
     }
@@ -100,15 +106,15 @@ if (hooksFile) {
     // `"…"` the shell splits on whitespace and `node` fails to
     // resolve the module path.
     const ALLOWED = new Set([
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook session-start --host claude-code',
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook session-end --host claude-code',
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook stop --host claude-code',
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook user-prompt-submit --host claude-code',
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook read-enrich --host claude-code',
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook write-guard --host claude-code',
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook sot-align --host claude-code',
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook post-write --host claude-code',
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook ask-user-blocked --host claude-code',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook session-start --host claude-code --model-provider claude',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook session-end --host claude-code --model-provider claude',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook stop --host claude-code --model-provider claude',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook user-prompt-submit --host claude-code --model-provider claude',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook read-enrich --host claude-code --model-provider claude',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook write-guard --host claude-code --model-provider claude',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook sot-align --host claude-code --model-provider claude',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook post-write --host claude-code --model-provider claude',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook ask-user-blocked --host claude-code --model-provider claude',
     ]);
     const visit = (event, entries) => {
       for (const entry of entries) {
@@ -301,8 +307,20 @@ if (cursorMcp) {
   const server = cursorMcp?.mcpServers?.cairn;
   if (!server || typeof server !== "object") {
     fail("mcp.json: mcpServers.cairn must be an object");
-  } else if (server.env?.CAIRN_REPO_ROOT !== "${CURSOR_PROJECT_DIR}") {
-    fail("mcp.json: env.CAIRN_REPO_ROOT must be ${CURSOR_PROJECT_DIR}");
+  } else {
+    const expected = [
+      "${CURSOR_PLUGIN_ROOT}/dist/cli.mjs",
+      "mcp",
+      "serve",
+      "--model-provider",
+      "cursor",
+    ];
+    if (server.command !== "node" || JSON.stringify(server.args) !== JSON.stringify(expected)) {
+      fail(`mcp.json: cairn must invoke ${JSON.stringify(expected)} with node`);
+    }
+    if (server.env?.CAIRN_REPO_ROOT !== "${CURSOR_PROJECT_DIR}") {
+      fail("mcp.json: env.CAIRN_REPO_ROOT must be ${CURSOR_PROJECT_DIR}");
+    }
   }
 }
 
@@ -312,11 +330,11 @@ if (cursorHooks) {
     fail("hooks.cursor.json: version must be 1");
   }
   const CURSOR_ALLOWED = new Set([
-    'node "${CURSOR_PLUGIN_ROOT}/dist/cli.mjs" hook session-start --host cursor',
-    'node "${CURSOR_PLUGIN_ROOT}/dist/cli.mjs" hook session-end --host cursor',
-    'node "${CURSOR_PLUGIN_ROOT}/dist/cli.mjs" hook stop --host cursor',
-    'node "${CURSOR_PLUGIN_ROOT}/dist/cli.mjs" hook read-enrich --host cursor',
-    'node "${CURSOR_PLUGIN_ROOT}/dist/cli.mjs" hook post-write --host cursor',
+    'node "${CURSOR_PLUGIN_ROOT}/dist/cli.mjs" hook session-start --host cursor --model-provider cursor',
+    'node "${CURSOR_PLUGIN_ROOT}/dist/cli.mjs" hook session-end --host cursor --model-provider cursor',
+    'node "${CURSOR_PLUGIN_ROOT}/dist/cli.mjs" hook stop --host cursor --model-provider cursor',
+    'node "${CURSOR_PLUGIN_ROOT}/dist/cli.mjs" hook read-enrich --host cursor --model-provider cursor',
+    'node "${CURSOR_PLUGIN_ROOT}/dist/cli.mjs" hook post-write --host cursor --model-provider cursor',
   ]);
   for (const event of ["sessionStart", "sessionEnd", "stop", "postToolUse"]) {
     for (const entry of cursorHooks.hooks?.[event] ?? []) {
@@ -351,7 +369,13 @@ if (codexManifest) {
 const codexMcp = readJson(join(PKG_ROOT, ".mcp.codex.json"));
 if (codexMcp) {
   const server = codexMcp.cairn;
-  const expected = ["${PLUGIN_ROOT}/dist/cli.mjs", "mcp", "serve"];
+  const expected = [
+    "${PLUGIN_ROOT}/dist/cli.mjs",
+    "mcp",
+    "serve",
+    "--model-provider",
+    "codex",
+  ];
   if (server?.command !== "node" || JSON.stringify(server?.args) !== JSON.stringify(expected)) {
     fail(`.mcp.codex.json: cairn must invoke ${JSON.stringify(expected)} with node`);
   }
@@ -370,7 +394,7 @@ if (codexHooks) {
         if (
           typeof hook.command !== "string" ||
           !hook.command.includes("${PLUGIN_ROOT}/dist/cli.mjs") ||
-          !hook.command.endsWith("--host codex")
+          !hook.command.endsWith("--host codex --model-provider codex")
         ) {
           fail(`hooks.codex.json: ${event}: invalid command ${hook.command}`);
         }

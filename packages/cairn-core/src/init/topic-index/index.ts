@@ -7,7 +7,7 @@
  * surface a one-line summary.
  *
  * The phase runner uses this; smokes call it directly with a mock
- * judge to avoid Haiku.
+ * judge to avoid fast model.
  */
 
 import { logger } from "../../logger.js";
@@ -23,7 +23,7 @@ import {
   writeTopicIndex,
 } from "@isaacriehm/cairn-state";
 import { clearProgress, writeProgress } from "../progress.js";
-import { makeHaikuJudge, type JudgeTally } from "./judge.js";
+import { makeModelJudge, type JudgeTally } from "./judge.js";
 import { resolveTopics, type JudgeProgress, type ResolveResult, type SemanticJudge } from "./resolve.js";
 import { walkProseBlocks, type ProseBlock } from "./walk.js";
 
@@ -50,7 +50,7 @@ export interface BuildTopicIndexArgs {
   /**
    * When true (default), the freshly-resolved index + anchor-map +
    * file-candidates-map are written to disk and `_rejected.yaml` is
-   * GC'd. When false the resolve runs (the Haiku judge still fires — it
+   * GC'd. When false the resolve runs (the fast model judge still fires — it
    * IS the discovery), but no map is mutated: `cairn resync --recluster`
    * uses this to preview a re-cluster without overwriting the live maps.
    */
@@ -68,9 +68,9 @@ export interface BuildTopicIndexResult extends ResolveResult {
   /** Slugs dropped from `_rejected.yaml` by the GC pass. */
   rejectedGcDropped: string[];
   /**
-   * Cached vs fresh vs errored Haiku judge call breakdown. Only the
-   * default `makeHaikuJudge` path increments these — smokes that
-   * supply their own judge get all-zeros (correctly: no Haiku spend).
+   * Cached vs fresh vs errored fast model judge call breakdown. Only the
+   * default `makeModelJudge` path increments these — smokes that
+   * supply their own judge get all-zeros (correctly: no fast model spend).
    */
   judgeCached: number;
   judgeFresh: number;
@@ -83,7 +83,7 @@ export async function buildTopicIndex(
   const blocks = args.blocks ?? walkProseBlocks(args.repoRoot);
   const tally: JudgeTally = { cached: 0, fresh: 0, errors: 0 };
   const judge =
-    args.judge ?? makeHaikuJudge({ repoRoot: args.repoRoot, tally });
+    args.judge ?? makeModelJudge({ repoRoot: args.repoRoot, tally });
 
   log.debug({ blockCount: blocks.length }, "phase 7-topic-index walk complete");
 
@@ -235,5 +235,5 @@ export { walkProseBlocks } from "./walk.js";
 export type { ProseBlock, ProseBlockKind } from "./walk.js";
 export { resolveTopics } from "./resolve.js";
 export type { ResolveOptions, ResolveResult, SemanticJudge, SemanticVerdict } from "./resolve.js";
-export { makeHaikuJudge } from "./judge.js";
+export { makeModelJudge } from "./judge.js";
 export type { JudgeOptions } from "./judge.js";

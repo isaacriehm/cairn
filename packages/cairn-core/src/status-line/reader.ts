@@ -84,19 +84,23 @@ function isStatusJsonCore(x: unknown): x is Partial<StatusJson> {
 
 /**
  * Backfill v0.5.0 fields (`current_event`, `event_counters`, `recent_events`,
- * `haiku_unavailable`) when reading a status.json that was written by an
+ * `model_unavailable`) when reading a status.json that was written by an
  * older cairn — keeps the format renderer from crashing on undefined
  * event_counters in mid-upgrade sessions.
  */
 function normalizeStatusJson(partial: Partial<StatusJson>): StatusJson {
   const base = defaultStatusJson();
+  const legacyUnavailable = (
+    partial as Partial<StatusJson> & { haiku_unavailable?: boolean }
+  ).haiku_unavailable;
   return {
     ...base,
     ...partial,
     event_counters: { ...emptyEventCounters(), ...(partial.event_counters ?? {}) },
     recent_events: partial.recent_events ?? [],
     current_event: partial.current_event ?? null,
-    haiku_unavailable: partial.haiku_unavailable ?? false,
+    model_unavailable:
+      partial.model_unavailable ?? legacyUnavailable ?? false,
   };
 }
 

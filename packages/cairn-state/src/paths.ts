@@ -193,8 +193,8 @@ export function sotRenderedCacheDir(repoRoot: string): string {
   return cairnDir(repoRoot, "cache", "sot-rendered");
 }
 
-export function haikuCacheDir(repoRoot: string): string {
-  return cairnDir(repoRoot, "cache", "haiku");
+export function modelCacheDir(repoRoot: string): string {
+  return cairnDir(repoRoot, "cache", "model");
 }
 
 export function stalenessDir(repoRoot: string): string {
@@ -207,7 +207,7 @@ export function stalenessLogPath(repoRoot: string): string {
 
 /**
  * Layer A live-hook deferred-block log. PostToolUse Write/Edit appends
- * one rich record per block when the per-Write Haiku cap is exceeded
+ * one rich record per block when the per-Write fast model cap is exceeded
  * or Pass-2-still-ambiguous fires. Drained by SessionStart Drain at SessionStart.
  */
 export function layerADeferredLogPath(repoRoot: string): string {

@@ -145,12 +145,17 @@ Auto-update is OFF by default for github-distributed plugins. Operator can enabl
 
 Three trigger paths converge on the same pipeline:
 
-1. **Auto** — operator opens Claude Code in a project with no `.cairn/`. Plugin's SessionStart hook detects, the `cairn-adopt` skill auto-invokes and renders inline:
+1. **Auto** — operator opens a supported agent host in a project with no
+   `.cairn/`. The host's SessionStart hook detects it, then the
+   `cairn-adopt` skill auto-invokes and renders inline:
    > Adopt this project with Cairn? `[a]` yes `[b]` not now `[c]` never (mark and skip on future opens)
 2. **Explicit slash command** — operator types `/cairn-init`.
-3. **Terminal CLI** — operator runs `cairn init` outside Claude Code. Same pipeline.
+3. **Terminal CLI** — operator runs `cairn init` outside the agent host. Same pipeline.
 
-On `[a]`, the skill (or CLI) spawns the init pipeline as a subprocess and **streams its rich terminal output (chalk + ora + cli-progress) into the Claude Code conversation as a fenced code block** — the visual approach (α). Choices that need operator input surface as inline A/B/C via the skill calling Claude Code's AskUserQuestion tool.
+On `[a]`, the skill (or CLI) spawns the init pipeline as a subprocess and
+streams progress into the current conversation. Choices that need operator
+input use the host's structured question surface, with concise A/B/C chat
+as the portable fallback.
 
 ### Phases (v0.5.0+)
 
@@ -158,10 +163,10 @@ On `[a]`, the skill (or CLI) spawns the init pipeline as a subprocess and **stre
 |------|--------------|---------------------|
 | 1 | Detect environment + stack signatures | "Detecting environment…" → signals |
 | 2 | Priority walker (repo summary scan) | Tree silhouette, file counts |
-| 3 | Sonnet domain mapper (chunked, parallel) | Per-module status icons updating live |
+| 3 | Capable-tier domain mapper (chunked, parallel) | Per-module status icons updating live |
 | 4 | Seed `.cairn/` skeleton + grandfather commits | "Writing .cairn/ skeleton" |
 | 5 | Pilot module confirm | One A/B/C: pick pilot module |
-| 6 | Brand auto-fill (Haiku) | One A/B/C: consent to auto-fill brand |
+| 6 | Brand auto-fill (fast tier) | One A/B/C: consent to auto-fill brand |
 | 7 | Topic index build (dedup pre-pass) | "Building topic index…" → block counts |
 | 8 | **Docs ingestion** (README + docs/) | Per-doc status icons; DEC draft count |
 | 9 | **Source comment ingestion** (essay-class) | Per-batch status; DEC + §INV counts |
@@ -258,14 +263,13 @@ Operator types prompt
         ▼
 ┌─────────────────────────────────────────────────────────┐
 │ cairn-direction skill (auto-invoked on user message)    │
-│   1. tier0 (Haiku via Claude binary, escalate to Sonnet │
-│      for complexity) — checks readiness                 │
+│   1. Host agent checks readiness against ground state   │
 │         Inputs: prompt + in-scope decisions/invariants  │
 │                 + canonical-map topics + recent commits │
 │         Output: { ready: bool, questions[] | spec_seed }│
 │   2. If ready=false → render inline A/B/C questions     │
 │      via AskUserQuestion. After answers, loop.          │
-│   3. If ready=true → tightener (Sonnet) produces        │
+│   3. If ready=true → host-agent tightener produces      │
 │      .cairn/tasks/active/<id>/spec.tightened.md         │
 │   4. Tightener proposes chunks:                         │
 │         1 chunk → silent dispatch (no prompt)           │
@@ -275,7 +279,7 @@ Operator types prompt
 └─────────────────────────────────────────────────────────┘
         │
         ▼
-Main Claude spawns subagents via Task tool
+The host agent dispatches subagents through its native surface
    - Each subagent inherits Cairn MCP tools
    - Reads spec.tightened.md + queries `cairn_in_scope`
    - On UI work: queries `cairn_components_in_scope` and reads the
@@ -625,14 +629,16 @@ tier0's job is to detect **forks that materially change the spec**, not UX trivi
 | "You said 'add billing'. Per DEC-d4e6a92 Stripe is the only payment processor. Adding a new product to the existing integration `@/services/stripe`, or replacing it with something else?" | References existing constraint; identifies fork; asks about something that materially changes the spec |
 | "You said 'make X faster'. The current bottleneck is the BullMQ queue depth (per RUN-0042 perf trace). Optimize queue throughput, or change the architecture (e.g., direct execution)?" | Cites recent evidence; offers a fork the operator likely has an opinion on |
 
-tier0 inputs:
+Readiness inputs:
 - Operator prompt
 - In-scope decisions for the prompt's apparent target paths
 - Top 5 invariants by relevance
 - Canonical-map topics that match prompt keywords
 - Last 5 commits' messages (recent context)
 
-tier0 output is JSON: `{ ready: boolean, questions?: Question[], spec_seed?: string }`. Auto-escalate to Sonnet when prompt > 500 tokens or touches > 10 decisions.
+The skill turns those inputs into either material questions or a tightened
+spec. This uses the host agent directly; it is not a Cairn backend model
+call.
 
 ## §15 Comment policy enforcement
 
@@ -648,7 +654,7 @@ Banned: DEC-id comments, essay JSDoc, multi-paragraph rationale, restated requir
 | Stage | LLM? | What happens |
 |-------|------|--------------|
 | **Detection** | **No** — deterministic | Walker finds essay-style comment blocks via heuristic: block comment > 3 lines OR > 200 chars OR JSDoc with > 30 words of prose. Per-language tweaks (Python `"""…"""`, Rust `///`, Go `//`, etc.) |
-| **Extraction** | **Yes** — Haiku batch | 20 detected blocks per Haiku call → JSON: `{ block_id, type: "rationale" | "constraint" | "citation" | "license" | "other", suggested_dec_draft?, suggested_invariant?, suggested_canonical_topic? }`. License headers + "other" left in source untouched |
+| **Extraction** | **Yes** — fast-tier batch | 20 detected blocks per model call → JSON: `{ block_id, type: "rationale" | "constraint" | "citation" | "license" | "other", suggested_dec_draft?, suggested_invariant?, suggested_canonical_topic? }`. License headers + "other" left in source untouched |
 | **Replacement** | **No** — deterministic | Mechanical string substitution: strip the original block, insert `// §INV-<hash>` (if §INV exists or was just proposed) or `// TODO(TSK-<id>)` (if linked to active task). Never LLM-rewritten |
 
 ### Pre-write safety checks
@@ -810,7 +816,7 @@ The following decisions were made during drafting and folded into the relevant s
 
 | Topic | Resolution | Section |
 |-------|------------|---------|
-| Source-comment detection threshold | Block > 3 lines OR > 200 chars OR JSDoc with > 30 words of prose; deterministic (no LLM); 20 blocks/Haiku batch for classification | §6 Phase 9, §15 |
+| Source-comment detection threshold | Block > 3 lines OR > 200 chars OR JSDoc with > 30 words of prose; deterministic (no LLM); 20 blocks/fast-tier batch for classification | §6 Phase 9, §15 |
 | Comment replacement | Mechanical string substitution, never LLM-rewritten | §15 |
 | Pre-write safety | Skip dirty files (offer stash/skip/overwrite); backup originals to `.cairn/backups/source/<rel>.original` | §15 |
 | Subagent output | Each subagent's output streams verbatim; reviewer produces final attestation summary | §8, §11 |
@@ -821,8 +827,8 @@ The following decisions were made during drafting and folded into the relevant s
 | Uninstall | `cairn uninstall` (preview; `--yes` to apply) expands DEC/INV cites to inline comments, unwires the rule import, removes `.claude/rules/cairn.md`, unsets Cairn's `core.hooksPath`, deletes `.cairn/`. Single mode — no backup-restore | §16 |
 | MCP project-root detection | cwd-based walker (look for `.cairn/` or `.git/`); no env var dependency | §9 |
 | Subagent dispatch protocol | Skill emits structured ```dispatch``` fenced block; main Claude parses and issues Task calls | §11 |
-| Claude binary requirement | **Hard requirement** — no degraded mode. Adoption preflight detects missing `claude`, bails with install instructions | §6 Phase 1 |
-| Source-comment scan scope | **No cap** — every source file processed during adoption, accept the one-time Haiku spend per "fully processes once" mandate | §6 Phase 9 |
+| Model CLI requirement | **Hard requirement** — no degraded mode. Adoption preflight selects the active host's authenticated `claude`, `cursor-agent`, or `codex` CLI and bails with provider-specific remediation when unavailable | §6 Phase 1 |
+| Source-comment scan scope | **No cap** — every source file processed during adoption; accept the one-time fast-tier spend per "fully processes once" mandate | §6 Phase 9 |
 | `cairn-direction` skill triggering | Auto-invoke via fuzzy `description` matcher + slash command `/cairn-direction <prompt>` as escape hatch when auto-invoke misses | §11 |
 
 ## §19 Build history
@@ -830,7 +836,9 @@ The following decisions were made during drafting and folded into the relevant s
 The plugin pivot landed across ten steps. Per-step deliverables:
 
 1. **Repo unification** — four workspace packages live under `packages/*` (`cairn`, `cairn-core`, `cairn-plugin`, `cairn-lens`). The internal in-memory test adapter `cairn-frontend-stub` was deleted post-pivot.
-2. **Tier-1 Haiku subprocess** — `claude --model haiku` subprocess + JSON-schema output replaces the pre-pivot local-classifier backend. (The earlier Tier-0 prompt-classifier and backend tightener modules were both purged in v0.2.1; routing + tightening are now main-Claude judgment via the `cairn-direction` skill. Haiku is the lowest active backend tier.)
+2. **Original Tier-1 subprocess** — `claude --model haiku` + JSON-schema
+   output replaced the pre-pivot local-classifier backend. This was later
+   superseded by the shared model runner described below.
 3. **Flock + per-session state partition + invalidation events** — `cairn-core/src/lock.ts`, `.cairn/sessions/<id>/`, `.cairn/events/`. Every write tool wraps in flock; per-session marker + Stop-hook poll cursor.
 4. **Plugin scaffold** — `cairn-plugin/` manifest, `.mcp.json`, `hooks/hooks.json`, hook bin entrypoints under `cairn-core/dist/hooks/`.
 5. **Skills + slash commands** — cairn-adopt, cairn-direction, cairn-attention; `/cairn-init`, `/cairn-direction`.
@@ -838,6 +846,10 @@ The plugin pivot landed across ten steps. Per-step deliverables:
 7. **Heavy adoption pipeline** — Phase 9 source-comment ingestion, Phase 10 rules merge, Phase 12 strip-replace primitives.
 8. **Multi-developer enforcement** — versioned git hooks, `cairn join` bootstrap, CI gate, plugin degraded mode, Stop-hook bypass detection.
 9. **End-to-end smoke + visual init wiring** — adopted-fixture E2E smoke, daily-flow E2E smoke, Phase 9/10/13 wired into the init.ts visual pipeline.
+10. **Provider-neutral model runner** — one queue/cache/schema-validation
+    pipeline with thin Claude, Cursor, and Codex CLI transports. Plugin
+    manifests route to their host explicitly; standalone CLI calls can
+    auto-detect or use `--model-provider`.
 10. **Pre-publish prep** — gitleaks scan, content audit, README rewrite, name + LICENSE.
 
 The build is feature-complete at v0.1.0. Subsequent work tracks via the

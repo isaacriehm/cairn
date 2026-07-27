@@ -2,7 +2,7 @@
  * Merge call — synthesize per-module ModuleProposals into one MapperOutput.
  *
  * Merge strategy:
- *   - Cheap Haiku call gets all proposals + the workspace-level package.json.
+ *   - Cheap fast model call gets all proposals + the workspace-level package.json.
  *   - Task: synthesize a 60-200 word `domain_summary` and short `notes`
  *     covering anything cross-cutting. Sensors / globs / scope-index are
  *     unioned mechanically; adoption always covers the whole repo.
@@ -14,7 +14,7 @@
  * index seeder) need no changes.
  */
 
-import { runClaude } from "../claude/index.js";
+import { runModel } from "../model/index.js";
 import { logger } from "../logger.js";
 import {
   coerceDecisionIds,
@@ -44,7 +44,7 @@ const MERGE_OUTPUT_SCHEMA = {
 const MERGE_SYSTEM_PROMPT = [
   "You are the MERGE step for a code-agent cairn adopting a new project.",
   "",
-  "You receive per-module proposals from prior Sonnet calls (one per module). Your job is small and cheap:",
+  "You receive per-module proposals from prior capable model calls (one per module). Your job is small and cheap:",
   "  1. Write a 60-200 word `domain_summary` that synthesizes per-module domains into a single description of the whole project.",
   "  2. Write a short `notes` string covering anything cross-cutting (monorepo layout, shared packages, etc.). EMPTY string is fine.",
   "",
@@ -62,10 +62,10 @@ export interface MergeArgs {
 }
 
 export async function mergeModuleProposals(args: MergeArgs): Promise<MapperOutput> {
-  // Mechanical assembly first — guaranteed even if Haiku call fails.
+  // Mechanical assembly first — guaranteed even if fast model call fails.
   const baseline = mechanicalMerge(args.proposals);
 
-  // Fast path: if all proposals failed, no point calling Haiku.
+  // Fast path: if all proposals failed, no point calling fast model.
   const successful = args.proposals.filter((p) => !p.failed);
   if (successful.length === 0) {
     log.warn(
@@ -75,12 +75,12 @@ export async function mergeModuleProposals(args: MergeArgs): Promise<MapperOutpu
     return baseline;
   }
 
-  // Haiku merge call — only synthesizes domain summary + notes.
+  // fast model merge call — only synthesizes domain summary + notes.
   // If it fails, fall back to baseline (already complete).
   try {
     const userPrompt = buildMergeUserPrompt(args);
-    const result = await runClaude({
-      tier: "haiku",
+    const result = await runModel({
+      tier: "fast",
       prompt: userPrompt,
       system: MERGE_SYSTEM_PROMPT,
       jsonSchema: MERGE_OUTPUT_SCHEMA as object,

@@ -38,6 +38,24 @@ console.log("smoke-codex-plugin — start");
 }
 
 {
+  const mcp = readJson(join(PLUGIN_ROOT, ".mcp.codex.json")) as {
+    cairn?: { args?: string[] };
+  };
+  assert(
+    JSON.stringify(mcp.cairn?.args) ===
+      JSON.stringify([
+        "${PLUGIN_ROOT}/dist/cli.mjs",
+        "mcp",
+        "serve",
+        "--model-provider",
+        "codex",
+      ]),
+    "Codex MCP must select the Codex model provider",
+  );
+  console.log("  ✓ MCP selects the Codex model provider");
+}
+
+{
   for (const skill of [
     "cairn-adopt",
     "cairn-adopt-components",
@@ -70,6 +88,10 @@ console.log("smoke-codex-plugin — start");
         assert(
           hook.command?.includes("--host codex") === true,
           `Codex ${event} must select the Codex adapter`,
+        );
+        assert(
+          hook.command?.includes("--model-provider codex") === true,
+          `Codex ${event} must select the Codex model provider`,
         );
       }
     }

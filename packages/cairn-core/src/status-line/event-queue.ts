@@ -37,7 +37,7 @@ const COUNTER_KIND: Record<StatusEventKind, keyof StatusEventCounters | null> = 
   scanning: null,
   "drain-progress": null,
   "drain-done": null,
-  "haiku-offline": null,
+  "model-offline": null,
 };
 
 function readStatusJsonRaw(repoRoot: string, sessionId: string): StatusJson {
@@ -55,13 +55,19 @@ function readStatusJsonRaw(repoRoot: string, sessionId: string): StatusJson {
 
 function mergeWithDefaults(partial: Partial<StatusJson>): StatusJson {
   const base = defaultStatusJson();
+  const legacyUnavailable = (
+    partial as Partial<StatusJson> & { haiku_unavailable?: boolean }
+  ).haiku_unavailable;
   return {
     ...base,
     ...partial,
     event_counters: { ...base.event_counters, ...(partial.event_counters ?? {}) },
     recent_events: partial.recent_events ?? base.recent_events,
     current_event: partial.current_event ?? base.current_event,
-    haiku_unavailable: partial.haiku_unavailable ?? base.haiku_unavailable,
+    model_unavailable:
+      partial.model_unavailable ??
+      legacyUnavailable ??
+      base.model_unavailable,
   };
 }
 
@@ -147,24 +153,24 @@ export function bumpCounter(
   return next;
 }
 
-export function setHaikuAvailable(
+export function setModelAvailable(
   repoRoot: string,
   sessionId: string,
   available: boolean,
 ): StatusJson {
   const status = readStatusJsonRaw(repoRoot, sessionId);
-  if (status.haiku_unavailable === !available) {
+  if (status.model_unavailable === !available) {
     return status;
   }
   const next: StatusJson = {
     ...status,
     updated_at: new Date().toISOString(),
-    haiku_unavailable: !available,
+    model_unavailable: !available,
   };
   if (!available) {
     const event: StatusEvent = {
       ts: Date.now(),
-      kind: "haiku-offline",
+      kind: "model-offline",
       display_until: Date.now() + EVENT_DISPLAY_WINDOW_MS,
     };
     next.current_event = event;

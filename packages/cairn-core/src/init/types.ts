@@ -5,6 +5,8 @@
  * and proposes per-sensor approval at adoption.
  */
 
+import type { ModelProvider } from "../model/types.js";
+
 /**
  * A stack id — OPEN string, not a closed union. Common ids: typescript,
  * python, ruby, go, rust, elixir, java, kotlin, csharp, php, dart, swift,
@@ -45,7 +47,7 @@ export interface DetectionResult {
   hook_capability: HookCapability;
   /** Optional environment readiness — advisory, never blocking. */
   environment: {
-    claude_auth: boolean;
+    model_provider: ModelProvider | null;
   };
   /**
    * True only when the operator is dogfooding Cairn against its own

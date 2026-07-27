@@ -2,7 +2,10 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  configureModelProvider,
+  MODEL_PROVIDERS,
   type CtxMeterInput,
+  type ModelProvider,
   readStatusForCLI,
   resolveAnchorRoot,
   VERSION,
@@ -226,7 +229,29 @@ async function readStatusLinePayload(): Promise<StatusLinePayload> {
   });
 }
 
-const [, , subcommand, ...rest] = process.argv;
+const cliArgs = process.argv.slice(2);
+const providerFlagIndexes = cliArgs.flatMap((arg, index) =>
+  arg === "--model-provider" ? [index] : [],
+);
+if (providerFlagIndexes.length > 1) {
+  console.error("--model-provider may be supplied only once");
+  process.exit(2);
+}
+const providerFlagIndex = providerFlagIndexes[0];
+if (providerFlagIndex !== undefined) {
+  const value = cliArgs[providerFlagIndex + 1];
+  if (
+    value === undefined ||
+    (value !== "auto" && !MODEL_PROVIDERS.includes(value as ModelProvider))
+  ) {
+    console.error("--model-provider must be one of: auto | claude | codex | cursor");
+    process.exit(2);
+  }
+  configureModelProvider(value === "auto" ? null : (value as ModelProvider));
+  cliArgs.splice(providerFlagIndex, 2);
+}
+
+const [subcommand, ...rest] = cliArgs;
 
 switch (subcommand) {
   case "init":
@@ -349,6 +374,7 @@ switch (subcommand) {
   default:
     console.error(
       "Usage: cairn <command>\n" +
+        "  Global: --model-provider <auto|claude|codex|cursor>\n" +
         "  init       adopt this cairn into a project\n" +
         "  join       per-clone bootstrap (set core.hooksPath, chmod hooks)\n" +
         "  mcp        MCP server (stdio transport)\n" +

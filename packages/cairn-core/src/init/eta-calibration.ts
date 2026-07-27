@@ -1,5 +1,5 @@
 /**
- * ETA calibration cache for the init pipeline's long Haiku phases.
+ * ETA calibration cache for the init pipeline's long fast model phases.
  *
  * Lives at `~/.cairn/cache/eta-calibration.json`, shared across every
  * project the operator adopts on this machine. Each entry is a rolling
@@ -10,7 +10,7 @@
  * compounds accuracy across runs and as the underlying model speeds
  * up.
  *
- * Defaults shipped here are calibrated against Haiku at the time of
+ * Defaults shipped here are calibrated against fast model at the time of
  * writing; first-run estimates use them, subsequent runs use the
  * operator's own measurements.
  */

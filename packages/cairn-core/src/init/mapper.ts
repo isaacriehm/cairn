@@ -1,15 +1,15 @@
 /**
- * Init mapper orchestrator (Tier 2 / Sonnet, with cheap Haiku merge).
+ * Init mapper orchestrator (Tier 2 / capable model, with cheap fast model merge).
  *
  * Three-stage pipeline:
  *
  *   1. `module-slicer` partitions the repo into ModuleSlices (one per
  *      detected module — submodules, workspace packages, top-level packages,
  *      or fallback heuristic). Single-package repos collapse to one slice.
- *   2. `mapper-parallel` dispatches one Sonnet call per slice in parallel
+ *   2. `mapper-parallel` dispatches one capable model call per slice in parallel
  *      (Promise.allSettled, 4-at-a-time batches when >8). Each call sees
  *      ~8k tokens of focused module input.
- *   3. `mapper-merge` runs a cheap Haiku call to synthesize the project
+ *   3. `mapper-merge` runs a cheap fast model call to synthesize the project
  *      domain summary; the rest of the merge is mechanical (union of
  *      arrays, dedupe sensors by id).
  *
@@ -80,7 +80,7 @@ export interface MapperOutput {
 export interface MapperResult {
   output: MapperOutput;
   duration_ms: number;
-  tier: "sonnet";
+  tier: "capable";
   model: string;
   /** Per-module proposals from the parallel pipeline. */
   module_proposals?: ModuleProposal[];
@@ -91,7 +91,7 @@ export interface MapperResult {
 }
 
 /**
- * Hard cap on per-module Sonnet calls. The mapper dispatches one call per
+ * Hard cap on per-module capable model calls. The mapper dispatches one call per
  * slice in parallel rounds of 4. Above this cap a 200-package monorepo
  * spends 25+ minutes on adoption with rate-limit risk on the operator's
  * Claude plan. Operator can re-run `cairn scope rebuild` later with a
@@ -170,7 +170,7 @@ export async function runMapper(args: RunMapperArgs): Promise<MapperResult> {
   //    fail-soft would silently degrade the scope_index for the
   //    affected module. Successful
   //    module proposals are cached on disk (cacheable: true in the
-  //    runClaude call), so re-running `cairn init` only re-issues the
+  //    runModel call), so re-running `cairn init` only re-issues the
   //    failed slice(s); completed modules hit the cache instantly and
   //    don't burn coding-plan quota a second time.
   const failed = proposals.filter((p) => p.failed);
@@ -183,7 +183,7 @@ export async function runMapper(args: RunMapperArgs): Promise<MapperResult> {
     );
   }
 
-  // 4. Merge call (Haiku).
+  // 4. Merge call (fast model).
   const workspacePackageJson = readIfExists(join(args.repoRoot, "package.json"));
   const merged = await mergeModuleProposals({
     proposals,
@@ -201,8 +201,8 @@ export async function runMapper(args: RunMapperArgs): Promise<MapperResult> {
 
   return {
     output: merged,
-    tier: "sonnet",
-    model: "haiku+sonnet",
+    tier: "capable",
+    model: "fast+capable",
     duration_ms: Date.now() - startedAt,
     module_proposals: proposals,
     slices_detected: slicesDetected,

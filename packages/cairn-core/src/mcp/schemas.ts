@@ -97,7 +97,7 @@ export const componentAnnotateInput = {
 export const componentReconfirmInput = {
   /** Reconfirm a single file's component; omit to sweep every flagged unit. */
   file: z.string().min(1).optional(),
-  /** Hard cap on fresh Haiku calls this run; the rest stay flagged (deferred). */
+  /** Hard cap on fresh fast model calls this run; the rest stay flagged (deferred). */
   cap: z.number().int().positive().max(50).optional(),
 };
 
@@ -290,9 +290,9 @@ export const resyncInput = {
   /** Limit to config-drift findings at/under this repo-relative dir. */
   area: z.string().optional(),
   /**
-   * Run the LLM re-cluster pass (re-walk prose, Haiku-judge new semantic
+   * Run the LLM re-cluster pass (re-walk prose, fast model-judge new semantic
    * collisions, rebuild topic-index + anchor-map) instead of the deterministic
-   * config pass. Spends Haiku (only on genuinely-new prose — unchanged pairs
+   * config pass. Spends fast model (only on genuinely-new prose — unchanged pairs
    * hit the cache); opt-in. `apply` then overwrites the maps (archived first).
    */
   recluster: z.boolean().optional(),
@@ -403,13 +403,13 @@ const missionPhaseDraftField = z.array(
 
 /**
  * `cairn_mission_start` — read the source spec, draft a roadmap via
- * Haiku, return the draft for operator approval. Does NOT write
+ * fast model, return the draft for operator approval. Does NOT write
  * anything to disk; the skill calls `cairn_mission_accept_draft` once
  * the operator confirms.
  *
- * `no_llm: true` skips the Haiku call and returns a single-phase stub
+ * `no_llm: true` skips the fast model call and returns a single-phase stub
  * roadmap so the operator can hand-edit it before approving (used when
- * Haiku is offline or quota-exhausted).
+ * fast model is offline or quota-exhausted).
  */
 export const missionStartInput = {
   spec_path: z.string().min(1),

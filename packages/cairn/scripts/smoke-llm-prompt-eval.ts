@@ -3,11 +3,11 @@
  * smoke-llm-prompt-eval — opt-in regression for the Phase 6 Stage-1
  * file-purpose filter prompt (PHASE_6_REDESIGN §4.1, §6).
  *
- * Burns real Haiku quota. NOT part of the standard 27-smoke gate. Run
+ * Burns real fast-model quota. NOT part of the standard smoke gate. Run
  * this when:
  *   - touching the Stage-1 system prompt in
  *     packages/cairn-core/src/init/ingest-docs.ts (FILE_FILTER_SYSTEM)
- *   - upgrading the Haiku model alias used by runClaude
+ *   - changing a provider transport or its fast-tier model mapping
  *
  * Three inline fixtures (no disk fixtures, smoke is self-contained):
  *
@@ -207,7 +207,7 @@ async function main(): Promise<void> {
     writeFile(repoRoot, f.path, f.body);
   }
 
-  step(`Running Stage-1 file-purpose filter on ${fixtures.length} fixtures (real Haiku — burns quota)…`);
+  step(`Running Stage-1 file-purpose filter on ${fixtures.length} fixtures (real fast model — burns quota)…`);
   const verdicts = await runStage1FileFilter({
     repoRoot,
     files: fixtures.map((f) => f.path),

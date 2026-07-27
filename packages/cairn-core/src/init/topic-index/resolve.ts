@@ -14,7 +14,7 @@
  *      §DEC-<hash> cite instead of a fresh DEC.
  *
  *   2. Semantic-similarity collision — different slugs, but Jaccard
- *      similarity ≥ 0.6 across kinds. A Haiku judge decides whether
+ *      similarity ≥ 0.6 across kinds. A fast model judge decides whether
  *      they describe the *same* topic. If yes, both slugs collapse
  *      into one entry; if no, they remain distinct.
  *
@@ -33,7 +33,7 @@ import {
   setAnchor,
   setTopic,
 } from "@isaacriehm/cairn-state";
-import { ClaudeError, isQuotaKind } from "../../claude/error.js";
+import { ModelRunnerError, isQuotaKind } from "../../model/error.js";
 import { logger } from "../../logger.js";
 import { jaccard, tokenize } from "../../text/jaccard.js";
 import type { ProseBlock, ProseBlockKind } from "./walk.js";
@@ -79,7 +79,7 @@ export interface ResolveOptions {
    * Max concurrent judge calls. Defaults to 5. Each call spawns a
    * `claude --print` subprocess; concurrency trades subprocess RAM for
    * wall-clock speedup. Operator's coding-plan quota is unchanged —
-   * total Haiku spend is identical to sequential.
+   * total fast model spend is identical to sequential.
    */
   judgeConcurrency?: number;
   /**
@@ -178,7 +178,7 @@ export async function resolveTopics(
   const semanticCollisions = pairs.length;
 
   // Pass 2 — bounded-concurrency judge pool. Each worker drains the
-  // shared `nextIdx` cursor and races a Haiku verdict per pair.
+  // shared `nextIdx` cursor and races a fast model verdict per pair.
   const concurrency = Math.max(1, opts.judgeConcurrency ?? 5);
   let judgeCalls = 0;
   let unresolvedAmbiguous = 0;
@@ -217,7 +217,7 @@ export async function resolveTopics(
       } catch (err) {
         unresolvedAmbiguous += 1;
         consecutiveFails += 1;
-        if (err instanceof ClaudeError) {
+        if (err instanceof ModelRunnerError) {
           if (err.kind === "auth" || isQuotaKind(err.kind)) {
             log.warn({ kind: err.kind }, "phase 7 judge bailed on quota/auth error");
             if (firstFatalErr === null) firstFatalErr = err;
@@ -226,7 +226,7 @@ export async function resolveTopics(
         }
         if (!judgeBroken && consecutiveFails >= CONSECUTIVE_FAIL_BAIL) {
           log.warn(
-            { consecutiveFails, errKind: err instanceof ClaudeError ? err.kind : "non-claude" },
+            { consecutiveFails, errKind: err instanceof ModelRunnerError ? err.kind : "non-claude" },
             "phase 7 judge bailed after consecutive fails; surfacing as phase error",
           );
           if (firstFatalErr === null) {

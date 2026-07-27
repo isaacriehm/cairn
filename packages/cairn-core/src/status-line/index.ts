@@ -37,7 +37,7 @@ export type StatusEventKind =
   | "scanning"
   | "drain-progress"
   | "drain-done"
-  | "haiku-offline";
+  | "model-offline";
 
 export interface StatusEvent {
   /** ms epoch when the event fired. */
@@ -78,7 +78,7 @@ export interface StatusJson {
   last_run_at: string | null;
   current_event: StatusEvent | null;
   event_counters: StatusEventCounters;
-  haiku_unavailable: boolean;
+  model_unavailable: boolean;
   /** Ring buffer of the most recent 32 events (oldest → newest). */
   recent_events: StatusEvent[];
 }
@@ -118,6 +118,6 @@ export {
 export {
   pushEvent,
   bumpCounter,
-  setHaikuAvailable,
+  setModelAvailable,
   expireDisplayWindow,
 } from "./event-queue.js";

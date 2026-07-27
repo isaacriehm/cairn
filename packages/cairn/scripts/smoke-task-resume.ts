@@ -223,7 +223,7 @@ async function main(): Promise<void> {
     const noSnap = checkContextThreshold({ repoRoot: repo, sessionId });
     assert(noSnap.hit === false, "Step 4 — missing ctx.json should silent-miss");
 
-    // Below threshold — 20% of Sonnet 200k window.
+    // Below threshold — 20% of capable model 200k window.
     writeFileSync(
       ctxPath,
       JSON.stringify({
@@ -236,7 +236,7 @@ async function main(): Promise<void> {
     const miss = checkContextThreshold({ repoRoot: repo, sessionId });
     assert(miss.hit === false, "Step 4 — 20% usage should NOT cross threshold");
 
-    // Above threshold — 60% of Sonnet 200k window.
+    // Above threshold — 60% of capable model 200k window.
     writeFileSync(
       ctxPath,
       JSON.stringify({

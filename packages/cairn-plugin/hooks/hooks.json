@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook session-start --host claude-code"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook session-start --host claude-code --model-provider claude"
           }
         ]
       }
@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook session-end --host claude-code"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook session-end --host claude-code --model-provider claude"
           }
         ]
       }
@@ -25,7 +25,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook stop --host claude-code"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook stop --host claude-code --model-provider claude"
           }
         ]
       }
@@ -35,7 +35,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook user-prompt-submit --host claude-code"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook user-prompt-submit --host claude-code --model-provider claude"
           }
         ]
       }
@@ -46,7 +46,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook read-enrich --host claude-code"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook read-enrich --host claude-code --model-provider claude"
           }
         ]
       },
@@ -55,7 +55,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook post-write --host claude-code"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook post-write --host claude-code --model-provider claude"
           }
         ]
       },
@@ -64,7 +64,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook ask-user-blocked --host claude-code"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs\" hook ask-user-blocked --host claude-code --model-provider claude"
           }
         ]
       }

@@ -227,7 +227,7 @@ export async function runGcSweep(opts: RunGcSweepOptions): Promise<GcSweepResult
   }
 
   // Runtime-state footprint prune — rotate telemetry logs, sweep the stale
-  // Haiku cache, reap old baseline snapshots. Deletes derived/advisory state
+  // fast model cache, reap old baseline snapshots. Deletes derived/advisory state
   // only (safe-class), produces no findings/proposals, so it sits outside the
   // detection passes above and never blocks them.
   runRuntimePrune({ repoRoot: opts.repoRoot });

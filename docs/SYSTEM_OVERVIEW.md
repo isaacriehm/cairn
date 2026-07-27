@@ -63,9 +63,8 @@ graph TB
     Local["~/.cairn/trace/ — global"]
   end
 
-  subgraph "External"
-    Sonnet[claude --print Sonnet]
-    Haiku[claude --print Haiku]
+  subgraph "Authenticated host CLI"
+    ModelRunner[Shared model runner<br/>claude / cursor-agent / codex]
   end
 
   Agent -->|hook events| HookBins
@@ -84,8 +83,7 @@ graph TB
   Tools --> Ground
   Init --> Ground
   Init --> Sensors
-  Init --> Sonnet
-  Init --> Haiku
+  Init --> ModelRunner
   Ground --> Cairn
   Trace --> Local
 ```
@@ -104,14 +102,14 @@ flowchart TD
   Start([operator: 'hi' in cairn-installed repo]) --> Skill[cairn-adopt skill renders<br/>'adopt? yes/not now/never']
   Skill -->|yes| P1[Phase 1 — detect<br/>JS only · stack signatures + sensor proposals]
   P1 --> P2[Phase 2 — walker<br/>JS only · git ls-files inventory]
-  P2 --> P3[Phase 3 — mapper<br/>Sonnet per slice · domain + per-module proposals<br/>Haiku merge · pilot pick + summary<br/>Pre-fills globs from inferGlobsFromDetection]
+  P2 --> P3[Phase 3 — mapper<br/>capable tier per slice · domain + per-module proposals<br/>fast-tier merge · pilot pick + summary<br/>Pre-fills globs from inferGlobsFromDetection]
   P3 --> P3b[Phase 3b — seed<br/>JS only · writes .cairn/ skeleton<br/>seeds .attested-commits with HEAD-reachable SHAs]
   P3b --> P4[Phase 4 — pilot<br/>JS only · operator confirms pilot module]
   P4 --> P5[Phase 5 — brand<br/>operator Q&A · 4 brand questions]
   P5 --> P7[Phase 7 — topic-index<br/>cross-source dedup pre-pass]
-  P7 --> P8[Phase 8 — docs-ingest<br/>Haiku per doc · canonical-map topics]
-  P8 --> P9[Phase 9 — source-comments<br/>Walker grabs essay blocks · Haiku batch classifies<br/>writes DEC drafts to _inbox/, INV-<hash>.md to ground/<br/>caps: 5000 files default]
-  P9 --> P10[Phase 10 — rules-merge<br/>Walks CLAUDE.md/AGENTS.md · Haiku per section<br/>writes more DEC drafts]
+  P7 --> P8[Phase 8 — docs-ingest<br/>fast tier per doc · canonical-map topics]
+  P8 --> P9[Phase 9 — source-comments<br/>Walker grabs essay blocks · fast-tier batch classifies<br/>writes DEC drafts to _inbox/, INV-<hash>.md to ground/<br/>caps: 5000 files default]
+  P9 --> P10[Phase 10 — rules-merge<br/>Walks CLAUDE.md/AGENTS.md · fast tier per section<br/>writes more DEC drafts]
   P10 --> P11[Phase 11 — baseline<br/>JS sensors · synthetic full-tree diff<br/>caps: 5000 files default]
   P11 --> P12[Phase 12 — strip<br/>JS only · per-module operator consent<br/>strips essay comments + inserts // §INV-<hash><br/>folds IDs into scope-index]
   P12 --> P13[Phase 13 — multidev<br/>JS only · multi-dev enforcement seed]
@@ -218,7 +216,7 @@ sequenceDiagram
 └── .attested-commits                    seeded Phase 3b, appended on commit-msg hook
 
 ~/.cairn/trace/
-└── trace-YYYY-MM-DD.jsonl               written by: every hook + MCP tool + claude --print subprocess
+└── trace-YYYY-MM-DD.jsonl               written by: every hook + MCP tool + model-runner subprocess
 ```
 
 ---
@@ -254,19 +252,19 @@ sequenceDiagram
 
 | Site                     | LLM                            | Why it's LLM                                                                                           | Could it be deterministic?                                                                                                 |
 | ------------------------ | ------------------------------ | ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| Phase 3 mapper per-slice | Sonnet                         | `domain` summary + per-module purpose require judgment                                                 | **No** — judgment + writing                                                                                                |
-| Phase 3 mapper-merge     | Haiku                          | Synthesizes overall `domain_summary` from per-module domains; picks pilot when multiple candidates     | **Partial** — only `domain_summary` synthesis remains LLM. Pilot pick + glob union + sensor passthrough are mechanical now |
-| Phase 8 docs-ingest      | Haiku per doc                  | Canonical-map topic naming + summary                                                                   | **No** — semantic naming                                                                                                   |
-| Phase 9 source-comments  | Haiku per batch                | Classify essay block as rationale/constraint/citation/license/other; rewrite into DEC title / INV body | **No** — classification + prose rewrite                                                                                    |
-| Phase 10 rules-merge     | Haiku per section              | Semantic merge of overlapping CLAUDE.md/AGENTS.md rules                                                | **No** — conflict detection                                                                                                |
+| Phase 3 mapper per-slice | Capable tier                   | `domain` summary + per-module purpose require judgment                                                 | **No** — judgment + writing                                                                                                |
+| Phase 3 mapper-merge     | Fast tier                      | Synthesizes overall `domain_summary` from per-module domains; picks pilot when multiple candidates     | **Partial** — only `domain_summary` synthesis remains LLM. Pilot pick + glob union + sensor passthrough are mechanical now |
+| Phase 8 docs-ingest      | Fast tier per doc              | Canonical-map topic naming + summary                                                                   | **No** — semantic naming                                                                                                   |
+| Phase 9 source-comments  | Fast tier per batch            | Classify essay block as rationale/constraint/citation/license/other; rewrite into DEC title / INV body | **No** — classification + prose rewrite                                                                                    |
+| Phase 10 rules-merge     | Fast tier per section          | Semantic merge of overlapping CLAUDE.md/AGENTS.md rules                                                | **No** — conflict detection                                                                                                |
 | `cairn-direction` skill  | Main agent | Spec tightening from loose prompt                                                                      | **No** — operator-facing dialog                                                                                            |
 | `cairn-attention` skill  | Main agent | DEC draft accept/reject/edit dialog                                                                    | **No** — operator-facing dialog                                                                                            |
-| `reviewer` subagent      | Sonnet                         | Cross-attestation of subagent diffs                                                                    | **No** — judgment                                                                                                          |
+| `reviewer` subagent      | Host-native configured model   | Cross-attestation of subagent diffs                                                                    | **No** — judgment                                                                                                          |
 
 **No longer LLM (was, isn't anymore):**
 
-- `cairn scope rebuild` CLI — deterministic regex sweep over source citations. Was Sonnet.
-- Mapper sensor proposals — sourced from Phase 1 stack detection. Was per-module Sonnet output.
+- `cairn scope rebuild` CLI — deterministic regex sweep over source citations. Was an LLM call.
+- Mapper sensor proposals — sourced from Phase 1 stack detection. Was per-module LLM output.
 - Mapper baseline globs — pre-filled by `inferGlobsFromDetection` (NestJS / Drizzle / Prisma / Rails / etc. conventions). Mapper LLM still allowed to add project-specific gaps.
 - Decision extractor (`runDecisionExtractor`) — entire daemon-era Tier-1 path purged. Operator-driven DEC creation flows through `cairn-direction` + `cairn_record_decision`.
 - Tier-0 prompt classifier — purged. `cairn-direction`'s `when_to_use` gate handles routing.

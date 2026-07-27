@@ -10,7 +10,7 @@
  *   - `same`       → strip-replace the prose block with `// §DEC-<id>`
  *                    cite. Pure deterministic for Layer B `tier1`
  *                    entries (the pre-commit hook already passed the
- *                    Tier 1 floors); Haiku-judged for everything else.
+ *                    Tier 1 floors); fast model-judged for everything else.
  *   - `different`  → drop the entry, no source change.
  *   - `ambiguous`  → write to `.cairn/ground/alignment-pending/` so
  *                    the cairn-attention skill surfaces a side-by-side
@@ -20,16 +20,16 @@
  * drift events in `.cairn/staleness/log.jsonl` are an audit trail and
  * stay.
  *
- * Cost: capped at `max_haiku_calls` (default 30 per plan §4.3 budget).
+ * Cost: capped at `max_model_calls` (default 30 per plan §4.3 budget).
  * Excess entries stay in the deferred logs for the next drain. Each
- * Haiku call is verdict-cached at
- * `.cairn/cache/haiku/drain-judge/<blockHash>-<decId>.json` keyed on
+ * fast model call is verdict-cached at
+ * `.cairn/cache/model/<provider>/drain-judge/<blockHash>-<decId>.json` keyed on
  * `(block_content_hash, dec_body_hash)`, so re-running the same block
  * against the same DEC body short-circuits without burning a call.
  *
- * Haiku unavailable fallback: drain attempts the deterministic re-check
+ * fast model unavailable fallback: drain attempts the deterministic re-check
  * pass only (Layer B tier1 entries get applied; everything else stays
- * deferred). `setHaikuAvailable(false)` raises the statusline banner.
+ * deferred). `setModelAvailable(false)` raises the statusline banner.
  */
 
 import {
@@ -43,7 +43,7 @@ import { join } from "node:path";
 import {
   type CommentBlock,
   bodyContentHash,
-  haikuCacheDir,
+  modelCacheDir,
   layerADeferredLogPath,
   preCommitDeferredLogPath,
   readSotCache,
@@ -53,7 +53,11 @@ import {
   writeFileSafe,
 } from "@isaacriehm/cairn-state";
 import { z, type ZodType } from "zod";
-import { runClaude, claudeIsAvailable } from "../claude/index.js";
+import {
+  runModel,
+  modelRunnerIsAvailable,
+  tryResolveModelProvider,
+} from "../model/index.js";
 import {
   applyStripReplace,
   formatBareCitation,
@@ -68,7 +72,7 @@ import {
   topKCandidates,
 } from "../hooks/sot-align-common.js";
 import { logger } from "../logger.js";
-import { pushEvent, setHaikuAvailable } from "../status-line/event-queue.js";
+import { pushEvent, setModelAvailable } from "../status-line/event-queue.js";
 import { tokenize } from "../text/jaccard.js";
 
 const log = logger("drain");
@@ -77,8 +81,8 @@ const log = logger("drain");
 /* Tunables                                                                   */
 /* -------------------------------------------------------------------------- */
 
-const DEFAULT_MAX_HAIKU_CALLS = 30;
-const PER_HAIKU_TIMEOUT_MS = 30_000;
+const DEFAULT_MAX_MODEL_CALLS = 30;
+const PER_MODEL_TIMEOUT_MS = 30_000;
 const BLOCK_BODY_CAP = 1_500;
 const SUMMARY_BLIP_THRESHOLD = 20;
 
@@ -92,20 +96,20 @@ export interface DrainArgs {
   repoRoot: string;
   /** When provided, drain pushes drain-progress / drain-done blips to this session's queue. */
   sessionId?: string | null;
-  /** Hard cap on Haiku judge calls. Default 30 (plan §4.3). */
-  maxHaikuCalls?: number;
+  /** Hard cap on fast model judge calls. Default 30 (plan §4.3). */
+  maxModelCalls?: number;
   /** Dry run — classify but do not strip-replace, write alignment-pending, or truncate logs. */
   dryRun?: boolean;
   /**
-   * Inject the dedup judge — bypasses the live Haiku call. Used by
+   * Inject the dedup judge — bypasses the live fast model call. Used by
    * smoke fixtures and the `cairn align drain --mock` debug path.
    */
   mockJudge?: (args: {
     blockBody: string;
     candidate: { id: string; body: string };
   }) => Promise<DrainJudgeVerdict>;
-  /** Override Haiku availability detection (smoke fixtures). */
-  haikuAvailable?: boolean;
+  /** Override fast model availability detection (smoke fixtures). */
+  modelAvailable?: boolean;
 }
 
 export interface DrainResult {
@@ -115,18 +119,18 @@ export interface DrainResult {
   droppedMissing: number;
   /** Entries auto-cited via deterministic re-check (Layer B tier1). */
   citedDeterministic: number;
-  /** Entries auto-cited via Haiku `same` verdict. */
-  citedHaiku: number;
-  /** Entries dropped via Haiku `different` verdict. */
+  /** Entries auto-cited via fast model `same` verdict. */
+  citedModel: number;
+  /** Entries dropped via fast model `different` verdict. */
   droppedDifferent: number;
-  /** Entries written to alignment-pending via Haiku `ambiguous` verdict. */
+  /** Entries written to alignment-pending via fast model `ambiguous` verdict. */
   pending: number;
-  /** Entries left in the deferred logs because the Haiku cap was hit or Haiku is offline. */
+  /** Entries left in the deferred logs because the fast model cap was hit or fast model is offline. */
   deferred: number;
-  /** Total Haiku calls actually issued (cache hits do not count). */
-  haikuCalls: number;
-  /** True when the drain ran without Haiku (fallback path). */
-  haikuFallback: boolean;
+  /** Total fast model calls actually issued (cache hits do not count). */
+  modelCalls: number;
+  /** True when the drain ran without fast model (fallback path). */
+  modelFallback: boolean;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -225,21 +229,26 @@ function loadDeferredEntries(repoRoot: string): NormalizedEntry[] {
 export async function runDrain(args: DrainArgs): Promise<DrainResult> {
   const { repoRoot } = args;
   const dryRun = args.dryRun === true;
-  const maxHaikuCalls = args.maxHaikuCalls ?? DEFAULT_MAX_HAIKU_CALLS;
+  const maxModelCalls = args.maxModelCalls ?? DEFAULT_MAX_MODEL_CALLS;
   const sessionId = args.sessionId ?? null;
-  const haikuAvailable =
-    args.haikuAvailable ?? (args.mockJudge !== undefined ? true : claudeIsAvailable());
+  const modelAvailable =
+    args.modelAvailable ?? (args.mockJudge !== undefined ? true : modelRunnerIsAvailable());
+  const cacheNamespace = !modelAvailable
+    ? null
+    : args.mockJudge === undefined
+      ? tryResolveModelProvider()
+      : "mock";
 
   const result: DrainResult = {
     totalEntries: 0,
     droppedMissing: 0,
     citedDeterministic: 0,
-    citedHaiku: 0,
+    citedModel: 0,
     droppedDifferent: 0,
     pending: 0,
     deferred: 0,
-    haikuCalls: 0,
-    haikuFallback: !haikuAvailable,
+    modelCalls: 0,
+    modelFallback: !modelAvailable,
   };
 
   const entries = loadDeferredEntries(repoRoot);
@@ -251,8 +260,8 @@ export async function runDrain(args: DrainArgs): Promise<DrainResult> {
       kind: "drain-progress",
       detail: `${entries.length} entries`,
     });
-    if (!haikuAvailable) {
-      setHaikuAvailable(repoRoot, sessionId, false);
+    if (!modelAvailable) {
+      setModelAvailable(repoRoot, sessionId, false);
     }
   }
 
@@ -285,7 +294,7 @@ export async function runDrain(args: DrainArgs): Promise<DrainResult> {
       }
       // Verify the cached match still holds — body may have changed.
       if (entry.tier1Candidate.body_hash !== bodyContentHash(candBody)) {
-        // Cached body diverged; demote to Haiku judge.
+        // Cached body diverged; demote to fast model judge.
         survivingEntries.push({ ...entry, source: "pre-commit-tier2-3" });
         continue;
       }
@@ -296,9 +305,9 @@ export async function runDrain(args: DrainArgs): Promise<DrainResult> {
     survivingEntries.push(entry);
   }
 
-  if (haikuAvailable) {
+  if (modelAvailable) {
     for (const entry of survivingEntries) {
-      if (result.haikuCalls >= maxHaikuCalls) {
+      if (result.modelCalls >= maxModelCalls) {
         result.deferred += 1;
         continue;
       }
@@ -326,29 +335,40 @@ export async function runDrain(args: DrainArgs): Promise<DrainResult> {
         kind: "no-hit",
       };
       for (const cand of candidates) {
-        if (result.haikuCalls >= maxHaikuCalls) {
+        if (result.modelCalls >= maxModelCalls) {
           outcome = { kind: "no-hit" };
           break;
         }
         const candBody = readEntityBody(repoRoot, cand.id);
         if (candBody === null) continue;
         const candScope = `${cand.id}-${bodyContentHash(candBody).slice(0, 12)}`;
-        const cached = readVerdictCache(repoRoot, entry.prose, candScope);
+        const cached = readVerdictCache(
+          repoRoot,
+          cacheNamespace,
+          entry.prose,
+          candScope,
+        );
         let verdict: DrainJudgeVerdict;
         if (cached !== null) {
           verdict = cached;
         } else {
-          if (result.haikuCalls >= maxHaikuCalls) {
+          if (result.modelCalls >= maxModelCalls) {
             outcome = { kind: "no-hit" };
             break;
           }
-          result.haikuCalls += 1;
+          result.modelCalls += 1;
           verdict = await runDrainJudge({
             blockBody: entry.prose,
             candidate: { id: cand.id, body: candBody },
             mock: args.mockJudge,
           });
-          writeVerdictCache(repoRoot, entry.prose, candScope, verdict);
+          writeVerdictCache(
+            repoRoot,
+            cacheNamespace,
+            entry.prose,
+            candScope,
+            verdict,
+          );
         }
         if (verdict === "same") {
           outcome = { kind: "cite", id: cand.id };
@@ -362,7 +382,7 @@ export async function runDrain(args: DrainArgs): Promise<DrainResult> {
 
       if (outcome.kind === "cite") {
         if (!dryRun) cited.push(buildCiteItem(block, outcome.id));
-        result.citedHaiku += 1;
+        result.citedModel += 1;
         continue;
       }
       if (outcome.kind === "ambiguous") {
@@ -384,7 +404,7 @@ export async function runDrain(args: DrainArgs): Promise<DrainResult> {
       result.droppedDifferent += 1;
     }
   } else {
-    // Haiku offline — anything that wasn't a deterministic Tier 1
+    // fast model offline — anything that wasn't a deterministic Tier 1
     // hit stays in the deferred log for the next session.
     result.deferred += survivingEntries.length;
   }
@@ -396,16 +416,16 @@ export async function runDrain(args: DrainArgs): Promise<DrainResult> {
     });
   }
 
-  if (!dryRun && haikuAvailable) {
+  if (!dryRun && modelAvailable) {
     // Truncate both deferred logs. Drift events in staleness/log.jsonl
-    // stay (audit trail). When Haiku is offline we leave the logs alone
+    // stay (audit trail). When fast model is offline we leave the logs alone
     // so the next session retries.
     truncateIfExists(layerADeferredLogPath(repoRoot));
     truncateIfExists(preCommitDeferredLogPath(repoRoot));
   }
 
   if (sessionId !== null) {
-    const totalAligned = result.citedDeterministic + result.citedHaiku;
+    const totalAligned = result.citedDeterministic + result.citedModel;
     const detail =
       totalAligned >= SUMMARY_BLIP_THRESHOLD
         ? `${totalAligned} aligned · ${result.totalEntries} stale entries`
@@ -420,7 +440,7 @@ export async function runDrain(args: DrainArgs): Promise<DrainResult> {
     kind: "doc-drift",
     path: "(drain)",
     detail: `SessionStart Drain drain: cited=${
-      result.citedDeterministic + result.citedHaiku
+      result.citedDeterministic + result.citedModel
     } pending=${result.pending} dropped=${result.droppedDifferent + result.droppedMissing} deferred=${result.deferred}`,
     severity: "soft",
   });
@@ -468,7 +488,7 @@ function buildCiteItem(block: CommentBlock, decId: string): ReplaceItem {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Haiku dedup judge — single-pass (plan §4.3)                                */
+/* fast model dedup judge — single-pass (plan §4.3)                                */
 /* -------------------------------------------------------------------------- */
 
 const DRAIN_JUDGE_SCHEMA = {
@@ -521,12 +541,12 @@ async function runDrainJudge(args: {
     "Are these the same decision/rule?",
   ].join("\n");
   try {
-    const result = await runClaude({
-      tier: "haiku",
+    const result = await runModel({
+      tier: "fast",
       system: DRAIN_JUDGE_SYSTEM,
       prompt,
       jsonSchema: DRAIN_JUDGE_SCHEMA,
-      timeoutMs: PER_HAIKU_TIMEOUT_MS,
+      timeoutMs: PER_MODEL_TIMEOUT_MS,
       isolateAmbientContext: true,
     });
     const parsed = VerdictSchema.safeParse(result.parsed);
@@ -545,17 +565,29 @@ async function runDrainJudge(args: {
 /* Verdict cache                                                              */
 /* -------------------------------------------------------------------------- */
 
-function verdictCachePath(repoRoot: string, blockBody: string, scopeKey: string): string {
+function verdictCachePath(
+  repoRoot: string,
+  namespace: string,
+  blockBody: string,
+  scopeKey: string,
+): string {
   const blockHash = createHash("sha256").update(blockBody, "utf8").digest("hex").slice(0, 12);
-  return join(haikuCacheDir(repoRoot), "drain-judge", `${blockHash}-${scopeKey}.json`);
+  return join(
+    modelCacheDir(repoRoot),
+    namespace,
+    "drain-judge",
+    `${blockHash}-${scopeKey}.json`,
+  );
 }
 
 function readVerdictCache(
   repoRoot: string,
+  namespace: string | null,
   blockBody: string,
   scopeKey: string,
 ): DrainJudgeVerdict | null {
-  const path = verdictCachePath(repoRoot, blockBody, scopeKey);
+  if (namespace === null) return null;
+  const path = verdictCachePath(repoRoot, namespace, blockBody, scopeKey);
   if (!existsSync(path)) return null;
   try {
     const raw = JSON.parse(readFileSync(path, "utf8"));
@@ -569,11 +601,13 @@ function readVerdictCache(
 
 function writeVerdictCache(
   repoRoot: string,
+  namespace: string | null,
   blockBody: string,
   scopeKey: string,
   verdict: DrainJudgeVerdict,
 ): void {
-  const path = verdictCachePath(repoRoot, blockBody, scopeKey);
+  if (namespace === null) return;
+  const path = verdictCachePath(repoRoot, namespace, blockBody, scopeKey);
   try {
     writeFileSafe(path, JSON.stringify({ verdict }));
   } catch {

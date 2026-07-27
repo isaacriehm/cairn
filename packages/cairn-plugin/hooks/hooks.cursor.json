@@ -3,27 +3,27 @@
   "hooks": {
     "sessionStart": [
       {
-        "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook session-start --host cursor"
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook session-start --host cursor --model-provider cursor"
       }
     ],
     "sessionEnd": [
       {
-        "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook session-end --host cursor"
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook session-end --host cursor --model-provider cursor"
       }
     ],
     "stop": [
       {
-        "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook stop --host cursor"
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook stop --host cursor --model-provider cursor"
       }
     ],
     "postToolUse": [
       {
         "matcher": "Read",
-        "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook read-enrich --host cursor"
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook read-enrich --host cursor --model-provider cursor"
       },
       {
         "matcher": "Write",
-        "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook post-write --host cursor"
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/dist/cli.mjs\" hook post-write --host cursor --model-provider cursor"
       }
     ]
   }

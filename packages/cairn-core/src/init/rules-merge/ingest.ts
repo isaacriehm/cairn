@@ -9,16 +9,16 @@
  *        cite (no source rewrite — operator's narrative stays intact)
  *        and skips emit.
  *      - **Net-new** — slug is in topic-index but not yet emitted.
- *        Phase 10 classifies the section via Haiku (kind only:
+ *        Phase 10 classifies the section via fast model (kind only:
  *        decision / domain-rule / constraint / informational), emits
  *        a verbatim DEC/INV via `sot-emit` with `sot_kind: "path"` +
  *        `sot_path: <file>#<anchor>`, auto-promotes (`status: accepted`).
  *   3. Conflict detection — for each freshly emitted entity, scan
  *      accepted DECs/INVs in `sot-cache.yaml` for high Jaccard overlap
- *      against the new body, then run a Haiku contradiction judge per
+ *      against the new body, then run a fast model contradiction judge per
  *      candidate (`contradict | agree | unrelated`). On `contradict`,
  *      write `.cairn/ground/conflicts/<new>__<other>.md` with both
- *      prose sides + Haiku reasoning. The cairn-attention skill renders
+ *      prose sides + fast model reasoning. The cairn-attention skill renders
  *      these per §5.4.1; **no source rewrite ever fires from conflicts**.
  *   4. Auto-promote — every novel entity ships `status: accepted`. The
  *      `_inbox/` draft queue is gone (the v0.4.x review surface was the
@@ -37,7 +37,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { stringify as stringifyYaml } from "yaml";
-import { runClaude } from "../../claude/index.js";
+import { runModel } from "../../model/index.js";
 import { cairnDir,
   bodyContentHash,
   conflictsDir,
@@ -97,12 +97,12 @@ export interface RuleClassification {
 
 export interface RunRulesMergeArgs {
   repoRoot: string;
-  /** When set, every section is classified by this fn — bypasses Haiku. */
+  /** When set, every section is classified by this fn — bypasses fast model. */
   mockClassify?: (section: RuleSection, source: RuleSourceFile) => RuleClassification;
   /**
    * Mock contradiction judge for smokes. Receives both prose bodies +
    * candidate id, returns one of `contradict | agree | unrelated`.
-   * Default off → no Haiku contradiction calls in mock-classify mode.
+   * Default off → no fast model contradiction calls in mock-classify mode.
    */
   mockContradictionJudge?: (args: {
     newBody: string;
@@ -152,7 +152,7 @@ interface RuleConflictRecord {
   otherId: string;
   /** Repo-relative path to the conflict file. */
   conflictPath: string;
-  /** Haiku judge's verdict reasoning excerpt. */
+  /** fast model judge's verdict reasoning excerpt. */
   reasoning: string;
 }
 
@@ -566,8 +566,8 @@ async function classifySection(job: {
     body,
   ].join("\n");
   try {
-    const result = await runClaude({
-      tier: "haiku",
+    const result = await runModel({
+      tier: "fast",
       system: CLASSIFY_SYSTEM,
       prompt,
       jsonSchema: CLASSIFY_SCHEMA,
@@ -680,8 +680,8 @@ async function runContradictionJudge(args: {
     "Do these statements logically contradict each other?",
   ].join("\n");
   try {
-    const result = await runClaude({
-      tier: "haiku",
+    const result = await runModel({
+      tier: "fast",
       system: CONTRADICTION_SYSTEM,
       prompt,
       jsonSchema: CONTRADICTION_SCHEMA,

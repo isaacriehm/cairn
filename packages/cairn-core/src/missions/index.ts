@@ -1,7 +1,7 @@
 /**
  * Mission orchestration — helpers for the `cairn_mission_*` MCP tools.
  * State + I/O lives in `@isaacriehm/cairn-state`; this module holds
- * the LLM call (Haiku doc-parse), cursor advance, and task linkage.
+ * the LLM call (fast model doc-parse), cursor advance, and task linkage.
  */
 
 export {

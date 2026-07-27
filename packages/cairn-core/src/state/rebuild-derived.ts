@@ -14,7 +14,7 @@
  * (CI needs no rebuild: sensors read the committed DEC/INV `.md` directly,
  * not the derived indexes.)
  *
- * Haiku-free and deterministic from committed sources. Covers the
+ * fast model-free and deterministic from committed sources. Covers the
  * load-bearing set:
  *   - decisions/invariants ledgers (context injection)
  *   - scope-index               (cairn_in_scope)
@@ -23,8 +23,8 @@
  *   - sot-cache                 (Layer A Jaccard pre-filter)
  *
  * `topic-index.yaml` + `anchor-map.yaml` are discovery-time artifacts
- * (init builds them with a Haiku dedup walk). We don't re-run discovery,
- * but we DO reconstruct them Haiku-free on a COLD clone: the accepted
+ * (init builds them with a fast model dedup walk). We don't re-run discovery,
+ * but we DO reconstruct them fast model-free on a COLD clone: the accepted
  * `sot_kind: path` DEC/INV already encode resolved topics, so we walk
  * the source prose blocks (`walkProseBlocks`, deterministic) and
  * content-hash-rematch each entity's `sot_content_hash` to its current
@@ -201,7 +201,7 @@ export function rebuildDerived(repoRoot: string): RebuildDerivedResult {
  * Cold rebuild of `topic-index` + `anchor-map` for `sot_kind: path`
  * entities. Walks the source prose blocks once, indexes them by content
  * hash, and relocates each entity's `sot_content_hash` to its current
- * block (slug, file, line range, anchor). Haiku-free — discovery already
+ * block (slug, file, line range, anchor). fast model-free — discovery already
  * happened; this just re-resolves known topics. Entities whose SoT block
  * isn't found (content drifted, or it lives in a source-comment the doc
  * walker doesn't cover) are skipped and left to the incremental hook.

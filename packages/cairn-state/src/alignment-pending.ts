@@ -1,7 +1,7 @@
 /**
  * Alignment-pending queue writer — used by Layer A (PostToolUse hook,
  * pass-2-still-ambiguous + tier3-ambiguous paths) and SessionStart Drain
- * (SessionStart drain, Haiku-judge-ambiguous path).
+ * (SessionStart drain, fast model-judge-ambiguous path).
  *
  * The cairn-attention skill renders the file with side-by-side prose
  * and an AskUserQuestion four-option pick. The filename is a content

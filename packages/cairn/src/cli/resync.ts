@@ -9,9 +9,9 @@
  * (comment-preserving), and is idempotent. The result is a review-class change
  * to committed config the operator commits.
  *
- * `--recluster` runs the LLM half instead: re-walk prose, Haiku-judge new
+ * `--recluster` runs the LLM half instead: re-walk prose, fast model-judge new
  * semantic collisions, rebuild the (gitignored, per-clone) topic-index +
- * anchor-map. Spends Haiku on genuinely-new prose only; `--apply` overwrites
+ * anchor-map. Spends fast model on genuinely-new prose only; `--apply` overwrites
  * the maps after archiving them.
  */
 

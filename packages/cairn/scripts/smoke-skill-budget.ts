@@ -83,7 +83,7 @@ async function main(): Promise<void> {
     mkdirSync(join(home, ".claude"), { recursive: true });
     writeFileSync(
       settingsJsonPath(home),
-      JSON.stringify({ theme: "dark", model: "sonnet" }, null, 2),
+      JSON.stringify({ theme: "dark", model: "capable model" }, null, 2),
       "utf8",
     );
     const r = ensureSkillBudgetFloor({ homeDirOverride: home });
@@ -92,7 +92,7 @@ async function main(): Promise<void> {
     if (obj["skillListingBudgetFraction"] !== SKILL_BUDGET_FLOOR) {
       fail(`floor not added, got ${obj["skillListingBudgetFraction"]}`);
     }
-    if (obj["theme"] !== "dark" || obj["model"] !== "sonnet") {
+    if (obj["theme"] !== "dark" || obj["model"] !== "capable model") {
       fail(`other keys clobbered, got ${JSON.stringify(obj)}`);
     }
     pass("key added, other keys preserved");

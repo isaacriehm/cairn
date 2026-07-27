@@ -1,8 +1,8 @@
 /**
  * Layer C operator-consent gates.
  *
- * `cairn fix align` runs a full-repo Haiku-judge sweep + strip-replace
- * pass. It is expensive (Haiku spend) and destructive (rewrites source
+ * `cairn fix align` runs a full-repo fast model-judge sweep + strip-replace
+ * pass. It is expensive (fast model spend) and destructive (rewrites source
  * prose blocks). Two gates protect the operator:
  *
  *   - Dry-run sentinel — `--dry-run` writes
@@ -10,7 +10,7 @@
  *     args_hash }`. The next non-dry-run invocation must find a
  *     sentinel that is fresh (≤ 30 min), points at the current HEAD,
  *     and matches the same flag set. Mismatch aborts before any
- *     Haiku call.
+ *     fast model call.
  *
  *   - Dirty-tree guard — before the apply phase, the CLI checks
  *     `git status --porcelain` for modified / staged paths that

@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${PLUGIN_ROOT}/dist/cli.mjs\" hook session-start --host codex",
+            "command": "node \"${PLUGIN_ROOT}/dist/cli.mjs\" hook session-start --host codex --model-provider codex",
             "statusMessage": "Loading Cairn context"
           }
         ]
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${PLUGIN_ROOT}/dist/cli.mjs\" hook stop --host codex",
+            "command": "node \"${PLUGIN_ROOT}/dist/cli.mjs\" hook stop --host codex --model-provider codex",
             "statusMessage": "Checking Cairn continuity"
           }
         ]
@@ -27,7 +27,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${PLUGIN_ROOT}/dist/cli.mjs\" hook user-prompt-submit --host codex"
+            "command": "node \"${PLUGIN_ROOT}/dist/cli.mjs\" hook user-prompt-submit --host codex --model-provider codex"
           }
         ]
       }
@@ -38,7 +38,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${PLUGIN_ROOT}/dist/cli.mjs\" hook read-enrich --host codex"
+            "command": "node \"${PLUGIN_ROOT}/dist/cli.mjs\" hook read-enrich --host codex --model-provider codex"
           }
         ]
       },
@@ -47,7 +47,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${PLUGIN_ROOT}/dist/cli.mjs\" hook post-write --host codex"
+            "command": "node \"${PLUGIN_ROOT}/dist/cli.mjs\" hook post-write --host codex --model-provider codex"
           }
         ]
       }

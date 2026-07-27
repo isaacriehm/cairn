@@ -8,6 +8,7 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { resolveModelProvider } from "../model/index.js";
 import { normalizeProjectName } from "../paths/index.js";
 import type {
   DetectionResult,
@@ -35,6 +36,12 @@ export function detectAll(args: { repoRoot: string }): DetectionResult {
   const originUrl = detectOriginUrl(args.repoRoot);
   const signatures = detectStackSignatures(args.repoRoot);
   const projectSlug = detectProjectSlug({ repoRoot: args.repoRoot, originUrl });
+  let modelProvider: DetectionResult["environment"]["model_provider"] = null;
+  try {
+    modelProvider = resolveModelProvider();
+  } catch {
+    // Model-assisted phases report their existing skip/fallback path.
+  }
 
   return {
     repo_root: args.repoRoot,
@@ -44,7 +51,7 @@ export function detectAll(args: { repoRoot: string }): DetectionResult {
     start_command: detectStartCommand({ repoRoot: args.repoRoot, signatures }),
     hook_capability: detectHookCapability(args.repoRoot).can_hook ? "claude-code" : "cli-only",
     environment: {
-      claude_auth: true,
+      model_provider: modelProvider,
     },
   };
 }

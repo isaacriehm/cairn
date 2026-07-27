@@ -378,7 +378,7 @@ resolves title + body from the ledger) when the DEC came from
 ## Step 3b — `kind: conflict` side-by-side render (REQUIRED)
 
 Plan §5.4.1 — when a conflict item is in the batch, the operator
-must see both verbatim sides AND the Haiku judge's reasoning before
+must see both verbatim sides AND the model judge's reasoning before
 they pick. AskUserQuestion's option labels alone don't carry that
 prose. Render a chat message on the SAME turn as the
 `AskUserQuestion`, BEFORE the tool call lands:

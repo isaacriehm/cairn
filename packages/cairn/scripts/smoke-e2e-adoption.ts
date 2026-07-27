@@ -7,7 +7,7 @@
  * Builds a synthetic git repo with rationale-bearing source comments,
  * existing CLAUDE.md/AGENTS.md rule sections, an operator keep block,
  * and a Node `package.json`. Runs `runInit` in auto mode with mocked
- * classifiers (no Haiku spend), then asserts every Phase 4/6/7b/7c/12
+ * classifiers (no fast model spend), then asserts every Phase 4/6/7b/7c/12
  * artifact landed correctly.
  */
 
@@ -294,7 +294,7 @@ async function main(): Promise<void> {
     existsSync(join(repoRoot, result.rules_merge!.auditRelPath)),
     "rules-merge audit yaml exists",
   );
-  // Operator keep section auto-classified without going through Haiku.
+  // Operator keep section auto-classified without going through fast model.
   assert(
     result.rules_merge!.kindCounts["operator-keep"] >= 1,
     "operator-keep section auto-tagged",

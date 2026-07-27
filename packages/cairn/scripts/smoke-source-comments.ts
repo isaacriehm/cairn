@@ -3,7 +3,7 @@
  * smoke-source-comments — Phase 7b walker + classifier mock + ingest
  * persistence + Phase 10 strip-replace primitives.
  *
- * No real Haiku calls — `mockClassify` returns deterministic outputs.
+ * No real fast model calls — `mockClassify` returns deterministic outputs.
  */
 
 import {
@@ -378,7 +378,7 @@ async function main(): Promise<void> {
     assert(narrativeSrc.includes("This class handles"), "narrative prose still in source");
     assert(!narrativeSrc.includes("§DEC-"), "no DEC citation injected");
   }
-  console.log("  ✓ Step 4c — narrative essay → no Haiku call, no DEC, topic-index candidate registered");
+  console.log("  ✓ Step 4c — narrative essay → no fast model call, no DEC, topic-index candidate registered");
 
   step("Step 4d — phase 7b marker override: @cairn:decision always emits, classifier bypassed");
   {

@@ -183,7 +183,7 @@ function runSmoke(): void {
   }
 
   // ── Step 7 — ctx meter renders + colors percentage thresholds ────
-  // Color scales with CC's reported usedPct so a 200k Sonnet session
+  // Color scales with CC's reported usedPct so a 200k capable model session
   // and a 1M Opus-1m session signal danger at comparable percentages.
   {
     const green = formatStatus(syntheticStatus(), {

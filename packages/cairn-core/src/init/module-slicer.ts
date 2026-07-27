@@ -1,6 +1,6 @@
 /**
  * Module slicer — partitions a repo into per-module slices for the chunked
- * parallel mapper. Each ModuleSlice is the focused input one Sonnet call sees.
+ * parallel mapper. Each ModuleSlice is the focused input one capable model call sees.
  *
  * Module detection strategy:
  *   - Detect modules via .gitmodules, pnpm/yarn/lerna workspaces, top-level
@@ -9,7 +9,7 @@
  *   - Each slice carries: directory tree (paths only), package.json (full),
  *     up to 5 representative files (full content), local docs (capped).
  *
- * The mapper-parallel module dispatches one Sonnet call per slice, and the
+ * The mapper-parallel module dispatches one capable model call per slice, and the
  * merge call assembles the per-module proposals into a single MapperOutput.
  */
 
@@ -70,7 +70,7 @@ const DIRECTORY_TREE_LINE_CAP = 800;
 /**
  * Per-module thresholds that drive the pre-dispatch split.
  *
- * A monolithic backend module (~400 source files) trips Sonnet's per-call
+ * A monolithic backend module (~400 source files) trips capable model's per-call
  * latency / token-budget far past parallel sweet spot, so any module above
  * `LARGE_MODULE_SOURCE_THRESHOLD` is broken into sub-slices on its top-level
  * subdirs. Sub-slices below `SUBSLICE_SOURCE_THRESHOLD` aren't worth a call;

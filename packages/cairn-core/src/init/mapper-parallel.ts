@@ -1,20 +1,20 @@
 /**
- * Parallel module mapper — dispatches one Sonnet call per ModuleSlice in
+ * Parallel module mapper — dispatches one capable model call per ModuleSlice in
  * parallel via Promise.allSettled, with a per-module progress display.
  *
  * Dispatch strategy:
- *   - One Sonnet call per slice, ~8k token input each.
+ *   - One capable model call per slice, ~8k token input each.
  *   - Failed call → ModuleProposal with confidence: 0 and empty arrays.
  *     Never throws; allSettled handles errors.
  *   - >8 modules: batch into rounds of 4 to avoid rate limits. Still parallel
  *     within each round.
  *   - Progress: per-module line, updated in-place as each Promise resolves.
  *
- * Output is a list of ModuleProposal objects. The merge module (Haiku call)
+ * Output is a list of ModuleProposal objects. The merge module (fast model call)
  * synthesizes them into the final MapperOutput.
  */
 
-import { runClaude } from "../claude/index.js";
+import { runModel } from "../model/index.js";
 import { logger } from "../logger.js";
 import { coerceDecisionIds, coerceInvariantIds } from "@isaacriehm/cairn-state";
 import type {
@@ -28,7 +28,7 @@ const log = logger("init.mapper-parallel");
 
 const PARALLEL_ROUND_SIZE = 4;
 const PARALLEL_THRESHOLD = 8;
-// 10min ceiling. Sonnet with `--json-schema` and a fat scope_index.files
+// 10min ceiling. capable model with `--json-schema` and a fat scope_index.files
 // output (one entry per file in the module) on a 35k-char prompt can
 // genuinely run 4-6min. Below this ceiling we were timing out on
 // legitimate large modules. Successful proposals are cached
@@ -185,13 +185,13 @@ async function mapOneSlice(
       decisions: args.decisions,
       invariants: args.invariants,
     });
-    const result = await runClaude({
-      tier: "sonnet",
+    const result = await runModel({
+      tier: "capable",
       prompt: userPrompt,
       system: MODULE_SYSTEM_PROMPT,
       jsonSchema: MODULE_OUTPUT_SCHEMA as object,
       timeoutMs: PER_MODULE_TIMEOUT_MS,
-      // Isolate ambient context — without this every per-module Sonnet
+      // Isolate ambient context — without this every per-module capable model
       // call ingests the operator's user-level CLAUDE.md, the project
       // CLAUDE.md hierarchy, all plugin slash commands, and every MCP
       // tool definition. On a 50-slice repo that's the ambient context
@@ -347,7 +347,7 @@ function parseModuleProposal(
 }
 
 /**
- * Build a ModuleProposal for a slice whose Sonnet call timed out or threw.
+ * Build a ModuleProposal for a slice whose capable model call timed out or threw.
  *
  * Fallback policy: don't drop the module entirely.
  * Mark it `failed: true` (so completion summary can name it), give it a

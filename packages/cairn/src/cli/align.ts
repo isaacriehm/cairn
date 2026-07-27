@@ -3,13 +3,13 @@
  *
  *   cairn align drain   SessionStart Drain (plan §4.3) —
  *                       reads the deferred logs written by Layer A +
- *                       Layer B, re-checks each block, runs the Haiku
+ *                       Layer B, re-checks each block, runs the fast model
  *                       dedup judge for ambiguous candidates, and
  *                       applies cite / drop / alignment-pending. Capped
- *                       at 30 Haiku calls by default.
+ *                       at 30 fast model calls by default.
  *
  * Future subcommands:
- *   cairn fix align     Layer C — full-repo Haiku-judge sweep (`fix` namespace).
+ *   cairn fix align     Layer C — full-repo fast model-judge sweep (`fix` namespace).
  *   cairn align undo    rollback recent auto-resolutions.
  */
 
@@ -19,7 +19,7 @@ import { resolve } from "node:path";
 interface DrainFlags {
   repoRoot: string;
   sessionId: string | null;
-  maxHaikuCalls: number | null;
+  maxModelCalls: number | null;
   dryRun: boolean;
 }
 
@@ -28,7 +28,7 @@ function usage(): never {
     "Usage: cairn align <subcommand>\n" +
       "  drain                              SessionStart Drain SessionStart drain.\n" +
       "    [--session-id <id>]              push drain blips to this session\n" +
-      "    [--max-haiku-calls <n>]          cap Haiku judge calls (default 30)\n" +
+      "    [--max-model-calls <n>]          cap fast model judge calls (default 30)\n" +
       "    [--dry-run]                      classify only; no source / log writes\n" +
       "    [--repo <path>]                  override the cairn repo root\n",
   );
@@ -37,7 +37,7 @@ function usage(): never {
 
 function parseDrainFlags(argv: string[]): DrainFlags {
   let sessionId: string | null = null;
-  let maxHaikuCalls: number | null = null;
+  let maxModelCalls: number | null = null;
   let dryRun = false;
   let repoOverride: string | null = null;
 
@@ -51,18 +51,18 @@ function parseDrainFlags(argv: string[]): DrainFlags {
       }
       sessionId = v;
       i += 1;
-    } else if (a === "--max-haiku-calls") {
+    } else if (a === "--max-model-calls") {
       const v = argv[i + 1];
       if (v === undefined) {
-        console.error("--max-haiku-calls requires a value");
+        console.error("--max-model-calls requires a value");
         process.exit(2);
       }
       const n = Number.parseInt(v, 10);
       if (!Number.isFinite(n) || n < 0) {
-        console.error(`--max-haiku-calls invalid: ${v}`);
+        console.error(`--max-model-calls invalid: ${v}`);
         process.exit(2);
       }
-      maxHaikuCalls = n;
+      maxModelCalls = n;
       i += 1;
     } else if (a === "--dry-run") {
       dryRun = true;
@@ -85,7 +85,7 @@ function parseDrainFlags(argv: string[]): DrainFlags {
     console.error("cairn align drain: not inside a cairn-adopted repo");
     process.exit(2);
   }
-  return { repoRoot, sessionId, maxHaikuCalls, dryRun };
+  return { repoRoot, sessionId, maxModelCalls, dryRun };
 }
 
 export async function alignCli(argv: string[]): Promise<void> {
@@ -98,20 +98,20 @@ export async function alignCli(argv: string[]): Promise<void> {
         repoRoot: flags.repoRoot,
         sessionId: flags.sessionId,
       };
-      if (flags.maxHaikuCalls !== null) args.maxHaikuCalls = flags.maxHaikuCalls;
+      if (flags.maxModelCalls !== null) args.maxModelCalls = flags.maxModelCalls;
       if (flags.dryRun) args.dryRun = true;
       const result = await runDrain(args);
       const summary = [
         `cairn align drain — ${flags.dryRun ? "DRY-RUN " : ""}done`,
         `  total entries:        ${result.totalEntries}`,
         `  cited (deterministic) ${result.citedDeterministic}`,
-        `  cited (Haiku)         ${result.citedHaiku}`,
+        `  cited (fast model)         ${result.citedModel}`,
         `  dropped (different)   ${result.droppedDifferent}`,
         `  dropped (missing)     ${result.droppedMissing}`,
         `  alignment-pending     ${result.pending}`,
         `  deferred (cap/offline) ${result.deferred}`,
-        `  Haiku calls           ${result.haikuCalls}`,
-        `  Haiku fallback        ${result.haikuFallback ? "yes (offline)" : "no"}`,
+        `  fast model calls           ${result.modelCalls}`,
+        `  fast model fallback        ${result.modelFallback ? "yes (offline)" : "no"}`,
       ].join("\n");
       process.stdout.write(`${summary}\n`);
       return;

@@ -2,7 +2,7 @@
 /**
  * smoke-ingestion-baseline — Phase 6 wiring.
  *
- * Exercises ingest-docs (with a mocked classifier so we don't burn Haiku) +
+ * Exercises ingest-docs (with a mocked classifier so we don't burn fast model) +
  * baseline-audit + the SessionStart onboarding injection. End-to-end against a
  * fixture git repo.
  */

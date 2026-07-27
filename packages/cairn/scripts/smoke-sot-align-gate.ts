@@ -4,7 +4,7 @@
  *
  * Locks the structural gate that stops the runtime sot-align hook from
  * minting junk invariants from non-rule prose. Before the gate, every
- * prose block reached the Haiku creation judge, which over-labeled
+ * prose block reached the fast model creation judge, which over-labeled
  * descriptions as `constraint` and produced a ~97%-junk invariant store
  * (banners, class descriptions, test-fixture notes, box-drawing rules).
  *
@@ -144,7 +144,7 @@ async function main(): Promise<void> {
 
     // The creation judge THROWS — if any junk block reached it, alignFile
     // rejects and the smoke fails. Proves the gate short-circuits before
-    // any Haiku call.
+    // any fast model call.
     const result = await alignFile({
       repoRoot,
       filePath: "src/junk.ts",
@@ -154,7 +154,7 @@ async function main(): Promise<void> {
         throw new Error("creation judge must NOT be reached for junk blocks");
       },
     });
-    assert(result.haikuCalls === 0, `Step 2: no Haiku calls, got ${result.haikuCalls}`);
+    assert(result.modelCalls === 0, `Step 2: no fast model calls, got ${result.modelCalls}`);
     assert(result.invsCreated === 0, "Step 2: no INV minted from junk");
     assert(result.decsCreated === 0, "Step 2: no DEC minted from junk");
     assert(result.blocksConsidered >= 3, `Step 2: blocks extracted, got ${result.blocksConsidered}`);
@@ -176,7 +176,7 @@ async function main(): Promise<void> {
   // A runtime `constraint` no longer auto-creates an active INV (the
   // low-confidence over-mint the prune cleaned up after; INV enforcement
   // is unwired). It routes to the alignment-pending candidate surface for
-  // operator promotion — with NO second Haiku pass (no added latency).
+  // operator promotion — with NO second fast model pass (no added latency).
   {
     const repoRoot = mkRepoRoot();
     const source = [
@@ -273,7 +273,7 @@ async function main(): Promise<void> {
     });
     assert(result.blocksConsidered === 0, `Step 5: test file short-circuits before block extraction, got ${result.blocksConsidered}`);
     assert(result.invsCreated === 0 && result.decsCreated === 0, "Step 5: no entity minted from a test file");
-    assert(result.haikuCalls === 0, "Step 5: no Haiku call for a test file");
+    assert(result.modelCalls === 0, "Step 5: no fast model call for a test file");
     console.log("  ✓ Step 5 — rule-shaped comment in a *.spec.ts is skipped whole");
   }
 

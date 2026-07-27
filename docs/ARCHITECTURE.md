@@ -39,7 +39,7 @@ Everything else is built on a curated, queryable ground state at
 │    cairn-core  — MCP server, sensors, hook runners, init wizard,   │
 │                  GC drift sweep, decision-capture (id allocator),  │
 │                  source-comment + rules-merge ingestion,           │
-│                  multi-dev install, claude subprocess wrapper.     │
+│                  multi-dev install, shared agent-CLI model runner.  │
 │    cairn-state — ground-state schemas + cached read-only I/O.      │
 │                  Imported by cairn-core and cairn-lens.            │
 └────────────────────────────────────────────────────────────────────┘
@@ -76,7 +76,8 @@ Concrete wins:
 
 What lives here:
 
-- `init/` — adoption wizard. Phase orchestration, mapper (chunked Sonnet),
+- `init/` — adoption wizard. Phase orchestration, mapper (chunked capable
+  tier),
   source-comment ingestion (Phase 9), rules merge (Phase 10), strip-replace
   primitives (Phase 12), multi-dev install (Phase 13). Visual rendering
   helpers + the four-question brand setup.
@@ -125,9 +126,11 @@ What lives here:
   ensureSessionDir, gcStaleSessions.
 - `status-line/` — per-session status.json writer + Claude Code status-line
   reader.
-- `claude/` — subprocess wrapper for `claude --print --output-format json
-  --json-schema`. Used by mapper, source-comments classifier, rules-merge,
-  docs-ingest, history summarizer.
+- `model/` — one provider-neutral runner with thin Claude, Cursor, and
+  Codex CLI transports. It owns concurrency, timeouts, tracing,
+  provider-isolated caching, and shared JSON-schema validation. Used by
+  mapper, source-comments classifier, rules-merge, docs-ingest, and
+  history summarizer.
 - `join/` — per-clone bootstrap orchestrator. `runJoin` + `inspectJoinState`.
 - `migrate/` — coded `.cairn/` migration registry. Ordered migrations keyed
   by `introducedIn`; `runMigrations` selects by semver vs the `cairn_version`
@@ -137,13 +140,14 @@ What lives here:
 - `lock.ts` — per-write `flock` on `.cairn/.write-lock` for global writes.
 - `logger.ts` — pino setup.
 
-**Tier model.** Backend LLM calls flow through three tiers:
-`haiku` (Tier 1, classifiers + summarizers), `sonnet` (Tier 2, the
-mapper + reviewer subagent), `opus` (Tier 3, currently unused — kept
-in the `ClaudeTier` union as an escape hatch). The earlier Tier-0
-prompt-classifier and backend tightener modules were both purged in
-v0.2.1; routing + tightening are now main-Claude judgment via the
-cairn-direction skill, not backend calls.
+**Model boundary.** Backend LLM calls use semantic `fast` and `capable`
+tiers. The active host selects a thin transport: Claude maps them to
+Haiku/Sonnet, Codex uses `gpt-5.3-codex-spark` for Cairn's bounded calls,
+and Cursor uses its documented `auto` routing. One shared runner owns
+queueing, timeout/error normalization, structured-output validation,
+tracing, and a provider-isolated cache. The earlier prompt-classifier and
+backend tightener modules remain purged; routing and tightening are
+host-agent judgment via `cairn-direction`, not backend calls.
 
 ### 3.2 `cairn` — umbrella + CLI
 
@@ -227,12 +231,11 @@ spec.
 
 ## §6 What's not in scope
 
-- **No orchestration runtime.** The plugin's daily flow uses Claude Code's
-  built-in subagent dispatch (`Task` tool); Cairn provides the spec
-  tightener + reviewer prompt + sensors but does not run a separate
-  process pool.
+- **No orchestration runtime.** The plugin's daily flow uses each host's
+  native subagent dispatch; Cairn provides the spec tightener + reviewer
+  brief + sensors but does not run a separate process pool.
 - **No alternative agent UX.** The plugin is the operator surface. CLI is
   for bootstrap and debug.
 - **No remote infrastructure.** No hosted service, no telemetry beyond
-  the local pino log file. Ground state is on disk; agent calls are local
-  Claude Code subprocesses.
+  the local pino log file. Ground state is on disk; bounded model calls
+  are local authenticated agent-CLI subprocesses.

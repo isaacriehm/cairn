@@ -5,21 +5,21 @@
  * Write/Edit. For every prose block in the just-written file the
  * pipeline picks one of:
  *
- *   - **Tier 1 (deterministic, no Haiku)** — block is a verbatim/
+ *   - **Tier 1 (deterministic, no fast model)** — block is a verbatim/
  *     near-verbatim duplicate of an existing accepted DEC/INV body
  *     (Jaccard ≥ 0.85, 3-shingle ≥ 60%, length ratio 0.5-2.0).
  *     Auto-replace with `// §DEC-<hash>` (or `# §DEC-<hash>` per
  *     language). Statusline blip `⬡ aligned`.
  *
- *   - **Tier 2 — Haiku dedup judge, two-pass.**
+ *   - **Tier 2 — fast model dedup judge, two-pass.**
  *       Pass 1 (cheap, snippet + candidate body) → `same | different |
  *       ambiguous`. `same` → cite. `different` → next candidate.
  *       `ambiguous` → escalate to Pass 2.
  *       Pass 2 (full bodies + ±200-char source context + step-by-step
  *       prompt) → `same | different | augments | ambiguous`. `same`
  *       cite; `different` next; `augments` triggers two-stage delta:
- *         - Stage 1 — Haiku extracts the delta prose ("NO_DELTA" → same).
- *         - Stage 2 — Haiku classifies the delta `constraint | rationale`.
+ *         - Stage 1 — fast model extracts the delta prose ("NO_DELTA" → same).
+ *         - Stage 2 — fast model classifies the delta `constraint | rationale`.
  *           constraint → fresh INV linked via `derived_from`; rationale
  *           → fresh DEC linked via `related`. The augmented source
  *           gains a `// §INV-<new>` / `// §DEC-<new>` cite *alongside*
@@ -27,7 +27,7 @@
  *       `ambiguous` (still!) → write to `.cairn/ground/alignment-
  *       pending/<id>.md` and surface via cairn-attention.
  *
- *   - **Tier 3 — Haiku creation judge, two-pass.**
+ *   - **Tier 3 — fast model creation judge, two-pass.**
  *       Pass 1 → `decision | constraint | descriptive | ambiguous`.
  *       `descriptive` no-op (false-positive DEC creation pollutes
  *       ground state worse than missed capture). `ambiguous` →
@@ -41,11 +41,12 @@
  * Hard rules:
  *   - The hook never blocks the Write. Failures degrade to no-op +
  *     log; the operator's edit always succeeds.
- *   - Per-Write call caps: max HAIKU_PASS1_CAP Pass-1 calls + max
- *     HAIKU_PASS2_CAP Pass-2 calls per Write. Excess defers to
+ *   - Per-Write call caps: max MODEL_PASS1_CAP Pass-1 calls + max
+ *     MODEL_PASS2_CAP Pass-2 calls per Write. Excess defers to
  *     `.cairn/staleness/layer-a-deferred.jsonl` for Layer C drain.
- *   - Verdict cache at `.cairn/cache/haiku/<scope>/<blockHash>-<key>.json`
- *     so re-running the same prose hits cache instead of Haiku.
+ *   - Verdict cache at
+ *     `.cairn/cache/model/<provider>/<scope>/<blockHash>-<key>.json`
+ *     so re-running the same prose hits cache instead of fast model.
  *   - Source files outside Claude's repo (cwd) are skipped. Markdown
  *     (`.md`/`.mdx`) skipped entirely — operator-curated narrative is
  *     handled by phase 7's topic-index + the doc-drift sensor.
@@ -70,7 +71,7 @@ import {
   type HookRunOptions,
 } from "../hook-platform.js";
 import { resolveRepoRoot } from "../../session-start/index.js";
-import { runClaude } from "../../claude/index.js";
+import { runModel, tryResolveModelProvider } from "../../model/index.js";
 import { cairnDir,
   anchorMapPath,
   bindDec,
@@ -162,9 +163,9 @@ const CAPTURE_SOURCE = "layer-a-sot-align";
 /* Tunables — Layer A only (shared Tier 1/2 floors live in sot-align-common)  */
 /* -------------------------------------------------------------------------- */
 
-const HAIKU_PASS1_CAP = 5;
-const HAIKU_PASS2_CAP = 2;
-const PER_HAIKU_TIMEOUT_MS = 30_000;
+const MODEL_PASS1_CAP = 5;
+const MODEL_PASS2_CAP = 2;
+const PER_MODEL_TIMEOUT_MS = 30_000;
 const BLOCK_BODY_CAP = 1_500;
 const SOURCE_CONTEXT_RADIUS = 200;
 
@@ -179,14 +180,14 @@ export interface AlignFileArgs {
   /** Claude Code session id (for statusline blips). */
   sessionId: string | null;
   /**
-   * Mock dedup judge — Pass 1. Default uses Haiku via runClaude.
+   * Mock dedup judge — Pass 1. Default uses fast model via runModel.
    */
   mockDedupJudgePass1?: (args: {
     blockBody: string;
     candidate: { id: string; body: string };
   }) => Promise<DedupVerdictPass1>;
   /**
-   * Mock dedup judge — Pass 2 (CoT escalation). Default uses Haiku.
+   * Mock dedup judge — Pass 2 (CoT escalation). Default uses fast model.
    */
   mockDedupJudgePass2?: (args: {
     blockBody: string;
@@ -195,7 +196,7 @@ export interface AlignFileArgs {
   }) => Promise<DedupVerdictPass2>;
   /**
    * Mock delta extractor (Stage 1) — extract the prose delta when
-   * Pass 2 returns `augments`. Default uses Haiku.
+   * Pass 2 returns `augments`. Default uses fast model.
    */
   mockDeltaExtract?: (args: {
     blockBody: string;
@@ -203,11 +204,11 @@ export interface AlignFileArgs {
   }) => Promise<string>;
   /**
    * Mock delta classifier (Stage 2) — `constraint | rationale`.
-   * Default uses Haiku.
+   * Default uses fast model.
    */
   mockDeltaClassify?: (args: { delta: string }) => Promise<DeltaKind>;
   /**
-   * Mock creation judge — Pass 1. Default uses Haiku via runClaude.
+   * Mock creation judge — Pass 1. Default uses fast model via runModel.
    */
   mockCreationJudgePass1?: (args: {
     blockBody: string;
@@ -215,7 +216,7 @@ export interface AlignFileArgs {
     line: number;
   }) => Promise<CreationVerdict>;
   /**
-   * Mock creation judge — Pass 2 (CoT escalation). Default uses Haiku.
+   * Mock creation judge — Pass 2 (CoT escalation). Default uses fast model.
    */
   mockCreationJudgePass2?: (args: {
     blockBody: string;
@@ -224,13 +225,13 @@ export interface AlignFileArgs {
     line: number;
   }) => Promise<CreationVerdict>;
   /**
-   * Override the per-call Pass-1 Haiku cap. Default 5 — appropriate
+   * Override the per-call Pass-1 fast model cap. Default 5 — appropriate
    * for live PostToolUse Writes where the cost has to stay tight.
    * Layer D (`cairn fix align`) sets this much higher (e.g. 200) so a
    * single-file sweep can fully judge every block.
    */
   pass1Cap?: number;
-  /** Override the per-call Pass-2 Haiku cap. Default 2. */
+  /** Override the per-call Pass-2 fast model cap. Default 2. */
   pass2Cap?: number;
   /**
    * When true, suppress the Tier 3 creation pipeline entirely — Tier 1
@@ -254,7 +255,7 @@ export interface AlignFileResult {
   blocksConsidered: number;
   /** Tier 1 deterministic auto-cites. */
   tier1Aligned: number;
-  /** Tier 2 Haiku-confirmed cites. */
+  /** Tier 2 fast model-confirmed cites. */
   tier2Aligned: number;
   /** Tier 3 fresh DECs emitted. */
   decsCreated: number;
@@ -272,12 +273,12 @@ export interface AlignFileResult {
   descriptive: number;
   /** Blocks skipped for any reason — already-cited, length floor, etc. */
   skipped: number;
-  /** Pass-1 Haiku calls made. */
-  haikuPass1Calls: number;
-  /** Pass-2 Haiku calls made. */
-  haikuPass2Calls: number;
-  /** Total Haiku calls (Pass 1 + Pass 2 + augments stages). Back-compat. */
-  haikuCalls: number;
+  /** Pass-1 fast model calls made. */
+  modelPass1Calls: number;
+  /** Pass-2 fast model calls made. */
+  modelPass2Calls: number;
+  /** Total fast model calls (Pass 1 + Pass 2 + augments stages). Back-compat. */
+  modelCalls: number;
 }
 
 /**
@@ -285,6 +286,16 @@ export interface AlignFileResult {
  */
 export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
   const { repoRoot, filePath, sessionId } = args;
+  const hasMockModelStage =
+    args.mockDedupJudgePass1 !== undefined ||
+    args.mockDedupJudgePass2 !== undefined ||
+    args.mockDeltaExtract !== undefined ||
+    args.mockDeltaClassify !== undefined ||
+    args.mockCreationJudgePass1 !== undefined ||
+    args.mockCreationJudgePass2 !== undefined;
+  const cacheNamespace = hasMockModelStage
+    ? "mock"
+    : tryResolveModelProvider();
   const result: AlignFileResult = {
     blocksConsidered: 0,
     tier1Aligned: 0,
@@ -297,9 +308,9 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
     deferredToStaleness: 0,
     descriptive: 0,
     skipped: 0,
-    haikuPass1Calls: 0,
-    haikuPass2Calls: 0,
-    haikuCalls: 0,
+    modelPass1Calls: 0,
+    modelPass2Calls: 0,
+    modelCalls: 0,
   };
 
   // Plan §3.1 — markdown narrative (docs/, CLAUDE.md, AGENTS.md, rules)
@@ -338,8 +349,8 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
   let pass1Calls = 0;
   let pass2Calls = 0;
   let auxiliaryCalls = 0; // delta extraction + classification
-  const pass1Cap = args.pass1Cap ?? HAIKU_PASS1_CAP;
-  const pass2Cap = args.pass2Cap ?? HAIKU_PASS2_CAP;
+  const pass1Cap = args.pass1Cap ?? MODEL_PASS1_CAP;
+  const pass2Cap = args.pass2Cap ?? MODEL_PASS2_CAP;
   const skipCreation = args.skipCreation === true;
 
   const fileSource = readFileMaybe(repoRoot, filePath);
@@ -390,7 +401,7 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
       continue;
     }
 
-    // Tier 2 — Haiku dedup judge, two-pass.
+    // Tier 2 — fast model dedup judge, two-pass.
     type Tier2Outcome =
       | { kind: "cite"; id: string }
       | {
@@ -418,7 +429,13 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
         const candScope = `${cand.id}-${bodyContentHash(candBody).slice(0, 12)}`;
 
         // Pass 1.
-        const cachedP1 = readVerdictCache(repoRoot, "dedup-p1", block.prose, candScope);
+        const cachedP1 = readVerdictCache(
+          repoRoot,
+          cacheNamespace,
+          "dedup-p1",
+          block.prose,
+          candScope,
+        );
         let p1: DedupVerdictPass1;
         if (
           cachedP1 === "same" ||
@@ -439,7 +456,14 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
             candidate: { id: cand.id, body: candBody },
             mock: args.mockDedupJudgePass1,
           });
-          writeVerdictCache(repoRoot, "dedup-p1", block.prose, candScope, p1);
+          writeVerdictCache(
+            repoRoot,
+            cacheNamespace,
+            "dedup-p1",
+            block.prose,
+            candScope,
+            p1,
+          );
         }
         if (p1 === "same") {
           tier2Outcome = { kind: "cite", id: cand.id };
@@ -448,7 +472,13 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
         if (p1 === "different") continue;
 
         // Pass 1 ambiguous → escalate to Pass 2.
-        const cachedP2 = readVerdictCache(repoRoot, "dedup-p2", block.prose, candScope);
+        const cachedP2 = readVerdictCache(
+          repoRoot,
+          cacheNamespace,
+          "dedup-p2",
+          block.prose,
+          candScope,
+        );
         let p2: DedupVerdictPass2;
         if (
           cachedP2 === "same" ||
@@ -469,7 +499,14 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
             candidate: { id: cand.id, body: candBody },
             mock: args.mockDedupJudgePass2,
           });
-          writeVerdictCache(repoRoot, "dedup-p2", block.prose, candScope, p2);
+          writeVerdictCache(
+            repoRoot,
+            cacheNamespace,
+            "dedup-p2",
+            block.prose,
+            candScope,
+            p2,
+          );
         }
         if (p2 === "same") {
           tier2Outcome = { kind: "cite", id: cand.id };
@@ -529,6 +566,7 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
       // delta computed against the prior body.
       const cachedDelta = readVerdictCache(
         repoRoot,
+        cacheNamespace,
         "delta-extract",
         block.prose,
         tier2Outcome.candScope,
@@ -545,6 +583,7 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
         });
         writeVerdictCache(
           repoRoot,
+          cacheNamespace,
           "delta-extract",
           block.prose,
           tier2Outcome.candScope,
@@ -568,6 +607,7 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
       }
       const cachedKind = readVerdictCache(
         repoRoot,
+        cacheNamespace,
         "delta-classify",
         delta,
         tier2Outcome.candScope,
@@ -583,6 +623,7 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
         });
         writeVerdictCache(
           repoRoot,
+          cacheNamespace,
           "delta-classify",
           delta,
           tier2Outcome.candScope,
@@ -627,7 +668,7 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
     if (skipCreation) {
       // `cairn fix align --no-creation` — the operator wants
       // duplicate consolidation only, not fresh DEC creation. Treat
-      // the block as descriptive without invoking Haiku.
+      // the block as descriptive without invoking fast model.
       result.descriptive += 1;
       continue;
     }
@@ -635,7 +676,7 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
     // decision shape is ledger-worthy. Section banners, separator/box-
     // drawing lines, file/class/endpoint descriptions, behavior notes,
     // test-fixture comments and re-export banners are gated to
-    // `descriptive` here and NEVER reach the Haiku creation judge.
+    // `descriptive` here and NEVER reach the fast model creation judge.
     // Without this, the judge ran on every prose block and over-labeled
     // descriptions as `constraint`, producing a ~97%-junk invariant
     // store. Mirrors init's Phase-7b gate (shared in `sot-align-common`).
@@ -643,7 +684,13 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
       result.descriptive += 1;
       continue;
     }
-    const cachedT3P1 = readVerdictCache(repoRoot, "create-p1", block.prose, "creation");
+    const cachedT3P1 = readVerdictCache(
+      repoRoot,
+      cacheNamespace,
+      "create-p1",
+      block.prose,
+      "creation",
+    );
     let creationP1: CreationVerdict;
     if (
       cachedT3P1 === "decision" ||
@@ -665,12 +712,25 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
         line: block.startLine,
         mock: args.mockCreationJudgePass1,
       });
-      writeVerdictCache(repoRoot, "create-p1", block.prose, "creation", creationP1);
+      writeVerdictCache(
+        repoRoot,
+        cacheNamespace,
+        "create-p1",
+        block.prose,
+        "creation",
+        creationP1,
+      );
     }
 
     let creationVerdict: CreationVerdict = creationP1;
     if (creationVerdict === "ambiguous") {
-      const cachedT3P2 = readVerdictCache(repoRoot, "create-p2", block.prose, "creation");
+      const cachedT3P2 = readVerdictCache(
+        repoRoot,
+        cacheNamespace,
+        "create-p2",
+        block.prose,
+        "creation",
+      );
       let creationP2: CreationVerdict;
       if (
         cachedT3P2 === "decision" ||
@@ -693,7 +753,14 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
           line: block.startLine,
           mock: args.mockCreationJudgePass2,
         });
-        writeVerdictCache(repoRoot, "create-p2", block.prose, "creation", creationP2);
+        writeVerdictCache(
+          repoRoot,
+          cacheNamespace,
+          "create-p2",
+          block.prose,
+          "creation",
+          creationP2,
+        );
       }
       creationVerdict = creationP2;
     }
@@ -711,7 +778,7 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
     // carries no enforcement value. Route it (with `ambiguous`) to the
     // alignment-pending CANDIDATE surface, where the operator promotes it to a
     // real INV (`cairn_resolve_attention` choice "b") or dismisses it. This
-    // removes the bloat at the source with no extra hot-path Haiku pass and no
+    // removes the bloat at the source with no extra hot-path fast model pass and no
     // added PostToolUse latency.
     if (creationVerdict === "ambiguous" || creationVerdict === "constraint") {
       writeAlignmentPending({
@@ -753,9 +820,9 @@ export async function alignFile(args: AlignFileArgs): Promise<AlignFileResult> {
     }
   }
 
-  result.haikuPass1Calls = pass1Calls;
-  result.haikuPass2Calls = pass2Calls;
-  result.haikuCalls = pass1Calls + pass2Calls + auxiliaryCalls;
+  result.modelPass1Calls = pass1Calls;
+  result.modelPass2Calls = pass2Calls;
+  result.modelCalls = pass1Calls + pass2Calls + auxiliaryCalls;
 
   if (stripItems.length > 0) {
     try {
@@ -830,7 +897,7 @@ function buildCiteItem(block: CommentBlock, decId: string): ReplaceItem {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Haiku dedup judge — Pass 1                                                 */
+/* fast model dedup judge — Pass 1                                                 */
 /* -------------------------------------------------------------------------- */
 
 const DEDUP_P1_SCHEMA = {
@@ -894,12 +961,12 @@ async function runDedupJudgePass1(args: {
     "Are these the same decision/rule?",
   ].join("\n");
   try {
-    const result = await runClaude({
-      tier: "haiku",
+    const result = await runModel({
+      tier: "fast",
       system: DEDUP_P1_SYSTEM,
       prompt,
       jsonSchema: DEDUP_P1_SCHEMA,
-      timeoutMs: PER_HAIKU_TIMEOUT_MS,
+      timeoutMs: PER_MODEL_TIMEOUT_MS,
       isolateAmbientContext: true,
     });
     const parsed = DedupP1Schema.safeParse(result.parsed);
@@ -915,7 +982,7 @@ async function runDedupJudgePass1(args: {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Haiku dedup judge — Pass 2 (CoT)                                           */
+/* fast model dedup judge — Pass 2 (CoT)                                           */
 /* -------------------------------------------------------------------------- */
 
 const DEDUP_P2_SCHEMA = {
@@ -979,12 +1046,12 @@ async function runDedupJudgePass2(args: {
     "Final verdict: same | different | augments | ambiguous.",
   ].join("\n");
   try {
-    const result = await runClaude({
-      tier: "haiku",
+    const result = await runModel({
+      tier: "fast",
       system: DEDUP_P2_SYSTEM,
       prompt,
       jsonSchema: DEDUP_P2_SCHEMA,
-      timeoutMs: PER_HAIKU_TIMEOUT_MS,
+      timeoutMs: PER_MODEL_TIMEOUT_MS,
       isolateAmbientContext: true,
     });
     const parsed = DedupP2Schema.safeParse(result.parsed);
@@ -1041,12 +1108,12 @@ async function runDeltaExtract(args: {
     "Output exactly the delta text, no summary. If overlap is total, output \"NO_DELTA\".",
   ].join("\n");
   try {
-    const result = await runClaude({
-      tier: "haiku",
+    const result = await runModel({
+      tier: "fast",
       system: DELTA_EXTRACT_SYSTEM,
       prompt,
       jsonSchema: DELTA_EXTRACT_SCHEMA,
-      timeoutMs: PER_HAIKU_TIMEOUT_MS,
+      timeoutMs: PER_MODEL_TIMEOUT_MS,
       isolateAmbientContext: true,
     });
     const parsed = DeltaExtractSchema.safeParse(result.parsed);
@@ -1092,12 +1159,12 @@ async function runDeltaClassify(args: {
     "Is this a CONSTRAINT (must / must not / never) or SUPPLEMENTAL RATIONALE?",
   ].join("\n");
   try {
-    const result = await runClaude({
-      tier: "haiku",
+    const result = await runModel({
+      tier: "fast",
       system: DELTA_CLASSIFY_SYSTEM,
       prompt,
       jsonSchema: DELTA_CLASSIFY_SCHEMA,
-      timeoutMs: PER_HAIKU_TIMEOUT_MS,
+      timeoutMs: PER_MODEL_TIMEOUT_MS,
       isolateAmbientContext: true,
     });
     const parsed = DeltaClassifySchema.safeParse(result.parsed);
@@ -1113,7 +1180,7 @@ async function runDeltaClassify(args: {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Haiku creation judge — Pass 1                                              */
+/* fast model creation judge — Pass 1                                              */
 /* -------------------------------------------------------------------------- */
 
 const CREATION_P1_SCHEMA = {
@@ -1168,12 +1235,12 @@ async function runCreationJudgePass1(args: {
   const a = capBody(args.blockBody);
   const prompt = [`Block at ${args.file}:${args.line}:`, a].join("\n");
   try {
-    const result = await runClaude({
-      tier: "haiku",
+    const result = await runModel({
+      tier: "fast",
       system: CREATION_P1_SYSTEM,
       prompt,
       jsonSchema: CREATION_P1_SCHEMA,
-      timeoutMs: PER_HAIKU_TIMEOUT_MS,
+      timeoutMs: PER_MODEL_TIMEOUT_MS,
       isolateAmbientContext: true,
     });
     const parsed = result.parsed;
@@ -1198,7 +1265,7 @@ async function runCreationJudgePass1(args: {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Haiku creation judge — Pass 2 (CoT)                                        */
+/* fast model creation judge — Pass 2 (CoT)                                        */
 /* -------------------------------------------------------------------------- */
 
 const CREATION_P2_SCHEMA = CREATION_P1_SCHEMA;
@@ -1251,12 +1318,12 @@ async function runCreationJudgePass2(args: {
     "Final verdict: decision | constraint | descriptive | ambiguous.",
   ].join("\n");
   try {
-    const result = await runClaude({
-      tier: "haiku",
+    const result = await runModel({
+      tier: "fast",
       system: CREATION_P2_SYSTEM,
       prompt,
       jsonSchema: CREATION_P2_SCHEMA,
-      timeoutMs: PER_HAIKU_TIMEOUT_MS,
+      timeoutMs: PER_MODEL_TIMEOUT_MS,
       isolateAmbientContext: true,
     });
     const parsed = result.parsed;
@@ -1480,11 +1547,19 @@ type VerdictScope =
 
 function readVerdictCache(
   repoRoot: string,
+  namespace: string | null,
   scope: VerdictScope,
   blockBody: string,
   scopeKey: string,
 ): string | null {
-  const path = verdictCachePath(repoRoot, scope, blockBody, scopeKey);
+  if (namespace === null) return null;
+  const path = verdictCachePath(
+    repoRoot,
+    namespace,
+    scope,
+    blockBody,
+    scopeKey,
+  );
   if (!existsSync(path)) return null;
   try {
     const raw = readFileSync(path, "utf8");
@@ -1498,12 +1573,20 @@ function readVerdictCache(
 
 function writeVerdictCache(
   repoRoot: string,
+  namespace: string | null,
   scope: VerdictScope,
   blockBody: string,
   scopeKey: string,
   verdict: string,
 ): void {
-  const path = verdictCachePath(repoRoot, scope, blockBody, scopeKey);
+  if (namespace === null) return;
+  const path = verdictCachePath(
+    repoRoot,
+    namespace,
+    scope,
+    blockBody,
+    scopeKey,
+  );
   try {
     writeFileSafe(path, JSON.stringify({ verdict, ts: new Date().toISOString() }, null, 2));
   } catch {
@@ -1513,12 +1596,20 @@ function writeVerdictCache(
 
 function verdictCachePath(
   repoRoot: string,
+  namespace: string,
   scope: VerdictScope,
   blockBody: string,
   scopeKey: string,
 ): string {
   const blockHash = createHash("sha256").update(blockBody, "utf8").digest("hex").slice(0, 12);
-  return cairnDir(repoRoot, "cache", "haiku", scope, `${blockHash}-${scopeKey}.json`);
+  return cairnDir(
+    repoRoot,
+    "cache",
+    "model",
+    namespace,
+    scope,
+    `${blockHash}-${scopeKey}.json`,
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1670,7 +1761,7 @@ export async function executeSotAlign(
   // Edits are mechanical (var rename, type tweak, single-line bugfix)
   // and don't touch prose blocks; running alignFile against the whole
   // file's existing comment blocks for those edits burns 1-30s of
-  // Haiku latency for zero signal. The shape detector matches JSDoc
+  // fast model latency for zero signal. The shape detector matches JSDoc
   // blocks, JSDoc continuation lines (the `*` prefix), 3+
   // consecutive `//` lines, and Python `"""` docstrings. Any of those
   // appearing in old_string OR new_string (Edit) or content (Write)

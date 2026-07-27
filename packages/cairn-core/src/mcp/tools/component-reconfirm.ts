@@ -12,7 +12,7 @@ interface Input {
 
 /**
  * Re-confirm headerless components the freshness gate flagged as
- * identity-changed (§3.8.1). Ghost-only. Runs the narrow **Haiku** yes/no
+ * identity-changed (§3.8.1). Ghost-only. Runs the narrow **fast model** yes/no
  * judge ("does the stored category/purpose still fit?") over flagged entries —
  * "fits" clears the flag, "stale" leaves it for the operator to re-register.
  * Verdicts are cached on the body fingerprint and the run is hard-capped, so a
@@ -37,7 +37,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     cleared: res.cleared,
     still_flagged: res.stillStale + res.deferred,
     deferred: res.deferred,
-    haiku_calls: res.haikuCalls,
+    model_calls: res.modelCalls,
     cache_hits: res.cacheHits,
   };
 }
@@ -45,7 +45,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
 export const componentReconfirmTool: ToolDef<Input> = {
   name: "cairn_component_reconfirm",
   description:
-    "Ghost mode only. Re-confirm components the freshness gate flagged as identity-changed: a narrow Haiku judge decides whether each one's stored category/purpose still fits its current code. 'fits' clears the flag; 'stale' leaves it for you to re-register via cairn_component_register. Pass `file` to reconfirm one unit, or omit to sweep all flagged. `cap` bounds Haiku calls per run (rest deferred). Verdicts cache on the body fingerprint. Refuses in committed mode.",
+    "Ghost mode only. Re-confirm components the freshness gate flagged as identity-changed: a narrow fast model judge decides whether each one's stored category/purpose still fits its current code. 'fits' clears the flag; 'stale' leaves it for you to re-register via cairn_component_register. Pass `file` to reconfirm one unit, or omit to sweep all flagged. `cap` bounds fast model calls per run (rest deferred). Verdicts cache on the body fingerprint. Refuses in committed mode.",
   inputSchema: componentReconfirmInput,
   handler,
 };

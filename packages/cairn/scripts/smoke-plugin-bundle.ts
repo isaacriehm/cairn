@@ -71,9 +71,35 @@ function runSmoke(): void {
     console.log(`  ✓ Step 3 — --version → ${printed}`);
   }
 
-  // ── Step 4 — dist/templates/ co-located with bundle ──────────────
+  // ── Step 4 — global model-provider override parses anywhere ──────
   {
-    assert(existsSync(TEMPLATES_DIR), `Step 4: ${TEMPLATES_DIR} missing`);
+    const valid = spawnSync(
+      "node",
+      [BUNDLE_PATH, "--model-provider", "codex", "--version"],
+      { encoding: "utf8", timeout: 10_000 },
+    );
+    assert(
+      valid.status === 0,
+      `Step 4: valid --model-provider exited ${valid.status}, stderr=${valid.stderr}`,
+    );
+    const invalid = spawnSync(
+      "node",
+      [BUNDLE_PATH, "--version", "--model-provider", "bogus"],
+      { encoding: "utf8", timeout: 10_000 },
+    );
+    assert(
+      invalid.status === 2 &&
+        (invalid.stderr ?? "").includes(
+          "--model-provider must be one of: auto | claude | codex | cursor",
+        ),
+      `Step 4: invalid --model-provider was not rejected cleanly\nstdout=${invalid.stdout}\nstderr=${invalid.stderr}`,
+    );
+    console.log("  ✓ Step 4 — global model-provider override parses anywhere");
+  }
+
+  // ── Step 5 — dist/templates/ co-located with bundle ──────────────
+  {
+    assert(existsSync(TEMPLATES_DIR), `Step 5: ${TEMPLATES_DIR} missing`);
     const sensorsYaml = join(
       TEMPLATES_DIR,
       ".cairn",
@@ -86,16 +112,16 @@ function runSmoke(): void {
       "config",
       "stub-patterns.yaml",
     );
-    assert(existsSync(sensorsYaml), `Step 4: missing template ${sensorsYaml}`);
-    assert(existsSync(stubsYaml), `Step 4: missing template ${stubsYaml}`);
+    assert(existsSync(sensorsYaml), `Step 5: missing template ${sensorsYaml}`);
+    assert(existsSync(stubsYaml), `Step 5: missing template ${stubsYaml}`);
     const cairnRule = join(TEMPLATES_DIR, ".claude", "rules", "cairn.md");
-    assert(existsSync(cairnRule), `Step 4: missing template ${cairnRule}`);
+    assert(existsSync(cairnRule), `Step 5: missing template ${cairnRule}`);
     console.log(
-      "  ✓ Step 4 — dist/templates/.cairn/config/{sensors,stub-patterns}.yaml + .claude/rules/cairn.md present",
+      "  ✓ Step 5 — dist/templates/.cairn/config/{sensors,stub-patterns}.yaml + .claude/rules/cairn.md present",
     );
   }
 
-  // ── Step 5 — bundle resolves the templates dir post-bundling ─────
+  // ── Step 6 — bundle resolves the templates dir post-bundling ─────
   // Run `cairn doctor` with --json (or any subcommand that exercises
   // catalog.ts) and assert it doesn't blow up trying to read templates.
   // Falls back to invoking `mcp serve` with a poison-pill stdin so the
@@ -112,9 +138,9 @@ function runSmoke(): void {
     const combined = (result.stdout ?? "") + (result.stderr ?? "");
     assert(
       !/ENOENT.*templates/.test(combined),
-      `Step 5: doctor crashed on templates ENOENT — bundle/templates layout broken\n${combined}`,
+      `Step 6: doctor crashed on templates ENOENT — bundle/templates layout broken\n${combined}`,
     );
-    console.log("  ✓ Step 5 — bundle resolves dist/templates/ post-bundling");
+    console.log("  ✓ Step 6 — bundle resolves dist/templates/ post-bundling");
   }
 
   console.log("smoke-plugin-bundle — pass");

@@ -4,7 +4,7 @@
  *
  * Inserts `<!-- cairn:decision -->` after each line matching `<pattern>` so
  * the phase-6 walker's marker-override path picks them up on the next
- * `cairn init` (Stage-3 deterministic, 0 Haiku — see PHASE_6_REDESIGN §4.1).
+ * `cairn init` (Stage-3 deterministic, 0 fast model — see PHASE_6_REDESIGN §4.1).
  *
  * Safety model (PHASE_6_REDESIGN §4.8):
  *
@@ -21,7 +21,7 @@
  *      `<!-- cairn:decision -->` marker before inserting — handles the
  *      blank-line-between-heading-and-body case.
  *
- * Deterministic, 0 Haiku.
+ * Deterministic, 0 fast model.
  */
 
 import { execFileSync } from "node:child_process";

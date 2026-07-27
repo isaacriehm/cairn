@@ -130,7 +130,7 @@ Root-level pnpm scripts. No filter args, no package navigation, no bash loops.
 | `pnpm clean`                       | Wipe `dist/` + `*.tsbuildinfo` across packages.               |
 | `pnpm smokes`                      | Run the default smoke gate. All must pass on a clean tree.    |
 | `pnpm smokes:all`                  | Run every declared smoke. Slower; pre-release sweep.          |
-| `pnpm smoke:llm-prompt-eval`       | Opt-in real-Haiku regression smoke (burns quota — see below). |
+| `pnpm smoke:llm-prompt-eval`       | Opt-in real-model regression smoke (burns quota — see below). |
 | `pnpm version:check`               | Verify package versions in sync.                              |
 | `pnpm release:patch\|minor\|major` | Bump versions across the workspace.                           |
 
@@ -146,12 +146,13 @@ pnpm smokes
 
 `pnpm smoke:llm-prompt-eval` runs the Phase 8 Stage-1 file-purpose
 filter prompt against three inline fixtures (ADR, UAT log, research
-scratchpad) using **real Haiku** — it burns operator quota and is
+scratchpad) using the **real configured model provider** — it burns
+operator quota and is
 **not** part of `pnpm smokes`. Run only when:
 
 - touching the Stage-1 system prompt
   (`packages/cairn-core/src/init/ingest-docs.ts` → `FILE_FILTER_SYSTEM`), or
-- upgrading the Haiku model alias used by `runClaude`.
+- changing a provider transport or its fast-tier model mapping.
 
 If a fixture flips, surface the failure — do not silently weaken the
 assertions.

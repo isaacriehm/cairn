@@ -3,7 +3,7 @@
  *
  * Walks every prose-bearing source the SoT model recognizes, computes
  * content-fingerprint slugs, resolves verbatim collisions by priority
- * order, and asks Haiku to judge cross-source semantic-similarity
+ * order, and asks fast model to judge cross-source semantic-similarity
  * collisions (Jaccard ≥ 0.6, distinct slug). Writes the resulting
  * TopicIndex + AnchorMap to `.cairn/ground/`.
  */

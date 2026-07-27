@@ -1,10 +1,10 @@
 #!/usr/bin/env tsx
 /**
- * smoke-ghost-reconfirm — the deferred Haiku re-confirm tier (§3.8.1).
+ * smoke-ghost-reconfirm — the deferred fast model re-confirm tier (§3.8.1).
  *
  * The freshness gate latches `needs_reconfirm` on an identity-relevant edit
  * (deterministic, no LLM). This pass is the other half: the narrow, quota-gated
- * Haiku judge that decides whether the stored category/purpose still fits and
+ * fast model judge that decides whether the stored category/purpose still fits and
  * clears the flag. Exercised with a mock judge so it stays deterministic:
  *
  *   - "fits" clears the flag; "stale" leaves it flagged.
@@ -20,7 +20,14 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -118,21 +125,25 @@ async function main(): Promise<void> {
   /* ── Pass 1 — judge each once ──────────────────────────────────────────── */
   const r1 = await runComponentReconfirm({ repoRoot: ghostRepo, mockJudge });
   assert(r1.considered === 2 && r1.cleared === 1 && r1.stillStale === 1, "pass 1: 2 considered, 1 cleared (fits), 1 stale");
-  assert(r1.haikuCalls === 2 && r1.cacheHits === 0, "pass 1: 2 fresh judge calls, no cache hits");
+  assert(r1.modelCalls === 2 && r1.cacheHits === 0, "pass 1: 2 fresh judge calls, no cache hits");
+  assert(
+    existsSync(cairnDir(ghostRepo, "cache", "model", "mock", "component-reconfirm")),
+    "mock verdict cache is isolated under its own provider namespace",
+  );
   assert(flagged("src/ui/Card.tsx") === undefined, "Card 'fits' → flag cleared");
   assert(flagged("src/ui/Modal.tsx") === true, "Modal 'stale' → stays flagged");
 
   /* ── Pass 2 — unedited stale entry served from cache ───────────────────── */
   const callsAfter1 = calls.length;
   const r2 = await runComponentReconfirm({ repoRoot: ghostRepo, mockJudge });
-  assert(r2.considered === 1 && r2.cacheHits === 1 && r2.haikuCalls === 0, "pass 2: only Modal left, served from fingerprint cache (0 fresh calls)");
+  assert(r2.considered === 1 && r2.cacheHits === 1 && r2.modelCalls === 0, "pass 2: only Modal left, served from fingerprint cache (0 fresh calls)");
   assert(calls.length === callsAfter1, "pass 2: mock judge NOT re-invoked (cache hit)");
   assert(flagged("src/ui/Modal.tsx") === true, "Modal still flagged after cache-hit stale");
 
   /* ── Cap — an uncached flagged entry defers ────────────────────────────── */
   writeFileSync(modalAbs, modal(EXTRA1) + "// edit\n", "utf8"); // new body → cache miss
   const r3 = await runComponentReconfirm({ repoRoot: ghostRepo, mockJudge, cap: 0 });
-  assert(r3.considered === 1 && r3.deferred === 1 && r3.haikuCalls === 0 && r3.cleared === 0, "cap 0: the flagged entry defers (no judge, stays flagged)");
+  assert(r3.considered === 1 && r3.deferred === 1 && r3.modelCalls === 0 && r3.cleared === 0, "cap 0: the flagged entry defers (no judge, stays flagged)");
   assert(flagged("src/ui/Modal.tsx") === true, "Modal stays flagged when deferred");
 
   /* ── onlyFile — scope the pass to one unit ─────────────────────────────── */
@@ -142,6 +153,21 @@ async function main(): Promise<void> {
   const r4 = await runComponentReconfirm({ repoRoot: ghostRepo, mockJudge, onlyFile: "src/ui/Modal.tsx" });
   assert(r4.considered === 1, "onlyFile: only Modal considered");
   assert(flagged("src/ui/Card.tsx") === true, "onlyFile: Card untouched (still flagged)");
+
+  /* ── Provider failure — never clear a flag on a failed judgment ────────── */
+  const failedJudge = await runComponentReconfirm({
+    repoRoot: ghostRepo,
+    onlyFile: "src/ui/Card.tsx",
+    mockJudge: async () => {
+      throw new Error("provider offline");
+    },
+  });
+  assert(
+    failedJudge.cleared === 0 &&
+      failedJudge.stillStale === 1 &&
+      flagged("src/ui/Card.tsx") === true,
+    "judge failure leaves the component flagged",
+  );
 
   /* ── Committed control ─────────────────────────────────────────────────── */
   gitInit(committedRepo); // NOT ghost-registered

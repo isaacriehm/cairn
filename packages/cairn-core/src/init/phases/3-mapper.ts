@@ -1,5 +1,5 @@
 /**
- * Phase 3-mapper — Sonnet-driven domain map.
+ * Phase 3-mapper — capable model-driven domain map.
  *
  * Reads detection (from phase 1) + repo summary (from phase 2),
  * dispatches the chunked mapper pipeline, and stamps a
@@ -13,7 +13,7 @@
  * through MCP responses without triggering the spillover-to-file
  * tool-result path.
  *
- * No operator input — the mapper runs unattended (Sonnet via the
+ * No operator input — the mapper runs unattended (capable model via the
  * cairn runner).
  */
 

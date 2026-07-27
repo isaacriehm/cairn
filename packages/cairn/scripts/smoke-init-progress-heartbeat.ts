@@ -8,7 +8,7 @@
  * This smoke covers the read/write/clear cycle + the format module's
  * priority handling (progress beats every other signal).
  *
- * Pure-mechanical (no LLM burn). No network, no Haiku.
+ * Pure-mechanical (no LLM burn). No network, no fast model.
  */
 
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";

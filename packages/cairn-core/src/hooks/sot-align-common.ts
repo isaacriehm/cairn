@@ -84,11 +84,11 @@ export function isNonLexicalLine(text: string): boolean {
  * Detect whether a string contains an "essay-class" comment shape
  * — JSDoc block, JSDoc continuation line, 3+ consecutive `//` lines,
  * or a Python triple-quote docstring. Used by `executeSotAlign` to
- * skip the per-Edit/per-Write Haiku dedup pass when the diff doesn't
+ * skip the per-Edit/per-Write fast model dedup pass when the diff doesn't
  * touch any prose. Most Edits are mechanical (var rename, type tweak,
  * single-line bugfix) and don't change essay-class blocks; running
  * `alignFile` against the whole file's blocks for those edits burns
- * 1-30s of Haiku latency for zero signal.
+ * 1-30s of fast model latency for zero signal.
  *
  * Conservative — anchors on shape markers a single-line edit usually
  * preserves (the `*` prefix on JSDoc continuation lines is the most
@@ -178,7 +178,7 @@ export function isSeparatorBlock(prose: string): boolean {
  * it is NOT a separator banner AND carries either a constraint or a decision
  * shape. Everything else — file/class/endpoint descriptions, behavior notes,
  * test-fixture comments, re-export banners — is structurally `descriptive`
- * and never reaches the (cost-bearing) Haiku creation judge. Pass both the
+ * and never reaches the (cost-bearing) fast model creation judge. Pass both the
  * stripped `prose` and the raw comment text so an `@cairn:*` marker on a
  * JSDoc tag line (which the walker strips from `prose`) is still honored.
  */

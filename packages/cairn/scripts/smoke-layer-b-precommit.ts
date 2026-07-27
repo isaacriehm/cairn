@@ -267,7 +267,7 @@ async function main(): Promise<void> {
     assert(deferred[0]?.tier === "tier2-3", `Step 2: tier=tier2-3, got ${deferred[0]?.tier}`);
     assert(
       (deferred[0]?.candidates.length ?? 0) >= 1,
-      "Step 2: candidate list populated for SessionStart Drain Haiku",
+      "Step 2: candidate list populated for SessionStart Drain fast model",
     );
 
     const drift = readStalenessLog(repoRoot);

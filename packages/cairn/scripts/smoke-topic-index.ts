@@ -2,7 +2,7 @@
 /**
  * smoke-topic-index — phase 5b walker + resolver + writer.
  *
- * Mocks the Haiku judge so the pre-flight verbatim-vs-semantic logic
+ * Mocks the fast model judge so the pre-flight verbatim-vs-semantic logic
  * can be exercised deterministically. Validates:
  *   - Verbatim collision: same content in docs + CLAUDE.md collapses
  *     to one topic with docs/* as SoT.
@@ -443,7 +443,7 @@ async function runSmoke(): Promise<void> {
   // ── Step 8 — walker stamps `marker_kind` for operator markers ────
   // PHASE_6_REDESIGN §4.5: phase 5b walker honors two marker
   // surfaces. Phase 6 Stage 3 fast-paths these to draft emit
-  // without Haiku, so the marker has to actually land on the block.
+  // without fast model, so the marker has to actually land on the block.
   {
     const repoRoot = mkFixture();
 

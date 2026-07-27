@@ -204,8 +204,8 @@ function renderEvent(e: StatusEvent): string {
       return `⬡ aligning ${e.detail ?? ""}…`;
     case "drain-done":
       return `⬡ ${e.detail ?? "drain done"}`;
-    case "haiku-offline":
-      return "⚠ haiku offline · drain queued";
+    case "model-offline":
+      return "⚠ model runner offline · drain queued";
     default:
       return "⬡ cairn";
   }
@@ -225,7 +225,7 @@ function renderSignal(
   const live = activeEvent(s, nowMs);
   if (live) return renderEvent(live);
 
-  if (s.haiku_unavailable) return "⚠ haiku offline · drain queued";
+  if (s.model_unavailable) return "⚠ model runner offline · drain queued";
 
   if (s.attention_count > 0) {
     // attention_count rolls up DEC drafts + baseline sensor findings +

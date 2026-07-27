@@ -7,7 +7,7 @@
  *
  * Pipeline:
  *
- *   Stage 3 (deterministic, 0 Haiku) — marker scan
+ *   Stage 3 (deterministic, 0 fast model) — marker scan
  *     Topic-index entries with `marker_kind` in {"decision","rule"} go
  *     straight to emit. The walker stamped them at parse time when it
  *     saw frontmatter `cairn.kind` or `<!-- cairn:decision -->` /
@@ -24,7 +24,7 @@
  *   Stage 2 — section-level batch classifier (batch=30, concurrency=5)
  *     Same shape as the v0.6 classifier, but scoped to sections
  *     belonging to Stage-1-authoritative files AND not already
- *     handled by a marker. This is where Haiku still adds signal —
+ *     handled by a marker. This is where fast model still adds signal —
  *     the file passed the rigid filter; now decide WHICH sections
  *     of it are decisions vs context.
  *
@@ -32,7 +32,7 @@
  *     Stage 2 + Stage 3 outputs → `.cairn/ground/decisions/_inbox/<id>.draft.md`.
  *     `status: draft`, `capture_source: init-docs-ingest`,
  *     `decided_by: cairn-init`. Body is verbatim via
- *     `readSotBody` — no Haiku paraphrasing. Operator triages via
+ *     `readSotBody` — no fast model paraphrasing. Operator triages via
  *     the existing `cairn-attention` skill.
  *
  * Skipped entries (everything else) stay in the topic-index as
@@ -49,7 +49,7 @@ import {
 import { join, relative } from "node:path";
 import type { Dirent } from "node:fs";
 import { stringify as stringifyYaml } from "yaml";
-import { runClaude } from "../claude/index.js";
+import { runModel } from "../model/index.js";
 import {
   bodyContentHash,
   decisionsDir,
@@ -73,7 +73,7 @@ const log = logger("init.ingest-docs");
 /* Tunables — locked tunables                                */
 /* -------------------------------------------------------------------------- */
 
-/** N files per Stage-1 Haiku call. */
+/** N files per Stage-1 fast model call. */
 const FILE_FILTER_BATCH_SIZE = 30;
 /** Concurrent Stage-1 batches. */
 const FILE_FILTER_CONCURRENCY = 5;
@@ -81,16 +81,16 @@ const FILE_FILTER_CONCURRENCY = 5;
 const FILE_FILTER_INTRO_CHARS = 800;
 /** Stage 1 max ToC lines (H1/H2/H3 only). */
 const FILE_FILTER_TOC_MAX_LINES = 100;
-/** Stage 1 wall budget per Haiku call. */
+/** Stage 1 wall budget per fast model call. */
 const FILE_FILTER_TIMEOUT_MS = 60_000;
 
-/** N sections per Stage-2 Haiku call. */
+/** N sections per Stage-2 fast model call. */
 const SECTION_BATCH_SIZE = 30;
 /** Concurrent Stage-2 batches. */
 const SECTION_CONCURRENCY = 5;
 /** Stage 2 per-section body cap (chars) before truncation marker. */
 const SECTION_BODY_CAP = 2_000;
-/** Stage 2 wall budget per Haiku call. */
+/** Stage 2 wall budget per fast model call. */
 const SECTION_TIMEOUT_MS = 120_000;
 
 /** Capture source stamped on every Stage 2/3 emit. */
@@ -134,7 +134,7 @@ export interface IngestionRunResult {
   skipped: { slug: string; reason: string }[];
   /** Total topic-index entries considered (pre-rejection-filter). */
   scannedEntries: number;
-  /** Stage 3 — entries emitted from operator markers (0 Haiku). */
+  /** Stage 3 — entries emitted from operator markers (0 fast model). */
   markerEmits: number;
   /** Stage 2 — entries emitted from authoritative-file section classifications. */
   sectionEmits: number;
@@ -295,8 +295,8 @@ async function classifyFileBatch(
     })
     .join("\n\n");
   const prompt = `Classify each file. Return one entry per path.\n\n${blocks}`;
-  const result = await runClaude({
-    tier: "haiku",
+  const result = await runModel({
+    tier: "fast",
     system: FILE_FILTER_SYSTEM,
     prompt,
     jsonSchema: FILE_FILTER_SCHEMA,
@@ -305,11 +305,11 @@ async function classifyFileBatch(
   });
   const parsed = result.parsed;
   if (typeof parsed !== "object" || parsed === null) {
-    throw new Error("haiku file-filter returned non-object");
+    throw new Error("fast model file-filter returned non-object");
   }
   const arr = (parsed as Record<string, unknown>)["files"];
   if (!Array.isArray(arr)) {
-    throw new Error("haiku file-filter missing `files` array");
+    throw new Error("fast model file-filter missing `files` array");
   }
   const out = new Map<string, FileFilterVerdict>();
   for (const raw of arr) {
@@ -394,8 +394,8 @@ async function classifySectionBatch(
     })
     .join("\n\n---\n\n");
   const prompt = `Classify each section. Return one entry per slug.\n\n${sections}`;
-  const result = await runClaude({
-    tier: "haiku",
+  const result = await runModel({
+    tier: "fast",
     system: SECTION_SYSTEM,
     prompt,
     jsonSchema: SECTION_SCHEMA,
@@ -404,11 +404,11 @@ async function classifySectionBatch(
   });
   const parsed = result.parsed;
   if (typeof parsed !== "object" || parsed === null) {
-    throw new Error("haiku section batch returned non-object");
+    throw new Error("fast model section batch returned non-object");
   }
   const arr = (parsed as Record<string, unknown>)["classifications"];
   if (!Array.isArray(arr)) {
-    throw new Error("haiku section batch missing `classifications`");
+    throw new Error("fast model section batch missing `classifications`");
   }
   const out = new Map<string, DocClassification>();
   for (const raw of arr) {
@@ -472,7 +472,7 @@ export async function runDocsIngestion(
     ctxBySlug.set(entry.slug, { entry, body });
   }
 
-  // ── Stage 3 — marker scan (deterministic, 0 Haiku) ──
+  // ── Stage 3 — marker scan (deterministic, 0 fast model) ──
   const markerCandidates: CandidateContext[] = [];
   const nonMarkerCandidates: CandidateContext[] = [];
   for (const ctx of ctxBySlug.values()) {

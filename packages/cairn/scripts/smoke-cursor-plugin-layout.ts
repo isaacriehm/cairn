@@ -29,10 +29,25 @@ assert(manifest.name === "cairn", "plugin name must be cairn");
 assert(manifest.logo === undefined, "plugin must not reference missing logo asset");
 assert(manifest.hooks === "./hooks/hooks.cursor.json", "cursor manifest must point at hooks.cursor.json");
 
-const mcp = readJson<{ mcpServers: { cairn: { env: Record<string, string> } } }>(
+const mcp = readJson<{
+  mcpServers: {
+    cairn: { args: string[]; env: Record<string, string> };
+  };
+}>(
   join(PLUGIN_ROOT, "mcp.json"),
 );
 assert(mcp.mcpServers.cairn.env.CAIRN_REPO_ROOT === "${CURSOR_PROJECT_DIR}", "MCP must inject CAIRN_REPO_ROOT");
+assert(
+  JSON.stringify(mcp.mcpServers.cairn.args) ===
+    JSON.stringify([
+      "${CURSOR_PLUGIN_ROOT}/dist/cli.mjs",
+      "mcp",
+      "serve",
+      "--model-provider",
+      "cursor",
+    ]),
+  "Cursor MCP must select the Cursor model provider",
+);
 
 const hooks = readJson<{ hooks: Record<string, unknown[]> }>(
   join(PLUGIN_ROOT, "hooks", "hooks.cursor.json"),

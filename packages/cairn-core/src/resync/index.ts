@@ -23,7 +23,7 @@
  * per-clone, so there is no new multi-dev conflict surface (Q22).
  *
  * Deferred to the LLM half (Q3/Q16, opt-in, quota-gated): hash-rematch of moved
- * entities, Haiku re-cluster of topic-index/canonical-map over genuinely-new
+ * entities, fast model re-cluster of topic-index/canonical-map over genuinely-new
  * prose, and re-curation of new areas into DEC/INV drafts. `domain_summary`
  * (Q15) is an init-time seed for the brand bodies, not live agent context, so
  * resync does not refresh it.

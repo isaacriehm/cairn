@@ -350,7 +350,7 @@ export interface RebuildScopeIndexResult {
 /**
  * `cairn scope rebuild` — full deterministic resync of `.cairn/ground/
  * scope-index.yaml` from current source-cite reality. Used to be a
- * Sonnet call (`runMapper`-style) that re-classified files via the
+ * capable model call (`runMapper`-style) that re-classified files via the
  * Tier-2 mapper, but classification was always the wrong abstraction
  * — bare-symbol citations in source are the canonical source of truth,
  * `rescanScopeIndex` parses them deterministically, and the result

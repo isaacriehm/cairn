@@ -72,7 +72,7 @@ export async function runMissionStart(args: MissionStartArgs): Promise<MissionSt
     specPath: args.specPath,
   });
   if (draft === null) {
-    throw new Error("Haiku failed to parse the spec doc; retry or pass --no-llm");
+    throw new Error("fast model failed to parse the spec doc; retry or pass --no-llm");
   }
   return {
     proposed_title: proposedTitle,

@@ -8,6 +8,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Provider-neutral model backend** — one shared queue, timeout/error
+  boundary, trace format, provider-isolated cache, and JSON-schema
+  validator now powers every bounded model call. Thin transports support
+  the authenticated `claude`, `cursor-agent`, and `codex` CLIs; plugin
+  manifests select their own host explicitly and standalone CLI calls
+  accept `--model-provider auto|claude|cursor|codex`. Codex uses
+  `gpt-5.3-codex-spark` for these ruleset-driven tasks.
 - **Codex Desktop + CLI plugin** — repo marketplace at
   `.agents/plugins/marketplace.json`, `.codex-plugin/plugin.json`, bundled
   MCP registration, trusted lifecycle hooks, and shared portable skills.

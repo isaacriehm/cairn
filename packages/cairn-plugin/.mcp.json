@@ -2,7 +2,13 @@
   "mcpServers": {
     "cairn": {
       "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs", "mcp", "serve"]
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs",
+        "mcp",
+        "serve",
+        "--model-provider",
+        "claude"
+      ]
     }
   }
 }

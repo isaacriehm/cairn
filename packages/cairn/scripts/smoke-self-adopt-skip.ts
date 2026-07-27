@@ -11,7 +11,7 @@
  *
  *   - Phase 9a-walker: would walk every essay-class block in Cairn's
  *     own source (5-20 min on busy monorepos)
- *   - Phase 9b-curate: would dispatch Sonnet subagents over Cairn's
+ *   - Phase 9b-curate: would dispatch capable model subagents over Cairn's
  *     own corpus
  *   - Phase 9c-emit: would write extracted DECs over Cairn's own
  *     ground state

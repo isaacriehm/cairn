@@ -35,7 +35,7 @@ interface DedupInput {
 export const attentionDedupTool: ToolDef<DedupInput> = {
   name: "cairn_attention_dedup",
   description:
-    "Cluster pending DEC drafts in `_inbox/` by token-Jaccard similarity. Returns clusters of likely-duplicate drafts the cairn-attention skill renders before per-item triage. Two tiers: definite (Jaccard >= 0.5) and potential (0.4..0.5). Pure-deterministic, no Haiku, no quota burn — same input gives the same clusters every time. Defaults: floor 0.4, definite 0.5.",
+    "Cluster pending DEC drafts in `_inbox/` by token-Jaccard similarity. Returns clusters of likely-duplicate drafts the cairn-attention skill renders before per-item triage. Two tiers: definite (Jaccard >= 0.5) and potential (0.4..0.5). Pure-deterministic, no fast model, no quota burn — same input gives the same clusters every time. Defaults: floor 0.4, definite 0.5.",
   inputSchema: inputShape,
   handler: async (ctx: McpContext, input: DedupInput) => {
     const result = findDuplicateClusters({

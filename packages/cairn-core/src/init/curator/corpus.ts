@@ -11,7 +11,7 @@
  *
  * Modules exceeding the cap split by submodule/directory hierarchy.
  * Never random shard — the curator-map subagent benefits from
- * intra-module locality (one Sonnet call sees all the auth-module
+ * intra-module locality (one capable model call sees all the auth-module
  * essay comments at once).
  *
  * Token estimate: ~4 chars/token for English prose. The walker hands
@@ -33,7 +33,7 @@ export const SHARD_CORPUS_DIR = join(CORPUS_DIR, "shards");
 /** Under-cairn segments (no `.cairn` prefix) for `cairnDir` resolution. */
 const CURATOR_SEGS = ["init", "curator"] as const;
 
-/** Cap per shard. 80k headroom in 200k Sonnet for system prompt + tools. */
+/** Cap per shard. 80k headroom in 200k capable model for system prompt + tools. */
 export const MAX_INPUT_TOKENS_PER_SHARD = 120_000;
 
 /** Average chars-per-token estimate for English prose. */

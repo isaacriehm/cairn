@@ -2,7 +2,7 @@
  * `cairn_mission_resync` — operator amended the source spec doc and
  * wants Cairn to pick up the changes.
  *
- * Re-parses the spec via Haiku (or `no_llm: true` stub fallback),
+ * Re-parses the spec via fast model (or `no_llm: true` stub fallback),
  * diffs against the current roadmap.md, and writes a `mission_resync_pending`
  * marker file under `.cairn/missions/<id>/_resync.json`. The operator
  * resolves via `cairn-attention` — accepting the diff overwrites the
@@ -68,7 +68,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
     if (draft === null) {
       return mcpError(
         "MISSION_DRAFT_FAILED",
-        "Haiku failed to re-parse the spec. Retry, or pass `no_llm: true` for a stub fallback.",
+        "fast model failed to re-parse the spec. Retry, or pass `no_llm: true` for a stub fallback.",
       );
     }
     newPhases = draft.phases;

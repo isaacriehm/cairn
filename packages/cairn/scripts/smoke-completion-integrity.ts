@@ -76,7 +76,7 @@ function seedRunMeta(repoRoot: string, runId: string, shaPin: string): void {
   mkdirSync(runDir, { recursive: true });
   writeFileSync(
     join(runDir, "meta.json"),
-    JSON.stringify({ run_id: runId, task_id: "TSK-1", sha_pin: shaPin, model: "haiku" }, null, 2),
+    JSON.stringify({ run_id: runId, task_id: "TSK-1", sha_pin: shaPin, model: "fast model" }, null, 2),
     "utf8",
   );
   // Deliberately NO attestation.yaml — it's written to the task dir by the

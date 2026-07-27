@@ -273,7 +273,7 @@ async function recurateSection(): Promise<void> {
   console.log("  ✓ area-scoped curator walk restricts the corpus to the requested subtree");
 }
 
-/* ── Stage 3b — LLM re-cluster (mock-judge runner seam, zero Haiku) ────── */
+/* ── Stage 3b — LLM re-cluster (mock-judge runner seam, zero fast model) ────── */
 
 function block(file: string, slug: string, body: string): ProseBlock {
   return {
@@ -292,7 +292,7 @@ function block(file: string, slug: string, body: string): ProseBlock {
 // Two distinct slugs whose bodies share 6/8 tokens → jaccard 0.75 ≥ 0.6 →
 // exactly one semantic-collision pair → exactly one judge call. The verdict
 // drives the clustering: "same" collapses them to one topic, "different" keeps
-// two. No real prose, no walker, no Haiku.
+// two. No real prose, no walker, no fast model.
 const REC_A = block("docs/a.md", "topicaaaaaa1", "alpha beta gamma delta epsilon zeta theta");
 const REC_B = block("docs/b.md", "topicbbbbbb2", "alpha beta gamma delta epsilon zeta omega");
 const NOW = "2026-06-13T00:00:00.000Z";
@@ -367,7 +367,7 @@ async function reclusterSection(): Promise<void> {
   assert(topicCount(repo2) === 2, "on-disk index carries both topics");
   console.log("  ✓ judge verdict drives clustering ('different' → two topics)");
 
-  assert(calls.n >= 4, "mock judge was the runner seam for every pass (zero Haiku)");
+  assert(calls.n >= 4, "mock judge was the runner seam for every pass (zero fast model)");
 }
 
 main().catch((err) => {

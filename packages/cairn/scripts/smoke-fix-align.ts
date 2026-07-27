@@ -5,7 +5,7 @@
  *   Step 1 — Empty repo: no source files, preflight reports zero blocks.
  *   Step 2 — Tier 1 verbatim duplicate: apply auto-cites, source rewritten.
  *   Step 3 — Dry-run: preflight populated, no source / ledger writes.
- *   Step 4 — `--max-cost` exceeded → abort before Haiku spend.
+ *   Step 4 — `--max-cost` exceeded → abort before fast model spend.
  *   Step 5 — `--no-creation` → Tier 3 short-circuits as descriptive.
  *   Step 6 — `--include` filters the sweep down to a single subdir.
  *   Step 7 — `--exclude` excludes a subdir even when it matches include.
@@ -176,7 +176,7 @@ async function main(): Promise<void> {
     assert(result.preflight.blocksConsidered >= 1, "Step 2: preflight saw the block");
     assert(result.apply !== null, "Step 2: apply ran");
     assert(result.apply.tier1Aligned === 1, `Step 2: tier1=1, got ${result.apply.tier1Aligned}`);
-    assert(result.apply.haikuCalls === 0, "Step 2: deterministic, no Haiku");
+    assert(result.apply.modelCalls === 0, "Step 2: deterministic, no fast model");
     const after = readFileSync(join(repoRoot, "src/db.ts"), "utf8");
     assert(after.includes("// §DEC-aaaaaaa"), "Step 2: source cite token");
     assert(!after.includes("legacy ETL"), "Step 2: original prose stripped");
@@ -223,7 +223,7 @@ async function main(): Promise<void> {
     const result = await runFixAlign({ repoRoot, maxCost: 1 });
     assert(result.abortedOverBudget === true, "Step 4: aborted over budget");
     assert(result.apply === null, "Step 4: apply did not run after abort");
-    console.log("  ✓ Step 4 — --max-cost abort skips Haiku spend");
+    console.log("  ✓ Step 4 — --max-cost abort skips fast model spend");
   }
 
   // ── Step 5 — `--no-creation` short-circuits Tier 3 ──────────────

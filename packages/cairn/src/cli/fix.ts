@@ -4,11 +4,11 @@
  *
  * Subcommands:
  *
- *   - `cairn fix brand` — re-run the Phase 5 Haiku brand derivation
+ *   - `cairn fix brand` — re-run the Phase 5 fast model brand derivation
  *     against the mapper output already on disk and rewrite the 4
  *     brand files (overview, voice, positioning, personas). Useful
  *     for projects adopted under v0.3.8 or earlier when the
- *     brand-derive Haiku call was timing out and the mapper picked
+ *     brand-derive fast model call was timing out and the mapper picked
  *     mechanical defaults instead.
  *
  *   - `cairn fix dec-strip` — replay source-comment strip-replace for
@@ -123,7 +123,7 @@ async function fixBrand(repoRoot: string, dryRun: boolean): Promise<void> {
     `  ⬡ cairn fix brand — ${repoRoot}\n` +
       `    project_slug: ${projectSlug}\n` +
       `    domain_summary: ${domainSummary.slice(0, 80)}${domainSummary.length > 80 ? "…" : ""}\n` +
-      `\n  Calling Haiku for brand-derive (60s timeout, 2-attempt retry)…\n`,
+      `\n  Calling fast model for brand-derive (60s timeout, 2-attempt retry)…\n`,
   );
   const derived = await deriveBrandFromProject({
     repoRoot,
@@ -132,7 +132,7 @@ async function fixBrand(repoRoot: string, dryRun: boolean): Promise<void> {
   });
   if (derived === null) {
     console.error(
-      `cairn fix brand: Haiku call returned no usable brand. ` +
+      `cairn fix brand: fast model call returned no usable brand. ` +
         `Check the trace for the underlying error and retry.`,
     );
     process.exit(2);
@@ -334,7 +334,7 @@ async function fixClaudeRules(repoRoot: string, dryRun: boolean): Promise<void> 
 }
 
 async function fixScrubCache(repoRoot: string, dryRun: boolean): Promise<void> {
-  const cacheDir = cairnDir(repoRoot, "cache", "haiku");
+  const cacheDir = cairnDir(repoRoot, "cache", "model");
   if (!existsSync(cacheDir)) {
     process.stdout.write(
       `  ⬡ cairn fix scrub-cache — ${repoRoot}\n` +
@@ -342,16 +342,15 @@ async function fixScrubCache(repoRoot: string, dryRun: boolean): Promise<void> {
     );
     process.exit(0);
   }
-  let entries: string[];
+  let cacheFiles: string[];
   try {
-    entries = readdirSync(cacheDir, { encoding: "utf8" });
+    cacheFiles = collectCacheFiles(cacheDir);
   } catch (err) {
     console.error(
       `cairn fix scrub-cache: cannot read cache dir: ${err instanceof Error ? err.message : String(err)}`,
     );
     process.exit(2);
   }
-  const cacheFiles = entries.filter((n) => n.endsWith(".json"));
   process.stdout.write(
     `  ⬡ cairn fix scrub-cache${dryRun ? " --dry-run" : ""} — ${repoRoot}\n` +
       `    Found ${cacheFiles.length} cache entr(y/ies) at ${cacheDir}\n\n`,
@@ -365,22 +364,37 @@ async function fixScrubCache(repoRoot: string, dryRun: boolean): Promise<void> {
     process.exit(0);
   }
   let removed = 0;
-  for (const name of cacheFiles) {
+  for (const path of cacheFiles) {
     try {
-      rmSync(join(cacheDir, name), { force: true });
+      rmSync(path, { force: true });
       removed += 1;
     } catch {
       /* best-effort */
     }
   }
   process.stdout.write(
-    `  ✓ Scrubbed ${removed} entr(y/ies). Next Haiku call will re-populate.\n` +
+    `  ✓ Scrubbed ${removed} entr(y/ies). Next fast model call will re-populate.\n` +
       `\n  Recommended next step: re-run \`cairn fix brand\` to regenerate the\n` +
       `  brand text from a clean run (use this if the prior brand text picked\n` +
       `  up content from your user-global ~/.claude/CLAUDE.md or other ambient\n` +
       `  context — v0.4.0 added isolation that prevents this going forward).\n`,
   );
   process.exit(0);
+}
+
+function collectCacheFiles(root: string): string[] {
+  const files: string[] = [];
+  const pending = [root];
+  while (pending.length > 0) {
+    const dir = pending.pop();
+    if (dir === undefined) break;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) pending.push(path);
+      else if (entry.isFile() && entry.name.endsWith(".json")) files.push(path);
+    }
+  }
+  return files;
 }
 
 async function fixGitignore(repoRoot: string, dryRun: boolean): Promise<void> {
@@ -526,8 +540,8 @@ function renderPreflight(result: FixAlignResult): string {
   lines.push(`    short / sub-floor blocks:     ${p.shortBlocks}`);
   lines.push(`    blocks w/ Tier 1 candidates:  ${p.blocksWithTier1Candidates}`);
   lines.push(`    blocks w/o candidates:        ${p.blocksWithoutCandidates}`);
-  lines.push(`    Pass-1 Haiku calls (est):     ${p.estimatedPass1Calls}`);
-  lines.push(`    Pass-2 Haiku calls (est):     ${p.estimatedPass2Calls}`);
+  lines.push(`    Pass-1 fast model calls (est):     ${p.estimatedPass1Calls}`);
+  lines.push(`    Pass-2 fast model calls (est):     ${p.estimatedPass2Calls}`);
   lines.push(`    Tier 3 creation calls (est):  ${p.estimatedCreationCalls}`);
   lines.push(`    total tokens (est):           ~${formatTokens(p.estimatedTokens)}`);
   return lines.join("\n");
@@ -539,7 +553,7 @@ function renderApply(result: FixAlignResult): string {
   const lines: string[] = [];
   lines.push(`    files aligned:                ${a.filesAligned}`);
   lines.push(`    Tier 1 deterministic cites:   ${a.tier1Aligned}`);
-  lines.push(`    Tier 2 Haiku-confirmed cites: ${a.tier2Aligned}`);
+  lines.push(`    Tier 2 fast model-confirmed cites: ${a.tier2Aligned}`);
   lines.push(`    fresh DECs created:           ${a.decsCreated}`);
   lines.push(`    fresh INVs created:           ${a.invsCreated}`);
   lines.push(`    augments DECs:                ${a.augmentsDecs}`);
@@ -548,9 +562,9 @@ function renderApply(result: FixAlignResult): string {
   lines.push(`    alignment-pending queued:     ${a.pending}`);
   lines.push(`    deferred to staleness:        ${a.deferredToStaleness}`);
   lines.push(`    skipped (length / token):     ${a.skipped}`);
-  lines.push(`    Pass-1 Haiku calls (actual):  ${a.haikuPass1Calls}`);
-  lines.push(`    Pass-2 Haiku calls (actual):  ${a.haikuPass2Calls}`);
-  lines.push(`    total Haiku calls:            ${a.haikuCalls}`);
+  lines.push(`    Pass-1 fast model calls (actual):  ${a.modelPass1Calls}`);
+  lines.push(`    Pass-2 fast model calls (actual):  ${a.modelPass2Calls}`);
+  lines.push(`    total fast model calls:            ${a.modelCalls}`);
   return lines.join("\n");
 }
 
@@ -633,7 +647,7 @@ export async function fixCli(argv: string[]): Promise<void> {
         "  No subcommand: runs the doctor auto-fix pass (rebuild ledgers,\n" +
         "                 scope-index, etc.).\n" +
         "  Subcommands:\n" +
-        "    align           Layer C — full-repo Haiku-judge sweep over every\n" +
+        "    align           Layer C — full-repo fast model-judge sweep over every\n" +
         "                    prose block × every DEC. Use --dry-run for the\n" +
         "                    pre-flight cost estimate; re-run without --dry-run\n" +
         "                    within 30 min to apply. Flags:\n" +
@@ -654,10 +668,10 @@ export async function fixCli(argv: string[]): Promise<void> {
         "                        reports modified / staged paths inside the include\n" +
         "                        globs (or anywhere when no --include passed).\n" +
         "  Subcommands (retroactive — for projects adopted on older versions):\n" +
-        "    brand           re-run the Haiku brand-derive call against the\n" +
+        "    brand           re-run the fast model brand-derive call against the\n" +
         "                    mapper output already on disk; rewrite the 4 brand\n" +
         "                    files. For projects adopted under v0.3.8 or earlier\n" +
-        "                    where the Haiku timeout caused mechanical defaults.\n" +
+        "                    where the fast model timeout caused mechanical defaults.\n" +
         "    dec-strip       replay source-comment strip-replace for accepted\n" +
         "                    DECs whose original essay block is still in source.\n" +
         "                    For projects adopted under v0.4.0 builds before the\n" +
@@ -666,8 +680,8 @@ export async function fixCli(argv: string[]): Promise<void> {
         "                    and `git rm --cached` newly-ignored paths. For\n" +
         "                    projects adopted before the v0.4.0 gitignore additions\n" +
         "                    (init-state.json, init/, staleness/, backups/, cache/).\n" +
-        "    scrub-cache     wipe .cairn/cache/haiku/ entries. For projects adopted\n" +
-        "                    before v0.4.0 ambient-context isolation; cached Haiku\n" +
+        "    scrub-cache     wipe .cairn/cache/model/ entries. For projects adopted\n" +
+        "                    before v0.4.0 ambient-context isolation; cached fast model\n" +
         "                    responses captured user-global CLAUDE.md content and\n" +
         "                    should be re-issued under the new isolated transport.\n" +
         "    claude-rules    write .claude/rules/cairn.md so teammates whose Claude\n" +

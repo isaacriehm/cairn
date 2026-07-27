@@ -4,7 +4,7 @@
  * Every other GC pass guards ground/doc *integrity*. This one guards
  * `.cairn/` *footprint*: the per-clone runtime artifacts that grow without
  * bound because nothing on the write path ever trims them. Left alone they
- * reach tens of megabytes (observed: a 3 MB telemetry log, a 26 MB Haiku
+ * reach tens of megabytes (observed: a 3 MB telemetry log, a 26 MB fast model
  * cache, a dozen 400 KB baseline snapshots) — pure derived/advisory state
  * with no reader that needs the history.
  *
@@ -21,8 +21,8 @@
  *      head still matters: layer-a-deferred.jsonl, pre-commit-deferred.jsonl,
  *      state/align-undo-log.jsonl.
  *
- *   2. Evict Haiku cache entries older than the 30-day window the cache
- *      itself advertises. `claude/cache.ts` only evicts lazily on a *re-read*
+ *   2. Evict fast model cache entries older than the 30-day window the cache
+ *      itself advertises. `model/cache.ts` only evicts lazily on a *re-read*
  *      of the same key, so one-shot prompts (e.g. the thousands of per-file
  *      init classifications) are cached once and never looked up again →
  *      never evicted. This is the sweep half.
@@ -45,7 +45,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { cairnDir, haikuCacheDir, stalenessDir } from "@isaacriehm/cairn-state";
+import { cairnDir, modelCacheDir, stalenessDir } from "@isaacriehm/cairn-state";
 import { logger } from "../logger.js";
 
 const log = logger("gc.runtime-prune");
@@ -54,8 +54,8 @@ const log = logger("gc.runtime-prune");
 const LOG_CAP_BYTES = 2 * 1024 * 1024;
 /** ...down to the trailing this-many bytes of complete lines. */
 const LOG_KEEP_BYTES = 512 * 1024;
-/** Haiku cache entries older than this are swept (matches the cache's own TTL). */
-const HAIKU_MAX_AGE_MS = 30 * 86_400_000;
+/** Model cache entries older than this are swept (matches the cache's own TTL). */
+const MODEL_CACHE_MAX_AGE_MS = 30 * 86_400_000;
 /** Newest baseline snapshots to retain per filename prefix. */
 const BASELINE_KEEP = 3;
 
@@ -70,7 +70,7 @@ export interface RotatedLog {
 
 export interface RuntimePruneResult {
   rotatedLogs: RotatedLog[];
-  haikuEvicted: number;
+  modelEvicted: number;
   baselineRemoved: string[];
   /** Total bytes reclaimed across all three operations. */
   bytesFreed: number;
@@ -118,9 +118,8 @@ function rotateLog(path: string): RotatedLog | null {
   return { path, fromBytes: from, toBytes: Buffer.byteLength(tail, "utf8") };
 }
 
-/** Recursively unlink Haiku-cache files older than the TTL. Returns count + bytes. */
-function sweepHaiku(repoRoot: string, cutoffMs: number): { evicted: number; bytes: number } {
-  const root = haikuCacheDir(repoRoot);
+/** Recursively unlink model-cache files older than the TTL. Returns count + bytes. */
+function sweepCacheRoot(root: string, cutoffMs: number): { evicted: number; bytes: number } {
   if (!existsSync(root)) return { evicted: 0, bytes: 0 };
   let evicted = 0;
   let bytes = 0;
@@ -218,7 +217,7 @@ export function runRuntimePrune(opts: RuntimePruneOptions): RuntimePruneResult {
   const now = opts.now ?? new Date();
   const result: RuntimePruneResult = {
     rotatedLogs: [],
-    haikuEvicted: 0,
+    modelEvicted: 0,
     baselineRemoved: [],
     bytesFreed: 0,
   };
@@ -232,9 +231,19 @@ export function runRuntimePrune(opts: RuntimePruneOptions): RuntimePruneResult {
     }
   }
 
-  const haiku = sweepHaiku(opts.repoRoot, now.getTime() - HAIKU_MAX_AGE_MS);
-  result.haikuEvicted = haiku.evicted;
-  result.bytesFreed += haiku.bytes;
+  const modelCache = sweepCacheRoot(
+    modelCacheDir(opts.repoRoot),
+    now.getTime() - MODEL_CACHE_MAX_AGE_MS,
+  );
+  // v0.32 and older stored Claude-only entries under `cache/haiku`.
+  // They are derived and no longer readable, but keep the same TTL before
+  // reclaiming them so an upgrade never causes a surprise immediate wipe.
+  const legacyCache = sweepCacheRoot(
+    cairnDir(opts.repoRoot, "cache", "haiku"),
+    now.getTime() - MODEL_CACHE_MAX_AGE_MS,
+  );
+  result.modelEvicted = modelCache.evicted + legacyCache.evicted;
+  result.bytesFreed += modelCache.bytes + legacyCache.bytes;
 
   const baseline = pruneBaseline(opts.repoRoot);
   result.baselineRemoved = baseline.removed;
@@ -242,14 +251,14 @@ export function runRuntimePrune(opts: RuntimePruneOptions): RuntimePruneResult {
 
   if (
     result.rotatedLogs.length > 0 ||
-    result.haikuEvicted > 0 ||
+    result.modelEvicted > 0 ||
     result.baselineRemoved.length > 0
   ) {
     log.info(
       {
         repo: opts.repoRoot,
         rotated: result.rotatedLogs.map((r) => r.path),
-        haiku_evicted: result.haikuEvicted,
+        model_evicted: result.modelEvicted,
         baseline_removed: result.baselineRemoved.length,
         bytes_freed: result.bytesFreed,
       },

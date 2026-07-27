@@ -28,9 +28,9 @@ since adoption.
 
 Everything here is **opt-in, recoverable, and never auto-applies to
 committed ground**: deterministic edits are `review`-class (the operator
-commits the diff); LLM passes spend Haiku only on genuinely-new prose;
-re-curation produces `_inbox/` drafts the operator drains. Confirm scope
-with the operator before any pass that spends Haiku (re-cluster,
+commits the diff); LLM passes spend the fast tier only on genuinely-new
+prose; re-curation produces `_inbox/` drafts the operator drains. Confirm
+scope with the operator before any pass that spends model quota (re-cluster,
 re-curate).
 
 ## Pass 1 — config-resync (deterministic, free)
@@ -50,7 +50,7 @@ Resolve the config-drift the sensor surfaced.
 ## Pass 2 — topic re-cluster (LLM, opt-in)
 
 Offer this when prose has moved/grown enough that the topic-index is
-stale. Confirm first — it spends Haiku (only on new prose; unchanged
+stale. Confirm first — it spends the fast tier (only on new prose; unchanged
 pairs hit the cache).
 
 1. Preview: `cairn_resync({ recluster: true })` — re-walks + judges and
@@ -65,7 +65,7 @@ pairs hit the cache).
 
 Re-run the curator over a grown area and surface the result as DEC/INV
 drafts. **Always scope to an `area`** — a full re-curate is the adoption
-pipeline's job, not this. Confirm the area + the Haiku spend first.
+pipeline's job, not this. Confirm the area + the model spend first.
 
 > **Ghost mode:** if the repo is registered ghost, the curator dir is
 > out-of-repo. The `recurate:'walk'` response returns the absolute

@@ -1,8 +1,8 @@
 /**
- * Phase 9 — Haiku batch classifier for source-comment blocks.
+ * Phase 9 — fast model batch classifier for source-comment blocks.
  *
  * Walker outputs essay-style comment blocks; this module batches them per
- * Haiku call and returns one classification per block. Per plan §5.3 the
+ * fast model call and returns one classification per block. Per plan §5.3 the
  * classifier returns *kind only* — no paraphrased title, no rewritten
  * invariant body, no canonical-topic suggestion. The verbatim comment
  * prose is the canonical body, recorded straight onto the DEC/INV the
@@ -18,7 +18,7 @@
  * Resilience:
  *   - one batch failure doesn't fail the run; the block is reported as
  *     `failed` with `kind: "other"` so the strip-replace stage skips it
- *   - partial JSON returned by Haiku (e.g. missing block_id) is tolerated;
+ *   - partial JSON returned by fast model (e.g. missing block_id) is tolerated;
  *     missing fields default to safe values
  */
 
@@ -32,8 +32,8 @@ const BatchEntrySchema = z.object({
 const BatchResultSchema = z.object({
   results: z.array(BatchEntrySchema),
 }).passthrough();
-import { runClaude } from "../../claude/index.js";
-import { ClaudeError } from "../../claude/error.js";
+import { runModel } from "../../model/index.js";
+import { ModelRunnerError } from "../../model/error.js";
 import { logger } from "../../logger.js";
 import type { CommentBlock } from "@isaacriehm/cairn-state";
 
@@ -44,8 +44,8 @@ const PER_BATCH_TIMEOUT_MS = 90_000;
 const PROSE_CAP_PER_BLOCK = 1500;
 
 /**
- * Concurrent Haiku batches per round. Haiku has higher TPM ceilings than
- * Sonnet so 4-at-a-time is well within rate limits even for large adoptions
+ * Concurrent fast model batches per round. fast model has higher TPM ceilings than
+ * capable model so 4-at-a-time is well within rate limits even for large adoptions
  * (10k+ essay blocks → 500+ batches → ~125 rounds).
  */
 const PARALLEL_ROUND_SIZE = 4;
@@ -60,7 +60,7 @@ export type CommentClassKind =
 export interface CommentClassification {
   blockId: string;
   kind: CommentClassKind;
-  /** True when the Haiku call (or batch parse) failed for this block. */
+  /** True when the fast model call (or batch parse) failed for this block. */
   failed: boolean;
   errorMessage?: string;
 }
@@ -79,13 +79,13 @@ export interface ClassifyArgs {
   }) => void;
   /**
    * Test override — when set, every block is classified by this function and
-   * no Haiku call is made.
+   * no fast model call is made.
    */
   mockClassify?: (block: CommentBlock) => CommentClassification;
   /**
-   * When set, every Haiku batch call is run with `cacheable: true` so
+   * When set, every fast model batch call is run with `cacheable: true` so
    * re-running adoption against the same source corpus hits the
-   * `.cairn/cache/haiku/` cache instead of burning the operator's quota.
+   * `.cairn/cache/model/` cache instead of burning the operator's quota.
    */
   repoRoot?: string;
 }
@@ -281,7 +281,7 @@ interface BatchOutcome {
  * smaller than 2 are not split — they propagate the original error.
  *
  * Recovers most residual loss after the BATCH_SIZE 20→10 reduction; defends
- * against tail-latency spikes from upstream Haiku capacity.
+ * against tail-latency spikes from upstream fast model capacity.
  */
 async function classifyOneBatchWithRetry(
   batch: CommentBlock[],
@@ -290,7 +290,7 @@ async function classifyOneBatchWithRetry(
   try {
     return await classifyOneBatch(batch, repoRoot);
   } catch (err) {
-    const isTimeout = err instanceof ClaudeError && err.kind === "timeout";
+    const isTimeout = err instanceof ModelRunnerError && err.kind === "timeout";
     if (!isTimeout || batch.length < 2) {
       throw err;
     }
@@ -335,8 +335,8 @@ async function classifyOneBatch(
   repoRoot: string | undefined,
 ): Promise<BatchOutcome> {
   const prompt = buildBatchPrompt(batch);
-  const result = await runClaude({
-    tier: "haiku",
+  const result = await runModel({
+    tier: "fast",
     system: SYSTEM_PROMPT,
     prompt,
     jsonSchema: BATCH_SCHEMA,
@@ -351,7 +351,7 @@ async function classifyOneBatch(
     typeof usage?.["output_tokens"] === "number" ? usage["output_tokens"] : 0;
   const parsed = result.parsed;
   if (typeof parsed !== "object" || parsed === null) {
-    throw new Error("haiku batch returned non-object payload");
+    throw new Error("fast model batch returned non-object payload");
   }
   const obj = parsed as Record<string, unknown>;
   const arr = Array.isArray(obj["results"]) ? obj["results"] : [];

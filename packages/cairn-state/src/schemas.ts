@@ -245,7 +245,7 @@ export type QualityGrades = z.infer<typeof QualityGrades>;
  * (block-level). Phase 6 Stage 3 reads this field directly off the
  * topic-index and bypasses Stages 1+2 (file-purpose + section batch
  * classifiers) for marked entries — the operator has already declared
- * the block authoritative, so Haiku adds no signal.
+ * the block authoritative, so fast model adds no signal.
  *
  * `content_hash` mirrors the SoT block's body hash at walk-time. Used by
  * `cairn_propose_decision` (PR 2) and the alignment hooks to detect
@@ -357,17 +357,17 @@ export type DriftEvent = z.infer<typeof DriftEvent>;
  * Layer B pre-commit-drift log entry written by the git pre-commit
  * hook (`cairn hook pre-commit-align`). SessionStart Drain SessionStart drain
  * consumes this file, re-checks each entry against the (possibly
- * changed) source location, and runs the Haiku judge for ambiguous
+ * changed) source location, and runs the fast model judge for ambiguous
  * candidates.
  *
  * Path: `.cairn/staleness/pre-commit-deferred.jsonl`.
  *
  * `tier: tier1` — deterministic match passed (Jaccard ≥ 0.85, shingle
- * ≥ 0.6, length ratio 0.5–2.0). SessionStart Drain can auto-cite without Haiku
+ * ≥ 0.6, length ratio 0.5–2.0). SessionStart Drain can auto-cite without fast model
  * if the block survives.
  *
  * `tier: tier2-3` — Jaccard pre-filter survivors only; Tier 1 didn't
- * fire. SessionStart Drain invokes Haiku dedup judge.
+ * fire. SessionStart Drain invokes fast model dedup judge.
  */
 export const PreCommitDriftCandidate = z.object({
   id: z.string(),

@@ -3,7 +3,7 @@
  *
  * Cairn adoption ALWAYS runs inside an LLM coding agent, so detection
  * leans on a model rather than a hardcoded convention list — there is no
- * `src/components` / `packages/*` assumption baked in. A Sonnet call reads
+ * `src/components` / `packages/*` assumption baked in. A capable model call reads
  * the repo's structural digest (per-directory file-extension histogram,
  * the dirs that hold a per-module manifest, and any workspace-manifest files)
  * and returns the `components:` config: which workspaces carry reusable
@@ -32,7 +32,7 @@ import { cairnDir,
   walkFs,
   type ComponentsConfig,
 } from "@isaacriehm/cairn-state";
-import { runClaude } from "../claude/index.js";
+import { runModel } from "../model/index.js";
 import { logger } from "../logger.js";
 
 const log = logger("init.detect-components");
@@ -219,8 +219,8 @@ async function attempt(
 ): Promise<DetectResult | null> {
   let result;
   try {
-    result = await runClaude({
-      tier: "sonnet",
+    result = await runModel({
+      tier: "capable",
       prompt,
       system: SYSTEM_PROMPT,
       jsonSchema: OUTPUT_SCHEMA,
@@ -233,7 +233,7 @@ async function attempt(
   } catch (err) {
     log.warn(
       { error: err instanceof Error ? err.message : String(err) },
-      "detect-components: runClaude failed",
+      "detect-components: runModel failed",
     );
     return null;
   }
@@ -298,7 +298,7 @@ export async function detectComponentsConfig(
   const prompt = buildPrompt(repoRoot, digest);
   const out = (await attempt(repoRoot, prompt)) ?? (await attempt(repoRoot, prompt));
   if (out === null) return null;
-  // Coverage safety net: a single Sonnet pass routinely under-scopes
+  // Coverage safety net: a single capable model pass routinely under-scopes
   // componentDirs — it picks a dense nested sub-directory of a component
   // container and misses the sibling sub-directories under the same
   // container, so 9d-comp-walk only ever sees that one cluster. Widen each

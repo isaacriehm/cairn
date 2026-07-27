@@ -39,7 +39,7 @@ async function handler(ctx: McpContext, input: Input): Promise<unknown> {
 export const missionStartTool: ToolDef<Input> = {
   name: "cairn_mission_start",
   description:
-    "Read a planning spec doc and draft a mission roadmap via Haiku. Returns the draft (proposed_title + ordered phases + spec_path + exit_gate) for operator approval. Does NOT write anything to disk; the caller invokes cairn_mission_accept_draft once the operator confirms. Pass `no_llm: true` to skip Haiku and return a single-phase stub.",
+    "Read a planning spec doc and draft a mission roadmap via fast model. Returns the draft (proposed_title + ordered phases + spec_path + exit_gate) for operator approval. Does NOT write anything to disk; the caller invokes cairn_mission_accept_draft once the operator confirms. Pass `no_llm: true` to skip fast model and return a single-phase stub.",
   inputSchema: missionStartInput,
   handler,
 };

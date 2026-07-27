@@ -6,7 +6,7 @@
  *   2. Proceed dialog (cancel exits cleanly, no writes)
  *   3. Seed `.cairn/` from templates with `<project_name>`
  *      substituted; write `.cairn/config.yaml` (including `cairn_version`).
- *   4. Mapper (Tier-2 chunked Sonnet) → domain summary, key modules,
+ *   4. Mapper (Tier-2 chunked capable model) → domain summary, key modules,
  *      off-limits, and the file→decision scope index.
  *   5. Brand setup (4-question wizard).
  *   6. Phase 8 docs ingestion + baseline sensor sweep.
@@ -135,7 +135,7 @@ export interface RunInitArgs {
   /**
    * Substitute a canned MapperOutput for the LLM call. Used by smokes and any
    * scripted adoption path that wants to exercise the apply-to-config and
-   * apply-to-workflow.md path without burning Sonnet tokens.
+   * apply-to-workflow.md path without burning capable model tokens.
    */
   mockMapperOutput?: MapperOutput;
   /**
@@ -152,7 +152,7 @@ export interface RunInitArgs {
   skipSubmoduleCheck?: boolean;
   /**
    * Skip Phase 8 — docs ingestion + baseline sensor sweep. Smokes default to
-   * skipping since the Haiku ingestion call costs tokens; production runs
+   * skipping since the fast model ingestion call costs tokens; production runs
    * default to running.
    */
   skipIngestion?: boolean;
@@ -182,13 +182,13 @@ export interface RunInitArgs {
   /**
    * Skip Phase 9 — full-repo source-comment ingestion. Defaults to the
    * same gate as `skipIngestion`. Tests pass `mockSourceCommentClassify`
-   * to exercise the persistence path without burning Haiku tokens.
+   * to exercise the persistence path without burning fast model tokens.
    */
   skipPhase7b?: boolean;
   /**
    * Skip Phase 10 — existing-rules merge + initial CLAUDE.md/AGENTS.md
    * regeneration. Defaults to the same gate as `skipIngestion`. Tests
-   * pass `mockRulesMergeClassify` to bypass Haiku.
+   * pass `mockRulesMergeClassify` to bypass fast model.
    */
   skipPhase7c?: boolean;
   /**
@@ -199,12 +199,12 @@ export interface RunInitArgs {
   skipPhase12?: boolean;
   /**
    * Test override for the source-comment classifier. When set, Phase 9
-   * runs without any Haiku call.
+   * runs without any fast model call.
    */
   mockSourceCommentClassify?: (block: CommentBlock) => CommentClassification;
   /**
    * Test override for the rules-merge classifier. When set, Phase 10
-   * runs without any Haiku call.
+   * runs without any fast model call.
    */
   mockRulesMergeClassify?: (
     section: RuleSection,
@@ -212,8 +212,8 @@ export interface RunInitArgs {
   ) => RuleClassification;
   /**
    * Test override for the phase 7 topic-index semantic judge. Defaults
-   * to a Haiku-backed judge inside `buildTopicIndex`. Smokes pass a
-   * deterministic stand-in to avoid Haiku calls when fixture sections
+   * to a fast model-backed judge inside `buildTopicIndex`. Smokes pass a
+   * deterministic stand-in to avoid fast model calls when fixture sections
    * trip the Jaccard similarity threshold.
    */
   mockTopicIndexJudge?: SemanticJudge;
@@ -221,7 +221,7 @@ export interface RunInitArgs {
    * Test override for the phase 8 docs-ingestion classifier. When set,
    * Stages 1 + 2 (file filter + section classify) are bypassed; every
    * non-marker topic-index doc candidate flows through this synchronous
-   * mock instead of Haiku. Mirrors {@link RunDocsIngestionArgs.mockClassify}
+   * mock instead of fast model. Mirrors {@link RunDocsIngestionArgs.mockClassify}
    * so smokes can exercise the Stage 4 draft-emit path end-to-end.
    */
   mockIngestionClassify?: (
@@ -411,7 +411,7 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   // those checks appear.
   const envState = detection.environment;
 
-  // ── Init mapper (Tier 2 / Sonnet) — domain summary, key modules,
+  // ── Init mapper (Tier 2 / capable model) — domain summary, key modules,
   // off-limits, and the file→decision scope index. Without it the scope
   // index sits empty and PostToolUse scope hints have nothing to resolve.
   const mapperRunResult = await maybeRunMapper({
@@ -423,7 +423,7 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     ...(args.mockMapperOutput !== undefined
       ? { mockMapperOutput: args.mockMapperOutput }
       : {}),
-    envClaudeAuth: envState.claude_auth,
+    modelProvider: envState.model_provider,
     warnings,
   });
   const mapperOutput: MapperOutput | null =
@@ -595,10 +595,10 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
     decidedSlug,
     detection,
     mapperOutput,
-    // Auto mode skips Haiku-backed ingestion by default. Smokes that
+    // Auto mode skips fast model-backed ingestion by default. Smokes that
     // need to exercise the phase-6 emit path (e2e-adoption,
     // ingestion-baseline) provide `mockIngestionClassify` so the
-    // pipeline runs end-to-end without burning Haiku.
+    // pipeline runs end-to-end without burning fast model.
     skip:
       args.skipIngestion === true ||
       (mode === "auto" && args.mockIngestionClassify === undefined),
@@ -610,7 +610,7 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
   const phase6 = await runPhaseSix(phase6Args);
 
   // ── Phase 9: source-comment ingestion ─────────────────────────────
-  // Walks every source file, batches block-comments through Haiku, files
+  // Walks every source file, batches block-comments through fast model, files
   // DEC drafts + invariant proposals + canonical citations into
   // `.cairn/baseline/`. Skipped under the same condition as Phase 8
   // unless a `mockSourceCommentClassify` is supplied (smokes).
@@ -655,7 +655,7 @@ export async function runInit(args: RunInitArgs = {}): Promise<InitResult> {
 
   // ── Phase 10: existing-rules merge + first regenerate ──────────────
   // Reads CLAUDE.md / AGENTS.md / .claude/CLAUDE.md / .claude/rules/**.md,
-  // classifies sections via Haiku into rule-net-new / rule-conflict /
+  // classifies sections via fast model into rule-net-new / rule-conflict /
   // informational / operator-keep, persists net-new as DEC drafts. The
   // initial regenerate of CLAUDE.md + AGENTS.md from ground state is
   // deferred until after operator accepts the drafts in the attention
@@ -789,13 +789,13 @@ interface MaybeRunMapperArgs {
   mode: PromptMode;
   skipMapper: boolean;
   mockMapperOutput?: MapperOutput;
-  envClaudeAuth: boolean;
+  modelProvider: import("../model/types.js").ModelProvider | null;
   warnings: string[];
 }
 
 interface MaybeRunMapperResult {
   output: MapperOutput;
-  /** Module slugs whose Sonnet call failed and used the heuristic fallback. */
+  /** Module slugs whose capable model call failed and used the heuristic fallback. */
   fallbackSlugs: string[];
 }
 
@@ -817,12 +817,12 @@ async function maybeRunMapper(
     );
     return null;
   }
-  if (!args.envClaudeAuth) {
+  if (args.modelProvider === null) {
     args.warnings.push(
-      "mapper skipped — claude CLI not available; domain summary + scope index left empty",
+      "mapper skipped — no supported model CLI available; domain summary + scope index left empty",
     );
     info(
-      "\n── Init mapper skipped — claude CLI not available; re-run init after `claude` auth to fill the scope index",
+      "\n── Init mapper skipped — install and authenticate Claude Code, Codex, or Cursor CLI, then re-run init to fill the scope index",
     );
     return null;
   }
@@ -831,7 +831,7 @@ async function maybeRunMapper(
   const summary = args.repoSummary;
 
   // Mapper dispatches automatically — no per-run cost prompt.
-  // The orchestrator handles parallel module calls + Haiku merge internally;
+  // The orchestrator handles parallel module calls + fast model merge internally;
   // the single-call path is the fallback when every module call fails.
   let mapperResult: MapperResult;
   const spinner = startSpinner("Analyzing codebase…");
@@ -1291,16 +1291,17 @@ function printDiscovery(
     });
   }
 
-  // claude code
+  // Model subprocess
   const e = d.environment;
   discoveryRow({
-    status: e.claude_auth ? "ok" : "err",
-    label: "Claude Code",
-    value: e.claude_auth
-      ? visualC.dim("authenticated")
-      : visualC.dim("missing or unauthenticated"),
+    status: e.model_provider === null ? "err" : "ok",
+    label: "Model runner",
+    value:
+      e.model_provider === null
+        ? visualC.dim("no supported CLI available")
+        : visualC.dim(`${e.model_provider} CLI available`),
   });
-  if (!e.claude_auth) warnings.push("claude CLI not available");
+  if (e.model_provider === null) warnings.push("no supported model CLI available");
 }
 
 interface PhaseSixArgs {
@@ -1310,7 +1311,7 @@ interface PhaseSixArgs {
   mapperOutput: MapperOutput | null;
   skip: boolean;
   warnings: string[];
-  /** Smoke override — bypass Haiku in Stages 1+2 when set. */
+  /** Smoke override — bypass fast model in Stages 1+2 when set. */
   mockClassify?: (
     entry: TopicIndexEntry,
     body: string,

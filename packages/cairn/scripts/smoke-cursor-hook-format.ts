@@ -47,6 +47,10 @@ console.log("smoke-cursor-hook-format — start");
         entry.command.includes("--host cursor"),
         `Cursor ${event} command must select the Cursor adapter`,
       );
+      assert(
+        entry.command.includes("--model-provider cursor"),
+        `Cursor ${event} command must select the Cursor model provider`,
+      );
     }
   }
   console.log("  ✓ hooks config uses Cursor's native v1 schema");

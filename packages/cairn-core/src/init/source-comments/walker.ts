@@ -4,7 +4,7 @@
  * Walks every source file in the repo (via `git ls-files` when available, else
  * a manual recursive walk respecting a hardcoded ignore list) and extracts
  * essay-style comment blocks per language. Detection is deterministic — no
- * LLM. The output feeds the Haiku batch classifier (`classify.ts`).
+ * LLM. The output feeds the fast model batch classifier (`classify.ts`).
  *
  * "Essay-style" heuristic per spec §15:
  *   - block comment > 3 lines, OR

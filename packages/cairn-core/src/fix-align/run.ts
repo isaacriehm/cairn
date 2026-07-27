@@ -1,7 +1,7 @@
 /**
  * Layer C — `cairn fix align` (plan §4.4).
  *
- * Operator-explicit full-repo Haiku-judge sweep over every prose
+ * Operator-explicit full-repo fast model-judge sweep over every prose
  * block × every accepted DEC. Reuses the Layer A `alignFile` machinery
  * per file with elevated caps so a single sweep can fully judge each
  * file rather than deferring to staleness.
@@ -10,11 +10,11 @@
  *
  *   1. Pre-flight (deterministic, free) — walk every staged source
  *      file, extract prose blocks, compute Tier 1 candidate counts +
- *      Haiku call estimate. Produces a cost preview the operator can
+ *      fast model call estimate. Produces a cost preview the operator can
  *      eyeball before approving the spend.
  *
- *   2. Apply (calls Haiku) — invoke `alignFile` per file. Aggregate
- *      tier counts, pending, deferred, descriptive, Haiku spend.
+ *   2. Apply (calls fast model) — invoke `alignFile` per file. Aggregate
+ *      tier counts, pending, deferred, descriptive, fast model spend.
  *
  * `--dry-run` exits after pre-flight. `--max-cost` aborts apply when
  * the estimate exceeds the budget. `--no-creation` short-circuits the
@@ -49,7 +49,7 @@ const log = logger("fix-align");
 const SWEEP_PASS1_CAP = 200;
 const SWEEP_PASS2_CAP = 50;
 const PASS2_FRACTION_ESTIMATE = 0.1; // ~10% of Pass-1 ambiguous → Pass-2
-const TOKENS_PER_PASS1_CALL = 600; // empirical: Haiku dedup P1 ~600 tokens in/out
+const TOKENS_PER_PASS1_CALL = 600; // empirical: fast model dedup P1 ~600 tokens in/out
 const TOKENS_PER_PASS2_CALL = 1_200;
 const TOKENS_PER_CREATION_CALL = 800;
 const DEFAULT_MAX_COST_TOKENS = 500_000;
@@ -72,10 +72,10 @@ const DEFAULT_EXCLUDES: readonly string[] = [
 
 export interface FixAlignArgs {
   repoRoot: string;
-  /** Dry-run: pre-flight only, no Haiku, no source writes. */
+  /** Dry-run: pre-flight only, no fast model, no source writes. */
   dryRun?: boolean;
   /**
-   * Token budget. Apply phase aborts before invoking Haiku when the
+   * Token budget. Apply phase aborts before invoking fast model when the
    * pre-flight estimate exceeds this. Default 500k tokens.
    */
   maxCost?: number;
@@ -151,9 +151,9 @@ export interface AggregateAlignResult {
   deferredToStaleness: number;
   descriptive: number;
   skipped: number;
-  haikuPass1Calls: number;
-  haikuPass2Calls: number;
-  haikuCalls: number;
+  modelPass1Calls: number;
+  modelPass2Calls: number;
+  modelCalls: number;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -195,7 +195,7 @@ export async function runFixAlign(args: FixAlignArgs): Promise<FixAlignResult> {
   if (preflight.estimatedTokens > maxCost) {
     log.warn(
       { estimated: preflight.estimatedTokens, maxCost },
-      "fix-align estimate exceeds maxCost; aborting before Haiku spend",
+      "fix-align estimate exceeds maxCost; aborting before fast model spend",
     );
     result.abortedOverBudget = true;
     return result;
@@ -214,9 +214,9 @@ export async function runFixAlign(args: FixAlignArgs): Promise<FixAlignResult> {
     deferredToStaleness: 0,
     descriptive: 0,
     skipped: 0,
-    haikuPass1Calls: 0,
-    haikuPass2Calls: 0,
-    haikuCalls: 0,
+    modelPass1Calls: 0,
+    modelPass2Calls: 0,
+    modelCalls: 0,
   };
 
   for (const file of filesVisited) {
@@ -260,9 +260,9 @@ export async function runFixAlign(args: FixAlignArgs): Promise<FixAlignResult> {
     aggregate.deferredToStaleness += fileResult.deferredToStaleness;
     aggregate.descriptive += fileResult.descriptive;
     aggregate.skipped += fileResult.skipped;
-    aggregate.haikuPass1Calls += fileResult.haikuPass1Calls;
-    aggregate.haikuPass2Calls += fileResult.haikuPass2Calls;
-    aggregate.haikuCalls += fileResult.haikuCalls;
+    aggregate.modelPass1Calls += fileResult.modelPass1Calls;
+    aggregate.modelPass2Calls += fileResult.modelPass2Calls;
+    aggregate.modelCalls += fileResult.modelCalls;
   }
 
   result.apply = aggregate;

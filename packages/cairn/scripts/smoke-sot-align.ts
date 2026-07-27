@@ -3,17 +3,17 @@
  * smoke-sot-align — Layer A PostToolUse alignment hook (plan §4.1).
  *
  * Each step mounts a fresh fixture, simulates the post-Write file
- * state, drives `alignFile` directly with mock judges where Haiku
+ * state, drives `alignFile` directly with mock judges where fast model
  * would otherwise fire, and asserts the resulting on-disk state.
  *
  *   Step 1 — Tier 1 deterministic auto-cite (verbatim duplicate of
- *            an accepted DEC). No mock judge needed; no Haiku call.
+ *            an accepted DEC). No mock judge needed; no fast model call.
  *   Step 2 — Tier 2 Pass 1 dedup judge `same` → cite. Mock judge.
  *   Step 3 — Tier 3 Pass 1 creation judge `decision` → fresh ledger
  *            DEC, source strip-replaced. Mock judge.
  *   Step 4 — Tier 3 creation judge `descriptive` → no-op, source
  *            untouched. Mock judge.
- *   Step 5 — Per-Write Haiku call cap → excess deferred to staleness.
+ *   Step 5 — Per-Write fast model call cap → excess deferred to staleness.
  */
 
 import {
@@ -155,11 +155,11 @@ async function main(): Promise<void> {
       sessionId: null,
     });
     assert(result.tier1Aligned === 1, `Step 1: tier1Aligned=1, got ${result.tier1Aligned}`);
-    assert(result.haikuCalls === 0, `Step 1: no Haiku calls (deterministic), got ${result.haikuCalls}`);
+    assert(result.modelCalls === 0, `Step 1: no fast model calls (deterministic), got ${result.modelCalls}`);
     const after = readFileSync(join(repoRoot, "src/db.ts"), "utf8");
     assert(after.includes("// §DEC-1234567"), "Step 1: source cites seeded DEC");
     assert(!after.includes("legacy ETL"), "Step 1: original prose stripped");
-    console.log("  ✓ Step 1 — Tier 1 deterministic auto-cite, no Haiku");
+    console.log("  ✓ Step 1 — Tier 1 deterministic auto-cite, no fast model");
   }
 
   // ── Step 2 — Tier 2 Pass 1 mock dedup `same` → cite ──────────────
@@ -199,7 +199,7 @@ async function main(): Promise<void> {
     assert(dedupCalls >= 1, `Step 2: dedup judge called, got ${dedupCalls}`);
     const after = readFileSync(join(repoRoot, "src/auth.ts"), "utf8");
     assert(after.includes("// §DEC-2222222"), "Step 2: source cites seeded DEC");
-    console.log(`  ✓ Step 2 — Tier 2 Pass 1 dedup \`same\` cite (haikuCalls=${result.haikuCalls})`);
+    console.log(`  ✓ Step 2 — Tier 2 Pass 1 dedup \`same\` cite (modelCalls=${result.modelCalls})`);
   }
 
   // ── Step 3 — Tier 3 creation judge `decision` → fresh DEC ─────────
@@ -330,7 +330,7 @@ async function main(): Promise<void> {
         return "decision";
       },
     });
-    assert(result.haikuCalls <= 5, `Step 5: haikuCalls capped at 5, got ${result.haikuCalls}`);
+    assert(result.modelCalls <= 5, `Step 5: modelCalls capped at 5, got ${result.modelCalls}`);
     assert(creationCalls <= 5, `Step 5: creation judge called ≤5, got ${creationCalls}`);
     assert(
       result.deferredToStaleness >= 2,
@@ -341,7 +341,7 @@ async function main(): Promise<void> {
     const lines = readFileSync(stalenessLog, "utf8").split("\n").filter((l) => l.length > 0);
     assert(lines.length >= 2, `Step 5: ≥2 deferred lines, got ${lines.length}`);
     console.log(
-      `  ✓ Step 5 — cap=5 honored (haiku=${result.haikuCalls}, deferred=${result.deferredToStaleness})`,
+      `  ✓ Step 5 — cap=5 honored (fast model=${result.modelCalls}, deferred=${result.deferredToStaleness})`,
     );
   }
 
@@ -418,7 +418,7 @@ async function main(): Promise<void> {
     });
     assert(result.blocksConsidered === 0, "Step 7: markdown extraction skipped");
     assert(result.decsCreated === 0, "Step 7: no DEC created from markdown");
-    assert(creationCalls === 0, "Step 7: no Haiku call on markdown");
+    assert(creationCalls === 0, "Step 7: no fast model call on markdown");
     const after = readFileSync(join(repoRoot, "docs/architecture.md"), "utf8");
     assert(after.includes("Postgres over MySQL"), "Step 7: markdown narrative untouched");
     assert(!after.includes("// §DEC-"), "Step 7: no // §DEC line injected into markdown");
@@ -510,8 +510,8 @@ async function main(): Promise<void> {
     assert(pass1Hit === 1, `Step 9: Pass 1 fired once, got ${pass1Hit}`);
     assert(pass2Hit === 1, `Step 9: Pass 2 escalation fired, got ${pass2Hit}`);
     assert(result.decsCreated === 1, `Step 9: DEC emitted from Pass 2 verdict`);
-    assert(result.haikuPass1Calls === 1, "Step 9: pass1 counter");
-    assert(result.haikuPass2Calls === 1, "Step 9: pass2 counter");
+    assert(result.modelPass1Calls === 1, "Step 9: pass1 counter");
+    assert(result.modelPass2Calls === 1, "Step 9: pass2 counter");
     console.log("  ✓ Step 9 — Tier 3 Pass 2 escalation works");
   }
 
@@ -603,7 +603,7 @@ async function main(): Promise<void> {
     console.log(`  ✓ Step 8c — Tier 2 Pass 2 augments rationale → sibling ${newDecId}`);
   }
 
-  // ── Step 9b — Verdict cache reuse: same prose twice = 1 Haiku call total
+  // ── Step 9b — Verdict cache reuse: same prose twice = 1 fast model call total
   {
     const repoRoot = mkRepoRoot();
     const source = [
@@ -629,7 +629,7 @@ async function main(): Promise<void> {
       },
     });
     assert(r1.decsCreated === 1, "Step 9b: first run emits DEC");
-    assert(creationCalls === 1, "Step 9b: first run = 1 Haiku call");
+    assert(creationCalls === 1, "Step 9b: first run = 1 fast model call");
 
     // Restore original prose then re-run — exercises the verdict cache.
     writeFile(repoRoot, "src/pkg.ts", source);
@@ -643,9 +643,9 @@ async function main(): Promise<void> {
         return "decision";
       },
     });
-    assert(creationCalls === 1, `Step 9b: second run reuses cache, total Haiku=${creationCalls}`);
-    assert(r2.haikuPass1Calls === 0, `Step 9b: r2 pass1Calls=0, got ${r2.haikuPass1Calls}`);
-    console.log("  ✓ Step 9b — verdict cache prevents redundant Haiku calls");
+    assert(creationCalls === 1, `Step 9b: second run reuses cache, total fast model=${creationCalls}`);
+    assert(r2.modelPass1Calls === 0, `Step 9b: r2 pass1Calls=0, got ${r2.modelPass1Calls}`);
+    console.log("  ✓ Step 9b — verdict cache prevents redundant fast model calls");
   }
 
   // ── Step 10 — Pass 2 still ambiguous → alignment-pending file ────

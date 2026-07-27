@@ -1,5 +1,5 @@
 /**
- * Mission roadmap drafting — Haiku call that turns a planning doc into
+ * Mission roadmap drafting — fast model call that turns a planning doc into
  * an ordered phase array. One LLM-cost touchpoint per mission
  * lifecycle. All subsequent phase advance / linking is deterministic.
  *
@@ -8,7 +8,7 @@
  * `isolateAmbientContext: true` enforces that.
  */
 
-import { runClaude } from "../claude/index.js";
+import { runModel } from "../model/index.js";
 import { logger } from "../logger.js";
 import { z } from "zod";
 import type { MissionPhase } from "@isaacriehm/cairn-state";
@@ -74,7 +74,7 @@ export interface DraftRoadmapArgs {
 
 export interface DraftRoadmapResult {
   phases: MissionPhase[];
-  /** Char count of the spec slice actually fed to Haiku. */
+  /** Char count of the spec slice actually fed to fast model. */
   spec_chars_used: number;
   /** True when the spec was truncated to fit MAX_SPEC_CHARS. */
   truncated: boolean;
@@ -89,8 +89,8 @@ export async function draftRoadmapFromSpec(
 
   let result;
   try {
-    result = await runClaude({
-      tier: "haiku",
+    result = await runModel({
+      tier: "fast",
       prompt,
       system: SYSTEM_PROMPT,
       jsonSchema: OUTPUT_SCHEMA,
@@ -103,7 +103,7 @@ export async function draftRoadmapFromSpec(
   } catch (err) {
     log.warn(
       { error: err instanceof Error ? err.message : String(err) },
-      "mission draft Haiku call failed",
+      "mission draft fast model call failed",
     );
     return null;
   }
@@ -132,7 +132,7 @@ export async function draftRoadmapFromSpec(
 }
 
 /**
- * Single-phase fallback used when `no_llm: true` or Haiku is offline.
+ * Single-phase fallback used when `no_llm: true` or fast model is offline.
  * Lets the operator hand-edit roadmap.md before approving.
  */
 export function stubRoadmap(): MissionPhase[] {

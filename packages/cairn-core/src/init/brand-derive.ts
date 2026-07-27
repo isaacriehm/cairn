@@ -1,5 +1,5 @@
 /**
- * Brand inference — Haiku-derived overview / voice / personas / avoid
+ * Brand inference — fast model-derived overview / voice / personas / avoid
  * from project signals (README + CLAUDE.md / AGENTS.md tone +
  * mapper's domain_summary). Called by Phase 5-brand auto-fill so the
  * adopted project gets meaningful brand drafts instead of mechanical
@@ -9,14 +9,14 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { runClaude } from "../claude/index.js";
+import { runModel } from "../model/index.js";
 import { logger } from "../logger.js";
 import type { BrandAnswers } from "./brand-setup.js";
 import { z } from "zod";
 
 const log = logger("init.brand-derive");
 
-// 180s ceiling for brand derive. Was 60s — Haiku's structured-output
+// 180s ceiling for brand derive. Was 60s — fast model's structured-output
 // path for the 4-field brand schema (overview + voice + avoid + 1-3
 // personas) on a 2-3kB context (project slug + domain summary +
 // README + AGENTS.md + CLAUDE.md tone signals) is consistently
@@ -140,8 +140,8 @@ function buildUserPrompt(args: DeriveArgs): string {
 }
 
 async function attemptDerive(args: DeriveArgs): Promise<DerivedBrand | null> {
-  const result = await runClaude({
-    tier: "haiku",
+  const result = await runModel({
+    tier: "fast",
     prompt: buildUserPrompt(args),
     system: SYSTEM_PROMPT,
     jsonSchema: OUTPUT_SCHEMA,
@@ -155,7 +155,7 @@ async function attemptDerive(args: DeriveArgs): Promise<DerivedBrand | null> {
   if (!parseResult.success) {
     log.warn(
       { error: parseResult.error.message },
-      "brand-derive: invalid response from Haiku",
+      "brand-derive: invalid response from fast model",
     );
     return null;
   }
@@ -168,7 +168,7 @@ export async function deriveBrandFromProject(
   const t0 = Date.now();
   let brand = await attemptDerive(args);
   if (brand === null) {
-    // Retry once on Haiku failure.
+    // Retry once on fast model failure.
     brand = await attemptDerive(args);
   }
   log.info({ durationMs: Date.now() - t0, ok: brand !== null }, "brand derivation complete");

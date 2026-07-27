@@ -17,9 +17,9 @@ decide.
 
 - **Claude Code, Cursor, or Codex installed and working.** Cairn ships a
   native plugin adapter for each.
-- **The `claude` CLI available.** Cairn's adoption classifiers currently
-  call explicit Haiku/Sonnet aliases through `claude --print`, regardless
-  of which agent hosts the chat.
+- **The host's authenticated CLI available.** Claude Code uses `claude`,
+  Cursor uses `cursor-agent`, and Codex Desktop/CLI uses `codex`. Cairn
+  routes its bounded adoption calls through the active host automatically.
 - **Project is in git.** Adoption assumes `git` and at least one
   commit. If your repo isn't initialized, the preflight will offer
   to run `git init` for you.
@@ -54,8 +54,8 @@ Roughly:
 | Monorepo, 5,000+ files      | 10-20 min     |
 | Monorepo with heavy docs    | 15-30 min     |
 
-The long-running phases (3, 7, 8, 9, 10) call Haiku and Sonnet via
-the bundled `claude --print` subprocess. You'll see live progress in
+The long-running phases (3, 7, 8, 9, 10) call semantic `fast` and
+`capable` tiers through the active host CLI. You'll see live progress in
 the status-line: `⬡ cairn ⏳ adopt 9-source-comments 24/47 (51%) ~3m`.
 
 Adoption is **safe to interrupt**. If you `/exit` mid-phase, the
@@ -141,8 +141,8 @@ A complete phase banner looks like:
 
 ```
 ---
-**Phase 9-source-comments** — Haiku classify essay-class JSDoc → DEC + invariant drafts · ~30s / **5-20min**
-Haiku classifies every essay-class block comment in scoped source files
+**Phase 9-source-comments** — Classify essay-class JSDoc → DEC + invariant drafts · ~30s / **5-20min**
+The fast model classifies every essay-class block comment in scoped source files
 (4-way parallel). On busy monorepos this is the longest phase — expect
 minutes, not seconds. /exit is safe; SessionStart resumes. Watch the
 ⏳ indicator on your statusline for live updates.
@@ -209,9 +209,9 @@ Time: <1s on small repos, ~2s on large.
 
 ### Phase 3 — mapper
 
-The first LLM phase. Sonnet runs in parallel slices (rounds of 4,
+The first LLM phase. The capable tier runs in parallel slices (rounds of 4,
 hard cap 50 slices) over your file manifest. Each slice produces a
-domain summary and per-module proposals. A Haiku merge synthesizes
+domain summary and per-module proposals. A fast-tier merge synthesizes
 the overall `domain_summary` and picks pilot module candidates.
 
 This phase pre-fills `scope_globs` from your detected stack —
@@ -266,7 +266,7 @@ Time: operator-paced.
 
 If your repo has authoritative brand/voice/positioning content (in
 `docs/brand/`, `BRAND.md`, or a clearly-named root-level doc), this
-phase auto-fills the brand DEC drafts using Haiku. You consent
+phase auto-fills the brand DEC drafts using the fast tier. You consent
 once:
 
 > Auto-fill brand DEC drafts from `docs/brand/overview.md`?
@@ -285,7 +285,7 @@ Time: operator + ~30s.
 Cross-source dedup pre-pass. Walks every markdown paragraph in
 `docs/`, every essay-class source comment block, and every section
 of `CLAUDE.md` / `AGENTS.md`. Computes a content fingerprint per
-block. Haiku judges semantically-similar pairs above a Jaccard
+block. The fast tier judges semantically-similar pairs above a Jaccard
 threshold (5-way parallel, hard cap 200).
 
 Output: a deduplicated topic list so the same fact appearing in
@@ -302,9 +302,9 @@ The three heavy LLM phases run concurrently:
 
 | Phase | What                                                              |
 | ----- | ----------------------------------------------------------------- |
-| **8 — docs ingest**          | Haiku per `*.md` in `docs/` and `README.md` → canonical-map topics + DEC drafts.   |
-| **9 — source comments**      | Walker grabs essay-class JSDoc blocks; Haiku batch classifies as rationale / constraint / citation / license / other; rationale → DEC draft, constraint → INV file. |
-| **10 — rules merge**         | Haiku per H2 section in `CLAUDE.md` / `AGENTS.md` / `.claude/rules/*` → DEC drafts; conflicts flagged to `.cairn/ground/conflicts/`. |
+| **8 — docs ingest**          | Fast tier per `*.md` in `docs/` and `README.md` → canonical-map topics + DEC drafts.   |
+| **9 — source comments**      | Walker grabs essay-class JSDoc blocks; fast-tier batch classifies as rationale / constraint / citation / license / other; rationale → DEC draft, constraint → INV file. |
+| **10 — rules merge**         | Fast tier per H2 section in `CLAUDE.md` / `AGENTS.md` / `.claude/rules/*` → DEC drafts; conflicts flagged to `.cairn/ground/conflicts/`. |
 
 These run in parallel because they share DEC + §INV id allocators
 (under the same `flock`) and they don't read each other's output —
@@ -413,7 +413,7 @@ What you'll see:
    For each definite cluster, you'll be asked which one to keep.
 
 3. **Conflicts** (only if Phase 10 found contradictions). Each
-   conflict surfaces both verbatim sides plus the Haiku judge's
+   conflict surfaces both verbatim sides plus the model judge's
    reasoning — you pick which to keep, merge, or archive both.
 
 4. **Per-item triage** (up to 4 per `AskUserQuestion` panel) for any
@@ -536,7 +536,7 @@ hasn't happened; the writes are small and atomic.
 When a phase tool returns `{ status: "error", error: {...} }`, the
 skill surfaces the error and asks:
 
-> Phase 9 errored: `Haiku call failed: rate_limit`
+> Phase 9 errored: `codex model call failed: rate_limit`
 > `[a]` retry phase
 > `[b]` abort
 
@@ -546,12 +546,12 @@ the next session's auto-prompt.
 
 Common errors:
 
-| Error                          | Likely cause                              | Fix                                  |
-| ------------------------------ | ----------------------------------------- | ------------------------------------ |
-| `Haiku call failed: rate_limit` | Hit the per-minute quota                  | Wait 60s, retry                      |
-| `git status not clean`         | Phase 12 detected uncommitted changes     | Commit or stash, retry               |
-| `EACCES on .cairn/ground/`     | Permission issue                          | `chmod -R u+w .cairn/`, retry        |
-| `Walker timeout`               | Repo larger than expected                 | Increase the per-phase timeout (rare) |
+| Error                               | Likely cause                              | Fix                                  |
+| ----------------------------------- | ----------------------------------------- | ------------------------------------ |
+| `<provider> model call ... rate_limit` | Hit the provider's per-minute quota    | Wait 60s, retry                      |
+| `git status not clean`              | Phase 12 detected uncommitted changes     | Commit or stash, retry               |
+| `EACCES on .cairn/ground/`          | Permission issue                          | `chmod -R u+w .cairn/`, retry        |
+| `Walker timeout`                    | Repo larger than expected                 | Increase the per-phase timeout (rare) |
 
 If retry doesn't resolve and abort doesn't help either, file an
 issue with the trace excerpt:

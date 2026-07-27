@@ -2,7 +2,7 @@
  * `cairn invariants prune` — retire junk invariants the Layer A sot-align
  * hook minted before the creation gate landed.
  *
- * Pre-gate, the runtime hook ran a Haiku "creation judge" on every prose
+ * Pre-gate, the runtime hook ran a fast model "creation judge" on every prose
  * block and over-labeled descriptions as `constraint`, so section banners,
  * box-drawing separators, class/endpoint descriptions and test-fixture
  * notes all became "active invariants". This sweep archives them.

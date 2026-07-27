@@ -255,7 +255,7 @@ export {
   buildTopicIndex,
   walkProseBlocks,
   resolveTopics,
-  makeHaikuJudge,
+  makeModelJudge,
 } from "./topic-index/index.js";
 export type {
   BuildTopicIndexArgs,

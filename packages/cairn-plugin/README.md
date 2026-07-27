@@ -10,6 +10,14 @@ skills, agents, and commands. Claude Code, Cursor, and Codex each have thin
 host-specific manifest and hook/MCP wiring in the same tree—there is no
 sync-from-sibling package and no duplicated runtime.
 
+Each host adapter also pins Cairn's shared model runner to its own
+authenticated CLI: Claude uses `claude`, Cursor uses `cursor-agent`, and
+Codex uses `codex` with `gpt-5.3-codex-spark` for bounded backend tasks.
+Queueing, caching, timeouts, tracing, and structured-output validation are
+shared rather than reimplemented per host. Codex is sandboxed read-only;
+Cursor runs without `--force` in a temporary workspace with deny-all project
+permissions for shell, read, and write tools.
+
 ## Layout
 
 | Path | What |

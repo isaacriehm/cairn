@@ -4,7 +4,7 @@
  *
  * Plan §5.3 algorithm:
  *   1. Walk source files for prose-bearing comments (existing logic).
- *   2. Classify via Haiku, kind only — `rationale` / `constraint` /
+ *   2. Classify via fast model, kind only — `rationale` / `constraint` /
  *      `citation` / `license` / `other`. No paraphrased title, no rewritten
  *      invariant body, no canonical-topic suggestion.
  *   3. Build a content-fingerprint slug for every rationale + constraint
@@ -87,7 +87,7 @@ const CAPTURE_SOURCE = "init-source-comments";
 /**
  * Phase 9 constraint-shape pre-filter.
  *
- * Essay-class block comments only fall through to the Haiku batch
+ * Essay-class block comments only fall through to the fast model batch
  * classifier when their prose carries a constraint signal (modal/rule
  * keyword or an explicit marker). Code uses rigid conventions, so this
  * gate is safe in a way it would not be on arbitrary natural-language

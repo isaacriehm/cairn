@@ -248,7 +248,7 @@ export async function runSessionStartHook(opts: HookRunOptions = {}): Promise<vo
       `events_gc_failed: ${message}`,
     );
   }
-  // Footprint prune — rotate telemetry logs, sweep the stale Haiku cache, reap
+  // Footprint prune — rotate telemetry logs, sweep the stale fast model cache, reap
   // old baseline snapshots. Cheap (stat-based) + safe (derived/advisory state
   // only), so it runs every session open rather than waiting on the 24h GC
   // autotrigger, which is what let these reach tens of MB in the field.
@@ -389,7 +389,7 @@ export async function runSessionStartHook(opts: HookRunOptions = {}): Promise<vo
 
 /**
  * Launch `cairn align drain` as a detached subprocess. It will poll
- * for attention items and resolve them via Haiku / deterministic re-check.
+ * for attention items and resolve them via fast model / deterministic re-check.
  */
 function spawnDetachedDrain(repoRoot: string, sessionId: string): void {
   const node = process.argv[0] ?? "node";

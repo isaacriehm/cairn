@@ -18,7 +18,7 @@
  * existing phase 9 walker and folded into the topic-index lazily by
  * phase 9 itself; phase 7 builds the doc / rules slice up front.
  *
- * The Haiku classifier in phase 8 filters non-binding doc paragraphs
+ * The fast model classifier in phase 8 filters non-binding doc paragraphs
  * (release notes, tutorials, raw API references) by returning
  * kind=other, so being permissive here doesn't pollute the ledger.
  */
@@ -32,7 +32,7 @@ export type ProseBlockKind = "doc" | "claudemd" | "agentsmd" | "rule" | "source-
 
 /**
  * Operator-supplied marker that promotes a block straight to phase 8
- * Stage 4 emit (no Haiku judgement). Two surfaces:
+ * Stage 4 emit (no fast model judgement). Two surfaces:
  *
  *   1. File-level frontmatter:
  *        ---
@@ -80,7 +80,7 @@ export interface ProseBlock {
    * `cairn.kind` is set or a `<!-- cairn:decision -->` /
    * `<!-- cairn:rule -->` comment sits within
    * {@link MARKER_LOOKAHEAD_LINES} of the heading. Phase 8 Stage 3
-   * emits these directly to `_inbox/` without Haiku.
+   * emits these directly to `_inbox/` without fast model.
    */
   marker_kind?: MarkerKind;
 }

@@ -76,7 +76,13 @@ function runSmoke(): void {
     assert(mcp.mcpServers?.cairn !== undefined, "Step 2: mcpServers.cairn required");
     const server = mcp.mcpServers.cairn;
     assert(server.command === "node", `Step 2: cairn.command must be 'node', got ${server.command}`);
-    const expected = ["${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs", "mcp", "serve"];
+    const expected = [
+      "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs",
+      "mcp",
+      "serve",
+      "--model-provider",
+      "claude",
+    ];
     assert(
       Array.isArray(server.args) && server.args.length === expected.length && server.args.every((a, i) => a === expected[i]),
       `Step 2: cairn.args must be ${JSON.stringify(expected)}, got ${JSON.stringify(server.args)}`,
@@ -98,15 +104,15 @@ function runSmoke(): void {
     // surrounding `"…"` the shell splits on whitespace and `node`
     // fails to resolve the module path.
     const ALLOWED = new Set([
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook session-start --host claude-code',
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook session-end --host claude-code',
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook stop --host claude-code',
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook user-prompt-submit --host claude-code',
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook read-enrich --host claude-code',
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook write-guard --host claude-code',
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook sot-align --host claude-code',
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook post-write --host claude-code',
-      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook ask-user-blocked --host claude-code',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook session-start --host claude-code --model-provider claude',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook session-end --host claude-code --model-provider claude',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook stop --host claude-code --model-provider claude',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook user-prompt-submit --host claude-code --model-provider claude',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook read-enrich --host claude-code --model-provider claude',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook write-guard --host claude-code --model-provider claude',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook sot-align --host claude-code --model-provider claude',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook post-write --host claude-code --model-provider claude',
+      'node "${CLAUDE_PLUGIN_ROOT}/dist/cli.mjs" hook ask-user-blocked --host claude-code --model-provider claude',
     ]);
     for (const event of ["SessionStart", "SessionEnd", "Stop", "PostToolUse"] as const) {
       for (const entry of hooks[event]) {

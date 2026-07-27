@@ -78,7 +78,7 @@ export function defaultStatusJson(): StatusJson {
     last_run_at: null,
     current_event: null,
     event_counters: emptyEventCounters(),
-    haiku_unavailable: false,
+    model_unavailable: false,
     recent_events: [],
   };
 }

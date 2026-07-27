@@ -637,7 +637,8 @@ Implementation lives in `packages/cairn-core/src/init/`. Key outputs:
 - Init mapper (Tier 2) reads the repo summary and proposes `domain_summary` + `key_modules` + `off_limits_globs` + the file→decision `scope_index`; output applied to the `<slug>:` extension block in `workflow.md` and to `.cairn/config.yaml`
 - Mechanical pass populates `.cairn/ground/manifest.yaml` and category extracts where generators apply
 - Writes `.mcp.json` registering the Cairn MCP server (`cairn mcp serve`) and `.claude/settings.json` registering the SessionStart hook (`cairn hook session-start`)
-- Phase 9/10 source-comment + rules-merge ingestion (Haiku-classified, deterministic walker + replacement)
+- Phase 9/10 source-comment + rules-merge ingestion (fast-tier classified,
+  deterministic walker + replacement)
 - Phase 13 multi-dev install patches `package.json` `prepare` script for Node projects + emits hints for non-Node hosts
 
 Result: a fresh `Cairn adopted` state with canonical surfaces marked, the MCP server registered, all hooks live, and the per-clone bootstrap recorded. **No PreToolUse hook is registered** — two-zone enforcement is soft (see §2.3).

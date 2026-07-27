@@ -9,7 +9,7 @@
  *
  * The payload is structured so the slash-command body can render a
  * tight resume context block: title, goal, what's been done, what's
- * next, in-scope decisions/invariants. No Haiku call — pure read.
+ * next, in-scope decisions/invariants. No fast model call — pure read.
  */
 
 import { existsSync, readFileSync } from "node:fs";

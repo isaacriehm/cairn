@@ -4,11 +4,11 @@
  * The deterministic config-resync (`runResync`) re-points moved entities and
  * patches `config.yaml`, but it can't notice that the project's *prose* has
  * grown a new concept or that two now-separate docs describe the same topic.
- * That re-clustering is what init's Phase 7 does with a Haiku judge; this verb
+ * That re-clustering is what init's Phase 7 does with a fast model judge; this verb
  * re-runs exactly that pass over the grown tree.
  *
  * Why it's a distinct, opt-in verb (not folded into `runResync` or a sensor):
- *   - It spends Haiku. The judge fires for every fresh semantic-similarity
+ *   - It spends fast model. The judge fires for every fresh semantic-similarity
  *     collision, so it's quota-gated — never auto-run, never on a hook.
  *   - The on-disk judge cache makes it *incremental for free* (Q3): unchanged
  *     prose pairs hit the cache (no quota burn); only genuinely-new prose
@@ -33,7 +33,7 @@ export interface ResyncReclusterOptions {
   repoRoot: string;
   /** Preview only — resolve + report but DON'T overwrite the maps. Default true (safe). */
   dryRun?: boolean;
-  /** Judge seam — smokes inject a deterministic mock to avoid Haiku. */
+  /** Judge seam — smokes inject a deterministic mock to avoid fast model. */
   judge?: SemanticJudge;
   /** Walker seam — smokes inject canned blocks instead of walking the tree. */
   blocks?: ProseBlock[];

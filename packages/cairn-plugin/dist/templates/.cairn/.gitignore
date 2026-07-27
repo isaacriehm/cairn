@@ -24,9 +24,9 @@ events/
 # git hooks to resolve the bundled cli.mjs or fall back to a global cairn.
 .cli-path
 
-# Haiku response cache — keyed on tier|system|prompt|jsonSchema; 30-day
-# TTL. Lets re-runs of `cairn init` skip identical Haiku calls without
-# burning the operator's coding-plan quota. Regenerable.
+# Provider-isolated model response cache — keyed on
+# provider|tier|system|prompt|jsonSchema; 30-day TTL. Lets re-runs of
+# `cairn init` skip identical calls without burning quota. Regenerable.
 cache/
 
 # Mid-init crash-recovery state. Phase tools persist here between

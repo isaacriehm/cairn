@@ -150,7 +150,7 @@ function isLicenseHeader(raw: string): boolean {
  * Returns true when the JSDoc block carries scaffolding tags but
  * < MIN_WORDS_AFTER_TAG_STRIP words of real prose. Many JSDoc blocks
  * are pure `@param`/`@returns` lists with a one-line summary —
- * curator should drop those rather than dispatch a Sonnet call.
+ * curator should drop those rather than dispatch a capable model call.
  */
 function isJsdocTagOnly(originalProse: string, cleaned: string): boolean {
   const hadTag = JSDOC_TAG_LINE_RE.test(originalProse);

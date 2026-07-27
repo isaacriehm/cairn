@@ -359,7 +359,7 @@ invoking the tool — so the user (who is NOT a Cairn developer and does
 not know terms like "curator", "shard", "DEC/INV", or which AI model
 runs) always knows, in their own words, what's happening and roughly how
 long it'll take. NEVER show the raw phase id, the internal phase name, or
-a model name (Sonnet / Haiku) in the banner.
+a provider or model name in the banner.
 
 Format:
 
@@ -407,7 +407,7 @@ busier — plain and honest beats impressive-sounding jargon.
 **ETA banner — phase `5-preflight`**: when this phase completes, render
 its `bannerLines` verbatim as a single block before invoking phase
 `6-brand`. The pre-flight scan walks the source/doc/rule trees,
-counts the units each long Haiku phase will process, and computes
+counts the units each long model-assisted phase will process, and computes
 `totalSeconds`/`totalSecondsHigh` against the per-machine calibration
 cache at `~/.cairn/cache/eta-calibration.json`. Read the banner from
 `.outputs["5-preflight"].bannerLines` and surface it so the operator

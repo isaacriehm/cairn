@@ -134,6 +134,23 @@ restart after adding the repo source, open **Plugins**, select **Cairn**,
 and install it. Review and trust the bundled hooks when Codex prompts;
 plugin hooks do not run before that explicit trust step.
 
+### Native model backend
+
+Cairn's bounded classification and mapping calls use the CLI of the host
+that loaded the plugin—`claude`, `cursor-agent`, or `codex`—through one
+shared runner. The host manifests pass their provider explicitly, while a
+standalone CLI invocation auto-detects an authenticated supported CLI.
+Use `--model-provider auto|claude|cursor|codex` to override that selection.
+
+The runner exposes semantic `fast` and `capable` tiers instead of leaking
+provider model names through the codebase. Claude maps those tiers to
+Haiku/Sonnet, Codex uses `gpt-5.3-codex-spark` for Cairn's bounded tasks,
+and Cursor uses its `auto` routing. Calls are non-interactive,
+ambient-context isolated, schema-validated, cached per provider, and require
+no separate SDK or API key. Codex runs in its read-only sandbox; Cursor runs
+without `--force` from a temporary workspace with project-level shell/read/
+write denies.
+
 ---
 
 Open Claude Code, Cursor, or Codex in any project. The plugin auto-detects on
@@ -173,7 +190,7 @@ Read this once and the rest of the doc reads cleanly.
 | **Drift**           | When code or docs disagree with the ground state in `.cairn/`.                                         |
 | **Bypass**          | A commit that skipped Cairn's hooks (`--no-verify`, broken hook path). Detected and surfaced.          |
 | **Attention queue** | The pile of DEC drafts, baseline findings, drift events, and conflicts waiting for operator review.    |
-| **Tightener**       | The Sonnet-driven step that turns a vague prompt into a structured spec before dispatching subagents.  |
+| **Tightener**       | The host agent step that turns a vague prompt into a structured spec before dispatching subagents.     |
 
 ## How It Works
 
@@ -189,12 +206,12 @@ inline so nothing is opaque.
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | 1. Detect            | Probe environment + framework signals.                                                                                  |
 | 2. Walk              | File manifest, extension stats, language detection.                                                                     |
-| 3. Map               | Sonnet domain mapper proposes module boundaries + `scope-index.yaml` globs.                                             |
+| 3. Map               | Capable-tier domain mapper proposes module boundaries + `scope-index.yaml` globs.                                      |
 | 4. Seed              | Write `.cairn/` skeleton, `config.yaml`, grandfather pre-adoption commits into `.attested-commits`.                     |
 | 5. Pilot             | Operator picks a seed module from the mapper's top-3 candidates (one A/B/C question).                                   |
 | 6. Brand             | Auto-fill brand / voice / product DEC drafts from the mapper's domain summary (one A/B/C).                              |
 | 7. Topic index      | Content-fingerprint pre-pass — dedupes facts that appear across docs, source, and rules before drafting DECs.           |
-| 8, 9, 10 (parallel) | **Docs ingest** + **Source comments ingest** + **Rules merge** (`CLAUDE.md` / `AGENTS.md`) — all Haiku-batched.         |
+| 8, 9, 10 (parallel) | **Docs ingest** + **Source comments ingest** + **Rules merge** (`CLAUDE.md` / `AGENTS.md`) — all fast-tier batched.     |
 | 11. Baseline         | First sensor sweep against a synthetic full-tree diff. Findings written to `.cairn/baseline/`.                           |
 | 12. Strip            | Per-module strip-replace consent — operator chooses keep / strip / skip for each flagged module.                         |
 | 13. Multi-dev        | Detects package manager, installs git hooks, emits `JOIN.md` for new contributors.                                       |
@@ -265,7 +282,7 @@ already loaded into the spec.
 
 - **Single visual pass** — operator watches the pipeline stream
   inline. No opaque background job.
-- **Haiku-batched classification** — docs, source comments, and
+- **Fast-tier classification** — docs, source comments, and
   rules are ingested in parallel for speed.
 - **Conflict detection** — when two sources disagree, surfaces a
   side-by-side resolution prompt instead of silently picking one.
@@ -451,7 +468,7 @@ pnpm smokes        # default smoke gate; all green on a clean tree
 
 Other root scripts: `pnpm typecheck`, `pnpm clean`, `pnpm smokes:all`
 (every declared smoke), `pnpm smoke:llm-prompt-eval` (opt-in
-real-Haiku regression — burns quota). See
+real-model regression — burns quota). See
 [`AGENTS.md`](AGENTS.md#common-commands) for the full table.
 
 ## Troubleshooting

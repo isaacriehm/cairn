@@ -405,7 +405,7 @@ async function adoption(): Promise<void> {
     stack_signatures: [{ kind: "typescript" as const, marker: "tsconfig.json" }],
     start_command: null,
     hook_capability: "cli-only" as const,
-    environment: { claude_auth: false },
+    environment: { model_provider: null },
   };
   // Component-layout detection is LLM-driven (convention-agnostic), so the
   // discovery quality is exercised by the opt-in real-LLM smoke

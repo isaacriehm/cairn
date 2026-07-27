@@ -495,7 +495,7 @@ Claude calls `cairn_in_scope` and reports back. Useful when:
 
 ### Trace logs
 
-Every hook + MCP tool + claude subprocess writes to
+Every hook, MCP tool, and model-runner subprocess writes to
 `~/.cairn/trace/trace-YYYY-MM-DD.jsonl`.
 
 ```bash

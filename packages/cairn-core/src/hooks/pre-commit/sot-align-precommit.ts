@@ -7,7 +7,7 @@
  * prose block to `.cairn/staleness/pre-commit-deferred.jsonl` plus a
  * lightweight `pre-commit-drift` event to `.cairn/staleness/log.jsonl`.
  * Layer C (SessionStart drain) consumes both files: it re-checks each
- * entry against the (possibly changed) source location and runs Haiku
+ * entry against the (possibly changed) source location and runs fast model
  * for ambiguous candidates.
  *
  * Why log-only at pre-commit: the operator may be committing via vim,
@@ -15,7 +15,7 @@
  * no UI to disambiguate edits in real time. Auto-modifying staged
  * content here would silently invert the operator's expectation of
  * "I committed exactly what I wrote." Layer C reconciles in the next
- * Claude Code session where Haiku is available and the statusline
+ * Claude Code session where fast model is available and the statusline
  * surfaces results.
  *
  * Staged content is captured by mirroring `git show :<file>` into a
@@ -88,7 +88,7 @@ export interface PreCommitAlignResult {
   blocksConsidered: number;
   /** Tier 1 deterministic matches (high-confidence dedup candidates). */
   tier1Matches: number;
-  /** Tier 2/3 ambiguous matches (Haiku judge needed at Layer C). */
+  /** Tier 2/3 ambiguous matches (fast model judge needed at Layer C). */
   tier23Matches: number;
   /** Blocks skipped (length floor / token floor / markdown / no candidates). */
   skipped: number;
@@ -190,7 +190,7 @@ export function alignStagedTree(args: PreCommitAlignArgs): PreCommitAlignResult 
         }
 
         // No Tier 1 hit but candidates exist past the Jaccard floor —
-        // log them so Layer C can run the Haiku dedup judge.
+        // log them so Layer C can run the fast model dedup judge.
         appendDeferred(repoRoot, {
           ts: new Date().toISOString(),
           file: block.file,

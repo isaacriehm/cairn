@@ -4,29 +4,29 @@
  *
  * Each step seeds a fixture with one or more deferred-log entries
  * (Layer A or Layer B), drives `runDrain` directly with a mock judge
- * (avoids the live Haiku call), and asserts the resulting on-disk
+ * (avoids the live fast model call), and asserts the resulting on-disk
  * state.
  *
  *   Step 1  — Tier 1 deterministic (Layer B tier1) → cite applied,
- *             no Haiku call, source strip-replaced.
- *   Step 2  — Haiku same → cite applied, source strip-replaced.
- *   Step 3  — Haiku different → entry dropped, source unchanged.
- *   Step 4  — Haiku ambiguous → alignment-pending file written
+ *             no fast model call, source strip-replaced.
+ *   Step 2  — fast model same → cite applied, source strip-replaced.
+ *   Step 3  — fast model different → entry dropped, source unchanged.
+ *   Step 4  — fast model ambiguous → alignment-pending file written
  *             with detector=`layer-c-drain-ambiguous`.
  *   Step 5  — Cap exceeded → some entries deferred, log NOT
  *             truncated for those entries (smoke uses cap=0).
  *   Step 6  — Verdict cache hit → second drain reuses cached
- *             verdict, no extra Haiku call.
+ *             verdict, no extra fast model call.
  *   Step 7  — Block gone (operator deleted/edited) → drop entry,
  *             source untouched.
  *   Step 8  — Markdown deferred file is skipped (defensive — Layer
  *             B already filters, but Layer A's general defer doesn't).
- *   Step 9  — Haiku unavailable → only Layer B tier1 entries are
+ *   Step 9  — fast model unavailable → only Layer B tier1 entries are
  *             applied; the rest stay in the deferred log.
  *   Step 10 — Dry run → classification done but no source / log
  *             writes.
  *   Step 11 — Tier1 candidate body changed since defer → demoted to
- *             Haiku judge path; drain doesn't blindly cite stale.
+ *             fast model judge path; drain doesn't blindly cite stale.
  */
 
 import {
@@ -247,18 +247,18 @@ async function main(): Promise<void> {
       ],
     });
 
-    const result = await runDrain({ repoRoot, haikuAvailable: true, mockJudge: async () => "different" });
+    const result = await runDrain({ repoRoot, modelAvailable: true, mockJudge: async () => "different" });
     assert(result.citedDeterministic === 1, `Step 1: citedDeterministic=1, got ${result.citedDeterministic}`);
-    assert(result.citedHaiku === 0, "Step 1: no Haiku-judged cites");
-    assert(result.haikuCalls === 0, `Step 1: no Haiku calls, got ${result.haikuCalls}`);
+    assert(result.citedModel === 0, "Step 1: no fast model-judged cites");
+    assert(result.modelCalls === 0, `Step 1: no fast model calls, got ${result.modelCalls}`);
     const after = readFileSync(join(repoRoot, "src/db.ts"), "utf8");
     assert(after.includes("// §DEC-aaaaaaa"), "Step 1: source carries cite token");
     assert(!after.includes("legacy ETL"), "Step 1: original prose stripped");
     assert(!existsSync(preCommitDeferredLogPath(repoRoot)), "Step 1: deferred log truncated");
-    console.log("  ✓ Step 1 — Layer B tier1 deterministic cite, no Haiku");
+    console.log("  ✓ Step 1 — Layer B tier1 deterministic cite, no fast model");
   }
 
-  // ── Step 2 — Layer A entry → Haiku `same` → cite ─────────────────
+  // ── Step 2 — Layer A entry → fast model `same` → cite ─────────────────
   {
     const repoRoot = mkRepoRoot();
     const seedBody = [
@@ -294,21 +294,21 @@ async function main(): Promise<void> {
     let judgeCalls = 0;
     const result = await runDrain({
       repoRoot,
-      haikuAvailable: true,
+      modelAvailable: true,
       mockJudge: async ({ candidate }) => {
         judgeCalls += 1;
         return candidate.id === "DEC-bbbbbbb" ? "same" : "different";
       },
     });
-    assert(result.citedHaiku === 1, `Step 2: citedHaiku=1, got ${result.citedHaiku}`);
-    assert(result.haikuCalls === 1, `Step 2: haikuCalls=1, got ${result.haikuCalls}`);
+    assert(result.citedModel === 1, `Step 2: citedModel=1, got ${result.citedModel}`);
+    assert(result.modelCalls === 1, `Step 2: modelCalls=1, got ${result.modelCalls}`);
     assert(judgeCalls === 1, "Step 2: mock judge called once");
     const after = readFileSync(join(repoRoot, "src/auth.ts"), "utf8");
     assert(after.includes("// §DEC-bbbbbbb"), "Step 2: source cites seeded DEC");
-    console.log("  ✓ Step 2 — Layer A entry + Haiku `same` → cite");
+    console.log("  ✓ Step 2 — Layer A entry + fast model `same` → cite");
   }
 
-  // ── Step 3 — Haiku `different` → drop ────────────────────────────
+  // ── Step 3 — fast model `different` → drop ────────────────────────────
   {
     const repoRoot = mkRepoRoot();
     const seedBody = [
@@ -345,17 +345,17 @@ async function main(): Promise<void> {
     const before = readFileSync(join(repoRoot, "src/jobs.ts"), "utf8");
     const result = await runDrain({
       repoRoot,
-      haikuAvailable: true,
+      modelAvailable: true,
       mockJudge: async () => "different",
     });
     const after = readFileSync(join(repoRoot, "src/jobs.ts"), "utf8");
     assert(result.droppedDifferent === 1, `Step 3: droppedDifferent=1, got ${result.droppedDifferent}`);
-    assert(result.citedHaiku === 0, "Step 3: no cites");
+    assert(result.citedModel === 0, "Step 3: no cites");
     assert(after === before, "Step 3: source unchanged on `different` verdict");
-    console.log("  ✓ Step 3 — Haiku `different` → entry dropped, source untouched");
+    console.log("  ✓ Step 3 — fast model `different` → entry dropped, source untouched");
   }
 
-  // ── Step 4 — Haiku `ambiguous` → alignment-pending file ──────────
+  // ── Step 4 — fast model `ambiguous` → alignment-pending file ──────────
   {
     const repoRoot = mkRepoRoot();
     const seedBody = [
@@ -391,7 +391,7 @@ async function main(): Promise<void> {
 
     const result = await runDrain({
       repoRoot,
-      haikuAvailable: true,
+      modelAvailable: true,
       mockJudge: async () => "ambiguous",
     });
     assert(result.pending === 1, `Step 4: pending=1, got ${result.pending}`);
@@ -401,7 +401,7 @@ async function main(): Promise<void> {
     const body = readFileSync(join(pendingDir, files[0]!), "utf8");
     assert(body.includes("layer-c-drain-ambiguous"), "Step 4: detector tag stamped");
     assert(body.includes("DEC-ddddddd"), "Step 4: existing candidate referenced");
-    console.log("  ✓ Step 4 — Haiku `ambiguous` → alignment-pending file written");
+    console.log("  ✓ Step 4 — fast model `ambiguous` → alignment-pending file written");
   }
 
   // ── Step 5 — Cap exceeded → some entries deferred ───────────────
@@ -441,19 +441,19 @@ async function main(): Promise<void> {
 
     const result = await runDrain({
       repoRoot,
-      haikuAvailable: true,
-      maxHaikuCalls: 0,
+      modelAvailable: true,
+      maxModelCalls: 0,
       mockJudge: async () => "different",
     });
     assert(result.deferred === 2, `Step 5: deferred=2 (cap=0), got ${result.deferred}`);
-    assert(result.haikuCalls === 0, "Step 5: cap blocked all Haiku calls");
+    assert(result.modelCalls === 0, "Step 5: cap blocked all fast model calls");
     // Plan §4.3 says "after drain, truncate log" — drain currently
-    // applies that uniformly when Haiku is available, so cap-blocked
+    // applies that uniformly when fast model is available, so cap-blocked
     // entries are dropped from the persisted log. Recovery path: the
     // next Layer A Write or Layer B commit on the same file re-defers
     // the block. Operators can also raise the ceiling per-invocation
-    // via `cairn align drain --max-haiku-calls`.
-    console.log(`  ✓ Step 5 — Cap=0 → 2 deferred (haikuCalls=${result.haikuCalls})`);
+    // via `cairn align drain --max-model-calls`.
+    console.log(`  ✓ Step 5 — Cap=0 → 2 deferred (modelCalls=${result.modelCalls})`);
   }
 
   // ── Step 6 — Verdict cache hit on second drain ──────────────────
@@ -492,7 +492,7 @@ async function main(): Promise<void> {
     let judgeCalls = 0;
     await runDrain({
       repoRoot,
-      haikuAvailable: true,
+      modelAvailable: true,
       mockJudge: async () => {
         judgeCalls += 1;
         return "ambiguous";
@@ -513,7 +513,7 @@ async function main(): Promise<void> {
     });
     const result2 = await runDrain({
       repoRoot,
-      haikuAvailable: true,
+      modelAvailable: true,
       mockJudge: async () => {
         judgeCalls += 1;
         return "same";
@@ -559,12 +559,12 @@ async function main(): Promise<void> {
 
     const result = await runDrain({
       repoRoot,
-      haikuAvailable: true,
+      modelAvailable: true,
       mockJudge: async () => "same",
     });
     assert(result.droppedMissing === 1, `Step 7: droppedMissing=1, got ${result.droppedMissing}`);
-    assert(result.haikuCalls === 0, "Step 7: no Haiku call (block missing short-circuits)");
-    console.log("  ✓ Step 7 — Missing block dropped without Haiku");
+    assert(result.modelCalls === 0, "Step 7: no fast model call (block missing short-circuits)");
+    console.log("  ✓ Step 7 — Missing block dropped without fast model");
   }
 
   // ── Step 8 — Markdown deferred file is skipped ──────────────────
@@ -588,15 +588,15 @@ async function main(): Promise<void> {
 
     const result = await runDrain({
       repoRoot,
-      haikuAvailable: true,
+      modelAvailable: true,
       mockJudge: async () => "same",
     });
     assert(result.droppedMissing === 1, "Step 8: markdown defer dropped (treated as missing)");
-    assert(result.haikuCalls === 0, "Step 8: no Haiku for markdown");
+    assert(result.modelCalls === 0, "Step 8: no fast model for markdown");
     console.log("  ✓ Step 8 — Markdown deferred entry skipped (no auto-cite on docs)");
   }
 
-  // ── Step 9 — Haiku unavailable → fallback path ──────────────────
+  // ── Step 9 — fast model unavailable → fallback path ──────────────────
   {
     const repoRoot = mkRepoRoot();
     const seedBody = [
@@ -631,7 +631,7 @@ async function main(): Promise<void> {
       ],
     });
 
-    // One Layer A entry (needs Haiku, will defer).
+    // One Layer A entry (needs fast model, will defer).
     const layerAProse = [
       "Local-dev relies on SQLite to avoid the Postgres install hop —",
       "single-laptop reproducibility is the bootstrap goal.",
@@ -654,16 +654,16 @@ async function main(): Promise<void> {
     });
     commitAll(repoRoot);
 
-    const result = await runDrain({ repoRoot, haikuAvailable: false });
-    assert(result.haikuFallback === true, "Step 9: fallback flag set");
+    const result = await runDrain({ repoRoot, modelAvailable: false });
+    assert(result.modelFallback === true, "Step 9: fallback flag set");
     assert(result.citedDeterministic === 1, `Step 9: tier1 still applies offline, got ${result.citedDeterministic}`);
-    assert(result.deferred === 1, `Step 9: Haiku-needing entry deferred, got ${result.deferred}`);
-    // Logs NOT truncated on Haiku-offline path so next session retries.
+    assert(result.deferred === 1, `Step 9: fast model-needing entry deferred, got ${result.deferred}`);
+    // Logs NOT truncated on fast model-offline path so next session retries.
     assert(
       existsSync(layerADeferredLogPath(repoRoot)),
-      "Step 9: Layer A log preserved when Haiku offline",
+      "Step 9: Layer A log preserved when fast model offline",
     );
-    console.log("  ✓ Step 9 — Haiku offline: tier1 applies, others stay deferred");
+    console.log("  ✓ Step 9 — fast model offline: tier1 applies, others stay deferred");
   }
 
   // ── Step 10 — Dry run: no source / log writes ───────────────────
@@ -705,7 +705,7 @@ async function main(): Promise<void> {
     const before = readFileSync(join(repoRoot, "src/migrate.ts"), "utf8");
     const result = await runDrain({
       repoRoot,
-      haikuAvailable: true,
+      modelAvailable: true,
       dryRun: true,
       mockJudge: async () => "same",
     });
@@ -719,14 +719,14 @@ async function main(): Promise<void> {
     console.log("  ✓ Step 10 — Dry run: classification only, no side effects");
   }
 
-  // ── Step 11 — Tier1 candidate body changed → demoted to Haiku ──
+  // ── Step 11 — Tier1 candidate body changed → demoted to fast model ──
   {
     const repoRoot = mkRepoRoot();
     // The defer was logged when DEC body was version 0; the operator
     // has since edited the DEC body to version 1 (same topic, slightly
     // different wording — Jaccard still high enough to surface the
     // candidate, but body_hash differs so the deterministic shortcut
-    // must NOT fire blindly. Drain demotes the entry to the Haiku
+    // must NOT fire blindly. Drain demotes the entry to the fast model
     // judge path; mock returns "different" so the result is a drop.
     const v1Body = [
       "Audit log retention is 90 days. The SOC 2 control mapping uses 90 days as",
@@ -770,17 +770,17 @@ async function main(): Promise<void> {
     let judgeCalls = 0;
     const result = await runDrain({
       repoRoot,
-      haikuAvailable: true,
+      modelAvailable: true,
       mockJudge: async () => {
         judgeCalls += 1;
         return "different";
       },
     });
     assert(result.citedDeterministic === 0, "Step 11: stale tier1 cache rejected, no blind cite");
-    assert(judgeCalls >= 1, `Step 11: demoted to Haiku judge, got judgeCalls=${judgeCalls}`);
+    assert(judgeCalls >= 1, `Step 11: demoted to fast model judge, got judgeCalls=${judgeCalls}`);
     const after = readFileSync(join(repoRoot, "src/audit.ts"), "utf8");
     assert(after.includes("90 days"), "Step 11: source unchanged on `different`");
-    console.log("  ✓ Step 11 — Stale tier1 candidate body → Haiku demotion (no blind cite)");
+    console.log("  ✓ Step 11 — Stale tier1 candidate body → fast model demotion (no blind cite)");
   }
 
   cleanup();

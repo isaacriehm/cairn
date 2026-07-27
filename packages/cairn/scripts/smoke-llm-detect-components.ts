@@ -3,9 +3,9 @@
  * smoke-llm-detect-components — opt-in real-LLM regression for the
  * convention-AGNOSTIC component-layout detector.
  *
- * Burns operator quota (real Sonnet via `runClaude`) — NOT part of
+ * Burns operator quota (real capable model via `runModel`) — NOT part of
  * `pnpm smokes`. Run when touching `detect-components.ts`'s prompt/schema
- * or the Sonnet model alias. Mirrors `smoke:llm-prompt-eval`'s contract:
+ * or the capable-tier model mapping. Mirrors `smoke:llm-prompt-eval`'s contract:
  * if a case flips, surface the failure — do not weaken the assertions.
  *
  * The whole point of the detector is that it owns NO convention list, so
@@ -274,7 +274,7 @@ async function nativeSwiftUI(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  console.log("== smoke-llm-detect-components (real Sonnet — burns quota) ==");
+  console.log("== smoke-llm-detect-components (real capable model — burns quota) ==");
   await topLevelWorkspaces();
   await singleApp();
   await nonUi();

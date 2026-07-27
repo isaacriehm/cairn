@@ -11,17 +11,17 @@
  * path.
  *
  * Tier split (§3.8.2): *initial* classification ("what IS this component —
- * category, purpose") is a rich judgment → Sonnet (the adoption annotator). A
+ * category, purpose") is a rich judgment → capable model (the adoption annotator). A
  * *re-confirm* on a changed body ("does the EXISTING category still fit?") is a
- * narrow yes/no → **Haiku**. That keeps the recurring, higher-frequency path the
+ * narrow yes/no → **fast model**. That keeps the recurring, higher-frequency path the
  * cheapest one.
  *
  * Cost controls, mirroring sot-align:
- *   - **Hard per-run cap** on Haiku calls; entries past it stay flagged
+ *   - **Hard per-run cap** on fast model calls; entries past it stay flagged
  *     (deferred), logged via the returned counts — never silently dropped.
- *   - **Verdict cached on the body fingerprint** — re-running over a still-flagged
- *     component whose body hasn't changed is a free cache hit, so repeated sweeps
- *     don't re-burn quota on a stuck-stale entry.
+ *   - **Provider-isolated verdict cache on the body fingerprint** — re-running
+ *     over a still-flagged component whose body hasn't changed is a free cache
+ *     hit, so repeated sweeps don't re-burn quota on a stuck-stale entry.
  *
  * A "fits" verdict clears the flag. A "stale"/"ambiguous" verdict leaves it
  * flagged; the operator resolves it by re-registering (`cairn_component_register`
@@ -40,24 +40,24 @@ import {
   writeFileSafe,
   type ComponentRegistryEntry,
 } from "@isaacriehm/cairn-state";
-import { runClaude } from "../claude/index.js";
+import { runModel, tryResolveModelProvider } from "../model/index.js";
 import { logger } from "../logger.js";
 
 const log = logger("components.reconfirm");
 
 const DEFAULT_CAP = 10;
 const BODY_CAP = 2_000;
-const PER_HAIKU_TIMEOUT_MS = 30_000;
+const PER_MODEL_TIMEOUT_MS = 30_000;
 
 export type ReconfirmVerdict = "fits" | "stale" | "ambiguous";
 
 export interface ReconfirmArgs {
   repoRoot: string;
-  /** Hard cap on fresh Haiku calls per run. Rest stay flagged (deferred). */
+  /** Hard cap on fresh fast model calls per run. Rest stay flagged (deferred). */
   cap?: number;
   /** Reconfirm a single file (operator acting on one offer). Omit = sweep all. */
   onlyFile?: string;
-  /** Mock judge for smokes — default is the real Haiku judge. */
+  /** Mock judge for smokes — default is the real fast model judge. */
   mockJudge?: (args: {
     name: string;
     category: string;
@@ -73,10 +73,10 @@ export interface ReconfirmResult {
   cleared: number;
   /** Verdict "stale"/"ambiguous" (or unreadable source) → left flagged. */
   stillStale: number;
-  /** Past the Haiku cap → untouched, still flagged. */
+  /** Past the fast model cap → untouched, still flagged. */
   deferred: number;
-  /** Fresh Haiku calls made. */
-  haikuCalls: number;
+  /** Fresh fast model calls made. */
+  modelCalls: number;
   /** Verdicts served from the fingerprint cache (free). */
   cacheHits: number;
 }
@@ -92,7 +92,7 @@ export async function runComponentReconfirm(args: ReconfirmArgs): Promise<Reconf
     cleared: 0,
     stillStale: 0,
     deferred: 0,
-    haikuCalls: 0,
+    modelCalls: 0,
     cacheHits: 0,
   };
   if (!isGhost(repoRoot)) return result;
@@ -104,6 +104,8 @@ export async function runComponentReconfirm(args: ReconfirmArgs): Promise<Reconf
   if (flagged.length === 0) return result;
 
   const cap = args.cap ?? DEFAULT_CAP;
+  const cacheNamespace =
+    args.mockJudge === undefined ? tryResolveModelProvider() : "mock";
 
   for (const entry of flagged) {
     const abs = join(repoRoot, entry.file);
@@ -121,16 +123,21 @@ export async function runComponentReconfirm(args: ReconfirmArgs): Promise<Reconf
     }
 
     const fingerprint = bodyContentHash(source);
-    let verdict = readVerdictCache(repoRoot, entry, fingerprint);
+    let verdict = readVerdictCache(
+      repoRoot,
+      cacheNamespace,
+      entry,
+      fingerprint,
+    );
     if (verdict !== null) {
       result.cacheHits += 1;
     } else {
       // Cap fires only on a fresh call — a cache hit at cap is still free.
-      if (result.haikuCalls >= cap) {
+      if (result.modelCalls >= cap) {
         result.deferred += 1;
         continue;
       }
-      result.haikuCalls += 1;
+      result.modelCalls += 1;
       verdict = await judge({
         name: entry.name,
         category: entry.category,
@@ -138,7 +145,13 @@ export async function runComponentReconfirm(args: ReconfirmArgs): Promise<Reconf
         body: source,
         mock: args.mockJudge,
       });
-      writeVerdictCache(repoRoot, entry, fingerprint, verdict);
+      writeVerdictCache(
+        repoRoot,
+        cacheNamespace,
+        entry,
+        fingerprint,
+        verdict,
+      );
     }
 
     if (verdict === "fits") {
@@ -159,7 +172,7 @@ function clearFlag(repoRoot: string, entry: ComponentRegistryEntry): void {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Haiku judge                                                                */
+/* fast model judge                                                                */
 /* -------------------------------------------------------------------------- */
 
 const RECONFIRM_SCHEMA = {
@@ -190,12 +203,20 @@ async function judge(args: {
   mock?: ReconfirmArgs["mockJudge"];
 }): Promise<ReconfirmVerdict> {
   if (args.mock !== undefined) {
-    return args.mock({
-      name: args.name,
-      category: args.category,
-      purpose: args.purpose,
-      body: args.body,
-    });
+    try {
+      return await args.mock({
+        name: args.name,
+        category: args.category,
+        purpose: args.purpose,
+        body: args.body,
+      });
+    } catch (err) {
+      log.warn(
+        { err: err instanceof Error ? err.message : String(err), name: args.name },
+        "reconfirm judge failed; leaving the component flagged",
+      );
+      return "ambiguous";
+    }
   }
   const body =
     args.body.length > BODY_CAP ? `${args.body.slice(0, BODY_CAP)}\n…[truncated]` : args.body;
@@ -210,23 +231,23 @@ async function judge(args: {
     "Does the stored category + purpose still fit?",
   ].join("\n");
   try {
-    const res = await runClaude({
-      tier: "haiku",
+    const res = await runModel({
+      tier: "fast",
       system: RECONFIRM_SYSTEM,
       prompt,
       jsonSchema: RECONFIRM_SCHEMA,
-      timeoutMs: PER_HAIKU_TIMEOUT_MS,
+      timeoutMs: PER_MODEL_TIMEOUT_MS,
       isolateAmbientContext: true,
     });
     const v = (res.parsed as { verdict?: unknown } | undefined)?.verdict;
     if (v === "fits" || v === "stale" || v === "ambiguous") return v;
-    return "fits"; // conservative — a parse miss must not nag the operator
+    return "ambiguous";
   } catch (err) {
     log.warn(
       { err: err instanceof Error ? err.message : String(err), name: args.name },
-      "reconfirm judge failed; defaulting to fits",
+      "reconfirm judge failed; leaving the component flagged",
     );
-    return "fits";
+    return "ambiguous";
   }
 }
 
@@ -236,6 +257,7 @@ async function judge(args: {
 
 function verdictCachePath(
   repoRoot: string,
+  namespace: string,
   entry: ComponentRegistryEntry,
   fingerprint: string,
 ): string {
@@ -243,7 +265,8 @@ function verdictCachePath(
   return cairnDir(
     repoRoot,
     "cache",
-    "haiku",
+    "model",
+    namespace,
     "component-reconfirm",
     `${fingerprint.slice(0, 12)}-${keyHash}.json`,
   );
@@ -251,10 +274,12 @@ function verdictCachePath(
 
 function readVerdictCache(
   repoRoot: string,
+  namespace: string | null,
   entry: ComponentRegistryEntry,
   fingerprint: string,
 ): ReconfirmVerdict | null {
-  const p = verdictCachePath(repoRoot, entry, fingerprint);
+  if (namespace === null) return null;
+  const p = verdictCachePath(repoRoot, namespace, entry, fingerprint);
   if (!existsSync(p)) return null;
   try {
     const v = (JSON.parse(readFileSync(p, "utf8")) as { verdict?: unknown }).verdict;
@@ -267,13 +292,15 @@ function readVerdictCache(
 
 function writeVerdictCache(
   repoRoot: string,
+  namespace: string | null,
   entry: ComponentRegistryEntry,
   fingerprint: string,
   verdict: ReconfirmVerdict,
 ): void {
+  if (namespace === null) return;
   try {
     writeFileSafe(
-      verdictCachePath(repoRoot, entry, fingerprint),
+      verdictCachePath(repoRoot, namespace, entry, fingerprint),
       JSON.stringify({ verdict, ts: new Date().toISOString() }, null, 2),
     );
   } catch {

@@ -3,7 +3,7 @@
  * smoke-rules-merge — Phase 7c discovery + section parser + keep-marker
  * preservation + regenerate templates.
  *
- * No real Haiku calls — `mockClassify` returns deterministic outputs.
+ * No real fast model calls — `mockClassify` returns deterministic outputs.
  */
 
 import {

@@ -1,8 +1,8 @@
 /**
  * Unified trace log for live-session debugging.
  *
- * Every cairn surface (Claude Code hooks, MCP tools, `claude --print`
- * subprocess calls, init phases) appends a single jsonl row per event
+ * Every cairn surface (agent hooks, MCP tools, model CLI subprocess calls,
+ * init phases) appends a single jsonl row per event
  * to `~/.cairn/trace/trace-<YYYY-MM-DD>.jsonl`. The `cairn trace`
  * CLI subcommand reads them back time-sorted across the most recent
  * day(s) so the operator can post-mortem an entire live session in one
@@ -16,18 +16,24 @@ import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { userCairnRoot } from "../paths/index.js";
 
-export type TraceSource = "hook" | "mcp" | "claude" | "init-phase" | "subagent";
+export type TraceSource =
+  | "hook"
+  | "mcp"
+  | "model"
+  | "claude"
+  | "init-phase"
+  | "subagent";
 
 export interface TraceEvent {
   /** ISO 8601 with millisecond precision. */
   ts: string;
   /** Top-level surface emitting the event. */
   source: TraceSource;
-  /** Event-specific kind ("session-start", "tool-call", "claude-request", …). */
+  /** Event-specific kind ("session-start", "tool-call", "request", …). */
   kind: string;
   /** Adopted-repo root, when known. */
   repo_root: string | null;
-  /** Claude Code session id, when known. */
+  /** Agent-host session id, when known. */
   session_id: string | null;
   /** Wall time spent, when applicable. */
   duration_ms?: number;
