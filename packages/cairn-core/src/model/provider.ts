@@ -67,7 +67,7 @@ export function resolveProviderCommand(provider: ModelProvider): string | null {
 
 export function modelRunnerIsAvailable(provider?: ModelProvider): boolean {
   if (provider !== undefined) return resolveProviderCommand(provider) !== null;
-  return MODEL_PROVIDERS.some((candidate) => resolveProviderCommand(candidate) !== null);
+  return tryResolveModelProvider() !== null;
 }
 
 function pluginPreference(): ModelProvider | null {

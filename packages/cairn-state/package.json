@@ -1,6 +1,6 @@
 {
   "name": "@isaacriehm/cairn-state",
-  "version": "0.32.1",
+  "version": "0.33.0",
   "description": "Cairn state — lightweight schemas and read-only I/O.",
   "author": "Isaac Riehm",
   "license": "MIT",
@@ -38,7 +38,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/node": "^25.9.2",
-    "typescript": "^6.0.3"
+    "@types/node": "^26.1.1",
+    "typescript": "^7.0.2"
   }
 }

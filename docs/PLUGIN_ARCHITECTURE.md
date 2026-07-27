@@ -850,7 +850,7 @@ The plugin pivot landed across ten steps. Per-step deliverables:
     pipeline with thin Claude, Cursor, and Codex CLI transports. Plugin
     manifests route to their host explicitly; standalone CLI calls can
     auto-detect or use `--model-provider`.
-10. **Pre-publish prep** — gitleaks scan, content audit, README rewrite, name + LICENSE.
+11. **Pre-publish prep** — gitleaks scan, content audit, README rewrite, name + LICENSE.
 
 The build is feature-complete at v0.1.0. Subsequent work tracks via the
 attention queue + DEC drafts.

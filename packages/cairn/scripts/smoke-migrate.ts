@@ -9,6 +9,7 @@
  *   - a frozen pin with no pending work still advances to current
  *   - a held migrate lock makes the run bail (ran: false), not race
  *   - an unadopted repo is a clean no-op (never creates .cairn/)
+ *   - the 0.33.0 model-backend hard cut rewrites status + drops legacy cache
  *
  * No LLM burn.
  */
@@ -304,6 +305,120 @@ async function runSmoke(): Promise<void> {
     assert(!drop.detect(repoRoot), "Step 9: detect is a no-op after drop");
     assert(!drop.apply(repoRoot).changed, "Step 9: re-apply is idempotent");
     console.log("  ✓ Step 9 — 0004 drops project_globs + high_stakes_globs, keeps off_limits, idempotent");
+  }
+
+  // ── Step 10 — 0010 hard-cuts legacy model status + cache ─────────
+  {
+    const hardCut = MIGRATIONS.find(
+      (m) => m.id === "0010-model-backend-hard-cut",
+    );
+    assert(hardCut !== undefined, "Step 10: 0010 registered");
+    assert(
+      hardCut.introducedIn === "0.33.0",
+      "Step 10: 0010 belongs to the 0.33.0 release boundary",
+    );
+    assert(hardCut.class === "safe", "Step 10: derived-state cutover is safe");
+
+    const repoRoot = mkRepo(
+      "version: 1\ncairn_version: 0.32.1\nslug: model-cutover\n",
+    );
+    const statusDir = join(repoRoot, ".cairn", "sessions", "legacy-session");
+    mkdirSync(statusDir, { recursive: true });
+    const statusPath = join(statusDir, "status.json");
+    const legacyStatus = {
+      updated_at: "2026-07-25T00:00:00.000Z",
+      haiku_unavailable: true,
+      current_event: {
+        ts: 1,
+        kind: "haiku-offline",
+        display_until: 2,
+      },
+      recent_events: [
+        { ts: 1, kind: "haiku-offline", display_until: 2 },
+        { ts: 3, kind: "drain-done", display_until: 4 },
+      ],
+    };
+    writeFileSync(
+      statusPath,
+      `${JSON.stringify(legacyStatus, null, 2)}\n`,
+      "utf8",
+    );
+    const legacyCache = join(
+      repoRoot,
+      ".cairn",
+      "cache",
+      "haiku",
+      "fast",
+    );
+    mkdirSync(legacyCache, { recursive: true });
+    writeFileSync(
+      join(legacyCache, "entry.json"),
+      '{"derived":true}\n',
+      "utf8",
+    );
+
+    const before = readFileSync(statusPath, "utf8");
+    const preview = await runMigrations({ repoRoot, dryRun: true });
+    assert(
+      preview.outcomes.some(
+        (o) =>
+          o.id === "0010-model-backend-hard-cut" &&
+          o.status === "would-apply",
+      ),
+      `Step 10: dry-run should report 0010, got ${JSON.stringify(preview.outcomes)}`,
+    );
+    assert(
+      readFileSync(statusPath, "utf8") === before &&
+        existsSync(join(repoRoot, ".cairn", "cache", "haiku")),
+      "Step 10: dry-run must not mutate legacy state",
+    );
+
+    const applied = await runMigrations({ repoRoot });
+    assert(
+      applied.outcomes.some(
+        (o) =>
+          o.id === "0010-model-backend-hard-cut" && o.status === "applied",
+      ),
+      `Step 10: 0010 should apply, got ${JSON.stringify(applied.outcomes)}`,
+    );
+    const status = JSON.parse(
+      readFileSync(statusPath, "utf8"),
+    ) as Record<string, unknown>;
+    assert(
+      !("haiku_unavailable" in status),
+      "Step 10: legacy availability field removed",
+    );
+    assert(
+      status["model_unavailable"] === true,
+      "Step 10: legacy availability value preserved under new field",
+    );
+    assert(
+      (status["current_event"] as { kind?: unknown }).kind === "model-offline",
+      "Step 10: current event kind migrated",
+    );
+    const recent = status["recent_events"] as Array<{ kind?: unknown }>;
+    assert(
+      recent[0]?.kind === "model-offline" &&
+        recent[1]?.kind === "drain-done",
+      "Step 10: legacy recent event migrated without changing new events",
+    );
+    assert(
+      !existsSync(join(repoRoot, ".cairn", "cache", "haiku")),
+      "Step 10: unreadable legacy cache removed",
+    );
+    assert(
+      readConfigPin(repoRoot) === "0.33.0",
+      "Step 10: project pin advanced to 0.33.0",
+    );
+
+    const again = await runMigrations({ repoRoot });
+    assert(
+      again.outcomes.length === 0 && again.newPin === null,
+      "Step 10: hard-cut migration is idempotent",
+    );
+    console.log(
+      "  ✓ Step 10 — 0010 migrates status, removes cache, and is idempotent",
+    );
   }
 
   console.log("smoke-migrate — pass");

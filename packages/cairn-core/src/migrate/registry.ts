@@ -16,6 +16,7 @@ import { pruneSotAlignInvariants } from "./migrations/0006-prune-sot-align-invar
 import { collapseComponentDirs } from "./migrations/0007-collapse-component-dirs.js";
 import { cleanAdoptionScaffolding } from "./migrations/0008-clean-adoption-scaffolding.js";
 import { repairArchivedCites } from "./migrations/0009-repair-archived-cites.js";
+import { modelBackendHardCut } from "./migrations/0010-model-backend-hard-cut.js";
 
 export const MIGRATIONS: readonly Migration[] = [
   dropDeadConfigFields,
@@ -27,4 +28,5 @@ export const MIGRATIONS: readonly Migration[] = [
   collapseComponentDirs,
   cleanAdoptionScaffolding,
   repairArchivedCites,
+  modelBackendHardCut,
 ];

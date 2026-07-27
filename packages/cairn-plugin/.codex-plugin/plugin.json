@@ -1,6 +1,6 @@
 {
   "name": "cairn",
-  "version": "0.32.1",
+  "version": "0.33.0",
   "description": "Cairn — persistent ground state and context continuity for AI coding agents.",
   "author": {
     "name": "Isaac Riehm",

@@ -8,6 +8,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -97,8 +98,8 @@ if (delay > 0) setTimeout(emit, delay);
 else emit();
 `;
 
-function installFake(name: string): void {
-  const path = join(binDir, name);
+function installFake(name: string, targetDir = binDir): void {
+  const path = join(targetDir, name);
   writeFileSync(path, fakeCli, "utf8");
   chmodSync(path, 0o755);
 }
@@ -142,6 +143,20 @@ try {
   assert(resolveModelProvider() === "codex", "process provider override");
   configureModelProvider(null);
   console.log("  ✓ provider availability and explicit selection");
+
+  const claudeOnlyBin = join(root, "claude-only-bin");
+  spawnSync("mkdir", ["-p", claudeOnlyBin], { stdio: "inherit" });
+  installFake("claude", claudeOnlyBin);
+  symlinkSync(process.execPath, join(claudeOnlyBin, "node"));
+  process.env.PATH = claudeOnlyBin;
+  configureModelProvider("codex");
+  assert(
+    !modelRunnerIsAvailable(),
+    "effective availability is false when configured provider is missing",
+  );
+  configureModelProvider(null);
+  process.env.PATH = `${binDir}${delimiter}${originalPath ?? ""}`;
+  console.log("  ✓ configured provider controls effective availability");
 
   for (const provider of ["claude", "codex", "cursor"] as const) {
     const result = await runModel({
@@ -201,6 +216,29 @@ try {
   assert(cursorLog?.stdin.includes('"label"'), "Cursor prompt carries the output schema");
   assert(cursorLog?.cursorPolicyExisted, "Cursor receives a deny-all tool policy");
   assert(!existsSync(cursorLog?.cwd ?? ""), "Cursor isolated working directory is cleaned");
+
+  await runModel({
+    provider: "cursor",
+    tier: "fast",
+    prompt: "classify without caller isolation",
+    jsonSchema: schema,
+    cwd: repoRoot,
+    timeoutMs: 2_000,
+  });
+  const implicitCursorLog = readLogs().at(-1);
+  assert(implicitCursorLog?.provider === "cursor", "implicit isolation call uses Cursor");
+  assert(
+    implicitCursorLog.cursorPolicyExisted,
+    "Cursor receives deny-all policy when caller omits isolation",
+  );
+  assert(
+    implicitCursorLog.cwd !== repoRoot,
+    "Cursor never runs directly in the caller's repository",
+  );
+  assert(
+    !existsSync(implicitCursorLog.cwd),
+    "implicitly isolated Cursor working directory is cleaned",
+  );
   console.log("  ✓ native provider invocations and decoding");
 
   process.env.FAKE_MODEL_INVALID = "1";

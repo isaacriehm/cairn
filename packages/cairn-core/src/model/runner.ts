@@ -357,8 +357,10 @@ export async function runModel(
         kind: "unavailable",
       });
     }
+    const mustIsolate =
+      options.isolateAmbientContext === true || provider === "cursor";
     const cwd =
-      options.isolateAmbientContext === true
+      mustIsolate
         ? (isolatedDir = mkdtempSync(join(tmpdir(), "cairn-model-cwd-")))
         : options.cwd ?? options.repoRoot ?? process.cwd();
     const invocation = TRANSPORTS[provider]({

@@ -70,26 +70,24 @@ export const buildCursorInvocation: BuildModelInvocation = ({
   cwd,
   options,
 }) => {
-  if (options.isolateAmbientContext === true) {
-    const configDir = join(cwd, ".cursor");
-    mkdirSync(configDir, { recursive: true });
-    writeFileSync(
-      join(configDir, "cli.json"),
-      JSON.stringify({
-        permissions: {
-          allow: [],
-          deny: [
-            "Shell(*)",
-            "Read(**)",
-            "Read(/**)",
-            "Write(**)",
-            "Write(/**)",
-          ],
-        },
-      }),
-      { encoding: "utf8", mode: 0o600 },
-    );
-  }
+  const configDir = join(cwd, ".cursor");
+  mkdirSync(configDir, { recursive: true });
+  writeFileSync(
+    join(configDir, "cli.json"),
+    JSON.stringify({
+      permissions: {
+        allow: [],
+        deny: [
+          "Shell(*)",
+          "Read(**)",
+          "Read(/**)",
+          "Write(**)",
+          "Write(/**)",
+        ],
+      },
+    }),
+    { encoding: "utf8", mode: 0o600 },
+  );
   return {
     provider: "cursor",
     model: "auto",

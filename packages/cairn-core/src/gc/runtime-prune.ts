@@ -235,15 +235,8 @@ export function runRuntimePrune(opts: RuntimePruneOptions): RuntimePruneResult {
     modelCacheDir(opts.repoRoot),
     now.getTime() - MODEL_CACHE_MAX_AGE_MS,
   );
-  // v0.32 and older stored Claude-only entries under `cache/haiku`.
-  // They are derived and no longer readable, but keep the same TTL before
-  // reclaiming them so an upgrade never causes a surprise immediate wipe.
-  const legacyCache = sweepCacheRoot(
-    cairnDir(opts.repoRoot, "cache", "haiku"),
-    now.getTime() - MODEL_CACHE_MAX_AGE_MS,
-  );
-  result.modelEvicted = modelCache.evicted + legacyCache.evicted;
-  result.bytesFreed += modelCache.bytes + legacyCache.bytes;
+  result.modelEvicted = modelCache.evicted;
+  result.bytesFreed += modelCache.bytes;
 
   const baseline = pruneBaseline(opts.repoRoot);
   result.baselineRemoved = baseline.removed;

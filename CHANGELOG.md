@@ -6,8 +6,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.33.0] — 2026-07-26
+
 ### Added
 
+- **Migration `0010-model-backend-hard-cut` (safe).** Existing `0.32.x`
+  adopters move once to the provider-neutral runtime contract: per-session
+  `haiku_unavailable` fields and `haiku-offline` events become
+  `model_unavailable` / `model-offline`, and the unreadable derived
+  `.cairn/cache/haiku` tree is deleted. Normal runtime readers and GC now
+  contain no permanent Claude/Haiku compatibility branches.
 - **Provider-neutral model backend** — one shared queue, timeout/error
   boundary, trace format, provider-isolated cache, and JSON-schema
   validator now powers every bounded model call. Thin transports support
@@ -39,6 +47,20 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **pnpm 11 security overrides now live in `pnpm-workspace.yaml`.** The
+  toolchain upgrade stopped reading `package.json#pnpm.overrides`, which
+  silently reintroduced vulnerable transitive versions. Patched floors now
+  cover Hono, `@hono/node-server`, `fast-uri`, `body-parser`, and the existing
+  dependency constraints; the regenerated production lockfile reports no
+  known vulnerabilities.
+- **Selected-provider availability no longer falls through to a different
+  installed CLI.** A plugin pinned to Codex, Cursor, or Claude now reports
+  the backend unavailable when that exact CLI is missing. Deferred alignment
+  logs remain queued instead of being cleared after failed model calls.
+- **Cursor isolation is mandatory at the shared runner boundary.** Even
+  callers that omit the isolation option run Cursor from a private temporary
+  workspace with deny-all shell/read/write permissions and never receive
+  `--force`.
 - **Cursor plugin hooks now use Cursor's native v1 schema.** The contributed
   config used lower-camel event names around Claude-style nested matcher
   groups, a combination Cursor does not load. Entries are now flat
@@ -63,6 +85,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Workspace toolchain refresh** — pnpm 11.17, TypeScript 7, Node 26 types,
+  and current compatible releases of knip, tsx, esbuild, and ora. pnpm 11
+  build approvals are declared at the workspace boundary.
 - **Renamed `cairn-frontend-claudecode` → `cairn-plugin`** (`@isaacriehm/cairn-plugin`).
   Hard cutover — no shim folder.
 - **Removed `cairn-frontend-cursor` package** — Cursor manifest, hooks, MCP config,

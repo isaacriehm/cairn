@@ -299,7 +299,7 @@ Run typecheck, build, `version:check`, the complete `smokes` script,
 `git diff --check`, JSON parsing, package dry-run, and private-path scan.
 Do not run live LLM smokes.
 
-- [ ] **Step 6: Review, commit, and push**
+- [x] **Step 6: Review, commit, and push**
 
 Review the complete diff against the design, create one follow-up commit, push
 `pr-4-review`, and verify the remote SHA.

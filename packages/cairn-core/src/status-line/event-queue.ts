@@ -55,19 +55,13 @@ function readStatusJsonRaw(repoRoot: string, sessionId: string): StatusJson {
 
 function mergeWithDefaults(partial: Partial<StatusJson>): StatusJson {
   const base = defaultStatusJson();
-  const legacyUnavailable = (
-    partial as Partial<StatusJson> & { haiku_unavailable?: boolean }
-  ).haiku_unavailable;
   return {
     ...base,
     ...partial,
     event_counters: { ...base.event_counters, ...(partial.event_counters ?? {}) },
     recent_events: partial.recent_events ?? base.recent_events,
     current_event: partial.current_event ?? base.current_event,
-    model_unavailable:
-      partial.model_unavailable ??
-      legacyUnavailable ??
-      base.model_unavailable,
+    model_unavailable: partial.model_unavailable ?? base.model_unavailable,
   };
 }
 

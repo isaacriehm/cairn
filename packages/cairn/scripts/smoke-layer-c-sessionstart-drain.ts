@@ -38,6 +38,7 @@ import {
   rmSync,
   writeFileSync,
   appendFileSync,
+  chmodSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -45,6 +46,7 @@ import { execFileSync } from "node:child_process";
 import {
   bindDec,
   bodyContentHash,
+  configureModelProvider,
   emptySotBindings,
   emptySotCache,
   layerADeferredLogPath,
@@ -654,7 +656,22 @@ async function main(): Promise<void> {
     });
     commitAll(repoRoot);
 
-    const result = await runDrain({ repoRoot, modelAvailable: false });
+    const providerBin = join(repoRoot, "provider-bin");
+    mkdirSync(providerBin, { recursive: true });
+    const claudePath = join(providerBin, "claude");
+    writeFileSync(claudePath, "#!/bin/sh\nexit 0\n", "utf8");
+    chmodSync(claudePath, 0o755);
+    const originalPath = process.env.PATH;
+    process.env.PATH = providerBin;
+    configureModelProvider("codex");
+    let result;
+    try {
+      result = await runDrain({ repoRoot });
+    } finally {
+      configureModelProvider(null);
+      if (originalPath === undefined) delete process.env.PATH;
+      else process.env.PATH = originalPath;
+    }
     assert(result.modelFallback === true, "Step 9: fallback flag set");
     assert(result.citedDeterministic === 1, `Step 9: tier1 still applies offline, got ${result.citedDeterministic}`);
     assert(result.deferred === 1, `Step 9: fast model-needing entry deferred, got ${result.deferred}`);
@@ -663,7 +680,7 @@ async function main(): Promise<void> {
       existsSync(layerADeferredLogPath(repoRoot)),
       "Step 9: Layer A log preserved when fast model offline",
     );
-    console.log("  ✓ Step 9 — fast model offline: tier1 applies, others stay deferred");
+    console.log("  ✓ Step 9 — selected model offline: tier1 applies, others stay deferred");
   }
 
   // ── Step 10 — Dry run: no source / log writes ───────────────────

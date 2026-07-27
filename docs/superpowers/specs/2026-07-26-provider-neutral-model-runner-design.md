@@ -183,8 +183,10 @@ and schema. Cached answers can never cross providers.
 ## Isolation and Safety
 
 - Codex always runs in a read-only sandbox and an ephemeral session.
-- Cursor never receives `--force`, gets a deny-all project tool policy in its
-  private temporary workspace, and is told not to use tools or edit files.
+- Cursor is always isolated by the shared runner, regardless of caller
+  options. It never receives `--force`, gets a deny-all project tool policy
+  in its private temporary workspace, and is told not to use tools or edit
+  files.
 - Claude retains its existing no-session-persistence behavior.
 - Isolated calls run from a newly created temporary directory and ignore
   ambient user/project instructions as far as each CLI permits.
@@ -204,7 +206,16 @@ This is a hard cutover, not a compatibility layer:
 - new trace rows use source `model` and include `provider`
 
 Historical changelog entries and Claude-specific host features retain their
-accurate names. Disposable legacy cache entries are not migrated.
+accurate names. Version `0.33.0` is the hard release boundary:
+
+- safe migration `0010-model-backend-hard-cut` rewrites legacy session status
+  fields and event kinds to the provider-neutral schema;
+- the same migration deletes the disposable `.cairn/cache/haiku` tree instead
+  of translating entries that the new cache cannot read;
+- runtime readers and GC contain no legacy Claude/Haiku compatibility paths
+  after the migration ships; and
+- provider availability without an explicit argument means the configured
+  effective provider is available, not merely that some supported CLI exists.
 
 ## Testing
 
@@ -221,6 +232,9 @@ runner. It verifies:
 - Claude, Codex, and Cursor response decoding;
 - shared schema validation and provider-neutral errors;
 - cache isolation between providers;
+- configured-provider failure when a different provider remains installed;
+- mandatory Cursor isolation even when a caller omits the isolation option;
+- hard-cut migration of legacy status state and deletion of legacy cache;
 - timeout cleanup.
 
 Existing model-assisted smokes continue using injected judges or fixtures.

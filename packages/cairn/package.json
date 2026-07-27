@@ -1,6 +1,6 @@
 {
   "name": "@isaacriehm/cairn",
-  "version": "0.32.1",
+  "version": "0.33.0",
   "description": "Cairn — state + context-loading layer for AI coding agents.",
   "author": "Isaac Riehm",
   "license": "MIT",
@@ -149,9 +149,9 @@
     "yaml": "^2.9.0"
   },
   "devDependencies": {
-    "@types/node": "^25.9.2",
-    "tsx": "^4.22.4",
-    "typescript": "^6.0.3",
+    "@types/node": "^26.1.1",
+    "tsx": "^4.23.1",
+    "typescript": "^7.0.2",
     "zod": "^4.4.3"
   }
 }
