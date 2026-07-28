@@ -24,7 +24,7 @@ Replaces the prior Postgres design. Everything lives on disk. Two-zone canonical
 |---------|----------|
 | Primary state | Filesystem only — markdown + YAML + JSONL |
 | Database | None |
-| Frontend adapter | Claude Code plugin is the primary operator surface; CLI is bootstrap + debug; VS Code / Cursor extension is a parallel read-only consumer |
+| Frontend adapter | Shared Claude Code, Cursor, and Codex plugin is the primary operator surface; CLI is bootstrap + debug; VS Code / Cursor extension is a parallel read-only consumer |
 | Concurrency model | Per-write `flock` on `.cairn/.write-lock`; per-session state partition under `.cairn/sessions/<id>/` |
 | Branching | None — direct commits to main, gated by sensors at pre-commit + CI |
 | Two zones | `canonical` (default agent visible) / `historical` (`.cairn/runs/terminal/`, `.cairn/tasks/done/` — excluded from walkers) |
@@ -36,7 +36,7 @@ Replaces the prior Postgres design. Everything lives on disk. Two-zone canonical
 
 ## 1. Top-level layout in any Cairn-adopted repo
 
-The layout below is **stack-agnostic**. Subdirectories under `.cairn/ground/{schema,routes,events}/` are populated only when the operator's project has a generator that produces them — the init mapper proposes generators per detected stack signature (Drizzle / Prisma / SQLAlchemy → schema dump; OpenAPI / NestJS / FastAPI → routes table; project-defined event registry → events). Projects without those concerns simply have empty/missing directories; the layout itself doesn't change. Likewise `tasks/active/<id>/spec.md` is populated by the active frontend adapter (Claude Code plugin in v0.1.0); the layout stores no adapter-specific structure.
+The layout below is **stack-agnostic**. Subdirectories under `.cairn/ground/{schema,routes,events}/` are populated only when the operator's project has a generator that produces them — the init mapper proposes generators per detected stack signature (Drizzle / Prisma / SQLAlchemy → schema dump; OpenAPI / NestJS / FastAPI → routes table; project-defined event registry → events). Projects without those concerns simply have empty/missing directories; the layout itself doesn't change. Likewise `tasks/active/<id>/spec.md` is populated by the active agent host; the layout stores no adapter-specific structure.
 
 ```
 <repo-root>/
@@ -102,7 +102,7 @@ The layout below is **stack-agnostic**. Subdirectories under `.cairn/ground/{sch
 │   │   │   └── sensor-results.yaml ← per-sensor pass/fail (when a sweep runs)
 │   │   └── terminal/<run-id>/      ← completed runs (auto-moved)         HISTORICAL
 │   ├── inbox/                                                             GITIGNORED
-│   │   └── <ts>-<source>.json      ← raw frontend-adapter ingress (Claude Code plugin in v0.1.0)
+│   │   └── <ts>-<source>.json      ← raw agent-host ingress
 │   ├── transcripts/                                                       GITIGNORED
 │   │   └── <ts>-<msg-id>.txt       ← voice transcripts when adapter ships audio
 │   └── staleness/

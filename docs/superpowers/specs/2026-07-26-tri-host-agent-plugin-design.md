@@ -282,9 +282,12 @@ Documentation distinguishes:
 2. supported-host descriptions; and
 3. project authorship attribution.
 
-The project attribution reads "Built with Claude Code and Codex." Historical
-changelog entries and genuinely Claude-specific features keep their accurate
-names. This is not a blind string replacement.
+The primary product description is agent-neutral: "Persistent ground truth
+for AI coding agents." Public surfaces then state first-class support for
+Claude Code, Cursor, and Codex. The project attribution reads "Built with
+Claude Code and Codex." Historical changelog entries and genuinely
+host-specific features keep their accurate product and interface names. This
+is not a blind string replacement.
 
 Architecture and user documentation describe the everyday plugin surface as
 Claude Code, Cursor, and Codex. MCP-only Codex references are upgraded to the

@@ -326,7 +326,7 @@ Per-session stdio MCP server. `.mcp.json` registration:
 }
 ```
 
-The MCP server detects the project root at startup by walking up from `process.cwd()` until it finds either `.cairn/` or `.git/`. No env var dependency. Works in any project Claude Code opens.
+The MCP server detects the project root at startup by walking up from `process.cwd()` until it finds either `.cairn/` or `.git/`. No env var dependency. Works in any project opened by a supported agent host.
 
 Tools (32 current, see `MCP_SURFACE.md` for full schema):
 

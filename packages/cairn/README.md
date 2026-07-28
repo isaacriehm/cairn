@@ -15,8 +15,8 @@ npm install -g @isaacriehm/cairn
 |------------|------|
 | `cairn init` | One-time adoption walk for a new repo. Seeds `.cairn/`, runs the mapper, ingests existing docs + source comments + rules. |
 | `cairn join` | Per-clone bootstrap. Sets `core.hooksPath = .cairn/git-hooks`, ensures sessions dir. Idempotent. |
-| `cairn hook <event>` | Hook runners (SessionStart / SessionEnd / Stop / PostToolUse). Called by the Claude Code plugin. |
-| `cairn mcp serve` | Stdio MCP server. Registered in the plugin's `.mcp.json`. |
+| `cairn hook <event>` | Shared hook runners for Claude Code, Cursor, and Codex. |
+| `cairn mcp serve` | Stdio MCP server. Registered by each supported host adapter. |
 | `cairn doctor` | Verify the local install is healthy. |
 | `cairn fix` | Auto-resolve doctor warnings where possible. |
 | `cairn attention` | List pending DEC drafts + baseline findings. |
@@ -24,9 +24,9 @@ npm install -g @isaacriehm/cairn
 | `cairn scope` | Scope-index commands (rebuild, etc.). |
 | `cairn status-line` | Format the per-session Claude Code status line. |
 
-The Claude Code plugin (`@isaacriehm/cairn-plugin`) is the
-primary operator surface; this CLI is what the plugin shells out to and
-what new contributors run when bootstrapping a clone.
+The shared agent plugin (`@isaacriehm/cairn-plugin`) is the primary operator
+surface for Claude Code, Cursor, and Codex. This CLI is what the plugin shells
+out to and what new contributors run when bootstrapping a clone.
 
 See the repo root [`README.md`](../../README.md) and
 [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) for the broader

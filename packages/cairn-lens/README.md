@@ -78,4 +78,4 @@ inert — no decorations, no providers registered. Adopt your project with
 - Open VSX-compatible editors (manual `.vsix` install)
 
 The extension is read-only on `.cairn/ground/` ledgers; it never
-modifies them. Safe to install in any harness-adopted project.
+modifies them. Safe to install in any Cairn-adopted project.

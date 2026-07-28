@@ -2,8 +2,8 @@
 
 # Cairn
 
-**Persistent ground truth for Claude Code, Cursor, and Codex.**
-Stop AI agents from drifting.
+**Persistent ground truth for AI coding agents.**
+First-class support for Claude Code, Cursor, and Codex. Stop agents from drifting.
 
 [![npm version](https://img.shields.io/npm/v/@isaacriehm/cairn?style=flat-square&logo=npm&color=CB3837)](https://www.npmjs.com/package/@isaacriehm/cairn)
 [![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-Plugin-D97706?style=flat-square)](https://claude.com/claude-code)
@@ -43,7 +43,7 @@ Cursor, or Codex session starts with the same map.
 
 ## The Problem
 
-Monday: you tell Claude Code "auth tokens expire after 24 hours." It
+Monday: you tell your coding agent "auth tokens expire after 24 hours." It
 ships. Works.
 
 Friday, new session, new prompt. The agent reads `auth/tokens.ts`, sees

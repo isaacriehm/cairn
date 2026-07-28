@@ -47,6 +47,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Public positioning is agent-neutral across host marketplaces.** Cairn is
+  described as persistent ground truth for AI coding agents, with first-class
+  Claude Code, Cursor, and Codex support stated explicitly. Host-specific
+  interface names remain only where technically required.
 - **pnpm 11 security overrides now live in `pnpm-workspace.yaml`.** The
   toolchain upgrade stopped reading `package.json#pnpm.overrides`, which
   silently reintroduced vulnerable transitive versions. Patched floors now
@@ -908,10 +912,9 @@ gone. Hard cutover, no compatibility shims.
 - **`cairn doctor` config-glob staleness check.** Warns when a `config.yaml`
   scope glob (`high_stakes_globs`, `project_globs.*`) matches zero working-tree
   files — catches globs left stale by a directory refactor.
-- **Stack-detection hardening.** Monorepo-shell markers
-  (`pnpm-workspace.yaml`, `turbo.json`, `nx.json`, `lerna.json`) + a shallow
-  subpackage scan, so a repository with no root manifest is detected
-  as `typescript` instead of `unknown`.
+- **Stack-detection hardening.** Workspace-shell markers plus a shallow
+  subpackage scan ensure repositories with dependency manifests below the root
+  are detected from their contents instead of remaining `unknown`.
 
 ### Changed
 
@@ -3077,10 +3080,10 @@ Adoption rewrite: the `8-docs-ingest`, `9-source-comments`, and
 `10-rules-merge` Haiku batch pipelines collapse into one unified
 **curator pipeline** under Sonnet plan-quota subagents. Old pipelines
 ran first-line `prose.split("\n")[0].slice(0, 120)` titles and pasted
-verbatim raw blocks into DEC bodies; on a typical large
-monorepo that produced hundreds of entries of mostly mid-sentence
-fragments, JSX leakage, and unsynthesized JSDoc tags. The new
-pipeline produces 30-80 synthesized entries with strict validators —
+verbatim raw blocks into DEC bodies; on large repositories that produced
+hundreds of mostly mid-sentence fragments, markup leakage, and unsynthesized
+documentation tags. The new pipeline produces a much smaller set of
+synthesized entries with strict validators —
 auto-accepted into ground state because the quality bar is hard, not
 deferred.
 
@@ -4101,11 +4104,10 @@ cairn fix dec-strip
   triage one-at-a-time is hours of clicking. The bulk tool scores
   every draft + invariant in `.cairn/ground/decisions/_inbox/` and
   `.cairn/ground/invariants/` against a confidence heuristic and
-  auto-promotes the obvious ones out of the inbox. Distribution on
-  a large repository: 12% high / 45% medium / 43% low
-  for DEC drafts; 19% / 51% / 30% for invariants. Default
+  auto-promotes the obvious ones out of the inbox. Large-repository trials
+  produced a useful spread across high, medium, and low confidence. Default
   `threshold: "high"` only auto-accepts the top tier; operator can
-  widen to `medium` (≈60% accept) or `low` (effectively all) via
+  widen to `medium` or `low` via
   the CLI dry-run + run flow. Every draft + invariant gets
   `capture_confidence: high|medium|low` stamped in frontmatter so
   subsequent attention surfaces can sort.
@@ -4160,15 +4162,13 @@ v0.3.5).
 
 ## [0.3.5] — 2026-05-06
 
-Hotfix on top of v0.3.4. Adoption on a real large
-repository failed at Phase 3-mapper: the MCP response
-echoed `state` with the 90KB mapper output inside, which crossed
-the MCP transport's spillover-to-file token cap. The cairn-adopt
-skill couldn't read `nextPhase` from the spilled file path, gave
-up, and spawned a generic-purpose subagent that burned ~5 minutes
-flailing — at one point clobbering the on-disk state from valid state →
-empty state because the wrapper persisted the empty-outputs echo from a
-`missing-prereqs` error path. Operator killed the session.
+Hotfix on top of v0.3.4. Adoption of a large repository failed at
+Phase 3-mapper: the MCP response
+echoed the full mapper output inside `state`, which crossed the MCP
+transport's spillover-to-file cap. The cairn-adopt skill could not
+read `nextPhase` from the spilled response, and its fallback later
+persisted an empty-output echo from a `missing-prereqs` error path,
+clobbering the valid on-disk state.
 
 ### Breaking changes
 
@@ -4177,7 +4177,7 @@ empty state because the wrapper persisted the empty-outputs echo from a
   — the full `state` is no longer echoed. State persists to
   `.cairn/init-state.json`; readers reload from disk on demand. Slim
   responses keep the conversation cache warm and keep every phase's
-  result well under the spillover-to-file cap on real monorepos.
+  result well under the spillover-to-file cap on large repositories.
 - **`cairn_init_resume` returns `{ status, nextPhase, repoRoot }`.**
   Same reason as above — was previously echoing the full state object.
 - **`state` parameter on `cairn_init_phase_*` is optional.** Default
@@ -4241,7 +4241,7 @@ the no-clobber-on-error invariant.
 - **Re-adopting a project that hit the v0.3.4 spillover:** delete
   the existing `.cairn/init-state.json` and `.cairn/init/` if
   present, then re-run the cairn-adopt skill. The slim contract
-  handles large monorepos cleanly now.
+  handles large repositories cleanly now.
 - **Plugin cache resync after upgrade.** `cairn-frontend-claudecode`
   bundle is reproduced verbatim into
   `~/.claude/plugins/cache/isaacriehm-cairn/cairn/0.1.10/`. If the

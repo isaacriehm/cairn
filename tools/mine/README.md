@@ -59,10 +59,10 @@ Examples:
 
 ```bash
 # One transcript
---jsonl ~/.claude/projects/<project-key>/abc...jsonl
+--jsonl '<operator-home>/.claude/projects/<project-key>/abc...jsonl'
 
 # All sessions in a project's history
---jsonl-glob '~/.claude/projects/<project-key>/*.jsonl'
+--jsonl-glob '<operator-home>/.claude/projects/<project-key>/*.jsonl'
 
 # Every session across every project that touched a given repo
 --repo /path/with spaces/example-repo

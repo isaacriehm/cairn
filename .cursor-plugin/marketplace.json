@@ -1,12 +1,14 @@
 {
   "name": "cairn",
   "owner": { "name": "Isaac Riehm" },
-  "metadata": { "description": "Cairn — ground state for AI coding agents" },
+  "metadata": {
+    "description": "Persistent ground truth for AI coding agents. First-class support for Claude Code, Cursor, and Codex."
+  },
   "plugins": [
     {
       "name": "cairn",
       "source": "./packages/cairn-plugin",
-      "description": "Cairn — Claude Code, Cursor, and Codex plugin (shared skills and runtime)"
+      "description": "Cairn — persistent ground truth for AI coding agents"
     }
   ]
 }
