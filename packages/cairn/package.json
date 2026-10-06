@@ -1,13 +1,26 @@
 {
   "name": "@isaacriehm/cairn",
   "version": "0.33.0",
-  "description": "Cairn — state + context-loading layer for AI coding agents.",
+  "description": "CLI for Cairn: keeps AI coding agents consistent with a project's recorded decisions, via an MCP server and pre-commit/CI diff checks.",
+  "keywords": [
+    "ai-agents",
+    "claude-code",
+    "cursor",
+    "codex",
+    "mcp",
+    "decision-records",
+    "adr",
+    "context-engineering",
+    "pre-commit",
+    "cli"
+  ],
   "author": "Isaac Riehm",
   "license": "MIT",
   "homepage": "https://github.com/isaacriehm/cairn",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/isaacriehm/cairn.git"
+    "url": "git+https://github.com/isaacriehm/cairn.git",
+    "directory": "packages/cairn"
   },
   "bugs": {
     "url": "https://github.com/isaacriehm/cairn/issues"
