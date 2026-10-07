@@ -35,18 +35,19 @@ is no separate orchestration runtime; agents use their native dispatch tools.
 | Explanations       | Concise. Root cause in 1-2 sentences then the fix.                                                                             |
 | UX philosophy      | Design-conscious. UX is equal in importance to functional correctness.                                                         |
 | Vendor choices     | Opinionated. Do not suggest alternative libraries / frameworks unless they avoid a real risk.                                  |
-| Env vars           | The operator hates env vars. Hardcode model **aliases** (`haiku`/`sonnet`/`opus`) and paths in code — never a dated ID like `claude-sonnet-4-6`, never an env var. Every LLM call names its tier; never inherit the session model. |
-| Tests              | "Tests are shitware. Only E2E with real DB matters." Sensors + E2E smokes only — no unit-test framing.                         |
-| Backward compat    | The operator hates backward-compat shims. Hard cutovers only.                                                                  |
+| Configuration      | Hardcode values and paths in code. Do not add environment variables for configuration. Model selection follows the hard rule below. |
+| Tests              | Verification means sensors and end-to-end smokes against real state. No unit-test framework and no unit-test framing.          |
+| Backward compat    | No backward-compatibility shims. Hard cutovers only.                                                                           |
 | Mobile mode        | When the operator is on mobile, `AskUserQuestion` options get truncated; switch to chat-mode A/B/C with concise option labels. |
-| Caveman ultra mode | Active for chat replies. Documents stay in full English.                                                                       |
+| Chat style         | Chat replies may use compressed shorthand. Documents stay in full English.                                                     |
 
 ## Hard rules
 
 - All design decisions live in `docs/`. Drift between conversation and `docs/` is a bug.
 - Locked architectural decisions in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (§1 layered model, §3 package contents) and [`docs/PLUGIN_ARCHITECTURE.md`](docs/PLUGIN_ARCHITECTURE.md) (§3 package layout, §17 multi-dev) are not reopened without explicit operator instruction.
 - Never use Claude Code `PreToolUse` hooks — they can brick the session. SessionStart instructions + MCP tools only.
-- Hardcode model **aliases** (`haiku`/`sonnet`/`opus`) in code — never a dated ID (`claude-sonnet-4-6`), never an env var. Every LLM call site picks a tier explicitly; no subagent inherits the session model. Hard cutovers only (no transition shims).
+- Model selection. Every backend LLM call site names a semantic tier, `fast` or `capable` (`ModelTier` in `packages/cairn-core/src/model/types.ts`), and never a model. The provider transport in `packages/cairn-core/src/model/transports/` owns the hardcoded mapping: Claude maps `fast`/`capable` to the `haiku`/`sonnet` aliases (never a versioned ID like `claude-sonnet-4-6`), Codex uses `gpt-5.3-codex-spark` for both, and Cursor uses `auto`. No env var overrides the mapping. The provider comes from `--model-provider` or auto-detection. Plugin subagent briefs (`packages/cairn-plugin/agents/*.md`) set `model:` in frontmatter so no subagent inherits the session model.
+- Hard cutovers only (no transition shims).
 
 ### Operator-private strings: never write to a committed artifact
 
