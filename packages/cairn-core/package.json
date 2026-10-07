@@ -1,13 +1,26 @@
 {
   "name": "@isaacriehm/cairn-core",
   "version": "0.33.0",
-  "description": "Cairn core — state + context layer. Curated `.cairn/ground/` (decisions, §INV invariants, canonical-map, brand, quality-grades), MCP server, init wizard, hook runners, sensors, GC drift sweep.",
+  "description": "Cairn core: MCP server, diff sensors, hook runners, and the adoption pipeline behind the Cairn CLI and agent plugin.",
+  "keywords": [
+    "ai-agents",
+    "claude-code",
+    "cursor",
+    "codex",
+    "mcp",
+    "decision-records",
+    "adr",
+    "context-engineering",
+    "mcp-server",
+    "pre-commit"
+  ],
   "author": "Isaac Riehm",
   "license": "MIT",
   "homepage": "https://github.com/isaacriehm/cairn",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/isaacriehm/cairn.git"
+    "url": "git+https://github.com/isaacriehm/cairn.git",
+    "directory": "packages/cairn-core"
   },
   "bugs": {
     "url": "https://github.com/isaacriehm/cairn/issues"

@@ -68,7 +68,6 @@ The CLI is `cairn`. Every host plugin ships the same bundled
 | Command                                  | What                                                                     |
 | ---------------------------------------- | ------------------------------------------------------------------------ |
 | `cairn mcp serve`                        | Start the MCP server (stdio). Registered by the plugin via `.mcp.json`.  |
-| `cairn mcp call <tool> '<json>'`         | Call an MCP tool from a shell with a JSON payload.                       |
 | `cairn hook session-start --host <host>` | SessionStart runner for `claude-code`, `cursor`, or `codex`.              |
 | `cairn hook stop --host <host>`          | Host-native Stop runner.                                                  |
 | `cairn hook read-enrich --host <host>`   | PostToolUse(Read) citation enrichment.                                    |
@@ -137,18 +136,28 @@ Phase IDs (passed as `phase` arg): `1-detect`, `2-walker`, `3-mapper`,
 
 ### Calling MCP tools from a shell
 
+The `cairn` CLI has no subcommand for calling a tool. `cairn mcp serve`
+speaks MCP over stdio, so any MCP client can call the same tools the
+agent uses. The MCP Inspector's CLI mode works from a shell, run in
+the adopted repo:
+
 ```bash
-cairn mcp call cairn_decision_get '{"id":"DEC-a3f7b2c"}'
+MCP="npx -y @modelcontextprotocol/inspector --cli cairn mcp serve --method tools/call"
 
-cairn mcp call cairn_in_scope '{"path_globs":["src/auth/**"]}'
+$MCP --tool-name cairn_decision_get --tool-arg id=DEC-a3f7b2c
 
-cairn mcp call cairn_canonical_for_topic '{"topic":"rate limiting"}'
+$MCP --tool-name cairn_in_scope --tool-arg 'path_globs=["src/auth/**"]'
 
-cairn mcp call cairn_search '{"query":"idempotency","limit":5}'
+$MCP --tool-name cairn_canonical_for_topic --tool-arg 'topic=rate limiting'
+
+$MCP --tool-name cairn_search --tool-arg query=idempotency --tool-arg limit=5
 ```
 
-The same tools the agent uses, available from your shell for
-debugging or scripting.
+Each `--tool-arg key=value` is one argument. Values that parse as JSON
+(arrays, numbers) are passed as JSON, everything else as a string. The
+tool's JSON result comes back inside the MCP response's
+`content[0].text`. For scripting, [`docs/demo.md`](../demo.md#reproduce-it)
+includes a 10-line client built on the MCP SDK.
 
 ---
 
@@ -388,19 +397,27 @@ ls -1t .cairn/baseline/sensor-audit-*.yaml | head -1 | xargs cat
 
 ### Write a quick decision from the shell
 
+Using the Inspector CLI from
+[Calling MCP tools from a shell](#calling-mcp-tools-from-a-shell):
+
 ```bash
-cairn mcp call cairn_record_decision '{
-  "title": "Use ULID instead of UUID for new IDs",
-  "summary": "Sortable, time-prefixed, db-friendly.",
-  "scope_globs": ["src/**"],
-  "body_markdown": "## Decision\n\nULID for all new entity IDs. Existing UUID IDs stay."
-}'
+$MCP --tool-name cairn_record_decision \
+  --tool-arg 'title=Use ULID instead of UUID for new IDs' \
+  --tool-arg 'summary=Sortable, time-prefixed, db-friendly.' \
+  --tool-arg 'scope_globs=["src/**"]' \
+  --tool-arg 'body_markdown=## Decision
+
+ULID for all new entity IDs. Existing UUID IDs stay.'
 ```
+
+Or ask the agent to record it; it calls `cairn_record_decision` with
+the same fields.
 
 ### Search for any decisions about retries
 
 ```bash
-cairn mcp call cairn_search '{"query":"retry","kinds":["decision","invariant"]}'
+$MCP --tool-name cairn_search --tool-arg query=retry \
+  --tool-arg 'kinds=["decision","invariant"]'
 ```
 
 ### Force-rebuild the scope index

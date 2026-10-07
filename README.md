@@ -2,94 +2,77 @@
 
 # Cairn
 
-**Persistent ground truth for AI coding agents.**
-First-class support for Claude Code, Cursor, and Codex. Stop agents from drifting.
+**Keeps AI coding agents consistent with the decisions your project already made.**
 
-[![npm version](https://img.shields.io/npm/v/@isaacriehm/cairn?style=flat-square&logo=npm&color=CB3837)](https://www.npmjs.com/package/@isaacriehm/cairn)
-[![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-Plugin-D97706?style=flat-square)](https://claude.com/claude-code)
-[![Cursor Plugin](https://img.shields.io/badge/Cursor-Plugin-6366F1?style=flat-square)](https://cursor.com)
-[![Codex Plugin](https://img.shields.io/badge/Codex-Plugin-111827?style=flat-square)](https://developers.openai.com/codex/)
-[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
-[![Node](https://img.shields.io/badge/node-%E2%89%A522-brightgreen?style=flat-square)](https://nodejs.org)
+[![npm](https://img.shields.io/npm/v/@isaacriehm/cairn?style=flat-square&logo=npm&color=CB3837)](https://www.npmjs.com/package/@isaacriehm/cairn)
+[![ci](https://img.shields.io/github/actions/workflow/status/isaacriehm/cairn/ci.yml?branch=main&style=flat-square&label=ci)](https://github.com/isaacriehm/cairn/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
-### Claude Code
-```bash
-/plugin marketplace add isaacriehm/cairn
-/plugin install cairn@isaacriehm-cairn
-/reload-plugins
-```
-
-### Cursor
-```
-Settings → Cursor → Plugins → Add from GitHub → isaacriehm/cairn
-```
-
-### Codex CLI
-```bash
-codex plugin marketplace add isaacriehm/cairn
-codex plugin add cairn@cairn
-```
-
-[The Problem](#the-problem) · [What You Get](#what-you-get) · [Quick Start](#quick-start) · [Glossary](#glossary) · [How It Works](#how-it-works) · [Features](#features) · [Multi-Dev](#multi-developer-enforcement) · [Docs](#documentation)
+Plugin for Claude Code, Cursor, and Codex · MCP server · pre-commit and CI checks
 
 </div>
 
 ---
 
-A *cairn* is a stack of stones marking a trail. This project stacks the
-**decisions, invariants, and canonical references** that define your
-codebase into a single queryable ground state — so every Claude Code,
-Cursor, or Codex session starts with the same map.
+## The problem
 
-## The Problem
+Monday you tell your agent "auth tokens expire after 24 hours." It ships.
 
-Monday: you tell your coding agent "auth tokens expire after 24 hours." It
-ships. Works.
+Friday, new session. The agent reads `auth/tokens.ts`, sees nothing about
+expiry, and "improves" it to a 7-day refresh. You catch it in review, or you
+don't.
 
-Friday, new session, new prompt. The agent reads `auth/tokens.ts`, sees
-no comment about expiry, and "improves" the code to a 7-day refresh.
-You catch it in review. Or you don't.
+The model isn't bad. It has no memory of what you decided. A bigger context
+window only delays the problem. Cairn keeps a version-controlled record of
+your decisions in the repo, loads the relevant ones into every agent session,
+and checks every diff against them at commit time and again in CI.
 
-The model isn't bad. The model has **no memory of what you decided**.
+## 20-second example
 
-A bigger context window doesn't fix this — it just delays it. What
-fixes it is a structured record on disk that every session reads from
-and writes to. Cairn is that record, plus the runtime that keeps it
-load-bearing.
+A decision recorded with a machine-checkable assertion:
 
-## What You Get
-
-Three persistent stores, version-controlled in `.cairn/`:
-
-🪨 **Decisions (`DEC-<hash>`)** — every architectural choice gets a
-markdown file with rationale, scope, and a supersedes chain. Once
-accepted, canonical until explicitly replaced. The agent reads the
-in-scope decisions before touching the affected code.
-
-```
-DEC-a3f7b2c  Auth tokens expire after 24 hours
-  Scope:       src/auth/**
-  Rationale:   PCI compliance — short-lived bearer tokens
-  Supersedes:  DEC-7c2f10a (7-day refresh, deprecated 2026-02-14)
+```json
+{
+  "title": "Auth tokens expire after 24 hours",
+  "scope_globs": ["src/auth/**"],
+  "assertions": [{ "id": "a1", "kind": "text_must_match",
+                   "pattern": "TOKEN_TTL_SECONDS = 24 \\* 60 \\* 60;",
+                   "in_globs": ["src/auth/tokens.ts"] }]
+}
 ```
 
-🧭 **Invariants (`§INV-<hash>`)** — domain rules whose violation is a
-bug, not a style preference. *"All API responses must include a
-`request-id` header."* Sensors enforce them on every diff at
-pre-commit and again at CI.
+Then a change that drifts from it:
 
-🗺️ **Canonical map** — `topic → file` index. Ask
-`cairn_canonical_for_topic("rate limiting")` and get the actual file
-paths instead of the agent grepping vaguely or fabricating them.
+```console
+$ git diff -U0 -- src | tail -2
+-export const TOKEN_TTL_SECONDS = 24 * 60 * 60;
++export const TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
 
-Plus four runtime layers that keep those stores live: an **MCP
-server** (typed tools), a **shared agent plugin** (skills + hooks +
-reviewer briefs), **sensors** (stub-catalog + decision-assertions), and
-a **CLI** for bootstrap and debug.
+$ git commit -am "perf(auth): extend token TTL to 7 days"
+ERROR decision-assertions: DEC-674be42/a1 text_must_match `TOKEN_TTL_SECONDS = 24 \* 60 \* 60;` — no file under src/auth/tokens.ts matches
 
-## Quick Start
+Cairn pre-commit gate FAILED — 1 hard finding(s). Fix them, then re-commit (or `git commit --no-verify` to bypass; the bypass is flagged at the next session and caught by CI).
+```
 
-### Claude Code
+That output is real, captured from `@isaacriehm/cairn@0.33.0` installed
+from npm into a fresh repo. The [full transcript](docs/demo.md) also shows a
+compliant edit to the same file committing cleanly, a `throw new Error("not
+implemented")` stub being blocked, and the CI check catching a
+`--no-verify` bypass.
+
+In daily use you don't write that JSON. The agent records decisions through
+Cairn's MCP tools, and adoption pulls existing ones out of your docs, code
+comments, and `CLAUDE.md` / `AGENTS.md`. Most decisions carry no assertion.
+They work by being loaded into the agent's context before it touches
+in-scope files.
+
+## Quick start
+
+Requires Node 22+ and git.
+
+### In your agent (recommended)
+
+**Claude Code**
 
 ```bash
 /plugin marketplace add isaacriehm/cairn
@@ -97,412 +80,150 @@ a **CLI** for bootstrap and debug.
 /reload-plugins
 ```
 
-First registers the GitHub repo as a marketplace; second installs the
-plugin; third loads it. The plugin ships a self-contained bundle —
-hooks, MCP server, and CLI all run from `dist/cli.mjs` inside the
-plugin cache. No `npx`, no `npm install -g`, no PATH dependency.
-
-**Recommended:** disable Claude Code's built-in auto-memory before
-adopting — Cairn is your memory layer and the two conflict:
-
-```
-/memory → Disable Auto-Memory
-```
-
-### Cursor
-
-```
-Settings → Cursor → Plugins → Add from GitHub → isaacriehm/cairn
-```
-
-Or via the command palette: search **"Add Plugin from GitHub"**, enter
-`isaacriehm/cairn`. Cursor reads `.cursor-plugin/marketplace.json`
-from the repo root and installs `packages/cairn-plugin/`
-directly — same self-contained bundle as Claude Code, no npm install required.
-
-### Codex Desktop and CLI
+**Codex (CLI and Desktop)**
 
 ```bash
 codex plugin marketplace add isaacriehm/cairn
 codex plugin add cairn@cairn
 ```
 
-The repo marketplace lives at `.agents/plugins/marketplace.json`. Codex
-Desktop and the CLI load the same `.codex-plugin/plugin.json`, shared
-skills, MCP server, hook runtime, and committed bundle. In Codex Desktop,
-restart after adding the repo source, open **Plugins**, select **Cairn**,
-and install it. Review and trust the bundled hooks when Codex prompts;
-plugin hooks do not run before that explicit trust step.
+In Codex Desktop, restart after adding the source, open **Plugins**, and
+install **Cairn**. Codex asks you to trust the bundled hooks before they run.
 
-### Native model backend
+**Cursor**
 
-Cairn's bounded classification and mapping calls use the CLI of the host
-that loaded the plugin—`claude`, `cursor-agent`, or `codex`—through one
-shared runner. The host manifests pass their provider explicitly, while a
-standalone CLI invocation auto-detects an authenticated supported CLI.
-Use `--model-provider auto|claude|cursor|codex` to override that selection.
+```
+Settings → Cursor → Plugins → Add from GitHub → isaacriehm/cairn
+```
 
-The runner exposes semantic `fast` and `capable` tiers instead of leaking
-provider model names through the codebase. Claude maps those tiers to
-Haiku/Sonnet, Codex uses `gpt-5.3-codex-spark` for Cairn's bounded tasks,
-and Cursor uses its `auto` routing. Calls are non-interactive,
-ambient-context isolated, schema-validated, cached per provider, and require
-no separate SDK or API key. Codex runs in its read-only sandbox; Cursor runs
-without `--force` from a temporary workspace with project-level shell/read/
-write denies.
+Then open a session in any git repo. Cairn's SessionStart hook offers to
+adopt the project. Accept once. Adoption runs inline and reads your docs,
+source comments, and agent rule files into `.cairn/`. The run time depends
+on repo size. From then on every session starts with the relevant decisions
+loaded, and Cairn wires its git hooks into each clone at session start.
 
----
+The plugin bundles its own CLI and MCP server, so there's nothing to
+`npm install`. Model-backed steps go through the CLI of the host that loaded
+the plugin (`claude`, `cursor-agent`, or `codex`), so no separate API key is
+needed.
 
-Open Claude Code, Cursor, or Codex in any project. The plugin auto-detects on
-session start and offers `[a] adopt now`. Pick `[a]` once. The
-pipeline streams inline — typically 2-15 minutes depending on repo
-size.
+In Claude Code, turn off the built-in auto-memory (`/memory → Disable
+Auto-Memory`). Cairn is the memory layer, and the two conflict.
 
-When it finishes, your next session starts with the full ground state
-preloaded.
-
-If you want `cairn` directly on your shell PATH (for `cairn doctor`,
-`cairn attention`, `cairn trace`, etc.):
+### CLI only
 
 ```bash
 npm install -g @isaacriehm/cairn
+cd your-repo
+cairn init          # interactive adoption
+cairn join          # activates the git hooks in this clone
+cairn doctor        # health check
+git add -A && git commit -m "chore: adopt cairn"
 ```
 
-…but the plugin doesn't require it. Outside the plugin, you can adopt
-via CLI instead:
+`cairn init --no-prompt` adopts without prompts for scripts and CI. It skips
+the model-backed mapper and doc ingestion, so it starts with an empty
+decision ledger. Each new clone runs `cairn join` once. The plugin does this
+automatically at session start.
 
-```bash
-cairn init
-```
-
-## Glossary
-
-Read this once and the rest of the doc reads cleanly.
-
-| Term                | Means                                                                                                  |
-| ------------------- | ------------------------------------------------------------------------------------------------------ |
-| **DEC**             | Decision record — one architectural choice with rationale + scope + supersedes chain.                  |
-| **§INV**            | Invariant — a domain rule the codebase must obey. Violations are bugs.                                 |
-| **Scope**           | The file glob a DEC or §INV applies to (`src/auth/**`, `packages/billing/**`).                         |
-| **Canonical map**   | `topic → file` index. The single source of truth for *"where does X live?"*                            |
-| **Sensor**          | A mechanical check on a diff: stub patterns, decision violations.                                       |
-| **Attestation**     | A subagent's signed-off summary of what changed and why; drives task auto-graduation.                  |
-| **Drift**           | When code or docs disagree with the ground state in `.cairn/`.                                         |
-| **Bypass**          | A commit that skipped Cairn's hooks (`--no-verify`, broken hook path). Detected and surfaced.          |
-| **Attention queue** | The pile of DEC drafts, baseline findings, drift events, and conflicts waiting for operator review.    |
-| **Tightener**       | The host agent step that turns a vague prompt into a structured spec before dispatching subagents.     |
-
-## How It Works
-
-Two flows: **adoption** runs once when you onboard a repo. **Daily
-flow** runs on every prompt thereafter.
-
-### Adoption (one time)
-
-A single visual pass with 13 phases. The plugin streams output
-inline so nothing is opaque.
-
-| Phase                | What happens                                                                                                            |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| 1. Detect            | Probe environment + framework signals.                                                                                  |
-| 2. Walk              | File manifest, extension stats, language detection.                                                                     |
-| 3. Map               | Capable-tier domain mapper proposes module boundaries + `scope-index.yaml` globs.                                      |
-| 4. Seed              | Write `.cairn/` skeleton, `config.yaml`, grandfather pre-adoption commits into `.attested-commits`.                     |
-| 5. Pilot             | Operator picks a seed module from the mapper's top-3 candidates (one A/B/C question).                                   |
-| 6. Brand             | Auto-fill brand / voice / product DEC drafts from the mapper's domain summary (one A/B/C).                              |
-| 7. Topic index      | Content-fingerprint pre-pass — dedupes facts that appear across docs, source, and rules before drafting DECs.           |
-| 8, 9, 10 (parallel) | **Docs ingest** + **Source comments ingest** + **Rules merge** (`CLAUDE.md` / `AGENTS.md`) — all fast-tier batched.     |
-| 11. Baseline         | First sensor sweep against a synthetic full-tree diff. Findings written to `.cairn/baseline/`.                           |
-| 12. Strip            | Per-module strip-replace consent — operator chooses keep / strip / skip for each flagged module.                         |
-| 13. Multi-dev        | Detects package manager, installs git hooks, emits `JOIN.md` for new contributors.                                       |
-
-After the pipeline finishes, recorded decisions auto-accept into the
-ledger (the review checkpoint is the committed diff). The
-**`cairn-attention` skill** drains what's left — baseline sensor
-findings, drift events, and any dedup-fallback drafts — interactively.
-
-### Daily flow
+## How it works
 
 ```
-You type a prompt
-        │
-        ▼
-┌────────────────────────────────────────────────┐
-│  Plugin auto-invokes the cairn-direction skill │
-│   1. Skill loads in-scope DECs, §INVs,         │
-│      and canonical-map entries via MCP         │
-│   2. Main Claude classifies prompt readiness   │
-│   3. If unclear → inline A/B/C questions       │
-│   4. If ready → tightens spec inline, writes   │
-│      .cairn/tasks/active/<id>/spec.tightened.md│
-│   5. Spec dispatched to subagents              │
-└────────────────┬───────────────────────────────┘
-                 ▼
-   Subagents work in your repo with MCP access:
-     cairn_decisions_in_scope, cairn_invariant_get,
-     cairn_canonical_for_topic, cairn_search, …
-                 │
-                 ▼
-   Reviewer subagent attests the diff,
-   extracts non-obvious decisions as DEC drafts
-                 │
-                 ▼
-   Stop hook surfaces inline:
-     "Review DEC-b1e9c04 draft? [a] accept [b] reject [c] edit"
-                 │
-                 ▼
-   You commit → pre-commit hook runs sensors
-              → CI gate verifies again on PR
-              → drift caught before merge
+ agent session                          git
+ ─────────────                          ───
+ SessionStart / Read hooks ──┐          pre-commit ── cairn sensor-run --staged
+ MCP tools (32) ─────────────┤                         │
+                             ▼                         ▼
+                      .cairn/ground/   ◄──── stub-pattern catalog
+                      decisions, invariants,  decision assertions
+                      canonical map           (same sweep in CI:
+                                               cairn sensor-run --diff <range> --strict)
 ```
 
-The key bit: **the agent never starts cold.** Every prompt enters
-with the relevant decisions, invariants, and canonical references
-already loaded into the spec.
+- **Ground state.** `.cairn/ground/` holds decision records (`DEC-<hash>`),
+  invariants (`§INV-<hash>`, rules whose violation is a bug), and a
+  canonical map from topic to file. It's plain markdown and YAML, committed
+  with your code. Each record has a scope glob, so the agent only sees what
+  applies to the files it's touching.
+- **Context loading.** Plugin hooks inject in-scope decisions at session
+  start and when the agent reads a file. The MCP server exposes 32 tools for
+  querying and recording state (`cairn_in_scope`, `cairn_decision_get`,
+  `cairn_canonical_for_topic`, `cairn_search`, `cairn_record_decision`, …).
+- **Enforcement.** The pre-commit hook runs a sensor sweep over the staged
+  diff. Hard findings block the commit. Adoption installs a
+  `cairn-check.yml` workflow that runs the same sweep on every PR, so
+  `--no-verify` doesn't get through. Two sensors block today: the stub-pattern
+  catalog and decision assertions.
+- **Local only.** No hosted service. Telemetry is a local file under
+  `.cairn/`. The network calls are model calls through your agent's CLI and
+  one npm version check per day.
 
-## Features
+### Packages
 
-### Memory + ground state
+| Package | What it is |
+| --- | --- |
+| [`cairn`](packages/cairn) | The `cairn` CLI (`init`, `join`, `doctor`, `sensor-run`, `mcp serve`, …). Published as `@isaacriehm/cairn`. |
+| [`cairn-core`](packages/cairn-core) | MCP server, sensors, hook runners, and the adoption pipeline. |
+| [`cairn-state`](packages/cairn-state) | Ground-state schemas and read-only I/O, shared by core and Lens. |
+| [`cairn-plugin`](packages/cairn-plugin) | One plugin for Claude Code, Cursor, and Codex: thin host manifests over a shared bundle, skills, and agents. |
+| [`cairn-lens`](packages/cairn-lens) | VS Code / Cursor extension. Hover and gutter context for `§INV` / `DEC` citations. Ships as a `.vsix` on [Releases](https://github.com/isaacriehm/cairn/releases). |
 
-- **Persistent decisions / invariants / canonical map** in
-  version-controlled `.cairn/`.
-- **Component registry** — every component file carries a structured
-  `@cairn <ExportName>` header; the agent loads the full in-scope
-  inventory before any UI work and follows USE > EXTEND > CREATE so it
-  never rebuilds a component that already exists. A check gate blocks
-  missing headers / duplicate names; an advisory audit flags probable
-  inline rebuilds.
-- **Supersedes chains** — old decisions stay readable but flagged
-  superseded; the chain is queryable via `cairn_supersedes_chain`.
-- **Scope-aware preload** — the SessionStart hook injects only the
-  DECs / §INVs that apply to files you've recently touched, instead
-  of dumping the whole ledger into context.
+The layer boundaries are fixed in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
-### Adoption
+## Status and limits
 
-- **Single visual pass** — operator watches the pipeline stream
-  inline. No opaque background job.
-- **Fast-tier classification** — docs, source comments, and
-  rules are ingested in parallel for speed.
-- **Conflict detection** — when two sources disagree, surfaces a
-  side-by-side resolution prompt instead of silently picking one.
-- **Topic-index dedup** — content fingerprints prevent the same fact
-  landing as three separate DEC drafts.
-- **Component-store backfill** — projects adopted before the component
-  store shipped add it in one pass: the `cairn-adopt-components` skill
-  detects the config, dispatches `component-annotator` subagents to write
-  `@cairn` headers, and builds the index + singleton §INVs. No manual
-  header-writing — just ask the agent to adopt the component store.
-
-### Daily flow
-
-- **`cairn-direction` skill** — auto-tightens vague prompts (*"fix
-  the bug"*) into structured specs before dispatch. Loads the
-  in-scope DECs, §INVs, and canonical-map entries automatically.
-- **`cairn-attention` skill** — drains the queue of dedup-fallback
-  DEC drafts, baseline sensor findings, and drift events
-  interactively (decisions auto-accept; review rides the diff).
-- **Reviewer subagent** — every multi-chunk task ends with the
-  reviewer attesting the diff and extracting non-obvious decisions
-  into DEC drafts.
-- **Status-line badge** — `⬡ cairn` in the Claude Code status row
-  shows pending attention count, bypass warnings, GC state, and the
-  active task title. Color-codes by absolute token usage.
-- **Session trace log** — `cairn trace` pretty-prints unified
-  per-session events. `--tail`, `--errors-only`, `--session`,
-  `--json` flags supported.
-
-### Sensors
-
-| Sensor                  | What it checks                                                                       |
-| ----------------------- | ----------------------------------------------------------------------------------- |
-| **Stub-pattern catalog** | Regex catalog of incomplete-impl markers (TODO throws, not-implemented, …) over the diff. |
-| **Decision-assertions** | Was the in-scope DEC honored? Machine-readable assertions evaluated against the changed tree. |
-| **Structural**          | Route handlers non-empty; DTOs carry real validators (no `@IsOptional()`-only fields). |
-
-The sweep runs as a real gate at **pre-commit** (`cairn sensor-run
---staged`, blocks on hard findings) and at **CI** (`cairn sensor-run
---diff <range> --strict`). Live SoT alignment runs separately on every
-PostToolUse Write/Edit. The Stop hook surfaces task / GC / attention
-state — it does **not** run the sensor sweep. Drift events log to
-`.cairn/staleness/log.jsonl` and surface on the next GC sweep.
-
-### Tooling surfaces
-
-- **MCP server** — 32 typed tools across read, write, history,
-  attention, init, and search. Used by the plugin and any other MCP
-  client.
-- **CLI** — `cairn init / join / mcp / gc / scope / doctor / fix /
-  migrate / attention / align / baseline / hook / sensor-run / tag /
-  trace / status-line`.
-- **Claude Code plugin** — manifest + 5 hook events (SessionStart,
-  SessionEnd, Stop, UserPromptSubmit, PostToolUse — matchers
-  Read, Write|Edit, AskUserQuestion) + 5 skills + 5 agents +
-  4 commands.
-- **Cursor plugin** — same `cairn-plugin` package, thin host manifest
-  (`.cursor-plugin/` + native v1 `hooks.cursor.json` + `mcp.json` +
-  `rules/`).
-- **Codex plugin** — `.codex-plugin/` manifest + `PLUGIN_ROOT` hooks +
-  bundled MCP config. Works in Codex Desktop and CLI. Codex handles
-  multi-file `apply_patch` calls through the same guardian/alignment
-  pipeline.
-- **One implementation** — all three adapters call the same shared skills,
-  hook runners, MCP server, agents, and `dist/`; only the host manifests
-  and protocol serializers differ.
-- **Cairn Lens** — VS Code / Cursor extension. Hover, gutter icons,
-  code lens, optional DEC Explorer sidebar. Resolves `§INV-<hash>`,
-  `§DEC-<hash>`, `TODO(TSK-…)` inline. Read-only — same ground state,
-  no separate index.
-
-## Editor Extension — Cairn Lens
-
-Hover, ghost text, gutter icons, code lens — all resolved live from
-`.cairn/ground/` ledgers. Read-only. Hovering a `@cairn` component
-header shows its registry entry (`[S]` singleton; amber drift when the
-header name ≠ the exported name).
-
-| Status      | Meaning                       |
-| ----------- | ----------------------------- |
-| `●` (green) | Active invariant              |
-| `◐` (amber) | Superseded — see chain        |
-| `○` (red)   | Orphan — not in ledger        |
-
-Install the latest `.vsix` from
-[releases](https://github.com/isaacriehm/cairn/releases) →
-`Cmd/Ctrl+Shift+P` → `Extensions: Install from VSIX…`. Full setup in
-[`packages/cairn-lens/README.md`](packages/cairn-lens/README.md). Because
-the `.vsix` is not on the Marketplace, Cairn Lens checks npm once a day
-and notifies you when a newer release is published (disable via
-`cairn.lens.checkForUpdates`).
-
-## Multi-Developer Enforcement
-
-Once a project is Cairn-adopted, every developer runs Cairn — locally
-and at PR time. **Defense in depth:**
-
-| Layer                         | What                                                          | Catches                                                     |
-| ----------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------- |
-| **1. Versioned git hooks**    | `.cairn/git-hooks/{pre,post,commit-msg}-commit`               | Local commits violating ground state.                       |
-| **2. `cairn join` bootstrap** | CLI + `package.json prepare` script                           | Clones that haven't activated `core.hooksPath`.             |
-| **3. CI gate**                | `.github/workflows/cairn-check.yml`                           | `--no-verify` slipping through. **Non-bypassable.**         |
-| **4. Plugin degraded mode**   | SessionStart banner + MCP guard                               | Write tools refuse with `BOOTSTRAP_REQUIRED` until joined.  |
-
-Plus **Stop-hook bypass detection** — flags any HEAD commits not in
-`.cairn/.attested-commits` and surfaces `[a] backfill / [b] accept
-(record DEC) / [c] defer`.
-
-## Disk Layout
-
-After `cairn init`:
-
-```
-.cairn/
-├── config.yaml                  slug, version, off_limits, domain
-├── config/                      workflow.md, sensors.yaml, stub-patterns.yaml
-├── ground/
-│   ├── decisions/               DEC-<hash>.md per choice + _inbox/<id>.draft.md
-│   ├── invariants/              INV-<hash>.md per §V rule
-│   ├── canonical-map/           topic → file index
-│   ├── components/              derived @cairn inventory (gitignored; rebuilt from headers)
-│   ├── brand/                   overview.md, voice.md
-│   ├── product/                 positioning.md, personas.yaml
-│   ├── conflicts/               <a-id>__<b-id>.md (DEC↔INV contradictions)
-│   ├── alignment-pending/       ambiguous SoT-align cases queued for review
-│   └── scope-index.yaml         file → DEC/§V resolution
-├── baseline/                    first-sweep audit YAMLs
-├── tasks/active/<id>/           spec.tightened.md, status.yaml, attestation.yaml
-├── sessions/<session-id>/       per-session status + events
-├── staleness/                   drift event log + deferred Layer-A queues
-├── git-hooks/                   pre-commit, post-commit, commit-msg
-├── runs/terminal/               one-shot CLI run logs
-├── backups/source/              .original snapshots (rules-merge can revert)
-├── .attested-commits            commit log used by bypass detection
-└── JOIN.md                      new-contributor bootstrap doc
-```
-
-Full contract: [`docs/FILESYSTEM_LAYOUT.md`](docs/FILESYSTEM_LAYOUT.md).
-
-## Packages
-
-```
-packages/
-├── cairn/                       umbrella + CLI bin (`cairn …`)
-├── cairn-core/                  MCP server, sensors, hooks, init pipeline
-├── cairn-state/                 ground-state schemas + low-level I/O
-├── cairn-plugin/   Claude Code + Cursor + Codex plugin (thin manifests, one dist/)
-└── cairn-lens/                  VS Code / Cursor extension (.vsix)
-```
+- **Pre-1.0, one maintainer.** Breaking changes land in minor versions as
+  hard cutovers, and `cairn migrate` moves existing `.cairn/` state forward.
+  See the [changelog](CHANGELOG.md).
+- **Mechanical checks are narrow.** Assertions are regex and structural
+  checks over the diff, not semantic review. Most decisions are enforced by
+  being in the agent's context, not by a sensor.
+- **Model-backed steps need an authenticated agent CLI** (`claude`,
+  `cursor-agent`, or `codex`). Adoption uses one to map the repo and extract
+  decisions from your docs.
+- **One `core.hooksPath` per repo.** If husky, lefthook, or a custom hooks
+  directory already holds it, Cairn leaves it alone and says so. The
+  pre-commit sweep stays off until you chain Cairn's hooks, but CI still
+  runs it.
+- **CI runs on Ubuntu with Node 22.** Development happens on macOS. Windows
+  isn't covered by CI.
+- **Cairn Lens isn't on the VS Code Marketplace.** Install the `.vsix` from
+  Releases. It checks npm once a day for a newer version.
 
 ## Documentation
 
-**User guide** — read these to use Cairn day to day:
+| Using Cairn | |
+| --- | --- |
+| [Core concepts](docs/guide/concepts.md) | Decisions, invariants, canonical map, scope, sensors, drift. |
+| [Adoption](docs/guide/adoption.md) | The one-time adoption pipeline, phase by phase. |
+| [Daily flow](docs/guide/daily-flow.md) | What happens on every prompt after adoption. |
+| [Decisions](docs/guide/decisions.md) | File format, supersedes chains, assertions, scope design. |
+| [Teams](docs/guide/multi-dev.md) | Onboarding contributors, the CI gate, bypass detection. |
+| [Reference](docs/guide/reference.md) | CLI commands, MCP tools, status line, file locations. |
 
-| Doc                                                          | What                                                                |
-| ------------------------------------------------------------ | ------------------------------------------------------------------- |
-| [Core concepts](docs/guide/concepts.md)                      | Decisions, invariants, canonical map, scope, sensors, drift.        |
-| [Using Cairn day to day](docs/guide/daily-flow.md)           | What happens on every prompt, after the one-time adoption.          |
-| [Adopting Cairn](docs/guide/adoption.md)                     | The 13-phase adoption pipeline, walked through step by step.        |
-| [Working with decisions](docs/guide/decisions.md)            | DEC creation paths, file format, supersedes chain, scope design.    |
-| [Cairn for teams](docs/guide/multi-dev.md)                   | Onboarding contributors, the CI gate, bypass detection.             |
-| [Quick reference](docs/guide/reference.md)                   | CLI commands, MCP tools, status-line, file locations, slash commands. |
-
-**Technical specs** — read these when you're modifying Cairn itself:
-
-| Doc                                                          | What                                                          |
-| ------------------------------------------------------------ | ------------------------------------------------------------- |
-| [System Overview](docs/SYSTEM_OVERVIEW.md)                   | End-to-end surface map + Mermaid diagram of all flows.        |
-| [Architecture](docs/ARCHITECTURE.md)                         | Locked layered model, five-package boundary.                  |
-| [Plugin Architecture](docs/PLUGIN_ARCHITECTURE.md)           | Adoption phases, hooks, multi-dev enforcement, question bar.  |
-| [MCP Surface](docs/MCP_SURFACE.md)                           | Tool-by-tool reference.                                       |
-| [Filesystem Layout](docs/FILESYSTEM_LAYOUT.md)               | `.cairn/` directory contract.                                 |
-
-## Development
-
-```bash
-git clone https://github.com/isaacriehm/cairn
-cd cairn
-pnpm install
-pnpm build
-pnpm smokes        # default smoke gate; all green on a clean tree
-```
-
-Other root scripts: `pnpm typecheck`, `pnpm clean`, `pnpm smokes:all`
-(every declared smoke), `pnpm smoke:llm-prompt-eval` (opt-in
-real-model regression — burns quota). See
-[`AGENTS.md`](AGENTS.md#common-commands) for the full table.
+| Changing Cairn | |
+| --- | --- |
+| [System overview](docs/SYSTEM_OVERVIEW.md) | End-to-end surface map. |
+| [Architecture](docs/ARCHITECTURE.md) | Layered model and package boundaries (locked). |
+| [Plugin architecture](docs/PLUGIN_ARCHITECTURE.md) | Adoption phases, hooks, multi-dev enforcement. |
+| [MCP surface](docs/MCP_SURFACE.md) | Tool-by-tool reference. |
+| [Filesystem layout](docs/FILESYSTEM_LAYOUT.md) | The `.cairn/` directory contract. |
 
 ## Troubleshooting
 
-### Skill listing budget on Sonnet (and other lower-context models)
+**`cairn-direction` never triggers on Sonnet.** Claude Code reserves 1% of
+the context window for the skill listing. On a 200k-context model that's
+about 2,000 characters, and with several plugins installed the
+lowest-priority descriptions get dropped. Adoption raises
+`skillListingBudgetFraction` to `0.03` in `~/.claude/settings.json` if it's
+lower, and leaves higher values alone. Restart Claude Code after the first
+adoption. `/doctor` should report `0 dropped`.
 
-Claude Code reserves **1% of the model's context window** for the
-skill listing by default. On Opus (1M ctx) that's ~10 000 chars —
-plenty of room. On Sonnet (200k ctx) it's ~2 000 chars, which is
-tight once you add a few user-level plugins (design skills, image
-generators, etc.). The cairn family ships ~3 skills + 3 commands; if
-your listing is over budget, Claude Code drops the lowest-priority
-descriptions — `cairn-direction` is a frequent victim, which means
-the auto-invoke trigger gate never sees the prompt.
+## Contributing
 
-**Adoption handles this for you.** Phase 1 detect raises
-`skillListingBudgetFraction` to `0.03` in `~/.claude/settings.json`
-(fits cairn + ~30 user skills on Sonnet). The bump is silent,
-idempotent, and only fires when the existing value is missing or
-below the floor — operator overrides at or above `0.03` are
-preserved. Restart Claude Code after first adoption to pick up the
-new budget.
-
-If you ever need to verify, run `/doctor`. It should report
-`0 dropped`. If a value above `0.03` still shows dropped descriptions,
-disable user-level skills you don't use (the `/skills` UI toggles
-each one) or set `"user-invocable-only"` in `skillOverrides` (hidden
-from the auto-invoke listing, still reachable via `/<name>`).
-
-## Status
-
-Pre-1.0. The Claude Code, Cursor, and Codex plugins are the daily-driven
-surfaces; the CLI is the bootstrap and debug entrypoint. Issues + PRs
-welcome.
+Issues and PRs are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and
+the checks a PR must pass. Report security issues privately per
+[SECURITY.md](SECURITY.md).
 
 ## License
 
@@ -511,7 +232,7 @@ welcome.
 ---
 
 <div align="center">
-<sub>Built with Claude Code and Codex. The plugin architecture takes cues from OpenAI's "harness lesson" on agent state — Cairn extends those ideas with explicit decisions, invariants, sensors, and a multi-developer enforcement layer for solo-or-small-team product engineering.</sub>
+<sub>Built with Claude Code and Codex. The plugin architecture takes cues from OpenAI's "harness lesson" on agent state. Cairn extends those ideas with explicit decisions, invariants, sensors, and a multi-developer enforcement layer for solo-or-small-team product engineering.</sub>
 
 <sub>Cursor plugin by <a href="https://github.com/chrismuntean">Chris Muntean</a>.</sub>
 </div>

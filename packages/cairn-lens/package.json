@@ -1,7 +1,14 @@
 {
   "name": "cairn-lens",
   "displayName": "Cairn Lens",
-  "description": "Inline citation context for §INV invariants and TODO(TSK-) tokens. Hovers, gutter icons, code lens — resolved from .cairn/ground/ ledgers.",
+  "description": "Inline context for Cairn decisions and invariants in VS Code and Cursor: hovers, gutter icons, and code lens resolved from .cairn/ground/.",
+  "keywords": [
+    "cairn",
+    "decision-records",
+    "adr",
+    "invariants",
+    "ai-agents"
+  ],
   "version": "0.33.0",
   "publisher": "isaacriehm",
   "type": "module",
@@ -116,7 +123,8 @@
   "homepage": "https://github.com/isaacriehm/cairn",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/isaacriehm/cairn.git"
+    "url": "git+https://github.com/isaacriehm/cairn.git",
+    "directory": "packages/cairn-lens"
   },
   "bugs": {
     "url": "https://github.com/isaacriehm/cairn/issues"

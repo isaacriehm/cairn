@@ -4,7 +4,37 @@ All notable changes to Cairn are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+**Gaps in the version history.** 0.8.1–0.9.0 and 0.27.0–0.30.0 were never
+tagged or published. Their changes first reached npm in 0.9.1 and 0.31.0.
+Tags 0.1.1, 0.1.2, 0.13.4–0.13.10, 0.20.0, and 0.22.0 exist but were never
+published to npm, because GitHub drops tag-push workflow events when many
+tags are pushed at once. 0.7.2 is on npm without a tag or an entry.
+
 ## [Unreleased]
+
+### Added
+
+- `docs/demo.md`: a real terminal transcript of the published CLI adopting a
+  fresh repo, recording a decision over MCP, and blocking drift at
+  pre-commit and in CI.
+- `CONTRIBUTING.md`, `SECURITY.md` (private vulnerability reporting), GitHub
+  issue forms, a PR template, and a `cairn-core` package README.
+
+### Changed
+
+- README rewritten for first-time visitors: the problem, a 20-second example
+  taken from a real run, a quick start checked against 0.33.0 from npm, a
+  five-package architecture summary, and a status-and-limits section.
+- Package metadata: every package now has `keywords` and
+  `repository.directory`. `cairn-plugin` gains `license`, `author`,
+  `repository`, and `bugs`.
+
+### Fixed
+
+- The CLI quick start now includes `cairn join`. Without it,
+  `core.hooksPath` is unset and the pre-commit gate never runs.
+- README no longer lists the removed structural sensor or MCP tools that
+  don't exist (`cairn_decisions_in_scope`, `cairn_supersedes_chain`).
 
 ## [0.33.0] — 2026-07-26
 
@@ -3847,6 +3877,18 @@ migration-compatible. Back up hand-edited DECs first.
   A picks it up on the next PostToolUse without waiting for
   SessionStart drain.
 
+## [0.4.3] — 2026-05-06
+
+### Added
+
+- **Content-addressed IDs.** Decisions and invariants use `DEC-<hash7>` /
+  `INV-<hash7>`, derived from a sha256 of their canonical input, instead of
+  monotonic numbers. Two clones that ingest the same source produce the same
+  ID, so there's no allocator, lock, or merge step.
+- **Browser triage for the attention queue** through the
+  `cairn_attention_serve` + `cairn_attention_wait` MCP tools and
+  `cairn attention serve`.
+
 ## [0.4.2] — 2026-05-06
 
 ### Fixed
@@ -4667,4 +4709,180 @@ transition shims.
 `init-phases-all`, `init-mcp-tools`, `stop-debounce`,
 `bootstrap-skill`.
 
+
+## [0.1.10] — 2026-05-04
+
+### Fixed
+
+- Bypass-detection false positives. Multi-dev banner shown correctly.
+
+## [0.1.9] — 2026-05-04
+
+### Changed
+
+- The adoption skill runs `cairn init --no-prompt`, because Claude Code
+  hooks have no TTY.
+
+## [0.1.8] — 2026-05-04
+
+### Changed
+
+- Skill bodies invoke the CLI with `npx -y`.
+
+## [0.1.7] — 2026-05-04
+
+### Added
+
+- Adoption banner on unadopted git repos.
+
+## [0.1.6] — 2026-05-04
+
+### Fixed
+
+- Stop and SessionEnd hook output schema.
+
+## [0.1.5] — 2026-05-04
+
+### Changed
+
+- The plugin runs the CLI through `npx`, which removes the manual install
+  step.
+
+## [0.1.4] — 2026-05-04
+
+### Fixed
+
+- `cairn-lens` `engines.vscode` aligned with `@types/vscode`.
+
+## [0.1.3] — 2026-05-04
+
+### Changed
+
+- The plugin shells out to the npm-installed `cairn` CLI.
+
+## [0.1.2] — 2026-05-04
+
+Tagged; not published to npm.
+
+### Added
+
+- Single source of truth for the workspace version, plus a CI gate.
+
+### Fixed
+
+- Plugin hooks wrapped in a top-level `hooks` record. Added the root
+  `.claude-plugin/marketplace.json`.
+
+## [0.1.1] — 2026-05-04
+
+Tagged; not published to npm.
+
+### Fixed
+
+- Production install break and version drift between packages.
+
+## [0.1.0] — 2026-05-04
+
+First tagged release.
+
+### Fixed
+
+- `cairn-lens` uses an unscoped package name, because vsce rejects scoped
+  extensions. Its LICENSE is bundled in the `.vsix`.
+
+[Unreleased]: https://github.com/isaacriehm/cairn/compare/v0.33.0...HEAD
+[0.33.0]: https://github.com/isaacriehm/cairn/releases/tag/v0.33.0
+[0.32.1]: https://github.com/isaacriehm/cairn/releases/tag/v0.32.1
+[0.32.0]: https://github.com/isaacriehm/cairn/releases/tag/v0.32.0
+[0.31.0]: https://github.com/isaacriehm/cairn/releases/tag/v0.31.0
+[0.26.0]: https://github.com/isaacriehm/cairn/releases/tag/v0.26.0
+[0.25.0]: https://github.com/isaacriehm/cairn/releases/tag/v0.25.0
+[0.24.0]: https://github.com/isaacriehm/cairn/releases/tag/v0.24.0
+[0.23.0]: https://github.com/isaacriehm/cairn/releases/tag/v0.23.0
+[0.22.6]: https://github.com/isaacriehm/cairn/releases/tag/v0.22.6
+[0.22.5]: https://github.com/isaacriehm/cairn/releases/tag/v0.22.5
+[0.22.4]: https://github.com/isaacriehm/cairn/releases/tag/v0.22.4
+[0.22.3]: https://github.com/isaacriehm/cairn/releases/tag/v0.22.3
+[0.22.2]: https://github.com/isaacriehm/cairn/releases/tag/v0.22.2
+[0.22.1]: https://github.com/isaacriehm/cairn/releases/tag/v0.22.1
+[0.22.0]: https://github.com/isaacriehm/cairn/releases/tag/v0.22.0
+[0.21.0]: https://github.com/isaacriehm/cairn/releases/tag/v0.21.0
+[0.20.0]: https://github.com/isaacriehm/cairn/releases/tag/v0.20.0
+[0.19.1]: https://github.com/isaacriehm/cairn/releases/tag/v0.19.1
+[0.19.0]: https://github.com/isaacriehm/cairn/releases/tag/v0.19.0
+[0.18.2]: https://github.com/isaacriehm/cairn/releases/tag/v0.18.2
+[0.18.1]: https://github.com/isaacriehm/cairn/releases/tag/v0.18.1
+[0.18.0]: https://github.com/isaacriehm/cairn/releases/tag/v0.18.0
+[0.17.0]: https://github.com/isaacriehm/cairn/releases/tag/v0.17.0
+[0.16.0]: https://github.com/isaacriehm/cairn/releases/tag/v0.16.0
+[0.15.1]: https://github.com/isaacriehm/cairn/releases/tag/v0.15.1
+[0.15.0]: https://github.com/isaacriehm/cairn/releases/tag/v0.15.0
+[0.14.2]: https://github.com/isaacriehm/cairn/releases/tag/v0.14.2
+[0.14.1]: https://github.com/isaacriehm/cairn/releases/tag/v0.14.1
+[0.14.0]: https://github.com/isaacriehm/cairn/releases/tag/v0.14.0
+[0.13.10]: https://github.com/isaacriehm/cairn/releases/tag/v0.13.10
+[0.13.9]: https://github.com/isaacriehm/cairn/releases/tag/v0.13.9
+[0.13.8]: https://github.com/isaacriehm/cairn/releases/tag/v0.13.8
+[0.13.7]: https://github.com/isaacriehm/cairn/releases/tag/v0.13.7
+[0.13.6]: https://github.com/isaacriehm/cairn/releases/tag/v0.13.6
+[0.13.5]: https://github.com/isaacriehm/cairn/releases/tag/v0.13.5
+[0.13.4]: https://github.com/isaacriehm/cairn/releases/tag/v0.13.4
+[0.13.3]: https://github.com/isaacriehm/cairn/releases/tag/v0.13.3
+[0.13.2]: https://github.com/isaacriehm/cairn/releases/tag/v0.13.2
+[0.13.1]: https://github.com/isaacriehm/cairn/releases/tag/v0.13.1
+[0.13.0]: https://github.com/isaacriehm/cairn/releases/tag/v0.13.0
+[0.12.0]: https://github.com/isaacriehm/cairn/releases/tag/v0.12.0
+[0.11.9]: https://github.com/isaacriehm/cairn/releases/tag/v0.11.9
+[0.11.8]: https://github.com/isaacriehm/cairn/releases/tag/v0.11.8
+[0.11.7]: https://github.com/isaacriehm/cairn/releases/tag/v0.11.7
+[0.11.6]: https://github.com/isaacriehm/cairn/releases/tag/v0.11.6
+[0.11.5]: https://github.com/isaacriehm/cairn/releases/tag/v0.11.5
+[0.11.4]: https://github.com/isaacriehm/cairn/releases/tag/v0.11.4
+[0.11.3]: https://github.com/isaacriehm/cairn/releases/tag/v0.11.3
+[0.11.2]: https://github.com/isaacriehm/cairn/releases/tag/v0.11.2
+[0.11.1]: https://github.com/isaacriehm/cairn/releases/tag/v0.11.1
+[0.11.0]: https://github.com/isaacriehm/cairn/releases/tag/v0.11.0
+[0.10.4]: https://github.com/isaacriehm/cairn/releases/tag/v0.10.4
+[0.10.3]: https://github.com/isaacriehm/cairn/releases/tag/v0.10.3
+[0.10.2]: https://github.com/isaacriehm/cairn/releases/tag/v0.10.2
+[0.10.1]: https://github.com/isaacriehm/cairn/releases/tag/v0.10.1
+[0.10.0]: https://github.com/isaacriehm/cairn/releases/tag/v0.10.0
+[0.9.8]: https://github.com/isaacriehm/cairn/releases/tag/v0.9.8
+[0.9.7]: https://github.com/isaacriehm/cairn/releases/tag/v0.9.7
+[0.9.6]: https://github.com/isaacriehm/cairn/releases/tag/v0.9.6
+[0.9.5]: https://github.com/isaacriehm/cairn/releases/tag/v0.9.5
+[0.9.4]: https://github.com/isaacriehm/cairn/releases/tag/v0.9.4
+[0.9.3]: https://github.com/isaacriehm/cairn/releases/tag/v0.9.3
+[0.9.2]: https://github.com/isaacriehm/cairn/releases/tag/v0.9.2
+[0.9.1]: https://github.com/isaacriehm/cairn/releases/tag/v0.9.1
+[0.8.0]: https://github.com/isaacriehm/cairn/releases/tag/v0.8.0
+[0.7.3]: https://github.com/isaacriehm/cairn/releases/tag/v0.7.3
+[0.7.1]: https://github.com/isaacriehm/cairn/releases/tag/v0.7.1
+[0.7.0]: https://github.com/isaacriehm/cairn/releases/tag/v0.7.0
+[0.6.0]: https://github.com/isaacriehm/cairn/releases/tag/v0.6.0
+[0.5.0]: https://github.com/isaacriehm/cairn/releases/tag/v0.5.0
+[0.4.3]: https://github.com/isaacriehm/cairn/releases/tag/v0.4.3
+[0.4.2]: https://github.com/isaacriehm/cairn/releases/tag/v0.4.2
+[0.4.1]: https://github.com/isaacriehm/cairn/releases/tag/v0.4.1
+[0.4.0]: https://github.com/isaacriehm/cairn/releases/tag/v0.4.0
+[0.3.8]: https://github.com/isaacriehm/cairn/releases/tag/v0.3.8
+[0.3.7]: https://github.com/isaacriehm/cairn/releases/tag/v0.3.7
+[0.3.6]: https://github.com/isaacriehm/cairn/releases/tag/v0.3.6
+[0.3.5]: https://github.com/isaacriehm/cairn/releases/tag/v0.3.5
+[0.3.4]: https://github.com/isaacriehm/cairn/releases/tag/v0.3.4
+[0.3.3]: https://github.com/isaacriehm/cairn/releases/tag/v0.3.3
+[0.3.2]: https://github.com/isaacriehm/cairn/releases/tag/v0.3.2
+[0.3.1]: https://github.com/isaacriehm/cairn/releases/tag/v0.3.1
+[0.3.0]: https://github.com/isaacriehm/cairn/releases/tag/v0.3.0
 [0.2.0]: https://github.com/isaacriehm/cairn/releases/tag/v0.2.0
+[0.1.10]: https://github.com/isaacriehm/cairn/releases/tag/v0.1.10
+[0.1.9]: https://github.com/isaacriehm/cairn/releases/tag/v0.1.9
+[0.1.8]: https://github.com/isaacriehm/cairn/releases/tag/v0.1.8
+[0.1.7]: https://github.com/isaacriehm/cairn/releases/tag/v0.1.7
+[0.1.6]: https://github.com/isaacriehm/cairn/releases/tag/v0.1.6
+[0.1.5]: https://github.com/isaacriehm/cairn/releases/tag/v0.1.5
+[0.1.4]: https://github.com/isaacriehm/cairn/releases/tag/v0.1.4
+[0.1.3]: https://github.com/isaacriehm/cairn/releases/tag/v0.1.3
+[0.1.2]: https://github.com/isaacriehm/cairn/releases/tag/v0.1.2
+[0.1.1]: https://github.com/isaacriehm/cairn/releases/tag/v0.1.1
+[0.1.0]: https://github.com/isaacriehm/cairn/releases/tag/v0.1.0

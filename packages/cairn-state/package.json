@@ -1,7 +1,14 @@
 {
   "name": "@isaacriehm/cairn-state",
   "version": "0.33.0",
-  "description": "Cairn state — lightweight schemas and read-only I/O.",
+  "description": "Cairn state: schemas and read-only I/O for the .cairn/ ground state (decisions, invariants, canonical map).",
+  "keywords": [
+    "cairn",
+    "decision-records",
+    "adr",
+    "zod",
+    "schemas"
+  ],
   "author": "Isaac Riehm",
   "license": "MIT",
   "homepage": "https://github.com/isaacriehm/cairn",
