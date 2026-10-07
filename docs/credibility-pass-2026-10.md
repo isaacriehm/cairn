@@ -194,3 +194,61 @@ for the maintainer-supplied list of client names and private project names.
 - **Other hits** were reported to the maintainer directly. This repository
   is public, and per `AGENTS.md` those strings aren't recorded in committed
   files, even in redacted form. History was not rewritten.
+
+## Shipped Oct 6
+
+`credibility-pass` was merged into `main` with a merge commit (`2935904`,
+no history rewrite) and pushed. `origin/main` had not moved since
+`702a5bf`. Nothing was published to npm, tagged, or released.
+
+### Added before the merge
+
+| Commit | Change |
+| --- | --- |
+| `f9392cd` | `docs(guide)`: all 14 `cairn mcp call` examples replaced (finding 3). `cairn mcp` only accepts `serve`. Examples now use either the agent calling the MCP tool or the MCP Inspector CLI (`npx -y @modelcontextprotocol/inspector --cli cairn mcp serve --method tools/call ...`). Every new shell block was run verbatim against a scratch adoption built from this tree. The two `cairn_supersedes_chain` calls in `decisions.md` now walk the chain with `cairn_decision_get` and each DEC's `supersedes` field. `daily-flow.md` also claimed `cairn scope --files`, which doesn't exist. That passage now uses `cairn_in_scope`. |
+| `9d4733e` | `docs(agents)`: operator-profile rows reworded without profanity or informal phrasing, with the same rules (finding 8). The model rule now matches the code: call sites name a `fast`/`capable` tier, and the transports map it (Claude `haiku`/`sonnet`, Codex `gpt-5.3-codex-spark`, Cursor `auto`). |
+
+### Checks on the merged tree
+
+| Check | Result |
+| --- | --- |
+| `pnpm install --frozen-lockfile`, `pnpm version:check`, `pnpm build`, `pnpm typecheck` | Pass |
+| `pnpm smokes` (88 scripts) | Pass |
+| The 10 non-LLM smokes that only `smokes:all` runs | Pass |
+| All 5 Lens smokes (CI runs 3) | Pass |
+| Working tree after build | Clean |
+| `pnpm lint` | **Fail, same on `main`.** No package defines a `lint` script, so `pnpm -r lint` exits 1 before linting anything. The repo has no linter. |
+| `pnpm --filter @isaacriehm/cairn check:layout` | **Fail, same on `main`.** 19 hard misses. The script's hardcoded file list still names files that earlier releases removed (for example `mcp/tools/supersedes-chain.ts` and `src/ground/*.ts`). |
+| `pnpm knip:strict` | **Fail, output byte-identical to `main`** (3 unused files, 23 unused exports, 54 unused types). |
+
+The two real-model smokes (`smoke:llm-prompt-eval`, `smoke:llm-detect-components`)
+were not run. They use model quota, and AGENTS.md limits them to changes
+to the Stage-1 prompt or a provider transport. None of the three failing
+checks runs in CI, and none was loosened.
+
+### Status of the open findings
+
+- **Fixed:** 3 (`cairn mcp call`) and 8 (`AGENTS.md`).
+- **Still open:** 1, 2, 4, 5, 6, 7, and 9.
+- **Found during the fix:**
+  - `cairn_supersedes_chain` is still named in `docs/guide/concepts.md`.
+  - `cairn scope --files` is still listed in `docs/guide/reference.md`, in
+    the CLI table and the one-liners. Neither exists.
+  - `cairn_record_decision` with `supersedes` writes that field on the new
+    DEC, but it never sets `superseded_by` or `status: superseded` on the
+    older DEC. On the auto-accept path, the predecessor stays `accepted`.
+    `decisions.md` says it is marked on accept.
+  - The `lint` and `check:layout` scripts above are broken.
+
+### GitHub settings (not applied)
+
+```bash
+gh repo edit isaacriehm/cairn \
+  --description "Keeps AI coding agents consistent with your project's recorded decisions. Plugin for Claude Code, Cursor, and Codex, with an MCP server and pre-commit/CI checks." \
+  --homepage "https://www.npmjs.com/package/@isaacriehm/cairn" \
+  --remove-topic anthropic,multi-agent,ground-truth,claude,spec-driven-development \
+  --add-topic cursor,codex,pre-commit,git-hooks,developer-tools
+```
+
+The remote branch `pr-4-review` was deleted. It pointed at `702a5bf`, which
+is already in `main`.
