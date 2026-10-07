@@ -442,29 +442,36 @@ A handful of patterns that come up often.
 
 ### Querying decisions while you work
 
-You don't have to be in Claude Code to query Cairn's state. The MCP
-server is `cairn mcp serve`, but you can also use the CLI:
+You don't have to be in an agent session to query Cairn's state. The
+CLI covers health checks and the pending queue:
 
 ```bash
-cairn scope --files src/auth/jwt.ts,src/auth/refresh.ts
-# returns: in-scope DEC summaries + INV summaries
-
 cairn doctor
 # checks: ledger health, missing files, drift count, bypass count
+
+cairn attention
+# lists pending DEC drafts + baseline sensor findings
 ```
 
-For deeper queries, write a tiny script that uses the MCP tools
-directly. Examples:
+The CLI has no query subcommands. Lookups go through the MCP tools,
+which `cairn mcp serve` exposes to any MCP client. From a shell, the
+MCP Inspector's CLI mode calls them directly (see
+[Calling MCP tools from a shell](reference.md#calling-mcp-tools-from-a-shell)):
 
 ```bash
+MCP="npx -y @modelcontextprotocol/inspector --cli cairn mcp serve --method tools/call"
+
+# Which DECs and INVs cover these files?
+$MCP --tool-name cairn_in_scope --tool-arg 'path_globs=["src/auth/jwt.ts","src/auth/refresh.ts"]'
+
 # What does DEC-a3f7b2c say?
-cairn mcp call cairn_decision_get '{"id":"DEC-a3f7b2c"}'
+$MCP --tool-name cairn_decision_get --tool-arg id=DEC-a3f7b2c
 
 # Where does rate limiting live?
-cairn mcp call cairn_canonical_for_topic '{"topic":"rate limiting"}'
+$MCP --tool-name cairn_canonical_for_topic --tool-arg 'topic=rate limiting'
 
 # Search for anything mentioning idempotency
-cairn mcp call cairn_search '{"query":"idempotency"}'
+$MCP --tool-name cairn_search --tool-arg query=idempotency
 ```
 
 ### Recording a decision before the agent acts

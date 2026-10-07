@@ -72,15 +72,19 @@ server derives the `DEC-<hash>` id from the content, writes the draft, and retur
 the id and path. The draft surfaces in the stop hook the same way
 reviewer-extracted drafts do.
 
-You can also call from a CLI:
+The CLI has no subcommand for this. From a shell, call the same MCP
+tool through any MCP client. With the MCP Inspector's CLI mode (see
+[Calling MCP tools from a shell](reference.md#calling-mcp-tools-from-a-shell)):
 
 ```bash
-cairn mcp call cairn_record_decision '{
-  "title": "Refund retries use exponential backoff with jitter, max 5 attempts, base 1s",
-  "summary": "Aligns with the rest of the billing retry strategy.",
-  "scope_globs": ["packages/billing/refunds/**"],
-  "body_markdown": "## Rationale\n\nMatches the existing pattern in packages/billing/charges/. Cap of 5 prevents runaway loops if the upstream is unresponsive."
-}'
+npx -y @modelcontextprotocol/inspector --cli cairn mcp serve \
+  --method tools/call --tool-name cairn_record_decision \
+  --tool-arg 'title=Refund retries use exponential backoff with jitter, max 5 attempts, base 1s' \
+  --tool-arg 'summary=Aligns with the rest of the billing retry strategy.' \
+  --tool-arg 'scope_globs=["packages/billing/refunds/**"]' \
+  --tool-arg 'body_markdown=## Rationale
+
+Matches the existing pattern in packages/billing/charges/. Cap of 5 prevents runaway loops if the upstream is unresponsive.'
 ```
 
 When to do this: **before** the agent runs the implementation. The
@@ -344,15 +348,22 @@ you write a new DEC that supersedes the old one.
 
 ### Writing a superseder
 
-```bash
-cairn mcp call cairn_record_decision '{
+Ask the agent to record it, naming the decision it replaces. It calls
+`cairn_record_decision` with these arguments:
+
+```json
+{
   "title": "Auth tokens expire after 8 hours (PCI Level 1)",
   "summary": "Escalated from 24h after the Q2 audit reclassified us as Level 1.",
   "scope_globs": ["src/auth/**", "packages/api/src/middleware/auth/**"],
   "supersedes": "DEC-a3f7b2c",
   "body_markdown": "## Context\n\nThe Q2 PCI audit reclassified us as Level 1 (>6M transactions/year), which mandates an 8-hour cap.\n\n## Decision\n\nAll bearer tokens expire 8 hours after issue. Refresh tokens follow the same lifetime."
-}'
+}
 ```
+
+From a shell, pass the same fields as `--tool-arg`s through an MCP
+client (see
+[Calling MCP tools from a shell](reference.md#calling-mcp-tools-from-a-shell)).
 
 The new DEC's frontmatter has `supersedes: DEC-a3f7b2c`. On accept,
 `DEC-a3f7b2c.md` gets `superseded_by: DEC-b1e9c04` written into its
@@ -373,21 +384,24 @@ DEC-a3f7b2c (status: superseded)  ──supersedes──→  DEC-7c2f10a
 DEC-b1e9c04 (status: accepted)    ──supersedes──→  DEC-a3f7b2c
 ```
 
-Querying:
+Querying: there is no single chain tool. Call `cairn_decision_get` on
+the current decision and follow its `supersedes` field back one step
+at a time:
 
 ```bash
-cairn mcp call cairn_supersedes_chain '{"decision_id":"DEC-7c2f10a"}'
+MCP="npx -y @modelcontextprotocol/inspector --cli cairn mcp serve --method tools/call"
+
+$MCP --tool-name cairn_decision_get --tool-arg id=DEC-b1e9c04
+# → "supersedes": "DEC-a3f7b2c"
+$MCP --tool-name cairn_decision_get --tool-arg id=DEC-a3f7b2c
+# → "supersedes": "DEC-7c2f10a"
+$MCP --tool-name cairn_decision_get --tool-arg id=DEC-7c2f10a
+# → no "supersedes": the start of the chain
 ```
 
-Returns the full chain forward to the current binding decision:
-
-```json
-[
-  { "id": "DEC-7c2f10a", "status": "superseded", "supersedes": null },
-  { "id": "DEC-a3f7b2c", "status": "superseded", "supersedes": "DEC-7c2f10a" },
-  { "id": "DEC-b1e9c04", "status": "accepted",   "supersedes": "DEC-a3f7b2c" }
-]
-```
+Each response is the full decision (status, scope, assertions, body),
+and includes `superseded_by` when the older file has it. An agent does
+the same walk when you ask it for a decision's history.
 
 ### Why this matters
 
@@ -748,15 +762,12 @@ to match `'8h'`.
 
 A new contributor opens an issue. They want to know the history.
 
-You point them at:
-
-```bash
-cairn mcp call cairn_supersedes_chain '{"decision_id":"DEC-7c2f10a"}'
-```
-
-Returns the full chain — DEC-7c2f10a → DEC-a3f7b2c → DEC-b1e9c04 — with
-status, dates, and supersedes pointers. They read the bodies in
-order and have the complete history in 5 minutes.
+You point them at the current decision, `DEC-b1e9c04`. Walking its
+`supersedes` pointers with `cairn_decision_get` (see
+[What the chain looks like](#what-the-chain-looks-like)) returns
+DEC-b1e9c04 → DEC-a3f7b2c → DEC-7c2f10a, each with status, date, and
+body. They read the bodies oldest first and have the complete history
+in 5 minutes.
 
 ### Day 400: the chain prevents silent regression
 
